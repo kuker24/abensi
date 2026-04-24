@@ -1,0 +1,12 @@
+{
+  "name": "schoolhub-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "lint": "node --check src/index.js"
+  },
+  "dependencies": {
+    "axios": "1.15.2"
+  }
+}

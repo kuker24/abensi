@@ -1,0 +1,301 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN_TU
+  GURU_MAPEL
+  GURU_PIKET
+  SISWA
+  OPERATOR_IT
+}
+
+enum SessionStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+  MISSED
+}
+
+enum StudentAttendanceStatus {
+  HADIR
+  TELAT
+  IZIN
+  SAKIT
+  ALPA
+}
+
+enum TeacherSessionStatus {
+  HADIR
+  TELAT
+  EXCUSED_ABSENCE
+  ALPA_MENGAJAR
+}
+
+enum CardStatus {
+  ACTIVE
+  LOST
+  INACTIVE
+}
+
+enum GateDirection {
+  IN
+  OUT
+}
+
+enum ReconciliationFlagType {
+  BOLOS_KELAS
+  LUPA_TAP_GERBANG
+  TIDAK_MENGAJAR
+  ANOMALI_BUKA_TANPA_GERBANG
+  ALPA
+}
+
+enum ReconciliationStatus {
+  OPEN
+  RESOLVED
+}
+
+enum EscalationStatus {
+  QUEUED
+  CLOSED
+}
+
+enum DeviceReaderStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model User {
+  id                  String                @id @default(cuid())
+  username            String                @unique
+  fullName            String
+  passwordHash        String
+  role                Role
+  active              Boolean               @default(true)
+  cardStatus          CardStatus            @default(ACTIVE)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  taughtSessions      Session[]             @relation("TeacherSessions")
+  enrollments         ClassEnrollment[]
+  gateLogs            GateLog[]
+  studentAttendances  StudentAttendance[]   @relation("StudentAttendanceUser")
+  teacherPresences    TeacherSessionPresence[]
+  reconciliationFlags ReconciliationFlag[]  @relation("FlaggedUser")
+  resolvedFlags       ReconciliationFlag[]  @relation("ResolvedByUser")
+  createdEscalations  ReconciliationEscalation[] @relation("EscalationCreatedByUser")
+  closedEscalations   ReconciliationEscalation[] @relation("EscalationClosedByUser")
+  audits              AuditEntry[]          @relation("AuditActor")
+  smartCard           SmartCard?
+}
+
+model SchoolClass {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  yearLabel   String
+  createdAt   DateTime          @default(now())
+
+  enrollments ClassEnrollment[]
+  sessions    Session[]
+}
+
+model Subject {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  name      String
+  createdAt DateTime  @default(now())
+
+  sessions  Session[]
+}
+
+model ClassEnrollment {
+  id        String      @id @default(cuid())
+  classId   String
+  studentId String
+  createdAt DateTime    @default(now())
+
+  schoolClass SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId])
+}
+
+model Session {
+  id            String                  @id @default(cuid())
+  classId       String
+  subjectId     String
+  teacherId     String
+  startsAt      DateTime
+  endsAt        DateTime
+  status        SessionStatus           @default(SCHEDULED)
+  openedAt      DateTime?
+  closedAt      DateTime?
+  reconciledAt  DateTime?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  schoolClass   SchoolClass             @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subject       Subject                 @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher       User                    @relation("TeacherSessions", fields: [teacherId], references: [id], onDelete: Restrict)
+  attendances   StudentAttendance[]
+  teacherPresence TeacherSessionPresence[]
+  flags         ReconciliationFlag[]
+
+  @@index([startsAt])
+  @@index([status])
+}
+
+model StudentAttendance {
+  id         String                    @id @default(cuid())
+  sessionId  String
+  studentId  String
+  status     StudentAttendanceStatus
+  note       String?
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
+
+  session    Session                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student    User                      @relation("StudentAttendanceUser", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([status])
+}
+
+model TeacherSessionPresence {
+  id         String                @id @default(cuid())
+  sessionId  String
+  teacherId  String
+  status     TeacherSessionStatus
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  session    Session               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  teacher    User                  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, teacherId])
+}
+
+model GateLog {
+  id        String        @id @default(cuid())
+  userId    String
+  direction GateDirection
+  tappedAt  DateTime      @default(now())
+  deviceId  String?
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tappedAt])
+  @@index([userId, tappedAt])
+}
+
+model ReconciliationFlag {
+  id            String                @id @default(cuid())
+  type          ReconciliationFlagType
+  status        ReconciliationStatus  @default(OPEN)
+  sessionId      String?
+  userId         String
+  details        Json?
+  createdAt      DateTime             @default(now())
+  resolvedAt     DateTime?
+  resolvedReason String?
+  resolvedById   String?
+
+  session        Session?             @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user           User                 @relation("FlaggedUser", fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy     User?                @relation("ResolvedByUser", fields: [resolvedById], references: [id], onDelete: SetNull)
+  escalations    ReconciliationEscalation[]
+
+  @@index([status])
+  @@index([type])
+  @@unique([type, sessionId, userId])
+}
+
+model ReconciliationEscalation {
+  id          String           @id @default(cuid())
+  flagId       String
+  status      EscalationStatus @default(QUEUED)
+  reason      String
+  createdById String
+  closedById  String?
+  createdAt   DateTime         @default(now())
+  closedAt    DateTime?
+
+  flag        ReconciliationFlag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  createdBy   User               @relation("EscalationCreatedByUser", fields: [createdById], references: [id], onDelete: Restrict)
+  closedBy    User?              @relation("EscalationClosedByUser", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@index([flagId, status])
+  @@index([createdAt])
+}
+
+model AuditEntry {
+  id         String    @id @default(cuid())
+  actorId    String?
+  actorRole  Role?
+  action     String
+  module     String?
+  resource   String
+  resourceId String
+  reason     String?
+  requestIp  String?
+  requestDevice String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime  @default(now())
+
+  actor      User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([module, createdAt])
+  @@index([action, createdAt])
+  @@index([resource, resourceId])
+}
+
+model GeofencePolicy {
+  id                Int       @id
+  centerLat         Float
+  centerLng         Float
+  radiusMeter       Int
+  enforceSessionOpen Boolean  @default(true)
+  arrivalGraceMinutes Int     @default(15)
+  autoMissedGraceMinutes Int  @default(15)
+  requireGateTapForOpen Boolean @default(false)
+  allowPicketOverride Boolean @default(true)
+  updatedAt         DateTime  @updatedAt
+}
+
+model DeviceReader {
+  id         String            @id @default(cuid())
+  name       String
+  apiKey     String            @unique
+  status     DeviceReaderStatus @default(ACTIVE)
+  locationLat Float?
+  locationLng Float?
+  lastSeenAt DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+model SmartCard {
+  id         String      @id @default(cuid())
+  uid        String      @unique
+  status     CardStatus  @default(ACTIVE)
+  userId     String?     @unique
+  note       String?
+  lastTappedAt DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}

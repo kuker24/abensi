@@ -1,0 +1,294 @@
+import {
+  BadRequestException,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  MessageEvent,
+  Param,
+  Query,
+  Res,
+  Sse,
+  UnauthorizedException,
+  UseGuards
+} from '@nestjs/common';
+import type { Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
+import { Role } from '@prisma/client';
+import { from, interval, map, Observable, startWith, switchMap } from 'rxjs';
+import { parsePagination } from '../../common/pagination';
+import { CurrentUser } from '../../common/current-user.decorator';
+import { Roles } from '../../common/roles.decorator';
+import { RolesGuard } from '../../common/roles.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ReportingService } from './reporting.service';
+
+@Controller('reports')
+export class ReportingController {
+  constructor(
+    private readonly reportingService: ReportingService,
+    private readonly jwtService: JwtService
+  ) {}
+
+  @Get('dashboard')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  dashboard(@Query('date') date?: string) {
+    return this.reportingService.dashboard(date);
+  }
+
+  @Get('class/:classId/monthly')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  classMonthly(@Param('classId') classId: string, @Query('month') month?: string) {
+    return this.reportingService.classMonthly(classId, month);
+  }
+
+  @Get('trend')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  trend(@Query('days') days?: string) {
+    const parsedDays = Number(days ?? '7');
+    return this.reportingService.trend(Number.isNaN(parsedDays) ? 7 : parsedDays);
+  }
+
+  @Get('live-monitor')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  liveMonitor(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const pagination = parsePagination({
+      page,
+      limit,
+      defaultLimit: 120,
+      maxLimit: 400
+    });
+    return this.reportingService.liveMonitor(pagination);
+  }
+
+  @Sse('live-monitor/stream')
+  streamLiveMonitor(
+    @Query('token') token?: string,
+    @Query('limit') limit?: string,
+    @Headers('authorization') authorization?: string
+  ): Observable<MessageEvent> {
+    const payload = this.verifyStreamToken(token, authorization);
+    const allowedRoles = new Set<string>([Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET]);
+    if (!allowedRoles.has(payload.role)) {
+      throw new ForbiddenException('Akses live monitor ditolak.');
+    }
+
+    const pagination = parsePagination({
+      page: '1',
+      limit,
+      defaultLimit: 120,
+      maxLimit: 400
+    });
+
+    return interval(5000).pipe(
+      startWith(0),
+      switchMap(() => from(this.reportingService.liveMonitor(pagination))),
+      map((snapshot) => ({
+        type: 'snapshot',
+        data: snapshot
+      }))
+    );
+  }
+
+  @Get('my-attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA)
+  myAttendance(
+    @CurrentUser() user: { sub: string; role: string },
+    @Query('days') days?: string
+  ) {
+    const parsedDays = Number(days ?? '30');
+    return this.reportingService.myAttendance(user, Number.isNaN(parsedDays) ? 30 : parsedDays);
+  }
+
+  @Get('recap/classes')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  recapClasses(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({
+      page,
+      limit,
+      defaultLimit: 50,
+      maxLimit: 500
+    });
+
+    return this.reportingService.recapClasses(pagination, { from, to, classId, subjectId, teacherId });
+  }
+
+  @Get('recap/students')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  recapStudents(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('studentId') studentId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({
+      page,
+      limit,
+      defaultLimit: 50,
+      maxLimit: 500
+    });
+
+    return this.reportingService.recapStudents(pagination, {
+      from,
+      to,
+      classId,
+      subjectId,
+      teacherId,
+      studentId
+    });
+  }
+
+  @Get('recap/subjects')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  recapSubjects(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({
+      page,
+      limit,
+      defaultLimit: 50,
+      maxLimit: 500
+    });
+
+    return this.reportingService.recapSubjects(pagination, { from, to, classId, subjectId, teacherId });
+  }
+
+  @Get('recap/teachers')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  recapTeachers(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({
+      page,
+      limit,
+      defaultLimit: 50,
+      maxLimit: 500
+    });
+
+    return this.reportingService.recapTeachers(pagination, { from, to, classId, subjectId, teacherId });
+  }
+
+  @Get('teacher-monthly')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  teacherMonthly(
+    @Query('month') month?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({
+      page,
+      limit,
+      defaultLimit: 50,
+      maxLimit: 500
+    });
+
+    return this.reportingService.teacherMonthly(pagination, { month, teacherId });
+  }
+
+  @Get('audit-coverage')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  auditCoverage(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({
+      page,
+      limit,
+      defaultLimit: 50,
+      maxLimit: 500
+    });
+
+    return this.reportingService.auditCoverage(pagination, { from, to, classId, subjectId, teacherId });
+  }
+
+  @Get('export')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  async exportReport(
+    @Query('reportType') reportType?: string,
+    @Query('format') format?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('studentId') studentId?: string,
+    @Query('month') month?: string,
+    @Res({ passthrough: true }) response?: Response
+  ) {
+    if (!reportType || !format) {
+      throw new BadRequestException('reportType dan format wajib diisi.');
+    }
+    const result = await this.reportingService.exportReport(reportType, format, {
+      from,
+      to,
+      classId,
+      subjectId,
+      teacherId,
+      studentId,
+      month
+    });
+
+    response?.setHeader('Content-Type', result.contentType);
+    response?.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    return result.buffer;
+  }
+
+  private verifyStreamToken(token?: string, authorization?: string) {
+    const headerToken = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length).trim()
+      : undefined;
+    const finalToken = token ?? headerToken;
+
+    if (!finalToken) {
+      throw new UnauthorizedException('Token tidak tersedia untuk stream live monitor.');
+    }
+
+    try {
+      return this.jwtService.verify<{ sub: string; role: string }>(finalToken);
+    } catch {
+      throw new UnauthorizedException('Token live monitor tidak valid.');
+    }
+  }
+}

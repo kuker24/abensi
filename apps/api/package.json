@@ -1,0 +1,44 @@
+{
+  "name": "schoolhub-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "lint": "eslint \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate deploy --schema ../../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.19",
+    "@nestjs/config": "4.0.4",
+    "@nestjs/core": "11.1.19",
+    "@nestjs/jwt": "11.0.0",
+    "@nestjs/passport": "11.0.3",
+    "@nestjs/platform-express": "11.1.19",
+    "@prisma/client": "5.22.0",
+    "bcryptjs": "2.4.3",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.1",
+    "passport": "0.7.0",
+    "passport-jwt": "4.0.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/express": "5.0.0",
+    "@types/node": "22.10.2",
+    "@types/passport-jwt": "4.0.1",
+    "@typescript-eslint/eslint-plugin": "8.18.2",
+    "@typescript-eslint/parser": "8.18.2",
+    "eslint": "9.39.4",
+    "eslint-config-prettier": "9.1.0",
+    "prisma": "5.22.0",
+    "ts-node-dev": "2.0.0",
+    "typescript": "5.7.3"
+  }
+}
