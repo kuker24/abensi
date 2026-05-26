@@ -86,14 +86,14 @@ services:
       DEVELOPER_PASSWORD: ${DEVELOPER_PASSWORD:-}
       DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer SchoolHub}
       # Port
-      PORT: 3000
+      PORT: 8800
     depends_on:
       redis:
         condition: service_started
-    expose:
-      - "3000"
+    ports:
+      - "8800:8800"
     healthcheck:
-      test: ["CMD-SHELL", "node -e 'fetch(\"http://localhost:3000/api/v1/health/live\").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))'"]
+      test: ["CMD-SHELL", "node -e 'fetch(\"http://localhost:8800/api/v1/health/live\").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))'"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -109,8 +109,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      API_RECONCILE_URL: http://api:3000/api/v1/internal/reconciliation/run
-      API_MARK_MISSED_URL: http://api:3000/api/v1/internal/sessions/mark-missed
+      API_RECONCILE_URL: http://api:8800/api/v1/internal/reconciliation/run
+      API_MARK_MISSED_URL: http://api:8800/api/v1/internal/sessions/mark-missed
       WORKER_TOKEN: ${WORKER_TOKEN}
       WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS}
       WORKER_RECONCILE_INTERVAL_MS: ${WORKER_RECONCILE_INTERVAL_MS:-30000}
@@ -128,24 +128,6 @@ services:
       retries: 3
       start_period: 45s
 
-  # ============================================================
-  # NGINX REVERSE PROXY (API-only mode)
-  # ============================================================
-  # Frontend sudah di Vercel, jadi nginx hanya proxy API
-  # Rate limiting + security headers tetap aktif
-  # ============================================================
-  reverse-proxy:
-    image: nginx:1.27-alpine
-    container_name: schoolhub-nginx
-    restart: unless-stopped
-    logging: *default-logging
-    ports:
-      - "80:80"
-    depends_on:
-      api:
-        condition: service_healthy
-    volumes:
-      - ./ops/nginx/api-only.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
   redis_data:
