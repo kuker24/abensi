@@ -1,0 +1,139 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: schoolhub-postgres
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: schoolhub-redis
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      SESSION_TTL_MS: ${SESSION_TTL_MS:-28800000}
+      REFRESH_TTL_MS: ${REFRESH_TTL_MS:-604800000}
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      READER_SECRET_ENCRYPTION_KEY: ${READER_SECRET_ENCRYPTION_KEY:-}
+      READER_SIGNATURE_SKEW_MS: ${READER_SIGNATURE_SKEW_MS:-120000}
+      READER_NONCE_TTL_MS: ${READER_NONCE_TTL_MS:-300000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-}
+      STEP_UP_FOR_POLICY: ${STEP_UP_FOR_POLICY:-false}
+      STEP_UP_FOR_READER_ROTATE: ${STEP_UP_FOR_READER_ROTATE:-false}
+      MIN_GATE_STAY_MINUTES: ${MIN_GATE_STAY_MINUTES:-10}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin.tu}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-Admin TU}
+      DEFAULT_USER_PASSWORD: ${DEFAULT_USER_PASSWORD:-}
+      DEVELOPER_USERNAME: ${DEVELOPER_USERNAME:-developer}
+      DEVELOPER_PASSWORD: ${DEVELOPER_PASSWORD:-}
+      DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer SchoolHub}
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e 'fetch(\"http://localhost:3000/api/v1/health/live\").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: schoolhub-worker
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      API_RECONCILE_URL: http://api:3000/api/v1/internal/reconciliation/run
+      API_MARK_MISSED_URL: http://api:3000/api/v1/internal/sessions/mark-missed
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS}
+      WORKER_RECONCILE_INTERVAL_MS: ${WORKER_RECONCILE_INTERVAL_MS:-30000}
+      WORKER_AUTO_MISSED_INTERVAL_MS: ${WORKER_AUTO_MISSED_INTERVAL_MS:-15000}
+      WORKER_MAX_CONSECUTIVE_FAILURES: ${WORKER_MAX_CONSECUTIVE_FAILURES:-5}
+      WORKER_HEALTH_STALE_MS: ${WORKER_HEALTH_STALE_MS:-180000}
+      WORKER_HEALTH_FILE: /tmp/schoolhub-worker-health.json
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e 'const fs=require(\"fs\"); const file=process.env.WORKER_HEALTH_FILE||\"/tmp/schoolhub-worker-health.json\"; const stale=Number(process.env.WORKER_HEALTH_STALE_MS||\"180000\"); const data=JSON.parse(fs.readFileSync(file,\"utf8\")); const now=Date.now(); for (const name of [\"auto-missed\",\"reconciliation\"]) { const job=data.jobs&&data.jobs[name]; if (!job||!job.lastSuccessAt||now-Date.parse(job.lastSuccessAt)>stale) process.exit(1); }'" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: schoolhub-web
+    restart: unless-stopped
+    logging: *default-logging
+    expose:
+      - "80"
+
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    container_name: schoolhub-nginx
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    volumes:
+      - ./ops/nginx/reverse-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  postgres_data:
+  redis_data:

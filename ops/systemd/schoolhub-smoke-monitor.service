@@ -1,0 +1,9 @@
+[Unit]
+Description=SchoolHub periodic smoke monitor
+After=network-online.target schoolhub-cloudflared-trial.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/schoolhub
+ExecStart=/bin/bash -lc '/opt/schoolhub/scripts/ops_smoke_monitor.sh'

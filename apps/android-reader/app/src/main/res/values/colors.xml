@@ -1,0 +1,6 @@
+<resources>
+    <!-- Dark Nocturne brand colors (synced with web styles.css) -->
+    <color name="ic_launcher_background">#16181C</color>
+    <color name="brand_primary">#F59E0B</color>
+    <color name="surface_background">#16181C</color>
+</resources>

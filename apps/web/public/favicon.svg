@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SchoolHub e-Hadir">
+  <defs>
+    <linearGradient id="bg" x1="10" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE" />
+      <stop offset="0.48" stop-color="#6366F1" />
+      <stop offset="1" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="mark" x1="17" y1="14" x2="48" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#DFFBFF" />
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.2" result="blur" />
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.11 0 0 0 0 0.82 0 0 0 0 0.93 0 0 0 .70 0" />
+      <feBlend in="SourceGraphic" />
+    </filter>
+    <style>
+      .pulse { transform-origin: 32px 32px; animation: pulse 2.6s ease-in-out infinite; }
+      .orbit { transform-origin: 32px 32px; animation: orbit 3.8s linear infinite; }
+      .scan { animation: scan 2.2s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { transform: scale(1); opacity: .92; } 50% { transform: scale(1.055); opacity: 1; } }
+      @keyframes orbit { to { transform: rotate(360deg); } }
+      @keyframes scan { 0%, 100% { opacity: .35; transform: translateY(-2px); } 50% { opacity: .95; transform: translateY(2px); } }
+      @media (prefers-reduced-motion: reduce) { .pulse, .orbit, .scan { animation: none; } }
+    </style>
+  </defs>
+
+  <rect width="64" height="64" rx="18" fill="#07111F" />
+  <path class="pulse" d="M32 6 52 15v15c0 13.4-8.5 23.5-20 28C20.5 53.5 12 43.4 12 30V15L32 6Z" fill="url(#bg)" filter="url(#glow)" />
+  <path d="M32 11.4 47.4 18v12c0 10.2-6.1 18.1-15.4 22.1C22.7 48.1 16.6 40.2 16.6 30V18L32 11.4Z" fill="rgba(7,17,31,.34)" stroke="rgba(255,255,255,.34)" stroke-width="1.15" />
+
+  <g class="orbit">
+    <circle cx="32" cy="10.2" r="2.7" fill="#A7F3D0" />
+    <circle cx="51.2" cy="32" r="1.55" fill="#C4B5FD" opacity=".9" />
+    <circle cx="12.8" cy="32" r="1.55" fill="#67E8F9" opacity=".9" />
+  </g>
+
+  <path d="M21.4 25.6c2.35-3.85 6.25-6.1 10.6-6.1 4.35 0 8.25 2.25 10.6 6.1" fill="none" stroke="url(#mark)" stroke-width="3.6" stroke-linecap="round" opacity=".94" />
+  <path class="scan" d="M22.2 32.2h19.6" fill="none" stroke="#DFFBFF" stroke-width="3.4" stroke-linecap="round" opacity=".82" />
+  <path d="M24.2 39.4 29.3 44.5 41.2 29.4" fill="none" stroke="#FFFFFF" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M24.2 39.4 29.3 44.5 41.2 29.4" fill="none" stroke="#10B981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity=".42" />
+</svg>

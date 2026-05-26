@@ -1,0 +1,16 @@
+[Unit]
+Description=SchoolHub Production Stack (Docker Compose)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/schoolhub
+ExecStart=/bin/bash -lc 'if docker compose version >/dev/null 2>&1; then docker compose -f docker-compose.production.yml --env-file .env up -d --build; else docker-compose -f docker-compose.production.yml --env-file .env up -d --build; fi'
+ExecStop=/bin/bash -lc 'if docker compose version >/dev/null 2>&1; then docker compose -f docker-compose.production.yml --env-file .env down; else docker-compose -f docker-compose.production.yml --env-file .env down; fi'
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

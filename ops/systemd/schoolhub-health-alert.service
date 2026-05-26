@@ -1,0 +1,14 @@
+[Unit]
+Description=SchoolHub health and backup alert check
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=schoolhub
+WorkingDirectory=/opt/schoolhub
+Environment=ROOT_DIR=/opt/schoolhub
+Environment=LOG_DIR=/opt/schoolhub/output/health-alert
+Environment=ALERT_MIN_BACKUP_AGE_HOURS=26
+EnvironmentFile=-/opt/schoolhub/.env.alert
+ExecStart=/bin/bash /opt/schoolhub/scripts/ops_health_alert.sh
