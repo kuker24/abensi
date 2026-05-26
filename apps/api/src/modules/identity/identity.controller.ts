@@ -5,7 +5,7 @@ import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
+import { IMPORT_FILE_INTERCEPTOR_OPTIONS, parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateUserDto, ImportUserRowDto, ImportUsersDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
 import { IdentityService } from './identity.service';
@@ -78,7 +78,7 @@ export class IdentityController {
 
   @Post('users/import/file/preview')
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
   async previewUsersImportFile(@UploadedFile() file: ImportUploadFile) {
     const rows = await parseImportFile(file);
     return this.identityService.previewUsersImport(rows as unknown as ImportUserRowDto[]);
@@ -86,7 +86,7 @@ export class IdentityController {
 
   @Post('users/import/file/commit')
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
   async commitUsersImportFile(
     @UploadedFile() file: ImportUploadFile,
     @CurrentUser() user: { sub: string; role: string }

@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 function corsOrigins() {
@@ -20,6 +21,10 @@ function apiPort() {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const express = app.getHttpAdapter().getInstance();
+  express.disable('x-powered-by');
+  express.set('trust proxy', 'loopback, linklocal, uniquelocal');
+  app.use(helmet({ crossOriginResourcePolicy: false }));
   app.setGlobalPrefix('api/v1');
   app.enableCors({
     origin: corsOrigins(),

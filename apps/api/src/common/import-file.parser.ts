@@ -9,6 +9,10 @@ export interface ImportUploadFile {
 
 export type ImportRow = Record<string, string>;
 
+export const MAX_IMPORT_FILE_BYTES = Number(process.env.IMPORT_FILE_MAX_BYTES ?? String(2 * 1024 * 1024));
+export const MAX_IMPORT_ROWS = Number(process.env.IMPORT_FILE_MAX_ROWS ?? '5000');
+export const IMPORT_FILE_INTERCEPTOR_OPTIONS = { limits: { fileSize: MAX_IMPORT_FILE_BYTES, files: 1 } };
+
 function normalizeCell(value: unknown): string {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) return value.toISOString();
@@ -82,9 +86,17 @@ async function parseXlsx(buffer: Buffer): Promise<ImportRow[]> {
 
 export async function parseImportFile(file?: ImportUploadFile): Promise<ImportRow[]> {
   if (!file?.buffer) throw new BadRequestException('File import wajib diunggah pada field file.');
+  if (file.buffer.byteLength > MAX_IMPORT_FILE_BYTES) {
+    throw new BadRequestException(`Ukuran file terlalu besar. Maksimal ${Math.floor(MAX_IMPORT_FILE_BYTES / 1024 / 1024)}MB.`);
+  }
   const name = (file.originalname || '').toLowerCase();
   const type = (file.mimetype || '').toLowerCase();
-  if (name.endsWith('.xlsx') || type.includes('spreadsheetml')) return parseXlsx(file.buffer);
-  if (name.endsWith('.csv') || type.includes('csv') || type.includes('text/plain')) return parseCsv(file.buffer);
-  throw new BadRequestException('Format file belum didukung. Gunakan CSV atau XLSX.');
+  const rows = name.endsWith('.xlsx') || type.includes('spreadsheetml')
+    ? await parseXlsx(file.buffer)
+    : name.endsWith('.csv') || type.includes('csv') || type.includes('text/plain')
+      ? parseCsv(file.buffer)
+      : null;
+  if (!rows) throw new BadRequestException('Format file belum didukung. Gunakan CSV atau XLSX.');
+  if (rows.length > MAX_IMPORT_ROWS) throw new BadRequestException(`Jumlah baris terlalu banyak. Maksimal ${MAX_IMPORT_ROWS} baris.`);
+  return rows;
 }

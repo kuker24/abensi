@@ -5,7 +5,7 @@ import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
+import { IMPORT_FILE_INTERCEPTOR_OPTIONS, parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AcademicService } from './academic.service';
 import { CreateAcademicYearDto, CreateClassDto, CreateRoomDto, CreateSemesterDto, CreateStudentDto, CreateSubjectDto, ImportAcademicDto, ImportAcademicRowDto, ImportStudentsDto, ImportStudentRowDto, UpdateAcademicYearDto, UpdateClassDto, UpdateRoomDto, UpdateSemesterDto, UpdateSubjectDto } from './academic.dto';
@@ -143,14 +143,14 @@ export class AcademicController {
   }
 
   @Post('students/import/file/preview')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
   async previewStudentsImportFile(@UploadedFile() file: ImportUploadFile) {
     const rows = await parseImportFile(file);
     return this.academicService.previewStudentsImport(rows as unknown as ImportStudentRowDto[]);
   }
 
   @Post('students/import/file/commit')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
   async commitStudentsImportFile(
     @UploadedFile() file: ImportUploadFile,
     @CurrentUser() user: { sub: string; role: string }
@@ -170,14 +170,14 @@ export class AcademicController {
   }
 
   @Post('import/file/preview')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
   async previewImportFile(@UploadedFile() file: ImportUploadFile) {
     const rows = await parseImportFile(file);
     return this.academicService.previewImport(rows as unknown as ImportAcademicRowDto[]);
   }
 
   @Post('import/file/commit')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
   async commitImportFile(
     @UploadedFile() file: ImportUploadFile,
     @CurrentUser() user: { sub: string; role: string }
