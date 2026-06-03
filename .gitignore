@@ -21,3 +21,4 @@ redis_data/
 akun_beta.txt
 .last_hardening_backup_path
 .last_deploy_artifact_path
+.env.local

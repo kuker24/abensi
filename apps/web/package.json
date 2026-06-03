@@ -15,6 +15,7 @@
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@workos-inc/authkit-react": "^0.16.1",
     "lucide-react": "^0.508.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

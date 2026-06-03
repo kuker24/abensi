@@ -37,6 +37,7 @@ import { API_BASE, AUTH_EXPIRED_EVENT, apiFetch, defaultPathFor, go, normalizeRo
 import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
+import { WorkOSSSOButton, WorkOSLoginHandler, useWorkOSAuth } from './workos-auth';
 
 
 type Notify = (message: string, type?: string) => void;
@@ -381,6 +382,9 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
           {err && <div className="inline-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
           <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Masuk <ArrowRight size={14} /></Btn>
           <div className="hline" style={{ margin: '20px 0 16px' }} />
+          <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
+          <WorkOSSSOButton returnTo={defaultPathFor(null)} />
+          <div className="hline" style={{ margin: '20px 0 16px' }} />
           <div className="login-footer">
             <div className="login-footer-line" />
             <div className="login-footer-text">
@@ -602,6 +606,39 @@ function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const toastIdRef = { current: 0 };
+
+  // WorkOS AuthKit integration
+  const { workosUser, isLoading: workosLoading, getAccessToken, signOut: workosSignOut } = useWorkOSAuth();
+
+  // Sync WorkOS user with app state
+  useEffect(() => {
+    if (workosLoading) return;
+
+    if (workosUser && !user) {
+      // WorkOS user is authenticated but app user is not set
+      // In a real integration, you would call your backend to:
+      // 1. Verify the WorkOS token
+      // 2. Find or create the user in your database
+      // 3. Return the app user object
+
+      // For now, create a minimal user object from WorkOS data
+      const workosAppUser: User = {
+        id: workosUser.id,
+        username: workosUser.email,
+        fullName: [workosUser.firstName, workosUser.lastName].filter(Boolean).join(' ') || workosUser.email,
+        role: 'GURU_MAPEL' as const, // Default role - should be fetched from backend
+      };
+
+      localStorage.setItem(USER_KEY, JSON.stringify(workosAppUser));
+      setUser(workosAppUser);
+      setSessionChecked(true);
+
+      // Redirect to dashboard after WorkOS login
+      if (path === '/login' || path === '/') {
+        go(defaultPathFor(workosAppUser));
+      }
+    }
+  }, [workosUser, workosLoading, user, path]);
   const notify: Notify = (message, type = 'ok') => {
     const id = ++toastIdRef.current;
     const duration = type === 'bad' ? 8000 : type === 'warn' ? 6000 : 3600;
@@ -698,12 +735,22 @@ function App() {
     localStorage.removeItem(USER_KEY);
     setSessionChecked(true);
     setUser(null);
-    go('/login');
+
+    // Also sign out from WorkOS if user was authenticated via SSO
+    if (workosUser) {
+      workosSignOut({ returnTo: window.location.origin + '/login' });
+    } else {
+      go('/login');
+    }
   }
   const confirmLayer = <ConfirmDialog dialog={confirmDialog} onCancel={() => { confirmDialog?.resolve(false); setConfirmDialog(null); }} onConfirm={() => { confirmDialog?.resolve(true); setConfirmDialog(null); }} />;
+
+  // Show loading state while WorkOS is checking auth
+  if (workosLoading) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+
   if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : '/login'), 0); return null; }
   if (!sessionChecked && path !== '/login') return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (path === '/login') return <><LoginScreen onLogin={handleLogin} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (path === '/login') return <><WorkOSLoginHandler /><LoginScreen onLogin={handleLogin} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!user) return <LoginScreen onLogin={handleLogin} />;
   const exists = routeExists(path);
   const allowed = exists && canAccessRoute(path, user);
