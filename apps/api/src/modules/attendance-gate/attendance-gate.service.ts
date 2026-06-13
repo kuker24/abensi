@@ -19,13 +19,13 @@ import { writeAudit } from '../../common/audit-log';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessPolicyService } from '../security/access-policy.service';
 import { canonicalJson } from '../security/canonical-json';
-import { DeviceSignatureService, type ReaderSignatureHeaders } from '../security/device-signature.service';
+import { DeviceSignatureService, sha256Hex, type ReaderSignatureHeaders } from '../security/device-signature.service';
 import { assertReasonQuality, normalizeReason } from '../security/reason-policy';
 import { StepUpAuthService } from '../security/step-up-auth.service';
 import { QrCredentialsService } from '../qr-credentials/qr-credentials.service';
 import { redactQr } from '../qr-credentials/qr-code.util';
 import { MobileAndroidService } from '../mobile/mobile-android.service';
-import { CreateAttendanceOverrideDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
+import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
 const MIN_GATE_STAY_MINUTES = Number(process.env.MIN_GATE_STAY_MINUTES ?? '10');
@@ -106,6 +106,8 @@ interface RecordOptions {
   qrCredentialId?: string | null;
   scanMode?: AndroidReaderMode | null;
   appVersion?: string | null;
+  deviceEventId?: string | null;
+  deviceTimestamp?: Date | null;
 }
 
 @Injectable()
@@ -249,6 +251,73 @@ export class AttendanceGateService {
       readerId: reader?.id ?? null,
       deviceId
     }, user.role);
+  }
+
+  async deviceGateEvent(payload: DeviceGateEventDto, signed: { deviceId?: string; method: string; path: string }) {
+    if (!this.signatures) throw new ForbiddenException('Verifikasi signature reader belum tersedia.');
+    const bodyForSignature = canonicalJson({
+      eventId: payload.eventId,
+      cardUid: payload.cardUid,
+      direction: payload.direction,
+      deviceTimestamp: payload.deviceTimestamp,
+      nonce: payload.nonce,
+      firmwareVersion: payload.firmwareVersion ?? null
+    });
+    const bodyHash = sha256Hex(bodyForSignature);
+    const headers = {
+      deviceId: signed.deviceId,
+      timestamp: payload.deviceTimestamp,
+      nonce: payload.nonce,
+      bodyHash,
+      signature: payload.signature
+    } satisfies ReaderSignatureHeaders;
+    const parsedDeviceTimestamp = new Date(payload.deviceTimestamp);
+    const rejectedBase = {
+      eventId: payload.eventId,
+      cardUid: payload.cardUid,
+      direction: payload.direction,
+      deviceTimestamp: parsedDeviceTimestamp,
+      deviceId: signed.deviceId ?? null,
+      bodyHash
+    };
+
+    try {
+      const verification = await this.signatures.assertValidSignedReaderRequest({
+        method: signed.method,
+        path: signed.path,
+        rawBody: bodyForSignature,
+        expectedType: ReaderType.GATE,
+        headers
+      });
+
+      const existing = await this.prisma.gateLog.findUnique({ where: { deviceEventId: payload.eventId } });
+      if (existing) return { kind: 'GATE', duplicate: true, message: 'Event gate sudah pernah diterima.', item: existing };
+
+      const card = await this.prisma.smartCard.findUnique({ where: { uid: payload.cardUid }, include: { user: true } });
+      if (!card || card.status !== CardStatus.ACTIVE || !card.user || !card.user.active) {
+        await this.prisma.rejectedDeviceScan.create({ data: { ...rejectedBase, readerId: verification.reader.id, nonceHash: verification.nonceHash, reason: 'CARD_INACTIVE_OR_UNLINKED' } });
+        await this.securityAudit('attendance.device.gate.rejected_card', verification.reader.id, { eventId: payload.eventId, cardUid: payload.cardUid });
+        throw new NotFoundException('Kartu tidak ditemukan, tidak aktif, atau belum tertaut ke pengguna aktif.');
+      }
+
+      const actor = { sub: `reader:${verification.reader.id}`, role: Role.OPERATOR_IT };
+      return this.recordGateScan(card.user.id, payload.direction, new Date(), actor, {
+        cardId: card.id,
+        readerId: verification.reader.id,
+        deviceId: verification.reader.deviceId ?? verification.reader.id,
+        signatureVerified: true,
+        nonceHash: verification.nonceHash,
+        bodyHash: verification.bodyHash,
+        appVersion: payload.firmwareVersion ?? null,
+        deviceEventId: payload.eventId,
+        deviceTimestamp: verification.timestamp
+      }, card.user.role);
+    } catch (error) {
+      if (!(error instanceof NotFoundException)) {
+        await this.prisma.rejectedDeviceScan.create({ data: { ...rejectedBase, reason: error instanceof Error ? error.message.slice(0, 180) : 'UNKNOWN_REJECTION' } }).catch(() => null);
+      }
+      throw error;
+    }
   }
 
   async readerScan(payload: ReaderScanDto, signed: ReaderSignatureHeaders & { method: string; path: string }) {
@@ -528,6 +597,8 @@ export class AttendanceGateService {
           scanMode: options.scanMode ?? null,
           appVersion: options.appVersion ?? null,
           signatureVerified: Boolean(options.signatureVerified),
+          deviceEventId: options.deviceEventId ?? null,
+          deviceTimestamp: options.deviceTimestamp ?? null,
           nonceHash: options.nonceHash ?? null,
           bodyHash: options.bodyHash ?? null,
           manualReason: options.manualReason ?? null,
@@ -539,7 +610,7 @@ export class AttendanceGateService {
       if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
       if (options.readerId || options.deviceId) {
         await tx.deviceReader.updateMany({
-          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKey: options.deviceId ?? '' }, { deviceId: options.deviceId ?? '' }] },
+          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
           data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
         });
       }
@@ -591,7 +662,7 @@ export class AttendanceGateService {
       if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
       if (options.readerId || options.deviceId) {
         await tx.deviceReader.updateMany({
-          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKey: options.deviceId ?? '' }, { deviceId: options.deviceId ?? '' }] },
+          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
           data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
         });
       }

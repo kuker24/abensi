@@ -66,6 +66,30 @@ export class QrScanDto {
   manualReason?: string;
 }
 
+export class DeviceGateEventDto {
+  @IsString()
+  eventId!: string;
+
+  @IsString()
+  cardUid!: string;
+
+  @IsEnum(GateDirection)
+  direction!: GateDirection;
+
+  @IsDateString()
+  deviceTimestamp!: string;
+
+  @IsString()
+  nonce!: string;
+
+  @IsString()
+  signature!: string;
+
+  @IsOptional()
+  @IsString()
+  firmwareVersion?: string;
+}
+
 export class ReaderScanDto {
   @IsString()
   cardUid!: string;
