@@ -416,6 +416,8 @@ model GateLog {
   appVersion        String?
   signatureVerified Boolean            @default(false)
   serverReceivedAt  DateTime           @default(now())
+  deviceEventId     String?            @unique
+  deviceTimestamp   DateTime?
   nonceHash         String?
   bodyHash          String?
   manualReason      String?
@@ -433,6 +435,28 @@ model GateLog {
   @@index([qrCredentialId, tappedAt])
   @@index([scanMode, tappedAt])
   @@index([signatureVerified, tappedAt])
+  @@index([deviceEventId])
+}
+
+model RejectedDeviceScan {
+  id               String         @id @default(cuid())
+  eventId          String?
+  cardUid          String?
+  direction        GateDirection?
+  deviceTimestamp  DateTime?
+  serverReceivedAt DateTime       @default(now())
+  readerId         String?
+  deviceId         String?
+  nonceHash        String?
+  bodyHash         String?
+  reason           String
+  createdAt        DateTime       @default(now())
+
+  reader DeviceReader? @relation(fields: [readerId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([readerId, createdAt])
+  @@index([createdAt])
 }
 
 model ReconciliationFlag {
@@ -504,8 +528,13 @@ model AuthSession {
   refreshTokenHash String?
   userAgent        String?
   requestIp        String?
+  createdIp        String?
+  lastIp           String?
+  issuedAt         DateTime  @default(now())
   createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   lastSeenAt       DateTime?
+  lastUsedAt       DateTime?
   expiresAt        DateTime
   revokedAt        DateTime?
   revokedReason    String?
@@ -700,9 +729,10 @@ model DeviceReader {
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
-  createdBy User? @relation("DeviceReaderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy User? @relation("DeviceReaderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  revokedBy User? @relation("DeviceReaderRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  createdBy     User?                @relation("DeviceReaderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?                @relation("DeviceReaderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  revokedBy     User?                @relation("DeviceReaderRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  rejectedScans RejectedDeviceScan[]
 
   @@index([deviceId, status])
   @@index([type, status])

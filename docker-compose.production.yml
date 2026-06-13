@@ -47,6 +47,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-schoolhub-ehadir}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-schoolhub-web}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
       SESSION_TTL_MS: ${SESSION_TTL_MS:-28800000}
       REFRESH_TTL_MS: ${REFRESH_TTL_MS:-604800000}

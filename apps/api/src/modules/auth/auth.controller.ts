@@ -5,6 +5,7 @@ import { CurrentUser } from '../../common/current-user.decorator';
 import { extractRequestMeta } from '../../common/request-meta';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto.login';
+import { csrfCookieOptions, CSRF_COOKIE, generateCsrfToken } from '../../common/csrf';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 const ACCESS_COOKIE = 'schoolhub_access_token';
@@ -33,6 +34,7 @@ function readCookie(request: Request, name: string) {
 function setAuthCookies(response: Response, tokens: { accessToken: string; refreshToken: string; expiresInMs: number }) {
   response.cookie(ACCESS_COOKIE, tokens.accessToken, cookieOptions(tokens.expiresInMs));
   response.cookie(REFRESH_COOKIE, tokens.refreshToken, cookieOptions(Number(process.env.REFRESH_TTL_MS ?? String(7 * 24 * 60 * 60 * 1000))));
+  response.cookie(CSRF_COOKIE, generateCsrfToken(), csrfCookieOptions());
 }
 
 function loginResponse(result: { user: unknown }) {
@@ -42,6 +44,7 @@ function loginResponse(result: { user: unknown }) {
 function clearAuthCookies(response: Response) {
   response.clearCookie(ACCESS_COOKIE, { path: '/' });
   response.clearCookie(REFRESH_COOKIE, { path: '/' });
+  response.clearCookie(CSRF_COOKIE, { path: '/' });
 }
 
 @Controller('auth')
@@ -53,6 +56,13 @@ export class AuthController {
     const result = await this.authService.login(body.username, body.password, extractRequestMeta(request), body.expectedRole);
     setAuthCookies(response, result);
     return loginResponse(result);
+  }
+
+  @Get('csrf')
+  csrf(@Res({ passthrough: true }) response: Response) {
+    const csrfToken = generateCsrfToken();
+    response.cookie(CSRF_COOKIE, csrfToken, csrfCookieOptions());
+    return { csrfToken };
   }
 
   @Get('me')

@@ -10,6 +10,7 @@ interface JwtPayload {
   role: string;
   sid?: string;
   ver?: number;
+  jti?: string;
 }
 
 function cookieExtractor(request?: Request) {
@@ -37,11 +38,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromExtractors([ExtractJwt.fromAuthHeaderAsBearerToken(), cookieExtractor]),
       ignoreExpiration: false,
       secretOrKey: jwtSecret(),
+      issuer: process.env.JWT_ISSUER || 'schoolhub-ehadir-dev',
+      audience: process.env.JWT_AUDIENCE || 'schoolhub-ehadir-web',
+      algorithms: ['HS256'],
       passReqToCallback: false
     });
   }
 
   async validate(payload: JwtPayload) {
+    if (!payload.jti) {
+      throw new UnauthorizedException('Token tidak memiliki identitas sesi yang valid.');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: { id: true, username: true, role: true, active: true, sessionVersion: true }

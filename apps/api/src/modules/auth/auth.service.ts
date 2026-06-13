@@ -6,7 +6,7 @@ import { RedisService } from '../redis/redis.service';
 import type { RequestMeta } from '../../common/request-meta';
 import { writeAudit } from '../../common/audit-log';
 import bcrypt from 'bcryptjs';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 const MAX_FAILED_ATTEMPTS = Number(process.env.LOGIN_MAX_FAILED_ATTEMPTS ?? '5');
 const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS ?? String(10 * 60 * 1000));
@@ -127,7 +127,7 @@ export class AuthService {
     return this.prisma.$transaction(async (tx) => {
       const revoked = await tx.authSession.updateMany({
         where: { id: current.id, revokedAt: null, expiresAt: { gt: now } },
-        data: { revokedAt: new Date(), revokedReason: 'refresh-rotated' }
+        data: { revokedAt: new Date(), revokedReason: 'refresh-rotated', lastUsedAt: new Date() }
       });
       if (revoked.count !== 1) {
         throw new UnauthorizedException('Sesi sudah dipakai untuk refresh. Silakan masuk ulang.');
@@ -140,6 +140,9 @@ export class AuthService {
           refreshTokenHash: tokenHash(refreshValue),
           userAgent: meta.requestDevice ?? null,
           requestIp: meta.requestIp ?? null,
+          createdIp: current.createdIp ?? current.requestIp ?? meta.requestIp ?? null,
+          lastIp: meta.requestIp ?? current.lastIp ?? current.requestIp ?? null,
+          lastUsedAt: new Date(),
           expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
           replacedById: current.id
         }
@@ -194,6 +197,8 @@ export class AuthService {
         refreshTokenHash: tokenHash(refreshToken),
         userAgent: meta.requestDevice ?? null,
         requestIp: meta.requestIp ?? null,
+        createdIp: meta.requestIp ?? null,
+        lastIp: meta.requestIp ?? null,
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS)
       }
     });
@@ -202,7 +207,7 @@ export class AuthService {
   }
 
   private signAccessToken(user: { id: string; username: string; role: Role; sessionVersion: number }, sessionId: string) {
-    return this.jwtService.signAsync({ sub: user.id, username: user.username, role: user.role, sid: sessionId, ver: user.sessionVersion });
+    return this.jwtService.signAsync({ sub: user.id, username: user.username, role: user.role, sid: sessionId, ver: user.sessionVersion, jti: randomUUID() });
   }
 
   private generateRefreshToken() {

@@ -5,6 +5,7 @@ export const USER_KEY = 'schoolhub_user';
 export const AUTH_EXPIRED_EVENT = 'schoolhub_auth_expired';
 
 let refreshPromise: Promise<boolean> | null = null;
+let csrfPromise: Promise<string | null> | null = null;
 
 export function readStoredUser(): User | null {
   try {
@@ -58,6 +59,34 @@ function notifyAuthExpired(): void {
   window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 }
 
+function readCookie(name: string): string | null {
+  const prefix = `${name}=`;
+  const cookie = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+}
+
+function isUnsafeMethod(method?: string) {
+  return ['POST', 'PUT', 'PATCH', 'DELETE'].includes((method || 'GET').toUpperCase());
+}
+
+async function ensureCsrfToken(): Promise<string | null> {
+  const current = readCookie('schoolhub_csrf_token');
+  if (current) return current;
+  if (!csrfPromise) {
+    csrfPromise = fetch(`${API_BASE}/auth/csrf`, { method: 'GET', headers: { accept: 'application/json' }, credentials: 'include' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = await response.json().catch(() => null);
+        return readCookie('schoolhub_csrf_token') || data?.csrfToken || null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        csrfPromise = null;
+      });
+  }
+  return csrfPromise;
+}
+
 async function refreshAuth(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_BASE}/auth/refresh`, { method: 'POST', headers: { accept: 'application/json' }, credentials: 'include' })
@@ -77,6 +106,10 @@ async function refreshAuth(): Promise<boolean> {
 export async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { accept: 'application/json', ...(options.headers as Record<string, string> | undefined) };
   if (options.body && !(options.body instanceof FormData)) headers['content-type'] = 'application/json';
+  if (isUnsafeMethod(options.method) && path !== '/auth/login' && path !== '/auth/refresh') {
+    const csrfToken = await ensureCsrfToken();
+    if (csrfToken) headers['x-csrf-token'] = csrfToken;
+  }
   let response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
   const canRefresh = path !== '/auth/login' && path !== '/auth/refresh';
   let authExpiredNotified = false;

@@ -56,6 +56,8 @@ export function validateEnvironment(config: Env) {
   if (nodeEnv === 'production') {
     requireValue(config, 'DATABASE_URL');
     requireSecret(config, 'JWT_SECRET', 48);
+    requireValue(config, 'JWT_ISSUER');
+    requireValue(config, 'JWT_AUDIENCE');
     requireSecret(config, 'WORKER_TOKEN', 32);
     requireSecret(config, 'READER_SECRET_ENCRYPTION_KEY', 32);
 

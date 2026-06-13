@@ -12,12 +12,20 @@ function jwtSecret() {
   return value ?? 'dev-only-secret';
 }
 
+function jwtIssuer() {
+  return process.env.JWT_ISSUER || 'schoolhub-ehadir-dev';
+}
+
+function jwtAudience() {
+  return process.env.JWT_AUDIENCE || 'schoolhub-ehadir-web';
+}
+
 @Module({
   imports: [
     JwtModule.register({
       global: true,
       secret: jwtSecret(),
-      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN ?? '8h' }
+      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN ?? '8h', issuer: jwtIssuer(), audience: jwtAudience(), algorithm: 'HS256' }
     })
   ],
   providers: [AuthService, JwtStrategy],

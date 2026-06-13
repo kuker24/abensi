@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
+import { csrfProtection } from './common/csrf';
 import { AppModule } from './app.module';
 
 function corsOrigins() {
@@ -25,12 +26,13 @@ async function bootstrap() {
   express.disable('x-powered-by');
   express.set('trust proxy', 'loopback, linklocal, uniquelocal');
   app.use(helmet({ crossOriginResourcePolicy: false }));
+  app.use(csrfProtection);
   app.setGlobalPrefix('api/v1');
   app.enableCors({
     origin: corsOrigins(),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type', 'accept', 'x-reader-device-id', 'x-reader-timestamp', 'x-reader-nonce', 'x-reader-body-hash', 'x-reader-signature', 'x-worker-token']
+    allowedHeaders: ['authorization', 'content-type', 'accept', 'x-csrf-token', 'x-reader-device-id', 'x-reader-timestamp', 'x-reader-nonce', 'x-reader-body-hash', 'x-reader-signature', 'x-worker-token']
   });
   app.useGlobalPipes(
     new ValidationPipe({
