@@ -403,18 +403,18 @@ model TeacherSessionPresence {
 }
 
 model GateLog {
-  id                String        @id @default(cuid())
+  id                String             @id @default(cuid())
   userId            String
   direction         GateDirection
-  tappedAt          DateTime      @default(now())
+  tappedAt          DateTime           @default(now())
   deviceId          String?
   readerId          String?
   cardId            String?
   qrCredentialId    String?
   scanMode          AndroidReaderMode?
   appVersion        String?
-  signatureVerified Boolean       @default(false)
-  serverReceivedAt  DateTime      @default(now())
+  signatureVerified Boolean            @default(false)
+  serverReceivedAt  DateTime           @default(now())
   nonceHash         String?
   bodyHash          String?
   manualReason      String?
@@ -731,26 +731,26 @@ model AttendancePolicy {
 }
 
 model PrayerAttendanceLog {
-  id                String     @id @default(cuid())
+  id                String             @id @default(cuid())
   studentId         String
   prayerType        PrayerType
   attendanceDate    DateTime
-  scannedAt         DateTime   @default(now())
+  scannedAt         DateTime           @default(now())
   deviceId          String?
   readerId          String?
   cardId            String?
   qrCredentialId    String?
   scanMode          AndroidReaderMode?
   appVersion        String?
-  source            ReaderType @default(MUSHOLA)
+  source            ReaderType         @default(MUSHOLA)
   reason            String?
   createdById       String?
-  signatureVerified Boolean    @default(false)
-  serverReceivedAt  DateTime   @default(now())
+  signatureVerified Boolean            @default(false)
+  serverReceivedAt  DateTime           @default(now())
   nonceHash         String?
   bodyHash          String?
   usedOverrideId    String?
-  createdAt         DateTime   @default(now())
+  createdAt         DateTime           @default(now())
 
   student      User          @relation("PrayerAttendanceStudent", fields: [studentId], references: [id], onDelete: Cascade)
   createdBy    User?         @relation("PrayerAttendanceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -876,11 +876,11 @@ model QrCredential {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  user        User           @relation("QrCredentialUser", fields: [userId], references: [id], onDelete: Cascade)
-  createdBy   User?          @relation("QrCredentialCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  revokedBy   User?          @relation("QrCredentialRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
-  rotatedFrom QrCredential?  @relation("QrCredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
-  rotations   QrCredential[] @relation("QrCredentialRotation")
+  user        User                  @relation("QrCredentialUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy   User?                 @relation("QrCredentialCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  revokedBy   User?                 @relation("QrCredentialRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  rotatedFrom QrCredential?         @relation("QrCredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  rotations   QrCredential[]        @relation("QrCredentialRotation")
   gateLogs    GateLog[]
   prayerLogs  PrayerAttendanceLog[]
 
