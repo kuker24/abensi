@@ -23,10 +23,11 @@ import { SystemCleanupModule } from './modules/system-cleanup/system-cleanup.mod
 import { SecurityModule } from './modules/security/security.module';
 import { QrCredentialsModule } from './modules/qr-credentials/qr-credentials.module';
 import { MobileModule } from './modules/mobile/mobile.module';
+import { validateEnvironment } from './config/env.validation';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     PrismaModule,
     RedisModule,
     SecurityModule,

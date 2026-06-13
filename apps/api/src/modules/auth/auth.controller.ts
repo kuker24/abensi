@@ -35,6 +35,10 @@ function setAuthCookies(response: Response, tokens: { accessToken: string; refre
   response.cookie(REFRESH_COOKIE, tokens.refreshToken, cookieOptions(Number(process.env.REFRESH_TTL_MS ?? String(7 * 24 * 60 * 60 * 1000))));
 }
 
+function loginResponse(result: { user: unknown }) {
+  return { user: result.user };
+}
+
 function clearAuthCookies(response: Response) {
   response.clearCookie(ACCESS_COOKIE, { path: '/' });
   response.clearCookie(REFRESH_COOKIE, { path: '/' });
@@ -48,7 +52,7 @@ export class AuthController {
   async login(@Body() body: LoginDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     const result = await this.authService.login(body.username, body.password, extractRequestMeta(request), body.expectedRole);
     setAuthCookies(response, result);
-    return result;
+    return loginResponse(result);
   }
 
   @Get('me')
@@ -61,7 +65,7 @@ export class AuthController {
   async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
     const result = await this.authService.refresh(readCookie(request, REFRESH_COOKIE), extractRequestMeta(request));
     setAuthCookies(response, result);
-    return result;
+    return { ok: true };
   }
 
   @Post('logout')
