@@ -7,6 +7,7 @@ function makeService(sessionOverrides: Record<string, unknown> = {}, existingPre
   const session = {
     id: 'session-1',
     teacherId: 'guru-1',
+    classId: 'class-1',
     startsAt: new Date(now.getTime() - 5 * 60 * 1000),
     endsAt: new Date(now.getTime() + 30 * 60 * 1000),
     status: SessionStatus.OPEN,
@@ -15,7 +16,14 @@ function makeService(sessionOverrides: Record<string, unknown> = {}, existingPre
   const updatedSession = { ...session, status: SessionStatus.CLOSED, closedAt: now };
   const tx = {
     session: {
-      update: jest.fn().mockResolvedValue(updatedSession)
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(updatedSession)
+    },
+    classEnrollment: {
+      findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }])
+    },
+    studentAttendance: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     teacherSessionPresence: {
       findUnique: jest.fn().mockResolvedValue(existingPresence),

@@ -74,6 +74,7 @@ services:
       # CORS — WAJIB isi dengan URL Vercel kamu
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-}
+      SCHOOL_TIMEZONE: ${SCHOOL_TIMEZONE:-Asia/Jakarta}
       # SSO / WorkOS AuthKit
       SSO_ENABLED: ${SSO_ENABLED:-false}
       WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID:-}

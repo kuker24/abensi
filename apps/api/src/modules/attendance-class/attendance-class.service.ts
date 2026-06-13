@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
   Prisma,
   Role,
@@ -16,6 +16,7 @@ import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDt
 import { AccessPolicyService } from '../security/access-policy.service';
 import { writeAudit } from '../../common/audit-log';
 import { assertReasonQuality } from '../security/reason-policy';
+import { jakartaBusinessDayBounds } from '../../common/business-time';
 
 function teacherStatusForCheckIn(startsAt: Date, policyGraceMinutes?: number) {
   const graceMinutes = policyGraceMinutes ?? 15;
@@ -40,18 +41,12 @@ function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   return earthRadius * c;
 }
 
-function dayBounds(value: Date) {
-  const start = new Date(value);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(value);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+function dayBounds(value: Date | string) {
+  return jakartaBusinessDayBounds(value);
 }
 
 function dateOnly(value: Date) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return jakartaBusinessDayBounds(value).date;
 }
 
 function minutesOf(time: string | null | undefined, fallback: number) {
@@ -158,11 +153,7 @@ export class AttendanceClassService {
     const where: Prisma.SessionWhereInput = {};
 
     if (date) {
-      const d = new Date(date);
-      const start = new Date(d);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(d);
-      end.setHours(23, 59, 59, 999);
+      const { start, end } = dayBounds(date);
       where.startsAt = { gte: start, lte: end };
     }
 
@@ -229,10 +220,7 @@ export class AttendanceClassService {
     }
 
     if (policy?.requireGateTapForOpen) {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date();
-      dayEnd.setHours(23, 59, 59, 999);
+      const { start: dayStart, end: dayEnd } = dayBounds(new Date());
 
       const gateTap = await this.prisma.gateLog.findFirst({
         where: {
@@ -256,13 +244,26 @@ export class AttendanceClassService {
         ? teacherStatusForCheckIn(session.startsAt, policy?.arrivalGraceMinutes)
         : TeacherSessionStatus.EXCUSED_ABSENCE;
 
-      const updated = await tx.session.update({
-        where: { id: sessionId },
+      const opened = await tx.session.updateMany({
+        where: { id: sessionId, status: SessionStatus.SCHEDULED },
         data: {
           status: SessionStatus.OPEN,
           openedAt: checkInAt
         }
       });
+      if (opened.count !== 1) throw new ConflictException('Sesi hanya dapat dibuka dari status SCHEDULED.');
+      const updated = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
+
+      const roster = await tx.classEnrollment.findMany({
+        where: { classId: session.classId, student: { active: true, role: Role.SISWA } },
+        select: { studentId: true }
+      });
+      if (roster.length) {
+        await tx.studentAttendance.createMany({
+          data: roster.map((item) => ({ sessionId, studentId: item.studentId, status: StudentAttendanceStatus.ALPA })),
+          skipDuplicates: true
+        });
+      }
 
       const teacherPresence = await tx.teacherSessionPresence.upsert({
         where: {
@@ -368,6 +369,8 @@ export class AttendanceClassService {
     const allowedItems = payload.items.filter((item) => !rejectedIds.has(item.studentId));
 
     return this.prisma.$transaction(async (tx) => {
+      const stillOpen = await tx.session.updateMany({ where: { id: sessionId, status: SessionStatus.OPEN }, data: { updatedAt: new Date() } });
+      if (stillOpen.count !== 1) throw new ConflictException('Sesi sudah tidak OPEN. Presensi baru ditolak.');
       const result = [];
       for (const item of allowedItems) {
         const attendance = await tx.studentAttendance.upsert({
@@ -447,14 +450,26 @@ export class AttendanceClassService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.session.update({
-        where: { id: sessionId },
+      const roster = await tx.classEnrollment.findMany({
+        where: { classId: session.classId, student: { active: true, role: Role.SISWA } },
+        select: { studentId: true }
+      });
+      if (roster.length) {
+        await tx.studentAttendance.createMany({
+          data: roster.map((item) => ({ sessionId, studentId: item.studentId, status: StudentAttendanceStatus.ALPA })),
+          skipDuplicates: true
+        });
+      }
+      const closed = await tx.session.updateMany({
+        where: { id: sessionId, status: SessionStatus.OPEN },
         data: {
           status: SessionStatus.CLOSED,
           closedAt: now,
           reconciledAt: null
         }
       });
+      if (closed.count !== 1) throw new ConflictException('Sesi sudah tidak OPEN.');
+      const updated = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
 
       const existingPresence = await tx.teacherSessionPresence.findUnique({
         where: {

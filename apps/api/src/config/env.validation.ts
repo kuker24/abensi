@@ -60,6 +60,9 @@ export function validateEnvironment(config: Env) {
     requireValue(config, 'JWT_AUDIENCE');
     requireSecret(config, 'WORKER_TOKEN', 32);
     requireSecret(config, 'READER_SECRET_ENCRYPTION_KEY', 32);
+    if ((config.SCHOOL_TIMEZONE || 'Asia/Jakarta') !== 'Asia/Jakarta') {
+      throw new Error('SCHOOL_TIMEZONE production harus Asia/Jakarta untuk baseline MAN 1 Rokan Hulu.');
+    }
 
     const cors = requireValue(config, 'CORS_ORIGIN');
     for (const origin of cors.split(',').map((item) => item.trim()).filter(Boolean)) {

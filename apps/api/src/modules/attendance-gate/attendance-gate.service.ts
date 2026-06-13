@@ -25,30 +25,23 @@ import { StepUpAuthService } from '../security/step-up-auth.service';
 import { QrCredentialsService } from '../qr-credentials/qr-credentials.service';
 import { redactQr } from '../qr-credentials/qr-code.util';
 import { MobileAndroidService } from '../mobile/mobile-android.service';
+import { jakartaBusinessDayBounds } from '../../common/business-time';
 import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
 const MIN_GATE_STAY_MINUTES = Number(process.env.MIN_GATE_STAY_MINUTES ?? '10');
 const STEP_UP_FOR_POLICY = process.env.STEP_UP_FOR_POLICY === 'true';
 
-function dayBounds(value = new Date()) {
-  const start = new Date(value);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(value);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+function dayBounds(value: Date | string = new Date()) {
+  return jakartaBusinessDayBounds(value);
 }
 
-function dateOnly(value = new Date()) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
+function dateOnly(value: Date | string = new Date()) {
+  return jakartaBusinessDayBounds(value).date;
 }
 
-function endOfDay(value = new Date()) {
-  const date = new Date(value);
-  date.setHours(23, 59, 59, 999);
-  return date;
+function endOfDay(value: Date | string = new Date()) {
+  return jakartaBusinessDayBounds(value).end;
 }
 
 function minutesOf(time: string | null | undefined, fallback: number) {
@@ -61,7 +54,8 @@ function minutesOf(time: string | null | undefined, fallback: number) {
 }
 
 function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dhuhaEndTime: string; dzuhurStartTime: string; dzuhurEndTime: string; asharStartTime?: string; asharEndTime?: string }) {
-  const minute = scannedAt.getHours() * 60 + scannedAt.getMinutes();
+  const localHour = (scannedAt.getUTCHours() + 7) % 24;
+  const minute = localHour * 60 + scannedAt.getUTCMinutes();
   const dhuhaStart = minutesOf(policy.dhuhaStartTime, 7 * 60);
   const dhuhaEnd = minutesOf(policy.dhuhaEndTime, 10 * 60 + 30);
   const dzuhurStart = minutesOf(policy.dzuhurStartTime, 11 * 60 + 45);

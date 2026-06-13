@@ -172,12 +172,14 @@ export function formatDateTime(value?: string | null): string {
   }
 }
 
+const SCHOOL_TIMEZONE = 'Asia/Jakarta';
+
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: SCHOOL_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
 export function monthNow(): string {
-  return new Date().toISOString().slice(0, 7);
+  return today().slice(0, 7);
 }
 
 export function initials(name = 'User'): string {
