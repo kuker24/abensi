@@ -17,6 +17,8 @@ import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { extractRequestMeta } from '../../common/request-meta';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EscalateFlagDto, ResolveFlagDto, UpdateFlagWorkflowDto } from './reconciliation.dto';
@@ -27,8 +29,9 @@ export class ReconciliationController {
   constructor(private readonly reconciliationService: ReconciliationService) {}
 
   @Get('reconciliation/flags')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reconciliation.read')
   listFlags(
     @Query('status') status?: ReconciliationStatus,
     @Query('type') type?: ReconciliationFlagType,
@@ -48,8 +51,9 @@ export class ReconciliationController {
   }
 
   @Post('reconciliation/flags/:id/resolve')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reconciliation.resolve')
   resolveFlag(
     @Param('id') flagId: string,
     @Body() body: ResolveFlagDto,
@@ -60,8 +64,9 @@ export class ReconciliationController {
   }
 
   @Patch('reconciliation/flags/:id/workflow')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reconciliation.escalate')
   updateWorkflow(
     @Param('id') flagId: string,
     @Body() body: UpdateFlagWorkflowDto,
@@ -72,8 +77,9 @@ export class ReconciliationController {
   }
 
   @Post('reconciliation/flags/:id/escalate')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reconciliation.escalate')
   escalateFlag(
     @Param('id') flagId: string,
     @Body() body: EscalateFlagDto,

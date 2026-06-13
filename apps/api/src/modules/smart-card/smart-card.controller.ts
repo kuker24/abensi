@@ -4,17 +4,20 @@ import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateSmartCardDto, UpdateSmartCardDto } from './smart-card.dto';
 import { SmartCardService } from './smart-card.service';
 
 @Controller('devices/cards')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
 @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER)
 export class SmartCardController {
   constructor(private readonly smartCardService: SmartCardService) {}
 
   @Get()
+  @Capabilities('devices.read')
   listCards(@Query('page') page?: string, @Query('limit') limit?: string) {
     const pagination = parsePagination({
       page,
@@ -26,11 +29,13 @@ export class SmartCardController {
   }
 
   @Post()
+  @Capabilities('devices.manage')
   createCard(@Body() body: CreateSmartCardDto, @CurrentUser() user: { sub: string }) {
     return this.smartCardService.createCard(body, user.sub);
   }
 
   @Patch(':id')
+  @Capabilities('devices.manage')
   updateCard(
     @Param('id') cardId: string,
     @Body() body: UpdateSmartCardDto,

@@ -1,3 +1,6 @@
+> **SUPERSEDED** by `docs/FULL_PRODUCTION_READINESS_REPORT.md` on 2026-06-13.  
+> Retained for historical reference only.
+
 # Latest Branch Audit — SchoolHub e-Hadir
 
 Date: 2026-06-13

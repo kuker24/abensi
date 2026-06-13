@@ -21,6 +21,8 @@ import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReportingService } from './reporting.service';
@@ -36,30 +38,34 @@ export class ReportingController {
   ) {}
 
   @Get('dashboard')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   dashboard(@Query('date') date?: string) {
     return this.reportingService.dashboard(date);
   }
 
   @Get('class/:classId/monthly')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   classMonthly(@Param('classId') classId: string, @Query('month') month?: string) {
     return this.reportingService.classMonthly(classId, month);
   }
 
   @Get('trend')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   trend(@Query('days') days?: string) {
     const parsedDays = Number(days ?? '7');
     return this.reportingService.trend(Number.isNaN(parsedDays) ? 7 : parsedDays);
   }
 
   @Get('live-monitor')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   liveMonitor(@Query('page') page?: string, @Query('limit') limit?: string) {
     const pagination = parsePagination({
       page,
@@ -71,6 +77,9 @@ export class ReportingController {
   }
 
   @Sse('live-monitor/stream')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('gateAttendance.read')
   streamLiveMonitor(
     @Query('limit') limit?: string,
     @Req() request?: Request
@@ -102,8 +111,9 @@ export class ReportingController {
   }
 
   @Get('my-attendance')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Capabilities('reports.read')
   myAttendance(
     @CurrentUser() user: { sub: string; role: string },
     @Query('days') days?: string
@@ -113,8 +123,9 @@ export class ReportingController {
   }
 
   @Get('recap/classes')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   recapClasses(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -135,8 +146,9 @@ export class ReportingController {
   }
 
   @Get('recap/students')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   recapStudents(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -165,8 +177,9 @@ export class ReportingController {
   }
 
   @Get('recap/subjects')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   recapSubjects(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -187,8 +200,9 @@ export class ReportingController {
   }
 
   @Get('recap/teachers')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   recapTeachers(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -209,8 +223,9 @@ export class ReportingController {
   }
 
   @Get('teacher-monthly')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   teacherMonthly(
     @Query('month') month?: string,
     @Query('teacherId') teacherId?: string,
@@ -228,8 +243,9 @@ export class ReportingController {
   }
 
   @Get('audit-coverage')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.read')
   auditCoverage(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -250,8 +266,9 @@ export class ReportingController {
   }
 
   @Get('export')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.export')
   async exportReport(
     @Query('reportType') reportType?: string,
     @Query('format') format?: string,

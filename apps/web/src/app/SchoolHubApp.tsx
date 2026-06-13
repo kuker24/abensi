@@ -37,8 +37,26 @@ import { API_BASE, AUTH_EXPIRED_EVENT, apiFetch, defaultPathFor, go, normalizeRo
 import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
-import { WorkOSSSOButton, WorkOSLoginHandler, useWorkOSAuth } from './workos-auth';
 import { hasCapability, type Capability } from './capabilities';
+
+const SSO_ENABLED = import.meta.env.VITE_SSO_ENABLED === 'true';
+
+/* SSO stubs — used when VITE_SSO_ENABLED is not 'true' */
+function StubSSOButton(_props: { returnTo?: string }) { return null; }
+function StubLoginHandler() { return null; }
+function stubUseWorkOSAuth() { return { workosUser: null as null, isLoading: false, getAccessToken: null as null, signOut: null as null }; }
+
+let WorkOSSSOButton: typeof StubSSOButton | typeof import('./workos-auth').WorkOSSSOButton = StubSSOButton;
+let WorkOSLoginHandler: typeof StubLoginHandler | typeof import('./workos-auth').WorkOSLoginHandler = StubLoginHandler;
+let useWorkOSAuth: typeof stubUseWorkOSAuth | typeof import('./workos-auth').useWorkOSAuth = stubUseWorkOSAuth;
+
+if (SSO_ENABLED) {
+  void import('./workos-auth').then((m) => {
+    WorkOSSSOButton = m.WorkOSSSOButton;
+    WorkOSLoginHandler = m.WorkOSLoginHandler;
+    useWorkOSAuth = m.useWorkOSAuth;
+  }).catch(() => { /* SSO deps not installed */ });
+}
 
 
 type Notify = (message: string, type?: string) => void;
@@ -420,9 +438,11 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
           </Field>
           {err && <div className="inline-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
           <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Masuk <ArrowRight size={14} /></Btn>
-          <div className="hline" style={{ margin: '20px 0 16px' }} />
-          <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
-          <WorkOSSSOButton returnTo={defaultPathFor(null)} />
+          {SSO_ENABLED && <>
+            <div className="hline" style={{ margin: '20px 0 16px' }} />
+            <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
+            <WorkOSSSOButton returnTo={defaultPathFor(null)} />
+          </>}
           <div className="hline" style={{ margin: '20px 0 16px' }} />
           <div className="login-footer">
             <div className="login-footer-line" />
@@ -642,40 +662,16 @@ function App() {
   const [sessionChecked, setSessionChecked] = useState(() => !readStoredUser());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
-  const toastIdRef = { current: 0 };
+  const toastIdRef = useRef(0);
 
-  // WorkOS AuthKit integration
-  const { workosUser, isLoading: workosLoading, getAccessToken, signOut: workosSignOut } = useWorkOSAuth();
+  // WorkOS AuthKit integration (only when SSO is enabled)
+  const { workosUser, isLoading: workosLoading, signOut: workosSignOut } = useWorkOSAuth();
 
-  // Sync WorkOS user with app state
-  useEffect(() => {
-    if (workosLoading) return;
-
-    if (workosUser && !user) {
-      // WorkOS user is authenticated but app user is not set
-      // In a real integration, you would call your backend to:
-      // 1. Verify the WorkOS token
-      // 2. Find or create the user in your database
-      // 3. Return the app user object
-
-      // For now, create a minimal user object from WorkOS data
-      const workosAppUser: User = {
-        id: workosUser.id,
-        username: workosUser.email,
-        fullName: [workosUser.firstName, workosUser.lastName].filter(Boolean).join(' ') || workosUser.email,
-        role: 'GURU_MAPEL' as const, // Default role - should be fetched from backend
-      };
-
-      localStorage.setItem(USER_KEY, JSON.stringify(workosAppUser));
-      setUser(workosAppUser);
-      setSessionChecked(true);
-
-      // Redirect to dashboard after WorkOS login
-      if (path === '/login' || path === '/') {
-        go(defaultPathFor(workosAppUser));
-      }
-    }
-  }, [workosUser, workosLoading, user, path]);
+  // Sync WorkOS user with app state — DISABLED: requires backend token exchange
+  // WorkOS SSO is not yet integrated with SchoolHub backend auth.
+  // When SSO_ENABLED=true, the SSO button renders but login must go through
+  // backend /auth/sso/workos/callback which maps provider identity to a SchoolHub user.
+  // Creating a local-only user with a hardcoded role is forbidden by product rules.
   const notify: Notify = (message, type = 'ok') => {
     const id = ++toastIdRef.current;
     const duration = type === 'bad' ? 8000 : type === 'warn' ? 6000 : 3600;
@@ -685,17 +681,9 @@ function App() {
   const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
   useEffect(() => { const onPop = () => setPath(window.location.pathname === '/' ? '' : window.location.pathname); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark'); }, []);
-  // Unsaved changes warning — warn on page close/refresh when on a non-login page
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (user && window.location.pathname !== '/login') {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [user]);
+  // Unsaved changes warning — DISABLED: warn only when form state is dirty, not on every page.
+  // Individual pages should set dirty state before enabling beforeunload.
+  // To re-enable: add formDirty state and check it in the handler.
   useEffect(() => { setRiskConfirmHandler(({ title, message }) => new Promise((resolve) => setConfirmDialog({ title, message, resolve }))); return () => setRiskConfirmHandler(null); }, []);
   useEffect(() => {
     const onExpired = () => {
@@ -769,7 +757,7 @@ function App() {
     setUser(null);
 
     // Also sign out from WorkOS if user was authenticated via SSO
-    if (workosUser) {
+    if (SSO_ENABLED && workosUser && workosSignOut) {
       workosSignOut({ returnTo: window.location.origin + '/login' });
     } else {
       go('/login');
