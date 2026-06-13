@@ -4,7 +4,6 @@ import {
   StreamableFile,
   ForbiddenException,
   Get,
-  Headers,
   MessageEvent,
   Param,
   Query,
@@ -73,11 +72,10 @@ export class ReportingController {
 
   @Sse('live-monitor/stream')
   streamLiveMonitor(
-    @Query('token') token?: string,
     @Query('limit') limit?: string,
-    @Headers('authorization') authorization?: string
+    @Req() request?: Request
   ): Observable<MessageEvent> {
-    return from(this.verifyStreamToken(token, authorization)).pipe(
+    return from(this.verifyStreamCookie(request)).pipe(
       switchMap((payload) => {
         const allowedRoles = new Set<string>([Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
         if (!allowedRoles.has(payload.role)) {
@@ -287,14 +285,11 @@ export class ReportingController {
     return new StreamableFile(result.buffer);
   }
 
-  private async verifyStreamToken(token?: string, authorization?: string): Promise<StreamJwtPayload> {
-    const headerToken = authorization?.startsWith('Bearer ')
-      ? authorization.slice('Bearer '.length).trim()
-      : undefined;
-    const finalToken = token ?? headerToken;
+  private async verifyStreamCookie(request?: Request): Promise<StreamJwtPayload> {
+    const finalToken = this.readCookie(request, 'schoolhub_access_token');
 
     if (!finalToken) {
-      throw new UnauthorizedException('Token tidak tersedia untuk stream live monitor.');
+      throw new UnauthorizedException('Cookie sesi tidak tersedia untuk stream live monitor.');
     }
 
     try {
@@ -319,7 +314,17 @@ export class ReportingController {
 
       return { ...payload, role: user.role };
     } catch {
-      throw new UnauthorizedException('Token live monitor tidak valid.');
+      throw new UnauthorizedException('Cookie sesi live monitor tidak valid.');
     }
+  }
+
+  private readCookie(request: Request | undefined, name: string) {
+    const raw = request?.headers.cookie || '';
+    const parts = raw.split(';').map((part) => part.trim());
+    for (const part of parts) {
+      const [key, ...valueParts] = part.split('=');
+      if (key === name) return decodeURIComponent(valueParts.join('='));
+    }
+    return undefined;
   }
 }
