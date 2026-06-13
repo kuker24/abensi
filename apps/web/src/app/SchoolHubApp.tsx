@@ -442,6 +442,32 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
   );
 }
 
+function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await apiFetch('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal mengganti password.');
+    } finally {
+      setLoading(false);
+    }
+  }
+  return <div className="login-page"><div className="login-card"><form onSubmit={submit} className="login-form"><PageHead eyebrow="PASSWORD WAJIB DIGANTI" title="Buat password baru" sub="Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai e-Hadir." />
+    <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
+    <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
+    {error && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
+    <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Simpan password baru</Btn>
+  </form></div></div>;
+}
+
 function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: string; onLogout: () => void; isOpen?: boolean; onClose?: () => void }) {
   const itemsForUser = useMemo(() => navItemsForUser(user), [user]);
   const grouped = useMemo(() => itemsForUser.reduce<Record<string, NavItem[]>>((acc, item) => {
@@ -752,6 +778,7 @@ function App() {
   if (!sessionChecked && path !== '/login') return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (path === '/login') return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!user) return <LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} />;
+  if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { const next = { ...user, mustChangePassword: false }; localStorage.setItem(USER_KEY, JSON.stringify(next)); setUser(next); notify('Password berhasil diganti.', 'ok'); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   const exists = routeExists(path);
   const allowed = exists && canAccessRoute(path, user);
   const screen = (() => {

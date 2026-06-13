@@ -181,17 +181,18 @@ enum OverrideApprovalStatus {
 }
 
 model User {
-  id                String     @id @default(cuid())
-  username          String     @unique
-  fullName          String
-  passwordHash      String
-  role              Role
-  active            Boolean    @default(true)
-  cardStatus        CardStatus @default(ACTIVE)
-  sessionVersion    Int        @default(1)
-  passwordChangedAt DateTime?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  id                 String     @id @default(cuid())
+  username           String     @unique
+  fullName           String
+  passwordHash       String
+  role               Role
+  active             Boolean    @default(true)
+  cardStatus         CardStatus @default(ACTIVE)
+  sessionVersion     Int        @default(1)
+  passwordChangedAt  DateTime?
+  mustChangePassword Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
   taughtSessions              Session[]                   @relation("TeacherSessions")
   enrollments                 ClassEnrollment[]

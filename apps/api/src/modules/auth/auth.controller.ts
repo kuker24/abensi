@@ -4,7 +4,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { extractRequestMeta } from '../../common/request-meta';
 import { AuthService } from './auth.service';
-import { LoginDto } from './dto.login';
+import { ChangePasswordDto, LoginDto } from './dto.login';
 import { csrfCookieOptions, CSRF_COOKIE, generateCsrfToken } from '../../common/csrf';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -92,6 +92,16 @@ export class AuthController {
     const result = await this.authService.refresh(readCookie(request, REFRESH_COOKIE), extractRequestMeta(request));
     setAuthCookies(response, result);
     return { ok: true };
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @CurrentUser() user: { sub: string; role: Role },
+    @Body() body: ChangePasswordDto,
+    @Req() request: Request
+  ) {
+    return this.authService.changePassword(user.sub, user.role, body.currentPassword, body.newPassword, extractRequestMeta(request));
   }
 
   @Post('logout')

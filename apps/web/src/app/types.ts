@@ -11,6 +11,7 @@ export interface User {
   role?: Role | string;
   cardStatus?: string;
   active?: boolean;
+  mustChangePassword?: boolean;
 }
 
 export interface PaginatedResponse<T> {

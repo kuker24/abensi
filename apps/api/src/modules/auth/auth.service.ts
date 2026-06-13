@@ -101,7 +101,8 @@ export class AuthService {
         id: user.id,
         username: user.username,
         fullName: user.fullName,
-        role: user.role
+        role: user.role,
+        mustChangePassword: user.mustChangePassword ?? false
       }
     };
   }
@@ -109,10 +110,10 @@ export class AuthService {
   async currentUser(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, username: true, fullName: true, role: true, active: true }
+      select: { id: true, username: true, fullName: true, role: true, active: true, mustChangePassword: true }
     });
     if (!user || !user.active) throw new UnauthorizedException('Sesi tidak aktif. Silakan masuk ulang.');
-    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role };
+    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role, mustChangePassword: user.mustChangePassword };
   }
 
   async refresh(refreshToken: string | undefined, meta: RequestMeta = {}) {
@@ -209,6 +210,29 @@ export class AuthService {
     const revoked = await this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
     await writeAudit(this.prisma, { actorId, module: 'auth', action: 'auth.user_sessions.revoked', resource: 'user', resourceId: userId, reason, after: { count: revoked.count } });
     return revoked.count;
+  }
+
+  async changePassword(userId: string, actorRole: Role, currentPassword: string, newPassword: string, meta: RequestMeta = {}) {
+    if (currentPassword === newPassword) throw new HttpException('Password baru harus berbeda.', HttpStatus.BAD_REQUEST);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.active) throw new UnauthorizedException('Sesi tidak aktif. Silakan masuk ulang.');
+    if (!await bcrypt.compare(currentPassword, user.passwordHash)) throw publicLoginError();
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false } });
+      await writeAudit(tx, {
+        actorId: userId,
+        actorRole,
+        module: 'auth',
+        action: 'auth.password.changed',
+        resource: 'user',
+        resourceId: userId,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: { passwordChanged: true }
+      });
+    });
+    return { ok: true };
   }
 
   private async issueSessionTokens(user: { id: string; username: string; role: Role; sessionVersion: number }, meta: RequestMeta) {

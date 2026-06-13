@@ -55,6 +55,7 @@ export class IdentityService {
         username: payload.username,
         fullName: payload.fullName,
         passwordHash,
+        mustChangePassword: true,
         role: payload.role,
         cardStatus: payload.cardStatus
       },
@@ -101,7 +102,7 @@ export class IdentityService {
         where: { id: userId },
         data: {
           ...(payload.fullName !== undefined ? { fullName: payload.fullName } : {}),
-          ...(passwordHash ? { passwordHash, passwordChangedAt: new Date() } : {}),
+          ...(passwordHash ? { passwordHash, passwordChangedAt: null, mustChangePassword: true } : {}),
           ...(payload.role !== undefined ? { role: payload.role } : {}),
           ...(payload.cardStatus !== undefined ? { cardStatus: payload.cardStatus } : {}),
           ...(payload.active !== undefined ? { active: payload.active } : {}),
@@ -361,6 +362,7 @@ export class IdentityService {
           fullName: row.fullName.trim(),
           role: row.role,
           passwordHash,
+          mustChangePassword: true,
           cardStatus: CardStatus.ACTIVE
         },
         select: { id: true, username: true, fullName: true, role: true, active: true }
