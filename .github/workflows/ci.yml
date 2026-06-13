@@ -82,6 +82,14 @@ jobs:
       - run: npm run test:web
       - run: npx --prefix apps/web playwright install --with-deps chromium
       - run: npm run test:e2e
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          if-no-files-found: ignore
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
       - run: npm run build:all
       - run: npm audit --audit-level=high
       - run: npm audit --audit-level=high --prefix apps/api
@@ -119,8 +127,21 @@ jobs:
             curl --fail http://localhost/health/live && curl --fail http://localhost/health/ready && exit 0
             sleep 5
           done
-          docker compose -f docker-compose.production.yml logs
+          mkdir -p docker-diagnostics
+          docker compose -f docker-compose.production.yml ps > docker-diagnostics/compose-ps.txt || true
+          docker compose -f docker-compose.production.yml logs --no-color > docker-diagnostics/compose-logs.txt || true
           exit 1
+      - if: always()
+        run: |
+          mkdir -p docker-diagnostics
+          docker compose -f docker-compose.production.yml ps > docker-diagnostics/compose-ps.txt || true
+          docker compose -f docker-compose.production.yml logs --no-color > docker-diagnostics/compose-logs.txt || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-diagnostics
+          if-no-files-found: ignore
+          path: docker-diagnostics/
       - if: always()
         run: docker compose -f docker-compose.production.yml down -v
 
