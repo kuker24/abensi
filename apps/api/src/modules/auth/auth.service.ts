@@ -118,35 +118,58 @@ export class AuthService {
   async refresh(refreshToken: string | undefined, meta: RequestMeta = {}) {
     if (!refreshToken) throw new UnauthorizedException('Refresh token tidak tersedia.');
     const now = new Date();
+    const presentedHash = tokenHash(refreshToken);
     const current = await this.prisma.authSession.findFirst({
-      where: { refreshTokenHash: tokenHash(refreshToken), revokedAt: null, expiresAt: { gt: now } },
+      where: { refreshTokenHash: presentedHash },
       include: { user: true }
     });
     if (!current || !current.user.active) throw new UnauthorizedException('Sesi tidak aktif. Silakan masuk ulang.');
 
-    return this.prisma.$transaction(async (tx) => {
-      const revoked = await tx.authSession.updateMany({
-        where: { id: current.id, revokedAt: null, expiresAt: { gt: now } },
-        data: { revokedAt: new Date(), revokedReason: 'refresh-rotated', lastUsedAt: new Date() }
+    const familyId = current.tokenFamilyId || current.id;
+    if (current.revokedAt || current.expiresAt <= now) {
+      await this.prisma.$transaction(async (tx) => {
+        const revoked = await tx.authSession.updateMany({
+          where: { userId: current.userId, tokenFamilyId: familyId, revokedAt: null },
+          data: { revokedAt: new Date(), revokedReason: 'refresh-token-reuse' }
+        });
+        await writeAudit(tx, {
+          actorId: current.userId,
+          actorRole: current.user.role,
+          module: 'auth',
+          action: 'auth.refresh.reuse_detected',
+          resource: 'authSession',
+          resourceId: current.id,
+          requestIp: meta.requestIp ?? null,
+          requestDevice: meta.requestDevice ?? null,
+          after: { tokenFamilyId: familyId, revoked: revoked.count }
+        });
       });
-      if (revoked.count !== 1) {
-        throw new UnauthorizedException('Sesi sudah dipakai untuk refresh. Silakan masuk ulang.');
-      }
+      throw new UnauthorizedException('Refresh token sudah tidak valid. Seluruh sesi terkait dicabut.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
       const refreshValue = this.generateRefreshToken();
       const session = await tx.authSession.create({
         data: {
           userId: current.userId,
           sessionVersion: current.user.sessionVersion,
           refreshTokenHash: tokenHash(refreshValue),
+          tokenFamilyId: familyId,
           userAgent: meta.requestDevice ?? null,
           requestIp: meta.requestIp ?? null,
           createdIp: current.createdIp ?? current.requestIp ?? meta.requestIp ?? null,
           lastIp: meta.requestIp ?? current.lastIp ?? current.requestIp ?? null,
           lastUsedAt: new Date(),
-          expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
-          replacedById: current.id
+          expiresAt: new Date(Date.now() + REFRESH_TTL_MS)
         }
       });
+      const revoked = await tx.authSession.updateMany({
+        where: { id: current.id, revokedAt: null, expiresAt: { gt: now } },
+        data: { revokedAt: new Date(), revokedReason: 'refresh-rotated', lastUsedAt: new Date(), replacedById: session.id }
+      });
+      if (revoked.count !== 1) {
+        throw new UnauthorizedException('Sesi sudah dipakai untuk refresh. Silakan masuk ulang.');
+      }
       const accessToken = await this.signAccessToken(current.user, session.id);
       await writeAudit(tx, {
         actorId: current.userId,
@@ -157,7 +180,7 @@ export class AuthService {
         resourceId: session.id,
         requestIp: meta.requestIp ?? null,
         requestDevice: meta.requestDevice ?? null,
-        after: { previousSessionId: current.id, sessionId: session.id }
+        after: { previousSessionId: current.id, sessionId: session.id, tokenFamilyId: familyId }
       });
       return { accessToken, refreshToken: refreshValue, sessionId: session.id, expiresInMs: SESSION_TTL_MS };
     });
@@ -195,6 +218,7 @@ export class AuthService {
         userId: user.id,
         sessionVersion: user.sessionVersion,
         refreshTokenHash: tokenHash(refreshToken),
+        tokenFamilyId: randomUUID(),
         userAgent: meta.requestDevice ?? null,
         requestIp: meta.requestIp ?? null,
         createdIp: meta.requestIp ?? null,

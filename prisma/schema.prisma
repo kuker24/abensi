@@ -526,6 +526,7 @@ model AuthSession {
   userId           String
   sessionVersion   Int       @default(1)
   refreshTokenHash String?
+  tokenFamilyId    String?
   userAgent        String?
   requestIp        String?
   createdIp        String?
@@ -546,6 +547,7 @@ model AuthSession {
 
   @@index([userId, revokedAt, expiresAt])
   @@index([refreshTokenHash])
+  @@index([tokenFamilyId, revokedAt])
   @@index([createdAt])
 }
 

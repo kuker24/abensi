@@ -9,7 +9,8 @@ jest.mock('bcryptjs', () => ({
 function makeService() {
   const prisma: any = {
     user: { findUnique: jest.fn() },
-    authSession: { create: jest.fn() },
+    authSession: { create: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
+    $transaction: jest.fn(async (fn: any) => fn(prisma)),
     auditEntry: {
       create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
       findMany: jest.fn().mockResolvedValue([])
@@ -65,6 +66,36 @@ describe('AuthService role-aware login', () => {
       username: 'guru',
       fullName: 'Guru Mapel',
       role: Role.GURU_MAPEL
+    });
+  });
+
+  it('revokes the whole refresh-token family when a rotated token is reused', async () => {
+    const { prisma, service } = makeService();
+    prisma.authSession.findFirst.mockResolvedValue({
+      id: 'old-session',
+      userId: 'u1',
+      tokenFamilyId: 'family-1',
+      revokedAt: new Date(),
+      expiresAt: new Date(Date.now() + 60_000),
+      user: {
+        id: 'u1',
+        username: 'guru',
+        fullName: 'Guru Mapel',
+        role: Role.GURU_MAPEL,
+        active: true,
+        sessionVersion: 1
+      }
+    });
+    prisma.authSession.updateMany.mockResolvedValue({ count: 2 });
+
+    await expect(service.refresh('reused-refresh-token', { requestIp: '127.0.0.1' })).rejects.toBeInstanceOf(UnauthorizedException);
+
+    expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', tokenFamilyId: 'family-1', revokedAt: null },
+      data: { revokedAt: expect.any(Date), revokedReason: 'refresh-token-reuse' }
+    });
+    expect(prisma.auditEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'auth.refresh.reuse_detected', resourceId: 'old-session' })
     });
   });
 });
