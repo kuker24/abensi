@@ -1051,3 +1051,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   h1, h2, h3, h4 { break-after: avoid; color: black !important; }
   @page { margin: 1.5cm; }
 }
+
+/* Production readiness: keep mobile login touch target spacing >= 16px from password field. */
+.login-password-wrap { margin-bottom: 6px; }
+.login-form > button[type="submit"], .login-form > .btn { margin-top: 10px !important; }

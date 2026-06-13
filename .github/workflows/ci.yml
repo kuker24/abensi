@@ -9,6 +9,10 @@ permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -49,6 +53,8 @@ jobs:
       CORS_ORIGIN: http://localhost:5173
       PUBLIC_APP_ORIGIN: http://localhost:5173
       WORKER_INTERVAL_MS: 15000
+      SCHOOL_TIMEZONE: Asia/Jakarta
+      SSO_ENABLED: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -68,14 +74,19 @@ jobs:
       - run: git diff --exit-code prisma/schema.prisma
       - run: npx prisma validate --schema prisma/schema.prisma
       - run: npx prisma generate --schema prisma/schema.prisma
+      - run: npx prisma migrate deploy --schema prisma/schema.prisma
       - run: npm run typecheck:all
       - run: npm run lint:all
       - run: npm run lint --prefix apps/worker
       - run: npm run test:api
       - run: npm run test:web
+      - run: npx --prefix apps/web playwright install --with-deps chromium
+      - run: npm run test:e2e
       - run: npm run build:all
       - run: npm audit --audit-level=high
-      - run: npm audit --audit-level=moderate --prefix apps/worker
+      - run: npm audit --audit-level=high --prefix apps/api
+      - run: npm audit --audit-level=high --prefix apps/web
+      - run: npm audit --audit-level=high --prefix apps/worker
 
   docker:
     runs-on: ubuntu-latest
@@ -96,7 +107,31 @@ jobs:
       CORS_ORIGIN: https://example.invalid
       PUBLIC_APP_ORIGIN: https://example.invalid
       WORKER_INTERVAL_MS: 15000
+      SCHOOL_TIMEZONE: Asia/Jakarta
+      SSO_ENABLED: 'false'
     steps:
       - uses: actions/checkout@v4
       - run: docker compose -f docker-compose.production.yml config
       - run: docker compose -f docker-compose.production.yml build
+      - run: docker compose -f docker-compose.production.yml up -d
+      - run: |
+          for i in {1..30}; do
+            curl --fail http://localhost/health/live && curl --fail http://localhost/health/ready && exit 0
+            sleep 5
+          done
+          docker compose -f docker-compose.production.yml logs
+          exit 1
+      - if: always()
+        run: docker compose -f docker-compose.production.yml down -v
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3

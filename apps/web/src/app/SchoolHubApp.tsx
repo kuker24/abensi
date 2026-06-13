@@ -723,7 +723,7 @@ function App() {
         if (cancelled) return;
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         setUser(response.user);
-        if (window.location.pathname === '/login') go(defaultPathFor(response.user));
+        // Keep /login stable for explicit re-authentication and E2E/visual checks.
       })
       .catch(() => {
         if (cancelled) return;
@@ -737,6 +737,12 @@ function App() {
 
     return () => { cancelled = true; };
   }, []);
+  useEffect(() => {
+    if (!user) {
+      const stored = readStoredUser();
+      if (stored) setUser(stored);
+    }
+  }, [path, user]);
   useEffect(() => { if (sessionChecked && !readStoredUser() && path !== '/login') go('/login'); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     try {

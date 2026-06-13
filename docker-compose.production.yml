@@ -41,6 +41,15 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.0
     logging: *default-logging
     environment:
       NODE_ENV: ${NODE_ENV}
@@ -95,6 +104,15 @@ services:
       dockerfile: apps/worker/Dockerfile
     container_name: schoolhub-worker
     restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 0.5
     logging: *default-logging
     environment:
       API_RECONCILE_URL: http://api:3000/api/v1/internal/reconciliation/run
@@ -124,6 +142,17 @@ services:
         VITE_API_BASE_URL: /api/v1
     container_name: schoolhub-web
     restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx:size=64m
+      - /var/run:size=16m
+      - /tmp:size=32m,mode=1777
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
     logging: *default-logging
     expose:
       - "80"
@@ -132,6 +161,17 @@ services:
     image: nginx:1.27-alpine
     container_name: schoolhub-nginx
     restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx:size=64m
+      - /var/run:size=16m
+      - /tmp:size=32m,mode=1777
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
     logging: *default-logging
     ports:
       - "80:80"

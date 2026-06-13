@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const useSystemChromium = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-  ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+  ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } }
   : {};
 
 export default defineConfig({
@@ -15,7 +15,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: 'off',
     ...useSystemChromium
   },
   webServer: {

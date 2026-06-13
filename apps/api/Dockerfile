@@ -24,5 +24,5 @@ COPY --from=build /app/package*.json ./
 COPY --from=build /app/prisma ./prisma
 
 USER node
-EXPOSE 8800
+EXPOSE 3000
 CMD ["sh", "-c", "node dist/main.js"]

@@ -1,3 +1,6 @@
+> **SUPERSEDED** by `docs/FULL_PRODUCTION_READINESS_REPORT.md` and `docs/ADR_PRODUCT_SOURCE_OF_TRUTH_QR_AND_CARD_20260613.md` on 2026-06-13.  
+> Retained for historical reference only.
+
 # SchoolHub e-Hadir Production Hardening Audit
 
 Branch: `fix/production-hardening`
