@@ -1,29 +1,30 @@
 FROM node:20-bookworm-slim AS build
-WORKDIR /app
+WORKDIR /workspace/apps/api
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY packages/shared /packages/shared
+COPY packages/shared ../../packages/shared
 COPY apps/api/package*.json ./
-RUN npm ci --install-links
+RUN npm ci
 
 COPY apps/api ./
-COPY prisma ./prisma
+COPY prisma ../../prisma
 
-RUN npx prisma generate --schema prisma/schema.prisma
+RUN npx prisma generate --schema ../../prisma/schema.prisma
+RUN mkdir -p ../../node_modules && cp -a node_modules/@prisma ../../node_modules/ && cp -a node_modules/.prisma ../../node_modules/
 RUN npm run build
 
 FROM node:20-bookworm-slim
-WORKDIR /app
+WORKDIR /app/apps/api
 ENV NODE_ENV=production
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /packages/shared /packages/shared
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/package*.json ./
-COPY --from=build /app/prisma ./prisma
+COPY --from=build /workspace/packages /app/packages
+COPY --from=build /workspace/apps/api/node_modules ./node_modules
+COPY --from=build /workspace/apps/api/dist ./dist
+COPY --from=build /workspace/apps/api/package*.json ./
+COPY --from=build /workspace/prisma /app/prisma
 
 USER node
 EXPOSE 3000
