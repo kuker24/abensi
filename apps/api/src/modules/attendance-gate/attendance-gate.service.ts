@@ -59,20 +59,27 @@ function minutesOf(time: string | null | undefined, fallback: number) {
   return hour * 60 + minute;
 }
 
-function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dhuhaEndTime: string; dzuhurStartTime: string; dzuhurEndTime: string; asharStartTime?: string; asharEndTime?: string }) {
+type PrayerClassification = {
+  prayerType: PrayerType | 'OUTSIDE_WINDOW';
+  currentWindow: { prayerType: PrayerType; startMinute: number; endMinute: number } | null;
+  nextWindow: { prayerType: PrayerType; startMinute: number; endMinute: number } | null;
+};
+
+function formatMinute(minute: number) {
+  return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+}
+
+function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dhuhaEndTime: string; dzuhurStartTime: string; dzuhurEndTime: string; asharStartTime?: string; asharEndTime?: string }): PrayerClassification {
   const localHour = (scannedAt.getUTCHours() + 7) % 24;
   const minute = localHour * 60 + scannedAt.getUTCMinutes();
-  const dhuhaStart = minutesOf(policy.dhuhaStartTime, 7 * 60);
-  const dhuhaEnd = minutesOf(policy.dhuhaEndTime, 10 * 60 + 30);
-  const dzuhurStart = minutesOf(policy.dzuhurStartTime, 11 * 60 + 45);
-  const dzuhurEnd = minutesOf(policy.dzuhurEndTime, 13 * 60 + 30);
-  const asharStart = minutesOf(policy.asharStartTime || '15:00', 15 * 60);
-  const asharEnd = minutesOf(policy.asharEndTime || '16:30', 16 * 60 + 30);
-  if (minute >= asharStart && minute <= asharEnd) return PrayerType.ASHAR;
-  if (minute >= dzuhurStart && minute <= dzuhurEnd) return PrayerType.DZUHUR;
-  if (minute >= dhuhaStart && minute <= dhuhaEnd) return PrayerType.DHUHA;
-  if (minute >= asharStart) return PrayerType.ASHAR;
-  return minute < dzuhurStart ? PrayerType.DHUHA : PrayerType.DZUHUR;
+  const windows = [
+    { prayerType: PrayerType.DHUHA, startMinute: minutesOf(policy.dhuhaStartTime, 7 * 60), endMinute: minutesOf(policy.dhuhaEndTime, 10 * 60 + 30) },
+    { prayerType: PrayerType.DZUHUR, startMinute: minutesOf(policy.dzuhurStartTime, 11 * 60 + 45), endMinute: minutesOf(policy.dzuhurEndTime, 13 * 60 + 30) },
+    { prayerType: PrayerType.ASHAR, startMinute: minutesOf(policy.asharStartTime || '15:00', 15 * 60), endMinute: minutesOf(policy.asharEndTime || '16:30', 16 * 60 + 30) }
+  ];
+  const currentWindow = windows.find((window) => minute >= window.startMinute && minute <= window.endMinute) ?? null;
+  const nextWindow = windows.find((window) => minute < window.startMinute) ?? null;
+  return { prayerType: currentWindow?.prayerType ?? 'OUTSIDE_WINDOW', currentWindow, nextWindow };
 }
 
 function isStaffRole(role: Role) {
@@ -354,8 +361,11 @@ export class AttendanceGateService {
     if (verification.reader.type === ReaderType.MUSHOLA) {
       if (card.user.role !== Role.SISWA) throw new ForbiddenException('Scan mushola hanya untuk siswa.');
       const policy = await this.getAttendancePolicy();
-      const prayerType = scannedPrayerType(scannedAt, policy);
-      return this.recordPrayerScan(card.user.id, prayerType, scannedAt, ReaderType.MUSHOLA, actor, commonOptions);
+      const classification = scannedPrayerType(scannedAt, policy);
+      if (classification.prayerType === 'OUTSIDE_WINDOW') {
+        return this.rejectPrayerOutsideWindow(card.user.id, scannedAt, ReaderType.MUSHOLA, actor, commonOptions, classification);
+      }
+      return this.recordPrayerScan(card.user.id, classification.prayerType, scannedAt, ReaderType.MUSHOLA, actor, commonOptions);
     }
 
     throw new ForbiddenException('Tipe reader belum didukung untuk scan resmi.');
@@ -424,9 +434,12 @@ export class AttendanceGateService {
         throw new ForbiddenException('Scan mushola hanya untuk siswa.');
       }
       const policy = await this.getAttendancePolicy();
-      const prayerType = scannedPrayerType(scannedAt, policy);
-      const result = await this.recordPrayerScan(user.id, prayerType, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions);
-      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, prayerType, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
+      const classification = scannedPrayerType(scannedAt, policy);
+      if (classification.prayerType === 'OUTSIDE_WINDOW') {
+        return this.rejectPrayerOutsideWindow(user.id, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions, classification);
+      }
+      const result = await this.recordPrayerScan(user.id, classification.prayerType, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions);
+      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, prayerType: classification.prayerType, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
       return { ...result, ok: true, user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
     }
 
@@ -649,6 +662,37 @@ export class AttendanceGateService {
       }
       throw error;
     }
+  }
+
+  private async rejectPrayerOutsideWindow(studentId: string, scannedAt: Date, source: ReaderType, actor: ScanActor, options: RecordOptions, classification: PrayerClassification): Promise<never> {
+    const nextWindow = classification.nextWindow
+      ? {
+          prayerType: classification.nextWindow.prayerType,
+          startTime: formatMinute(classification.nextWindow.startMinute),
+          endTime: formatMinute(classification.nextWindow.endMinute)
+        }
+      : null;
+    await this.prisma.rejectedDeviceScan.create({
+      data: {
+        readerId: options.readerId ?? null,
+        deviceId: options.deviceId ?? null,
+        nonceHash: options.nonceHash ?? null,
+        bodyHash: options.bodyHash ?? null,
+        reason: API_ERROR_CODES.PRAYER_OUTSIDE_WINDOW
+      }
+    }).catch(() => null);
+    await this.securityAudit('attendance.prayer.scan.rejected_outside_window', studentId, {
+      source,
+      actorId: actor.sub,
+      scannedAt: scannedAt.toISOString(),
+      nextWindow
+    });
+    throw new ForbiddenException({
+      code: API_ERROR_CODES.PRAYER_OUTSIDE_WINDOW,
+      message: 'Scan ibadah di luar jadwal yang diizinkan.',
+      currentWindow: null,
+      nextWindow
+    });
   }
 
   private async recordPrayerScan(studentId: string, prayerType: PrayerType, scannedAt: Date, source: ReaderType, actor: ScanActor, options: RecordOptions) {

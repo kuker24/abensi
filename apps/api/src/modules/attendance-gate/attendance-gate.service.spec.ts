@@ -46,6 +46,7 @@ function makePrisma(user: any) {
     qrCredential: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
     attendanceOverride: { findFirst: jest.fn().mockResolvedValue(null) },
     reconciliationFlag: { upsert: jest.fn().mockResolvedValue({}) },
+    rejectedDeviceScan: { create: jest.fn().mockResolvedValue({ id: 'rejected-1' }) },
     auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-root' }) },
     auditChainState: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
     $transaction: jest.fn(async (fn) => fn(tx)),
@@ -122,6 +123,25 @@ describe('AttendanceGateService adaptive QR scan', () => {
       idempotent: true,
       item: { id: 'gate-canonical' }
     });
+  });
+
+  it('menolak scan ibadah di luar window tanpa membuat PrayerAttendanceLog', async () => {
+    const prisma = makePrisma({ id: 'siswa-1', active: true, role: Role.SISWA });
+    const service = new AttendanceGateService(prisma);
+
+    await expect((service as any).rejectPrayerOutsideWindow('siswa-1', new Date(), ReaderType.MUSHOLA, admin, { readerId: 'reader-1' }, {
+      prayerType: 'OUTSIDE_WINDOW',
+      currentWindow: null,
+      nextWindow: { prayerType: PrayerType.DZUHUR, startMinute: 11 * 60 + 45, endMinute: 13 * 60 + 30 }
+    })).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'PRAYER_OUTSIDE_WINDOW',
+        nextWindow: expect.objectContaining({ prayerType: PrayerType.DZUHUR })
+      }),
+      status: 403
+    });
+    expect(prisma.__tx.prayerAttendanceLog.create).not.toHaveBeenCalled();
+    expect(prisma.rejectedDeviceScan.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reason: 'PRAYER_OUTSIDE_WINDOW' }) }));
   });
 
   it('menolak scan mushola manual tanpa signature reader', async () => {
