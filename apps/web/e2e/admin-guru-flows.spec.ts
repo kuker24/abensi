@@ -13,6 +13,7 @@ async function seedAuth(page: Page, user: { id: string; username: string; fullNa
 }
 
 async function setStoredAuth(page: Page, user: { id: string; username: string; fullName: string; role: string }) {
+  await page.unroute('**/api/v1/auth/me').catch(() => undefined);
   await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user }) }));
   await page.goto('/login');
   await page.evaluate(
@@ -21,6 +22,7 @@ async function setStoredAuth(page: Page, user: { id: string; username: string; f
     },
     [user, USER_KEY]
   );
+  await expect.poll(async () => page.evaluate((userKey) => window.localStorage.getItem(userKey), USER_KEY)).not.toBeNull();
 }
 
 function paginated(items: unknown[]) {
@@ -30,6 +32,7 @@ function paginated(items: unknown[]) {
 async function routeCommonApi(page: Page) {
   await page.route('**/api/v1/**', async (route: Route) => {
     const url = route.request().url();
+    if (url.includes('/api/v1/auth/')) return route.fallback();
     const method = route.request().method();
     if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
     if (url.includes('/health/detail') || url.includes('/health/ready')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ready', api: 'ok', database: 'ok' }) });
@@ -63,6 +66,8 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
 
   test('status koneksi tampil sederhana untuk Admin, Guru, dan Siswa', async ({ page }) => {
     await page.route('**/api/v1/**', async (route: Route) => {
+      const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok', ...paginated([]) }) });
     });
 
@@ -84,6 +89,8 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
   test('topbar search opens menu without shortcut badge', async ({ page }) => {
     await seedAuth(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
     await page.route('**/api/v1/**', async (route: Route) => {
+      const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([])) });
     });
 
@@ -132,6 +139,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     let completed = false;
     await page.route('**/api/v1/**', async (route: Route) => {
       const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
       const method = route.request().method();
       if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
       if (url.includes('/tutorials/me') && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.04.26', shouldShow: !completed }) });
@@ -161,6 +169,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     let cleanupRan = false;
     await page.route('**/api/v1/**', async (route: Route) => {
       const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
       const method = route.request().method();
       if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
       if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.04.26', shouldShow: false }) });
@@ -174,15 +183,18 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     await setStoredAuth(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
     await page.goto('/admin/master-data');
     await expect(page.getByRole('heading', { name: 'Akun & Data Sekolah' })).toBeVisible();
+    await page.getByRole('button', { name: 'Buat/Edit Akun' }).click();
     await expect(page.getByRole('button', { name: 'Hapus Permanen' })).toHaveCount(0);
     await expect(page.getByText('Bersihkan Data')).toHaveCount(0);
 
     await setStoredAuth(page, { id: 'dev-1', username: 'developer', fullName: 'Developer SchoolHub', role: 'DEVELOPER' });
     await page.goto('/admin/master-data');
+    await page.getByRole('button', { name: 'Buat/Edit Akun' }).click();
     await expect(page.getByRole('button', { name: 'Hapus Permanen' }).first()).toBeVisible();
     const dialogAnswers = ['siswa.histori', 'Uji hapus permanen akun berhistori.'];
     page.on('dialog', async (dialog) => { await dialog.accept(dialogAnswers.shift() || 'siswa.histori'); });
     await page.getByRole('button', { name: 'Hapus Permanen' }).last().click();
+    await page.getByRole('button', { name: 'Lanjutkan' }).click();
     await expect(page.getByText(/Nonaktifkan saja agar data tetap aman/)).toBeVisible();
 
     await page.goto('/admin/developer-control');
@@ -200,6 +212,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     let activated = false;
     await page.route('**/api/v1/**', async (route: Route) => {
       const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
       const method = route.request().method();
       if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
       if (url.includes('/health/detail')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ready', database: 'ok' }) });
@@ -353,6 +366,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
 
     await page.route('**/api/v1/attendance/class-sessions**', async (route: Route) => {
       const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
       const method = route.request().method();
       if (method === 'GET' && url.endsWith('/roster')) {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ session, roster }) });

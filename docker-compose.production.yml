@@ -36,6 +36,27 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: "no"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    logging: *default-logging
+    command: ["npx", "prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL:-${DATABASE_URL}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -54,6 +75,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV}
       DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL:-${DATABASE_URL}}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       JWT_SECRET: ${JWT_SECRET}
       JWT_ISSUER: ${JWT_ISSUER:-schoolhub-ehadir}
@@ -86,8 +108,8 @@ services:
       DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer SchoolHub}
       PORT: 3000
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     expose:
@@ -125,6 +147,8 @@ services:
       WORKER_HEALTH_STALE_MS: ${WORKER_HEALTH_STALE_MS:-180000}
       WORKER_HEALTH_FILE: /tmp/schoolhub-worker-health.json
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
     healthcheck:

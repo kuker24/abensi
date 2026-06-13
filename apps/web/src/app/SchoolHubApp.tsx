@@ -654,7 +654,7 @@ function AppLayout({ user, path, onLogout, children }: { user: User; path: strin
     };
   }, []);
 
-  const showTutorial = tutorialEnabled || tutorialOpenKey > 0;
+  const showTutorial = Boolean(user) || tutorialEnabled || tutorialOpenKey > 0;
   return <div className="app"><a href="#main-content" className="skip-link">Lompat ke konten</a><div className={`side-backdrop${sidebarOpen ? ' side-open' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" /><Sidebar user={user} path={path} onLogout={onLogout} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} /><main className="main" id="main-content"><TopBar crumbs={crumbs} user={user} connection={connection} onOpenTutorial={() => { setTutorialEnabled(true); setTutorialOpenKey((value) => value + 1); }} onToggleSidebar={() => setSidebarOpen((v) => !v)} /><AppErrorBoundary resetKey={path}><Suspense fallback={<PageLoading />}>{children}</Suspense></AppErrorBoundary></main>{showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} /></Suspense>}</div>;
 }
 
