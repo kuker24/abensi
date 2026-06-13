@@ -40,15 +40,15 @@ export class ReportingController {
   @Get('dashboard')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Capabilities('reports.operational.read')
   dashboard(@Query('date') date?: string) {
     return this.reportingService.dashboard(date);
   }
 
   @Get('class/:classId/monthly')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   classMonthly(@Param('classId') classId: string, @Query('month') month?: string) {
     return this.reportingService.classMonthly(classId, month);
   }
@@ -56,7 +56,7 @@ export class ReportingController {
   @Get('trend')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Capabilities('reports.operational.read')
   trend(@Query('days') days?: string) {
     const parsedDays = Number(days ?? '7');
     return this.reportingService.trend(Number.isNaN(parsedDays) ? 7 : parsedDays);
@@ -65,7 +65,7 @@ export class ReportingController {
   @Get('live-monitor')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Capabilities('reports.operational.read')
   liveMonitor(@Query('page') page?: string, @Query('limit') limit?: string) {
     const pagination = parsePagination({
       page,
@@ -79,7 +79,7 @@ export class ReportingController {
   @Sse('live-monitor/stream')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('gateAttendance.read')
+  @Capabilities('reports.operational.read')
   streamLiveMonitor(
     @Query('limit') limit?: string,
     @Req() request?: Request
@@ -113,7 +113,7 @@ export class ReportingController {
   @Get('my-attendance')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Capabilities('reports.self.read')
   myAttendance(
     @CurrentUser() user: { sub: string; role: string },
     @Query('days') days?: string
@@ -124,8 +124,8 @@ export class ReportingController {
 
   @Get('recap/classes')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapClasses(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -147,8 +147,8 @@ export class ReportingController {
 
   @Get('recap/students')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapStudents(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -178,8 +178,8 @@ export class ReportingController {
 
   @Get('recap/subjects')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapSubjects(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -201,8 +201,8 @@ export class ReportingController {
 
   @Get('recap/teachers')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapTeachers(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -224,8 +224,8 @@ export class ReportingController {
 
   @Get('teacher-monthly')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   teacherMonthly(
     @Query('month') month?: string,
     @Query('teacherId') teacherId?: string,
@@ -244,8 +244,8 @@ export class ReportingController {
 
   @Get('audit-coverage')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
-  @Capabilities('reports.read')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   auditCoverage(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -267,7 +267,7 @@ export class ReportingController {
 
   @Get('export')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
   @Capabilities('reports.export')
   async exportReport(
     @Query('reportType') reportType?: string,

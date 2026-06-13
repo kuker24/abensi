@@ -183,7 +183,7 @@ function navKeyForRole(role?: string): NavKey {
 }
 
 const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
-  '/admin/dashboard': ['reports.read'],
+  '/admin/dashboard': ['reports.operational.read'],
   '/admin/it-dashboard': ['devices.read'],
   '/admin/picket-dashboard': ['reconciliation.read'],
   '/admin/sessions': ['classAttendance.read'],
@@ -193,8 +193,8 @@ const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
   '/admin/master-data': ['users.read', 'academic.read'],
   '/admin/schedule': ['schedules.read'],
   '/admin/devices': ['devices.read'],
-  '/admin/reports': ['reports.read'],
-  '/admin/live-monitor': ['gateAttendance.read'],
+  '/admin/reports': ['reports.school.read'],
+  '/admin/live-monitor': ['reports.operational.read'],
   '/admin/settings': ['settings.read'],
   '/admin/audit': ['audit.read'],
   '/admin/teacher-leaves': ['schedules.read'],
@@ -204,12 +204,12 @@ const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
   '/guru/dashboard': ['classAttendance.read'],
   '/guru/presensi': ['classAttendance.record'],
   '/guru/koreksi': ['classAttendance.correct'],
-  '/guru/rekap': ['reports.read'],
+  '/guru/rekap': ['reports.self.read'],
   '/guru/izin': ['profile.self.update'],
-  '/guru/kehadiran-saya': ['profile.self.read'],
+  '/guru/kehadiran-saya': ['reports.self.read'],
   '/guru/notifikasi': ['profile.self.read'],
   '/guru/panduan': ['profile.self.read'],
-  '/siswa/dashboard': ['profile.self.read'],
+  '/siswa/dashboard': ['reports.self.read'],
   '/siswa/notifikasi': ['profile.self.read'],
   '/siswa/panduan': ['profile.self.read']
 };
@@ -225,7 +225,7 @@ const ROUTE_ACCESS: Record<string, string[]> = {
   '/admin/master-data': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
   '/admin/schedule': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
   '/admin/devices': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/reports': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
+  '/admin/reports': ['ADMIN_TU', 'DEVELOPER'],
   '/admin/live-monitor': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
   '/admin/settings': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
   '/admin/audit': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
