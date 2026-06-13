@@ -179,10 +179,10 @@ services:
     cpus: 0.5
     logging: *default-logging
     expose:
-      - "80"
+      - "8080"
 
   reverse-proxy:
-    image: nginx:1.27-alpine
+    image: nginxinc/nginx-unprivileged:1.27-alpine
     container_name: schoolhub-nginx
     restart: unless-stopped
     read_only: true
@@ -198,7 +198,7 @@ services:
     cpus: 0.5
     logging: *default-logging
     ports:
-      - "80:80"
+      - "80:8080"
     depends_on:
       api:
         condition: service_healthy
