@@ -10,7 +10,7 @@ import { SmartCardService } from './smart-card.service';
 
 @Controller('devices/cards')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN_TU, Role.OPERATOR_IT)
+@Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER)
 export class SmartCardController {
   constructor(private readonly smartCardService: SmartCardService) {}
 

@@ -6,10 +6,14 @@ import {
   TeacherSessionStatus,
   type Prisma
 } from '@prisma/client';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { createHash } from 'node:crypto';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { AuthenticatedUser } from '../../common/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
+import { writeAudit } from '../../common/audit-log';
+import type { RequestMeta } from '../../common/request-meta';
 
 const ATTENDANCE_STATUSES: StudentAttendanceStatus[] = [
   StudentAttendanceStatus.HADIR,
@@ -43,6 +47,7 @@ interface ExportResult {
   buffer: Buffer;
   contentType: string;
   filename: string;
+  checksum: string;
 }
 
 function startOfDay(date: Date) {
@@ -94,6 +99,11 @@ function asPercent(value: number, total: number) {
   return Number(((value / total) * 100).toFixed(2));
 }
 
+function durationMinutes(start?: Date | null, end?: Date | null) {
+  if (!start || !end) return null;
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+}
+
 function safeDateInput(value: string, mode: 'start' | 'end') {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -104,7 +114,18 @@ function safeDateInput(value: string, mode: 'start' | 'end') {
 
 @Injectable()
 export class ReportingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService
+  ) {}
+
+  private async getCached<T>(key: string): Promise<T | null> {
+    return this.redis.getJson<T>(`schoolhub:cache:${key}`);
+  }
+
+  private async setCached(key: string, value: unknown, ttlSeconds: number) {
+    await this.redis.setJson(`schoolhub:cache:${key}`, value, ttlSeconds);
+  }
 
   private paginate<T>(items: T[], pagination: PaginationQuery) {
     const total = items.length;
@@ -219,6 +240,9 @@ export class ReportingService {
     const base = date ? new Date(date) : new Date();
     const dayStart = startOfDay(base);
     const dayEnd = endOfDay(base);
+    const cacheKey = `report-dashboard:${dayStart.toISOString().slice(0, 10)}`;
+    const cached = await this.getCached<Record<string, unknown>>(cacheKey);
+    if (cached) return cached;
 
     const [sessionsToday, closedSessions, openFlags, gateTapToday, teacherPresentToday] = await Promise.all([
       this.prisma.session.count({
@@ -256,7 +280,7 @@ export class ReportingService {
 
     const coverage = sessionsToday === 0 ? 0 : Number(((closedSessions / sessionsToday) * 100).toFixed(2));
 
-    return {
+    const result = {
       date: dayStart.toISOString(),
       sessionsToday,
       closedSessions,
@@ -265,6 +289,9 @@ export class ReportingService {
       gateTapToday,
       teacherPresenceCount: teacherPresentToday
     };
+
+    await this.setCached(cacheKey, result, date ? 60 : 10);
+    return result;
   }
 
   async classMonthly(classId: string, month?: string) {
@@ -302,6 +329,10 @@ export class ReportingService {
 
   async trend(days: number) {
     const safeDays = Math.max(1, Math.min(days, 31));
+    const cacheKey = `report-trend:${safeDays}`;
+    const cached = await this.getCached<Record<string, unknown>>(cacheKey);
+    if (cached) return cached;
+
     const now = new Date();
     const start = startOfDay(new Date(now.getTime() - (safeDays - 1) * 24 * 60 * 60 * 1000));
     const end = endOfDay(now);
@@ -362,13 +393,16 @@ export class ReportingService {
       bucket.anomalies += 1;
     }
 
-    return {
+    const result = {
       days: safeDays,
       items: Array.from(series.values()).map((item) => ({
         ...item,
         coveragePercent: item.sessions === 0 ? 0 : Number(((item.closed / item.sessions) * 100).toFixed(2))
       }))
     };
+
+    await this.setCached(cacheKey, result, 30);
+    return result;
   }
 
   async liveMonitor(pagination: PaginationQuery) {
@@ -935,7 +969,10 @@ export class ReportingService {
         teacherPresence: {
           select: {
             teacherId: true,
-            status: true
+            status: true,
+            checkInAt: true,
+            checkOutAt: true,
+            earlyCheckoutReason: true
           }
         }
       },
@@ -956,6 +993,12 @@ export class ReportingService {
         telat: number;
         excusedAbsence: number;
         alpaMengajar: number;
+        checkInCount: number;
+        checkOutCount: number;
+        earlyCheckoutCount: number;
+        totalTeachingMinutes: number;
+        lastCheckInAt: Date | null;
+        lastCheckOutAt: Date | null;
       }
     >();
 
@@ -973,7 +1016,13 @@ export class ReportingService {
           hadir: 0,
           telat: 0,
           excusedAbsence: 0,
-          alpaMengajar: 0
+          alpaMengajar: 0,
+          checkInCount: 0,
+          checkOutCount: 0,
+          earlyCheckoutCount: 0,
+          totalTeachingMinutes: 0,
+          lastCheckInAt: null,
+          lastCheckOutAt: null
         };
 
       current.sessionCount += 1;
@@ -984,14 +1033,25 @@ export class ReportingService {
       current.classCodes.add(session.schoolClass.code);
       current.subjectCodes.add(session.subject.code);
 
-      const presence =
-        session.teacherPresence.find((item) => item.teacherId === session.teacherId)?.status ??
+      const presenceRow = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
+      const presence = presenceRow?.status ??
         (session.status === SessionStatus.MISSED ? TeacherSessionStatus.ALPA_MENGAJAR : null);
 
       if (presence === TeacherSessionStatus.HADIR) current.hadir += 1;
       if (presence === TeacherSessionStatus.TELAT) current.telat += 1;
       if (presence === TeacherSessionStatus.EXCUSED_ABSENCE) current.excusedAbsence += 1;
       if (presence === TeacherSessionStatus.ALPA_MENGAJAR) current.alpaMengajar += 1;
+      if (presenceRow?.checkInAt) {
+        current.checkInCount += 1;
+        if (!current.lastCheckInAt || presenceRow.checkInAt > current.lastCheckInAt) current.lastCheckInAt = presenceRow.checkInAt;
+      }
+      if (presenceRow?.checkOutAt) {
+        current.checkOutCount += 1;
+        if (!current.lastCheckOutAt || presenceRow.checkOutAt > current.lastCheckOutAt) current.lastCheckOutAt = presenceRow.checkOutAt;
+      }
+      if (presenceRow?.earlyCheckoutReason) current.earlyCheckoutCount += 1;
+      const minutes = durationMinutes(presenceRow?.checkInAt, presenceRow?.checkOutAt);
+      if (minutes !== null) current.totalTeachingMinutes += minutes;
 
       grouped.set(session.teacherId, current);
     }
@@ -1007,6 +1067,13 @@ export class ReportingService {
         closedSessionCount: item.closedSessionCount,
         sessionCoveragePercent: asPercent(item.closedSessionCount, item.sessionCount),
         presencePercent: asPercent(item.hadir + item.telat, item.sessionCount),
+        checkInCount: item.checkInCount,
+        checkOutCount: item.checkOutCount,
+        earlyCheckoutCount: item.earlyCheckoutCount,
+        totalTeachingMinutes: item.totalTeachingMinutes,
+        averageTeachingMinutes: item.checkOutCount === 0 ? 0 : Math.round(item.totalTeachingMinutes / item.checkOutCount),
+        lastCheckInAt: item.lastCheckInAt,
+        lastCheckOutAt: item.lastCheckOutAt,
         counters: {
           HADIR: item.hadir,
           TELAT: item.telat,
@@ -1055,7 +1122,10 @@ export class ReportingService {
         teacherPresence: {
           select: {
             teacherId: true,
-            status: true
+            status: true,
+            checkInAt: true,
+            checkOutAt: true,
+            earlyCheckoutReason: true
           }
         }
       },
@@ -1074,6 +1144,12 @@ export class ReportingService {
         telat: number;
         excusedAbsence: number;
         alpaMengajar: number;
+        checkInCount: number;
+        checkOutCount: number;
+        earlyCheckoutCount: number;
+        totalTeachingMinutes: number;
+        lastCheckInAt: Date | null;
+        lastCheckOutAt: Date | null;
       }
     >();
 
@@ -1089,7 +1165,13 @@ export class ReportingService {
           hadir: 0,
           telat: 0,
           excusedAbsence: 0,
-          alpaMengajar: 0
+          alpaMengajar: 0,
+          checkInCount: 0,
+          checkOutCount: 0,
+          earlyCheckoutCount: 0,
+          totalTeachingMinutes: 0,
+          lastCheckInAt: null,
+          lastCheckOutAt: null
         };
 
       current.sessionCount += 1;
@@ -1097,14 +1179,25 @@ export class ReportingService {
         current.closedSessionCount += 1;
       }
 
-      const presence =
-        session.teacherPresence.find((item) => item.teacherId === session.teacherId)?.status ??
+      const presenceRow = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
+      const presence = presenceRow?.status ??
         (session.status === SessionStatus.MISSED ? TeacherSessionStatus.ALPA_MENGAJAR : null);
 
       if (presence === TeacherSessionStatus.HADIR) current.hadir += 1;
       if (presence === TeacherSessionStatus.TELAT) current.telat += 1;
       if (presence === TeacherSessionStatus.EXCUSED_ABSENCE) current.excusedAbsence += 1;
       if (presence === TeacherSessionStatus.ALPA_MENGAJAR) current.alpaMengajar += 1;
+      if (presenceRow?.checkInAt) {
+        current.checkInCount += 1;
+        if (!current.lastCheckInAt || presenceRow.checkInAt > current.lastCheckInAt) current.lastCheckInAt = presenceRow.checkInAt;
+      }
+      if (presenceRow?.checkOutAt) {
+        current.checkOutCount += 1;
+        if (!current.lastCheckOutAt || presenceRow.checkOutAt > current.lastCheckOutAt) current.lastCheckOutAt = presenceRow.checkOutAt;
+      }
+      if (presenceRow?.earlyCheckoutReason) current.earlyCheckoutCount += 1;
+      const minutes = durationMinutes(presenceRow?.checkInAt, presenceRow?.checkOutAt);
+      if (minutes !== null) current.totalTeachingMinutes += minutes;
 
       grouped.set(session.teacherId, current);
     }
@@ -1119,6 +1212,13 @@ export class ReportingService {
         closedSessionCount: item.closedSessionCount,
         sessionCoveragePercent: asPercent(item.closedSessionCount, item.sessionCount),
         presencePercent: asPercent(item.hadir + item.telat, item.sessionCount),
+        checkInCount: item.checkInCount,
+        checkOutCount: item.checkOutCount,
+        earlyCheckoutCount: item.earlyCheckoutCount,
+        totalTeachingMinutes: item.totalTeachingMinutes,
+        averageTeachingMinutes: item.checkOutCount === 0 ? 0 : Math.round(item.totalTeachingMinutes / item.checkOutCount),
+        lastCheckInAt: item.lastCheckInAt,
+        lastCheckOutAt: item.lastCheckOutAt,
         counters: {
           HADIR: item.hadir,
           TELAT: item.telat,
@@ -1238,7 +1338,7 @@ export class ReportingService {
     };
   }
 
-  async exportReport(reportType: string, format: string, filters: RecapFilters): Promise<ExportResult> {
+  async exportReport(reportType: string, format: string, filters: RecapFilters, actor?: { sub: string; role: Role }, requestMeta?: RequestMeta): Promise<ExportResult> {
     const normalizedType = reportType.trim().toLowerCase();
     const normalizedFormat = format.trim().toLowerCase();
 
@@ -1379,30 +1479,96 @@ export class ReportingService {
       }));
     }
 
+    const rangeForMeta = filters.month ? this.resolveMonthRange(filters.month) : this.resolveDateRange(filters);
+    const [openAnomalyCount, resolvedAnomalyCount, overrideCount, correctionCount] = await Promise.all([
+      this.prisma.reconciliationFlag.count({ where: { status: 'OPEN', createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
+      this.prisma.reconciliationFlag.count({ where: { status: 'RESOLVED', createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
+      this.prisma.attendanceOverride.count({ where: { date: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
+      this.prisma.attendanceCorrectionEvent.count({ where: { createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } })
+    ]);
+    const metadata = {
+      generatedAt: new Date().toISOString(),
+      generatedBy: actor?.sub ?? 'unknown',
+      reportType: normalizedType,
+      format: normalizedFormat,
+      filters,
+      warning: openAnomalyCount > 0 ? 'Periode ini masih memiliki anomali OPEN. Laporan belum final tanpa verifikasi.' : null,
+      counts: { overrideCount, openAnomalyCount, resolvedAnomalyCount, correctionCount }
+    };
+    rows = [{ report_metadata: JSON.stringify(metadata) }, ...rows.map((row) => ({ evidence_label: 'normal', ...row }))];
+
     const timestamp = new Date().toISOString().replaceAll(':', '-').replace('T', '_').slice(0, 19);
     const filename = `${normalizedType}_${timestamp}.${normalizedFormat}`;
 
     if (normalizedFormat === 'csv') {
       const csvText = this.toCsv(rows);
-      return {
-        buffer: Buffer.from(csvText, 'utf-8'),
-        contentType: 'text/csv; charset=utf-8',
-        filename
-      };
+      const buffer = Buffer.from(csvText, 'utf-8');
+      const checksum = createHash('sha256').update(buffer).digest('hex');
+      if (actor) await writeAudit(this.prisma, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'reporting',
+        action: 'report.exported',
+        resource: 'report',
+        resourceId: normalizedType,
+        requestIp: requestMeta?.requestIp ?? null,
+        requestDevice: requestMeta?.requestDevice ?? null,
+        after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
+      });
+      return { buffer, contentType: 'text/csv; charset=utf-8', filename, checksum };
     }
 
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows.length > 0 ? rows : [{ message: 'Tidak ada data' }]);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'report');
-    const raw = XLSX.write(workbook, {
-      type: 'buffer',
-      bookType: 'xlsx'
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'SchoolHub e-Hadir';
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet('report');
+    const exportRows = rows.length > 0 ? rows : [{ message: 'Tidak ada data' }];
+    const columns = Array.from(new Set(exportRows.flatMap((row) => Object.keys(row))));
+
+    worksheet.columns = columns.map((key) => ({
+      header: key,
+      key,
+      width: Math.min(Math.max(key.length + 4, 14), 40)
+    }));
+
+    for (const row of exportRows) {
+      worksheet.addRow(
+        Object.fromEntries(
+          columns.map((key) => {
+            const value = row[key];
+            if (value === null || value === undefined) return [key, ''];
+            if (value instanceof Date) return [key, value.toISOString()];
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return [key, value];
+            return [key, JSON.stringify(value)];
+          })
+        )
+      );
+    }
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const raw = await workbook.xlsx.writeBuffer();
+    const buffer = Buffer.from(raw);
+    const checksum = createHash('sha256').update(buffer).digest('hex');
+    if (actor) await writeAudit(this.prisma, {
+      actorId: actor.sub,
+      actorRole: actor.role,
+      module: 'reporting',
+      action: 'report.exported',
+      resource: 'report',
+      resourceId: normalizedType,
+      requestIp: requestMeta?.requestIp ?? null,
+      requestDevice: requestMeta?.requestDevice ?? null,
+      after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
     });
 
     return {
-      buffer: Buffer.isBuffer(raw) ? raw : Buffer.from(raw),
+      buffer,
       contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      filename
+      filename,
+      checksum
     };
   }
 }

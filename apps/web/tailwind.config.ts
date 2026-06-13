@@ -6,8 +6,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Arvo', 'Merriweather', 'serif'],
-        body: ['Source Sans 3', 'Segoe UI', 'sans-serif'],
+        display: ['Merriweather', 'Georgia', 'serif'],
+        body: ['Segoe UI', 'Inter', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'Consolas', 'monospace']
       },
       boxShadow: {

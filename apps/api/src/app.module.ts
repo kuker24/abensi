@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './modules/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -14,11 +15,22 @@ import { DeviceReaderModule } from './modules/device-reader/device-reader.module
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { SmartCardModule } from './modules/smart-card/smart-card.module';
+import { PicketBookModule } from './modules/picket-book/picket-book.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { TeacherLeaveModule } from './modules/teacher-leave/teacher-leave.module';
+import { TutorialsModule } from './modules/tutorials/tutorials.module';
+import { SystemCleanupModule } from './modules/system-cleanup/system-cleanup.module';
+import { SecurityModule } from './modules/security/security.module';
+import { QrCredentialsModule } from './modules/qr-credentials/qr-credentials.module';
+import { MobileModule } from './modules/mobile/mobile.module';
+import { validateEnvironment } from './config/env.validation';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     PrismaModule,
+    RedisModule,
+    SecurityModule,
     AuthModule,
     HealthModule,
     IdentityModule,
@@ -29,7 +41,14 @@ import { SmartCardModule } from './modules/smart-card/smart-card.module';
     ReconciliationModule,
     AccessGeofenceModule,
     DeviceReaderModule,
+    QrCredentialsModule,
+    MobileModule,
     SmartCardModule,
+    PicketBookModule,
+    NotificationsModule,
+    TeacherLeaveModule,
+    TutorialsModule,
+    SystemCleanupModule,
     ReportingModule,
     AuditModule
   ]

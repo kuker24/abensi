@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SchoolHub e-Hadir Icon">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="40" x2="440" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE" />
+      <stop offset="0.48" stop-color="#6366F1" />
+      <stop offset="1" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="mark" x1="120" y1="100" x2="390" y2="410" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#DFFBFF" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#020617" flood-opacity=".42" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="128" fill="#07111F" />
+  <path d="M256 48 416 120v122c0 107-67 188-160 222C163 430 96 349 96 242V120L256 48Z" fill="url(#bg)" filter="url(#shadow)" />
+  <path d="M256 90 378 143v99c0 82-47 146-122 181-75-35-122-99-122-181v-99L256 90Z" fill="rgba(7,17,31,.30)" stroke="rgba(255,255,255,.35)" stroke-width="8" />
+  <circle cx="256" cy="88" r="22" fill="#A7F3D0" />
+  <circle cx="408" cy="256" r="14" fill="#C4B5FD" opacity=".95" />
+  <circle cx="104" cy="256" r="14" fill="#67E8F9" opacity=".95" />
+  <path d="M168 205c20-34 52-54 88-54s68 20 88 54" fill="none" stroke="url(#mark)" stroke-width="28" stroke-linecap="round" />
+  <path d="M178 258h156" fill="none" stroke="#DFFBFF" stroke-width="28" stroke-linecap="round" opacity=".84" />
+  <path d="M190 317 234 361 330 236" fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M190 317 234 361 330 236" fill="none" stroke="#10B981" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity=".40" />
+</svg>

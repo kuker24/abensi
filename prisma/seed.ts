@@ -6,7 +6,9 @@ import {
   Role,
   SessionStatus,
   StudentAttendanceStatus,
-  TeacherSessionStatus
+  TeacherSessionStatus,
+  ReaderType,
+  PrayerType
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -18,12 +20,25 @@ function withTime(base: Date, hour: number, minute: number) {
   return value;
 }
 
+function dateOnly(base: Date) {
+  const value = new Date(base);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function requiredEnv(name: string) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} wajib diisi untuk seed.`);
+  return value;
+}
+
 async function upsertUser(params: {
   username: string;
   fullName: string;
   role: Role;
   password: string;
   cardStatus?: CardStatus;
+  active?: boolean;
 }) {
   const passwordHash = await bcrypt.hash(params.password, 10);
 
@@ -33,16 +48,16 @@ async function upsertUser(params: {
       fullName: params.fullName,
       passwordHash,
       role: params.role,
-      active: true,
-      cardStatus: params.cardStatus ?? CardStatus.ACTIVE
+      active: params.active ?? true,
+      cardStatus: params.cardStatus ?? (params.active === false ? CardStatus.INACTIVE : CardStatus.ACTIVE)
     },
     create: {
       username: params.username,
       fullName: params.fullName,
       passwordHash,
       role: params.role,
-      active: true,
-      cardStatus: params.cardStatus ?? CardStatus.ACTIVE
+      active: params.active ?? true,
+      cardStatus: params.cardStatus ?? (params.active === false ? CardStatus.INACTIVE : CardStatus.ACTIVE)
     }
   });
 }
@@ -121,12 +136,15 @@ async function ensureGateLog(userId: string, tappedAt: Date) {
 
 async function main() {
   const adminUsername = process.env.ADMIN_USERNAME ?? 'admin.tu';
-  const adminPassword = process.env.ADMIN_PASSWORD ?? 'Admin#12345';
+  const adminPassword = requiredEnv('ADMIN_PASSWORD');
   const adminFullName = process.env.ADMIN_FULL_NAME ?? 'Admin TU';
 
-  const defaultPassword = process.env.DEFAULT_USER_PASSWORD ?? 'SchoolHub#2026';
+  const defaultPassword = requiredEnv('DEFAULT_USER_PASSWORD');
+  const developerUsername = process.env.DEVELOPER_USERNAME ?? 'developer';
+  const developerPassword = process.env.DEVELOPER_PASSWORD ?? adminPassword;
+  const developerFullName = process.env.DEVELOPER_FULL_NAME ?? 'Developer SchoolHub';
 
-  const [admin, operator, guruMapelA, guruMapelB, guruPiket] = await Promise.all([
+  const [admin, operator, guruMapelA, guruMapelB, guruPiket, developer] = await Promise.all([
     upsertUser({
       username: adminUsername,
       fullName: adminFullName,
@@ -137,7 +155,8 @@ async function main() {
       username: 'operator.it',
       fullName: 'Operator IT Sekolah',
       role: Role.OPERATOR_IT,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
     }),
     upsertUser({
       username: 'guru.matematika',
@@ -149,13 +168,21 @@ async function main() {
       username: 'guru.fisika',
       fullName: 'Bapak Ahmad Fauzi',
       role: Role.GURU_MAPEL,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
     }),
     upsertUser({
       username: 'guru.piket',
       fullName: 'Pak Rudi Piket',
       role: Role.GURU_PIKET,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
+    }),
+    upsertUser({
+      username: developerUsername,
+      fullName: developerFullName,
+      role: Role.DEVELOPER,
+      password: developerPassword
     })
   ]);
 
@@ -164,13 +191,15 @@ async function main() {
       username: 'siswa.andi',
       fullName: 'Andi Pratama',
       role: Role.SISWA,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
     }),
     upsertUser({
       username: 'siswa.bunga',
       fullName: 'Bunga Lestari',
       role: Role.SISWA,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
     }),
     upsertUser({
       username: 'siswa.citra',
@@ -182,19 +211,22 @@ async function main() {
       username: 'siswa.dimas',
       fullName: 'Dimas Saputra',
       role: Role.SISWA,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
     }),
     upsertUser({
       username: 'siswa.eka',
       fullName: 'Eka Nurhaliza',
       role: Role.SISWA,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
     }),
     upsertUser({
       username: 'siswa.farhan',
       fullName: 'Farhan Maulana',
       role: Role.SISWA,
-      password: defaultPassword
+      password: defaultPassword,
+      active: false
     })
   ]);
 
@@ -390,6 +422,7 @@ async function main() {
     guruMapelA,
     guruMapelB,
     guruPiket,
+    developer,
     ...students
   ];
 
@@ -399,17 +432,17 @@ async function main() {
         uid: `UID-MAN1-${String(index + 1).padStart(4, '0')}`
       },
       update: {
-        status: CardStatus.ACTIVE,
+        status: user.active ? CardStatus.ACTIVE : CardStatus.INACTIVE,
         userId: user.id,
-        lastTappedAt: withTime(today, 7, 0 + (index % 20)),
-        note: 'Kartu operasional'
+        lastTappedAt: user.active ? withTime(today, 7, 0 + (index % 20)) : null,
+        note: user.active ? 'Kartu operasional' : 'Kartu akun demo nonaktif'
       },
       create: {
         uid: `UID-MAN1-${String(index + 1).padStart(4, '0')}`,
-        status: CardStatus.ACTIVE,
+        status: user.active ? CardStatus.ACTIVE : CardStatus.INACTIVE,
         userId: user.id,
-        lastTappedAt: withTime(today, 7, 0 + (index % 20)),
-        note: 'Kartu operasional'
+        lastTappedAt: user.active ? withTime(today, 7, 0 + (index % 20)) : null,
+        note: user.active ? 'Kartu operasional' : 'Kartu akun demo nonaktif'
       }
     });
   }
@@ -419,6 +452,8 @@ async function main() {
     update: {
       name: 'Reader Gerbang Utama',
       status: 'ACTIVE',
+      type: ReaderType.GATE,
+      locationLabel: 'Gerbang utama',
       locationLat: 0,
       locationLng: 0
     },
@@ -426,8 +461,98 @@ async function main() {
       name: 'Reader Gerbang Utama',
       apiKey: 'shr_reader_gate_primary_2026',
       status: 'ACTIVE',
+      type: ReaderType.GATE,
+      locationLabel: 'Gerbang utama',
       locationLat: 0,
       locationLng: 0
+    }
+  });
+
+  await prisma.deviceReader.upsert({
+    where: { apiKey: 'shr_reader_mushola_2026' },
+    update: {
+      name: 'Reader Mushola',
+      status: 'ACTIVE',
+      type: ReaderType.MUSHOLA,
+      locationLabel: 'Mushola'
+    },
+    create: {
+      name: 'Reader Mushola',
+      apiKey: 'shr_reader_mushola_2026',
+      status: 'ACTIVE',
+      type: ReaderType.MUSHOLA,
+      locationLabel: 'Mushola'
+    }
+  });
+
+  for (const student of students) {
+    for (const prayerType of [PrayerType.DHUHA, PrayerType.DZUHUR]) {
+      const scannedAt = prayerType === PrayerType.DHUHA ? withTime(today, 7, 20) : withTime(today, 12, 10);
+      await prisma.prayerAttendanceLog.upsert({
+        where: {
+          studentId_prayerType_attendanceDate: {
+            studentId: student.id,
+            prayerType,
+            attendanceDate: dateOnly(scannedAt)
+          }
+        },
+        update: { scannedAt, deviceId: 'shr_reader_mushola_2026' },
+        create: {
+          studentId: student.id,
+          prayerType,
+          attendanceDate: dateOnly(scannedAt),
+          scannedAt,
+          deviceId: 'shr_reader_mushola_2026',
+          source: ReaderType.MUSHOLA
+        }
+      });
+    }
+  }
+
+  await prisma.attendancePolicy.upsert({
+    where: { id: 1 },
+    update: {
+      requireStudentGateInBeforeClass: true,
+      requireStudentDhuha: true,
+      requireStudentDzuhur: true,
+      requireStudentAsharForAfternoon: true,
+      requireStudentClassEligibility: true,
+      requireTeacherGateIn: true,
+      requireTeacherGateOut: true,
+      requireStaffGateIn: true,
+      requireStaffGateOut: true,
+      allowManualOverride: true,
+      allowStudentAsharCheckoutOverride: true,
+      dhuhaStartTime: '07:00',
+      dhuhaEndTime: '10:30',
+      dzuhurStartTime: '11:45',
+      dzuhurEndTime: '13:30',
+      asharStartTime: '15:00',
+      asharEndTime: '16:30',
+      asharRequiredClassEndTime: '15:00',
+      duplicateScanWindowMinutes: 5
+    },
+    create: {
+      id: 1,
+      requireStudentGateInBeforeClass: true,
+      requireStudentDhuha: true,
+      requireStudentDzuhur: true,
+      requireStudentAsharForAfternoon: true,
+      requireStudentClassEligibility: true,
+      requireTeacherGateIn: true,
+      requireTeacherGateOut: true,
+      requireStaffGateIn: true,
+      requireStaffGateOut: true,
+      allowManualOverride: true,
+      allowStudentAsharCheckoutOverride: true,
+      dhuhaStartTime: '07:00',
+      dhuhaEndTime: '10:30',
+      dzuhurStartTime: '11:45',
+      dzuhurEndTime: '13:30',
+      asharStartTime: '15:00',
+      asharEndTime: '16:30',
+      asharRequiredClassEndTime: '15:00',
+      duplicateScanWindowMinutes: 5
     }
   });
 

@@ -10,13 +10,21 @@
     "lint:all": "npm run lint --prefix apps/api && npm run lint --prefix apps/web",
     "typecheck:all": "npm run typecheck --prefix apps/api && npm run typecheck --prefix apps/web",
     "security:audit": "npm audit --audit-level=high",
-    "uat:smoke": "bash scripts/uat_smoke.sh"
+    "uat:smoke": "bash scripts/uat_smoke.sh",
+    "test:backend-contract": "node scripts/backend_contract_tests.mjs",
+    "test:perf-smoke": "node scripts/perf_smoke.mjs",
+    "test:api": "npm run test --prefix apps/api",
+    "test:web": "npm run test --prefix apps/web",
+    "test:e2e": "npm run test:e2e --prefix apps/web",
+    "validate:final": "bash scripts/validate_final.sh"
   },
   "dependencies": {
-    "@prisma/client": "5.22.0"
+    "@prisma/client": "^5.22.0",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
-    "prisma": "5.22.0",
+    "prisma": "^5.22.0",
     "ts-node": "10.9.2",
     "typescript": "5.7.3"
   }
