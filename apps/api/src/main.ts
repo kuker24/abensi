@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { csrfProtection } from './common/csrf';
+import { trustedProxySettingFromEnv } from './common/trusted-proxy';
 import { AppModule } from './app.module';
 
 function corsOrigins() {
@@ -24,7 +25,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const express = app.getHttpAdapter().getInstance();
   express.disable('x-powered-by');
-  express.set('trust proxy', 'loopback, linklocal, uniquelocal');
+  express.set('trust proxy', trustedProxySettingFromEnv());
   app.use(helmet({ crossOriginResourcePolicy: false }));
   app.use(csrfProtection);
   app.setGlobalPrefix('api/v1');
