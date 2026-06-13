@@ -347,7 +347,9 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     await expect(page.getByText('Catatan piket dinonaktifkan.')).toBeVisible();
   });
 
-  test('guru can check in, save early roster, and check out', async ({ page }) => {
+  test('guru can check in, save early roster, and check out', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation']);
+    await context.setGeolocation({ latitude: -6.2, longitude: 106.816666, accuracy: 12 });
     await seedAuth(page, { id: 'guru-1', username: 'guru.matematika', fullName: 'Guru E2E', role: 'GURU_MAPEL' });
     const session = {
       id: 'session-1',
