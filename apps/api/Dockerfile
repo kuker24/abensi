@@ -5,7 +5,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-c
 
 COPY packages/shared /packages/shared
 COPY apps/api/package*.json ./
-RUN npm ci
+RUN npm ci --install-links
 
 COPY apps/api ./
 COPY prisma ./prisma

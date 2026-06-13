@@ -3,7 +3,7 @@ WORKDIR /app
 
 COPY packages/shared /packages/shared
 COPY apps/web/package*.json ./
-RUN npm ci
+RUN npm ci --install-links
 
 COPY apps/web ./
 
