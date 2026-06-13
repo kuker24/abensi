@@ -1,7 +1,6 @@
 import type { PaginationMeta, RouteArea, User } from './types';
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
-export const TOKEN_KEY = 'schoolhub_access_token';
 export const USER_KEY = 'schoolhub_user';
 export const AUTH_EXPIRED_EVENT = 'schoolhub_auth_expired';
 
@@ -55,7 +54,6 @@ export function qs(params?: Record<string, unknown>): string {
 }
 
 function notifyAuthExpired(): void {
-  localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 }
@@ -66,7 +64,6 @@ async function refreshAuth(): Promise<boolean> {
       .then(async (response) => {
         if (!response.ok) return false;
         await response.json().catch(() => null);
-        localStorage.removeItem(TOKEN_KEY);
         return true;
       })
       .catch(() => false)
@@ -78,16 +75,13 @@ async function refreshAuth(): Promise<boolean> {
 }
 
 export async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem(TOKEN_KEY);
   const headers: Record<string, string> = { accept: 'application/json', ...(options.headers as Record<string, string> | undefined) };
-  if (token) headers.authorization = `Bearer ${token}`;
   if (options.body && !(options.body instanceof FormData)) headers['content-type'] = 'application/json';
   let response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
   const canRefresh = path !== '/auth/login' && path !== '/auth/refresh';
   let authExpiredNotified = false;
   if (response.status === 401 && canRefresh) {
     if (await refreshAuth()) {
-      delete headers.authorization;
       response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
     } else {
       notifyAuthExpired();
@@ -103,9 +97,7 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
 }
 
 export async function apiDownload(path: string, filename = 'export.xlsx'): Promise<void> {
-  const token = localStorage.getItem(TOKEN_KEY);
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) },
     credentials: 'include'
   });
   if (!response.ok) throw new Error(`Unduhan gagal HTTP ${response.status}`);

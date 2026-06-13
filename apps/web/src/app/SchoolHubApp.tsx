@@ -33,7 +33,7 @@ import {
   X,
   Zap
 } from 'lucide-react';
-import { API_BASE, AUTH_EXPIRED_EVENT, apiFetch, defaultPathFor, go, normalizeRole, readStoredUser, TOKEN_KEY, USER_KEY } from './api';
+import { API_BASE, AUTH_EXPIRED_EVENT, apiFetch, defaultPathFor, go, normalizeRole, readStoredUser, USER_KEY } from './api';
 import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
@@ -688,7 +688,6 @@ function App() {
       })
       .catch(() => {
         if (cancelled) return;
-        localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
         setUser(null);
         if (window.location.pathname !== '/login') go('/login');
@@ -702,19 +701,16 @@ function App() {
   useEffect(() => { if (sessionChecked && !readStoredUser() && path !== '/login') go('/login'); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     try {
-      localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
-      const response = await apiFetch<{ accessToken?: string; user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password, expectedRole: selectedRole }) });
+      const response = await apiFetch<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password, expectedRole: selectedRole }) });
       const actualRoleArea = loginAreaForRole(response.user?.role);
       if (!response.user || actualRoleArea !== selectedRole) {
         try { await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }); } catch { /* best effort: hapus cookie sesi yang baru dibuat */ }
-        localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
         setUser(null);
         const actualLabel = actualRoleArea ? loginAreaLabel(actualRoleArea) : roleLabel(response.user?.role);
         throw new Error(`Akun ini terdaftar sebagai ${actualLabel}, bukan ${loginAreaLabel(selectedRole)}. Pilih tab ${actualLabel} atau gunakan akun ${loginAreaLabel(selectedRole)}.`);
       }
-      if (response.accessToken) localStorage.setItem(TOKEN_KEY, response.accessToken);
       localStorage.setItem(USER_KEY, JSON.stringify(response.user));
       setSessionChecked(true);
       setUser(response.user);
@@ -731,7 +727,6 @@ function App() {
   async function logout() {
     if (!await riskConfirm('Anda akan keluar dari akun ini. Lanjutkan?', 'Keluar dari akun')) return;
     try { await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }); } catch { /* tetap keluar lokal jika server tidak bisa dihubungi */ }
-    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     setSessionChecked(true);
     setUser(null);

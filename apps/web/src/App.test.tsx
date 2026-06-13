@@ -50,7 +50,7 @@ describe('PRD v2.2 UI shell', () => {
     mockStorage();
     window.history.replaceState({}, '', '/login');
     globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ accessToken: 'token', user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
+      new Response(JSON.stringify({ user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       })
@@ -75,7 +75,7 @@ describe('PRD v2.2 UI shell', () => {
       if (url.endsWith('/auth/logout')) {
         return new Response(JSON.stringify({ ok: true }), { status: 201, headers: { 'content-type': 'application/json' } });
       }
-      return new Response(JSON.stringify({ accessToken: 'token', user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
+      return new Response(JSON.stringify({ user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       });

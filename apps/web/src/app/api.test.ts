@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_EXPIRED_EVENT, TOKEN_KEY, USER_KEY, apiFetch } from './api';
+import { AUTH_EXPIRED_EVENT, USER_KEY, apiFetch } from './api';
 
 function mockStorage() {
   const map = new Map<string, string>();
@@ -21,7 +21,6 @@ afterEach(() => {
 describe('apiFetch auth handling', () => {
   it('membersihkan sesi lokal dan memberi tahu app saat refresh gagal', async () => {
     const storage = mockStorage();
-    storage.setItem(TOKEN_KEY, 'token-lama');
     storage.setItem(USER_KEY, JSON.stringify({ id: 'u1', role: 'ADMIN_TU' }));
     const onExpired = vi.fn();
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -31,7 +30,6 @@ describe('apiFetch auth handling', () => {
     })));
 
     await expect(apiFetch('/reports/dashboard')).rejects.toThrow('Sesi habis');
-    expect(storage.getItem(TOKEN_KEY)).toBeNull();
     expect(storage.getItem(USER_KEY)).toBeNull();
     expect(onExpired).toHaveBeenCalledTimes(1);
     window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -48,7 +46,7 @@ describe('apiFetch auth handling', () => {
       if (url.includes('/auth/refresh')) {
         refreshCalls += 1;
         await new Promise((resolve) => setTimeout(resolve, 5));
-        return new Response(JSON.stringify({ accessToken: 'token-baru' }), {
+        return new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' }
         });

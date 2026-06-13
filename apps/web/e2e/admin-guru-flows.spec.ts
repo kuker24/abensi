@@ -1,26 +1,25 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-const TOKEN_KEY = 'schoolhub_access_token';
 const USER_KEY = 'schoolhub_user';
 
 async function seedAuth(page: Page, user: { id: string; username: string; fullName: string; role: string }) {
+  await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user }) }));
   await page.addInitScript(
-    ([token, storedUser, tokenKey, userKey]) => {
-      window.localStorage.setItem(tokenKey, token);
+    ([storedUser, userKey]) => {
       window.localStorage.setItem(userKey, JSON.stringify(storedUser));
     },
-    ['e2e-token', user, TOKEN_KEY, USER_KEY]
+    [user, USER_KEY]
   );
 }
 
 async function setStoredAuth(page: Page, user: { id: string; username: string; fullName: string; role: string }) {
+  await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user }) }));
   await page.goto('/login');
   await page.evaluate(
-    ([token, storedUser, tokenKey, userKey]) => {
-      window.localStorage.setItem(tokenKey, token);
+    ([storedUser, userKey]) => {
       window.localStorage.setItem(userKey, JSON.stringify(storedUser));
     },
-    ['e2e-token', user, TOKEN_KEY, USER_KEY]
+    [user, USER_KEY]
   );
 }
 
