@@ -49,5 +49,8 @@
     "ts-jest": "^29.2.5",
     "ts-node-dev": "2.0.0",
     "typescript": "5.7.3"
+  },
+  "overrides": {
+    "tmp": "0.2.6"
   }
 }
