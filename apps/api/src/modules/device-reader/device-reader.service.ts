@@ -50,8 +50,8 @@ export class DeviceReaderService {
     @Optional() private readonly stepUp?: StepUpAuthService
   ) {}
 
-  private redact<T extends { apiKey?: string | null; apiKeyHash?: string | null; keyPrefix?: string | null; keyLast4?: string | null; readerSecretCiphertext?: string | null; provisioningTokenHash?: string | null }>(reader: T) {
-    const { apiKey: _apiKey, apiKeyHash: _apiKeyHash, readerSecretCiphertext: _secret, provisioningTokenHash: _token, ...safe } = reader;
+  private redact<T extends { apiKeyHash?: string | null; keyPrefix?: string | null; keyLast4?: string | null; readerSecretCiphertext?: string | null; provisioningTokenHash?: string | null }>(reader: T) {
+    const { apiKeyHash: _apiKeyHash, readerSecretCiphertext: _secret, provisioningTokenHash: _token, ...safe } = reader;
     return {
       ...safe,
       hasReaderSecret: Boolean(reader.readerSecretCiphertext),
@@ -85,7 +85,6 @@ export class DeviceReaderService {
           data: {
             name: payload.name,
             ...generateApiKeyMetadata(),
-            apiKey: null,
             deviceId: payload.deviceId || null,
             readerSecretCiphertext: encrypted,
             readerSecretRotatedAt: new Date(),
@@ -129,7 +128,6 @@ export class DeviceReaderService {
         data: {
           name: payload.name,
           ...generateApiKeyMetadata(),
-          apiKey: null,
           status: DeviceReaderStatus.INACTIVE,
           type: ReaderType.QR_ANDROID,
           platform: DevicePlatform.ANDROID,
@@ -215,7 +213,7 @@ export class DeviceReaderService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.deviceReader.update({
         where: { id },
-        data: { ...generateApiKeyMetadata(), apiKey: null, readerSecretCiphertext: encrypted, readerSecretKeyVersion: { increment: 1 }, readerSecretRotatedAt: new Date(), updatedById: actor.sub }
+        data: { ...generateApiKeyMetadata(), readerSecretCiphertext: encrypted, readerSecretKeyVersion: { increment: 1 }, readerSecretRotatedAt: new Date(), updatedById: actor.sub }
       });
 
       await writeAudit(tx, {

@@ -233,7 +233,6 @@ async function main() {
     create: {
       id: 'reader-gerbang-utama',
       name: 'Reader Gerbang Utama',
-      apiKey: null,
       apiKeyHash: sha256('shr_reader_gate_primary_2026'),
       keyPrefix: 'shr_rea',
       keyLast4: '2026',

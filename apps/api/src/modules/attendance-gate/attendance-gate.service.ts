@@ -210,7 +210,7 @@ export class AttendanceGateService {
     if (!policy.legacyQrScanEnabled) throw new ForbiddenException('Jalur QR manual/legacy sedang dinonaktifkan. Gunakan APK Android reader resmi.');
     const manualReason = assertReasonQuality(payload.manualReason, 'Alasan scan manual');
     const reader = payload.readerId
-      ? await this.prisma.deviceReader.findFirst({ where: { OR: [{ id: payload.readerId }, { apiKey: payload.readerId }] } })
+      ? await this.prisma.deviceReader.findFirst({ where: { OR: [{ id: payload.readerId }, { deviceId: payload.readerId }, { apiKeyHash: sha256Hex(payload.readerId) }] } })
       : null;
     if (reader && reader.status !== DeviceReaderStatus.ACTIVE) throw new ForbiddenException('Reader tidak aktif.');
     const readerType = reader?.type ?? payload.readerType ?? ReaderType.MANUAL;

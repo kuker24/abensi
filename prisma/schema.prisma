@@ -700,7 +700,6 @@ model DeviceReader {
   id                     String              @id @default(cuid())
   deviceId               String?             @unique
   name                   String
-  apiKey                 String?             @unique
   apiKeyHash             String?             @unique
   keyPrefix              String?
   keyLast4               String?
