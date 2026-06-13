@@ -1,5 +1,22 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@workos-inc/authkit-react', () => ({
+  useAuth: () => ({
+    isLoading: false,
+    user: null,
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    signOut: vi.fn(),
+    getAccessToken: vi.fn(),
+    organizationId: null,
+    role: null,
+    permissions: []
+  }),
+  AuthKitProvider: ({ children }: { children: ReactNode }) => children
+}));
+
 import { App } from './App';
 
 function mockStorage() {
@@ -43,7 +60,7 @@ describe('PRD v2.2 UI shell', () => {
     fireEvent.click(screen.getAllByText('Admin/TU')[0]);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
-    fireEvent.click(screen.getByRole('button', { name: /Masuk/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
     await waitFor(() => expect(window.location.pathname).toBe('/admin/dashboard'));
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({
       body: JSON.stringify({ username: 'admin', password: 'sandi-test-aman', expectedRole: 'admin' })
@@ -67,7 +84,7 @@ describe('PRD v2.2 UI shell', () => {
     render(<App />);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
-    fireEvent.click(screen.getByRole('button', { name: /Masuk/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
 
     await waitFor(() => expect(screen.getByText(/terdaftar sebagai Admin\/TU, bukan Guru/i)).toBeInTheDocument());
     expect(window.location.pathname).toBe('/login');
@@ -85,10 +102,34 @@ describe('PRD v2.2 UI shell', () => {
     render(<App />);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
-    fireEvent.click(screen.getByRole('button', { name: /Masuk/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
 
     await waitFor(() => expect(screen.getByText(/Akun ini bukan akun Guru/i)).toBeInTheDocument());
     expect(window.location.pathname).toBe('/login');
     expect(window.localStorage.getItem('schoolhub_user')).toBeNull();
+  });
+
+  it('keeps student attendance read-only and does not expose a self check-in route', async () => {
+    const storage = mockStorage();
+    const student = { id: 's1', username: 'siswa', fullName: 'Siswa Demo', role: 'SISWA' };
+    storage.setItem('schoolhub_user', JSON.stringify(student));
+    window.history.replaceState({}, '', '/siswa/check-in');
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) {
+        return new Response(JSON.stringify({ user: student }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.endsWith('/health/live')) {
+        return new Response(JSON.stringify({ status: 'ok' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as any;
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText(/Menu ini belum tersedia/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Mulai Absen Masuk/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Check.?in/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Kehadiran Saya').length).toBeGreaterThan(0);
   });
 });
