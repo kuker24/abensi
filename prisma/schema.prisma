@@ -210,6 +210,7 @@ model User {
   createdQrCredentials        QrCredential[]              @relation("QrCredentialCreatedBy")
   revokedQrCredentials        QrCredential[]              @relation("QrCredentialRevokedBy")
   createdDeviceReaders        DeviceReader[]              @relation("DeviceReaderCreatedBy")
+  updatedDeviceReaders        DeviceReader[]              @relation("DeviceReaderUpdatedBy")
   revokedDeviceReaders        DeviceReader[]              @relation("DeviceReaderRevokedBy")
   assignedFlags               ReconciliationFlag[]        @relation("FlagAssignedToUser")
   teacherLeaves               TeacherLeave[]              @relation("TeacherLeaveTeacher")
@@ -668,7 +669,11 @@ model DeviceReader {
   id                     String              @id @default(cuid())
   deviceId               String?             @unique
   name                   String
-  apiKey                 String              @unique
+  apiKey                 String?             @unique
+  apiKeyHash             String?             @unique
+  keyPrefix              String?
+  keyLast4               String?
+  keyRotatedAt           DateTime?
   readerSecretCiphertext String?
   readerSecretKeyVersion Int                 @default(1)
   readerSecretRotatedAt  DateTime?
@@ -688,6 +693,7 @@ model DeviceReader {
   lastSeenAt             DateTime?
   lastSignedScanAt       DateTime?
   createdById            String?
+  updatedById            String?
   revokedAt              DateTime?
   revokedById            String?
   revokedReason          String?
@@ -695,12 +701,14 @@ model DeviceReader {
   updatedAt              DateTime            @updatedAt
 
   createdBy User? @relation("DeviceReaderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("DeviceReaderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   revokedBy User? @relation("DeviceReaderRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
 
   @@index([deviceId, status])
   @@index([type, status])
   @@index([platform, status])
   @@index([status, lastSeenAt])
+  @@index([keyPrefix])
   @@index([lastSignedScanAt])
 }
 

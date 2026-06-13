@@ -12,6 +12,16 @@ function generateApiKey() {
   return `shr_${randomBytes(16).toString('hex')}`;
 }
 
+function generateApiKeyMetadata() {
+  const value = generateApiKey();
+  return {
+    apiKeyHash: sha256(value),
+    keyPrefix: value.slice(0, 7),
+    keyLast4: value.slice(-4),
+    keyRotatedAt: new Date()
+  };
+}
+
 function generateProvisionToken() {
   return `shrp_${randomBytes(24).toString('base64url')}`;
 }
@@ -40,13 +50,13 @@ export class DeviceReaderService {
     @Optional() private readonly stepUp?: StepUpAuthService
   ) {}
 
-  private redact<T extends { apiKey?: string | null; readerSecretCiphertext?: string | null; provisioningTokenHash?: string | null }>(reader: T) {
-    const { apiKey: _apiKey, readerSecretCiphertext: _secret, provisioningTokenHash: _token, ...safe } = reader;
+  private redact<T extends { apiKey?: string | null; apiKeyHash?: string | null; keyPrefix?: string | null; keyLast4?: string | null; readerSecretCiphertext?: string | null; provisioningTokenHash?: string | null }>(reader: T) {
+    const { apiKey: _apiKey, apiKeyHash: _apiKeyHash, readerSecretCiphertext: _secret, provisioningTokenHash: _token, ...safe } = reader;
     return {
       ...safe,
       hasReaderSecret: Boolean(reader.readerSecretCiphertext),
       hasProvisioningToken: Boolean(reader.provisioningTokenHash),
-      apiKeyMasked: reader.apiKey ? `${reader.apiKey.slice(0, 7)}…` : null
+      apiKeyMasked: reader.keyPrefix && reader.keyLast4 ? `${reader.keyPrefix}…${reader.keyLast4}` : null
     };
   }
 
@@ -59,7 +69,7 @@ export class DeviceReaderService {
   }
 
   async getStatus(id: string) {
-    const reader = await this.prisma.deviceReader.findFirst({ where: { OR: [{ id }, { deviceId: id }, { apiKey: id }] } });
+    const reader = await this.prisma.deviceReader.findFirst({ where: { OR: [{ id }, { deviceId: id }, { apiKeyHash: sha256(id) }] } });
     if (!reader) throw new NotFoundException('Reader tidak ditemukan.');
     return this.redact(reader);
   }
@@ -74,7 +84,8 @@ export class DeviceReaderService {
         const created = await tx.deviceReader.create({
           data: {
             name: payload.name,
-            apiKey: generateApiKey(),
+            ...generateApiKeyMetadata(),
+            apiKey: null,
             deviceId: payload.deviceId || null,
             readerSecretCiphertext: encrypted,
             readerSecretRotatedAt: new Date(),
@@ -117,7 +128,8 @@ export class DeviceReaderService {
       const item = await tx.deviceReader.create({
         data: {
           name: payload.name,
-          apiKey: generateApiKey(),
+          ...generateApiKeyMetadata(),
+          apiKey: null,
           status: DeviceReaderStatus.INACTIVE,
           type: ReaderType.QR_ANDROID,
           platform: DevicePlatform.ANDROID,
@@ -203,7 +215,7 @@ export class DeviceReaderService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.deviceReader.update({
         where: { id },
-        data: { apiKey: generateApiKey(), readerSecretCiphertext: encrypted, readerSecretKeyVersion: { increment: 1 }, readerSecretRotatedAt: new Date() }
+        data: { ...generateApiKeyMetadata(), apiKey: null, readerSecretCiphertext: encrypted, readerSecretKeyVersion: { increment: 1 }, readerSecretRotatedAt: new Date(), updatedById: actor.sub }
       });
 
       await writeAudit(tx, {
@@ -256,7 +268,8 @@ export class DeviceReaderService {
           locationLng: payload.locationLng,
           allowedModes: payload.allowedModes,
           appVersion: payload.appVersion,
-          appVersionCode: payload.appVersionCode
+          appVersionCode: payload.appVersionCode,
+          updatedById: actor.sub
         }
       });
       await writeAudit(tx, {

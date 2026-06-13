@@ -8,6 +8,7 @@ import {
   StudentAttendanceStatus,
   TeacherSessionStatus
 } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -16,6 +17,10 @@ function withTime(base: Date, hour: number, minute: number) {
   const date = new Date(base);
   date.setHours(hour, minute, 0, 0);
   return date;
+}
+
+function sha256(input: string) {
+  return createHash('sha256').update(input).digest('hex');
 }
 
 function requiredEnv(name: string) {
@@ -223,9 +228,18 @@ async function main() {
   });
 
   await prisma.deviceReader.upsert({
-    where: { apiKey: 'shr_reader_gate_primary_2026' },
+    where: { id: 'reader-gerbang-utama' },
     update: { name: 'Reader Gerbang Utama', status: 'ACTIVE' },
-    create: { name: 'Reader Gerbang Utama', apiKey: 'shr_reader_gate_primary_2026', status: 'ACTIVE' }
+    create: {
+      id: 'reader-gerbang-utama',
+      name: 'Reader Gerbang Utama',
+      apiKey: null,
+      apiKeyHash: sha256('shr_reader_gate_primary_2026'),
+      keyPrefix: 'shr_rea',
+      keyLast4: '2026',
+      keyRotatedAt: new Date(),
+      status: 'ACTIVE'
+    }
   });
 
   const cardOwners = [admin, operator, guruMapel, guruPiket, ...students];

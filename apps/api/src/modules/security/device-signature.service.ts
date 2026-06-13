@@ -102,7 +102,7 @@ export class DeviceSignatureService {
       throw new BadRequestException('Body hash tidak cocok.');
     }
 
-    const reader = await this.prisma.deviceReader.findFirst({ where: { OR: [{ id: deviceId }, { deviceId }, { apiKey: deviceId }] } });
+    const reader = await this.prisma.deviceReader.findFirst({ where: { OR: [{ id: deviceId }, { deviceId }, { apiKeyHash: sha256Hex(deviceId) }] } });
     if (!reader || reader.status !== DeviceReaderStatus.ACTIVE) {
       throw new ForbiddenException('Reader tidak aktif, dicabut, atau tidak ditemukan.');
     }
