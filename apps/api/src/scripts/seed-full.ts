@@ -19,6 +19,16 @@ function withTime(base: Date, hour: number, minute: number) {
   return date;
 }
 
+function gateBusinessDate(value: Date) {
+  const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function gateIn(userId: string, tappedAt: Date) {
+  return { userId, direction: 'IN' as const, businessDate: gateBusinessDate(tappedAt), tappedAt, deviceId: 'reader-gerbang-1' };
+}
+
 function sha256(input: string) {
   return createHash('sha256').update(input).digest('hex');
 }
@@ -261,10 +271,10 @@ async function main() {
 
   await prisma.gateLog.createMany({
     data: [
-      { userId: admin.id, direction: 'IN', tappedAt: withTime(today, 6, 55), deviceId: 'reader-gerbang-1' },
-      { userId: guruMapel.id, direction: 'IN', tappedAt: withTime(today, 7, 2), deviceId: 'reader-gerbang-1' },
-      { userId: students[0].id, direction: 'IN', tappedAt: withTime(today, 7, 10), deviceId: 'reader-gerbang-1' },
-      { userId: students[1].id, direction: 'IN', tappedAt: withTime(today, 7, 12), deviceId: 'reader-gerbang-1' }
+      gateIn(admin.id, withTime(today, 6, 55)),
+      gateIn(guruMapel.id, withTime(today, 7, 2)),
+      gateIn(students[0].id, withTime(today, 7, 10)),
+      gateIn(students[1].id, withTime(today, 7, 12))
     ],
     skipDuplicates: true
   });

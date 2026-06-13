@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
-import { AndroidReaderMode, CardStatus, DeviceReaderStatus, GateDirection, PrayerType, ReaderType, Role } from '@prisma/client';
+import { AndroidReaderMode, CardStatus, DeviceReaderStatus, GateDirection, PrayerType, Prisma, ReaderType, Role } from '@prisma/client';
 import { AttendanceGateService } from './attendance-gate.service';
 import { canonicalJson } from '../security/canonical-json';
 import { DeviceSignatureService, sha256Hex } from '../security/device-signature.service';
@@ -39,7 +39,7 @@ function makePrisma(user: any) {
     deviceReader: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null), updateMany: jest.fn(), update: jest.fn() },
     smartCard: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
     user: { findUnique: jest.fn().mockResolvedValue(user) },
-    gateLog: { findFirst: jest.fn().mockResolvedValue(null) },
+    gateLog: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
     session: { count: jest.fn().mockResolvedValue(0) },
     weeklySchedule: { count: jest.fn().mockResolvedValue(0) },
     prayerAttendanceLog: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -83,8 +83,45 @@ describe('AttendanceGateService adaptive QR scan', () => {
     const result = await service.qrScan({ userId: 'siswa-1', readerType: ReaderType.GATE, direction: GateDirection.IN, scannedAt: '2020-01-01T00:00:00.000Z', manualReason: 'Validasi manual UAT presensi siswa.' }, admin);
 
     expect(result.kind).toBe('GATE');
-    expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 'siswa-1', direction: GateDirection.IN, manualReason: 'Validasi manual UAT presensi siswa.' }) }));
+    expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 'siswa-1', direction: GateDirection.IN, businessDate: expect.any(Date), manualReason: 'Validasi manual UAT presensi siswa.' }) }));
     expect(prisma.__tx.gateLog.create.mock.calls[0][0].data.tappedAt.getFullYear()).not.toBe(2020);
+  });
+
+  it('memetakan unique businessDate/direction menjadi kode konflik stabil', async () => {
+    const prisma = makePrisma({ id: 'siswa-1', role: Role.SISWA, active: true });
+    const service = new AttendanceGateService(prisma);
+    const uniqueError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+      meta: { target: ['userId', 'businessDate', 'direction'] }
+    });
+    prisma.$transaction.mockRejectedValueOnce(uniqueError);
+    prisma.gateLog.findFirst.mockResolvedValueOnce({ id: 'gate-canonical' });
+
+    await expect((service as any).recordGateScanWithoutPolicy('siswa-1', GateDirection.IN, new Date(), admin, {})).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'GATE_DIRECTION_ALREADY_RECORDED',
+        canonicalGateLogId: 'gate-canonical'
+      }),
+      status: 409
+    });
+  });
+
+  it('mengembalikan hasil canonical untuk replay deviceEventId yang sama', async () => {
+    const prisma = makePrisma({ id: 'siswa-1', role: Role.SISWA, active: true });
+    const service = new AttendanceGateService(prisma);
+    const uniqueError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+      meta: { target: ['deviceEventId'] }
+    });
+    prisma.$transaction.mockRejectedValueOnce(uniqueError);
+    prisma.gateLog.findUnique.mockResolvedValueOnce({ id: 'gate-canonical', deviceEventId: 'evt-1', direction: GateDirection.IN });
+
+    await expect((service as any).recordGateScanWithoutPolicy('siswa-1', GateDirection.IN, new Date(), admin, { deviceEventId: 'evt-1' })).resolves.toMatchObject({
+      idempotent: true,
+      item: { id: 'gate-canonical' }
+    });
   });
 
   it('menolak scan mushola manual tanpa signature reader', async () => {

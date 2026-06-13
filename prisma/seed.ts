@@ -105,6 +105,12 @@ async function ensureSession(params: {
   });
 }
 
+function gateBusinessDate(value: Date) {
+  const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
 async function ensureGateLog(userId: string, tappedAt: Date) {
   const dayStart = new Date(tappedAt);
   dayStart.setHours(0, 0, 0, 0);
@@ -128,6 +134,7 @@ async function ensureGateLog(userId: string, tappedAt: Date) {
     data: {
       userId,
       direction: 'IN',
+      businessDate: gateBusinessDate(tappedAt),
       tappedAt,
       deviceId: 'reader-gerbang-1'
     }

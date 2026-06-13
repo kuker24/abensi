@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { RequestMeta } from '../../common/request-meta';
+import { API_ERROR_CODES } from '@schoolhub/shared';
 import { writeAudit } from '../../common/audit-log';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessPolicyService } from '../security/access-policy.service';
@@ -25,7 +26,7 @@ import { StepUpAuthService } from '../security/step-up-auth.service';
 import { QrCredentialsService } from '../qr-credentials/qr-credentials.service';
 import { redactQr } from '../qr-credentials/qr-code.util';
 import { MobileAndroidService } from '../mobile/mobile-android.service';
-import { jakartaBusinessDayBounds } from '../../common/business-time';
+import { businessDateKey, jakartaBusinessDayBounds } from '../../common/business-time';
 import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
@@ -38,6 +39,11 @@ function dayBounds(value: Date | string = new Date()) {
 
 function dateOnly(value: Date | string = new Date()) {
   return jakartaBusinessDayBounds(value).date;
+}
+
+function gateBusinessDate(value: Date) {
+  const [year, month, day] = businessDateKey(value).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
 }
 
 function endOfDay(value: Date | string = new Date()) {
@@ -578,48 +584,71 @@ export class AttendanceGateService {
   }
 
   private async recordGateScanWithoutPolicy(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, options: RecordOptions) {
-    return this.prisma.$transaction(async (tx) => {
-      const log = await tx.gateLog.create({
-        data: {
-          userId,
-          direction,
-          tappedAt: scannedAt,
-          deviceId: options.deviceId ?? null,
-          readerId: options.readerId ?? null,
-          cardId: options.cardId ?? null,
-          qrCredentialId: options.qrCredentialId ?? null,
-          scanMode: options.scanMode ?? null,
-          appVersion: options.appVersion ?? null,
-          signatureVerified: Boolean(options.signatureVerified),
-          deviceEventId: options.deviceEventId ?? null,
-          deviceTimestamp: options.deviceTimestamp ?? null,
-          nonceHash: options.nonceHash ?? null,
-          bodyHash: options.bodyHash ?? null,
-          manualReason: options.manualReason ?? null,
-          createdById: actor.sub,
-          usedOverrideId: options.usedOverrideId ?? null
-        }
-      });
-      if (options.cardId) await tx.smartCard.update({ where: { id: options.cardId }, data: { lastTappedAt: scannedAt } });
-      if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
-      if (options.readerId || options.deviceId) {
-        await tx.deviceReader.updateMany({
-          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
-          data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+    const businessDate = gateBusinessDate(scannedAt);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const log = await tx.gateLog.create({
+          data: {
+            userId,
+            direction,
+            businessDate,
+            tappedAt: scannedAt,
+            deviceId: options.deviceId ?? null,
+            readerId: options.readerId ?? null,
+            cardId: options.cardId ?? null,
+            qrCredentialId: options.qrCredentialId ?? null,
+            scanMode: options.scanMode ?? null,
+            appVersion: options.appVersion ?? null,
+            signatureVerified: Boolean(options.signatureVerified),
+            deviceEventId: options.deviceEventId ?? null,
+            deviceTimestamp: options.deviceTimestamp ?? null,
+            nonceHash: options.nonceHash ?? null,
+            bodyHash: options.bodyHash ?? null,
+            manualReason: options.manualReason ?? null,
+            createdById: actor.sub,
+            usedOverrideId: options.usedOverrideId ?? null
+          }
         });
-      }
-      await writeAudit(tx, {
-        actorId: actor.sub,
-        actorRole: actor.role,
-        module: 'attendance',
-        action: options.qrCredentialId ? 'attendance.qr.reader.scan.accepted' : options.manualReason ? 'attendance.manual.scan.recorded' : 'attendance.reader.gate.scan.accepted',
-        resource: 'gateLog',
-        resourceId: log.id,
-        reason: options.manualReason,
-        after: { ...log, kind: 'GATE', usedOverrideId: options.usedOverrideId ?? null }
+        if (options.cardId) await tx.smartCard.update({ where: { id: options.cardId }, data: { lastTappedAt: scannedAt } });
+        if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
+        if (options.readerId || options.deviceId) {
+          await tx.deviceReader.updateMany({
+            where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
+            data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+          });
+        }
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role,
+          module: 'attendance',
+          action: options.qrCredentialId ? 'attendance.qr.reader.scan.accepted' : options.manualReason ? 'attendance.manual.scan.recorded' : 'attendance.reader.gate.scan.accepted',
+          resource: 'gateLog',
+          resourceId: log.id,
+          reason: options.manualReason,
+          after: { ...log, kind: 'GATE', usedOverrideId: options.usedOverrideId ?? null }
+        });
+        return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk tercatat.' : 'Scan gerbang keluar tercatat.', item: log };
       });
-      return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk tercatat.' : 'Scan gerbang keluar tercatat.', item: log };
-    });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const target = Array.isArray(error.meta?.target) ? error.meta.target.map(String) : [];
+        if (options.deviceEventId && target.includes('deviceEventId')) {
+          const canonical = await this.prisma.gateLog.findUnique({ where: { deviceEventId: options.deviceEventId } });
+          if (canonical) {
+            return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk sudah tercatat.' : 'Scan gerbang keluar sudah tercatat.', item: canonical, idempotent: true };
+          }
+        }
+        if (target.includes('userId') && target.includes('businessDate') && target.includes('direction')) {
+          const canonical = await this.prisma.gateLog.findFirst({ where: { userId, businessDate, direction }, orderBy: { tappedAt: 'asc' } });
+          throw new ConflictException({
+            code: API_ERROR_CODES.GATE_DIRECTION_ALREADY_RECORDED,
+            message: direction === GateDirection.IN ? 'Scan masuk hari ini sudah tercatat.' : 'Scan keluar hari ini sudah tercatat.',
+            canonicalGateLogId: canonical?.id ?? null
+          });
+        }
+      }
+      throw error;
+    }
   }
 
   private async recordPrayerScan(studentId: string, prayerType: PrayerType, scannedAt: Date, source: ReaderType, actor: ScanActor, options: RecordOptions) {

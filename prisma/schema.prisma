@@ -408,6 +408,7 @@ model GateLog {
   id                String             @id @default(cuid())
   userId            String
   direction         GateDirection
+  businessDate      DateTime           @db.Date
   tappedAt          DateTime           @default(now())
   deviceId          String?
   readerId          String?
@@ -428,7 +429,9 @@ model GateLog {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   qrCredential QrCredential? @relation(fields: [qrCredentialId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, businessDate, direction], map: "GateLog_userId_businessDate_direction_key")
   @@index([tappedAt])
+  @@index([businessDate])
   @@index([userId, tappedAt])
   @@index([userId, direction, tappedAt])
   @@index([deviceId, tappedAt])
@@ -437,6 +440,20 @@ model GateLog {
   @@index([scanMode, tappedAt])
   @@index([signatureVerified, tappedAt])
   @@index([deviceEventId])
+}
+
+model GateLogDeduplication {
+  id                 String        @id
+  duplicateGateLogId String
+  canonicalGateLogId String
+  userId             String
+  businessDate       DateTime      @db.Date
+  direction          GateDirection
+  decision           String
+  createdAt          DateTime      @default(now())
+
+  @@index([userId, businessDate, direction])
+  @@index([canonicalGateLogId])
 }
 
 model RejectedDeviceScan {
