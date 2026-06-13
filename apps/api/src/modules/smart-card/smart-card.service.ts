@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSmartCardDto, UpdateSmartCardDto } from './smart-card.dto';
+import { writeAudit } from '../../common/audit-log';
 
 @Injectable()
 export class SmartCardService {
@@ -55,16 +56,7 @@ export class SmartCardService {
         }
       });
 
-      await this.prisma.auditEntry.create({
-        data: {
-          actorId,
-          module: 'device',
-          action: 'smartcard.created',
-          resource: 'smartCard',
-          resourceId: card.id,
-          after: card
-        }
-      });
+      await writeAudit(this.prisma, { actorId, module: 'device', action: 'smartcard.created', resource: 'smartCard', resourceId: card.id, after: card as unknown as Prisma.InputJsonValue });
 
       return card;
     } catch (error: unknown) {
@@ -105,16 +97,7 @@ export class SmartCardService {
         }
       });
 
-      await this.prisma.auditEntry.create({
-        data: {
-          actorId,
-          module: 'device',
-          action: 'smartcard.updated',
-          resource: 'smartCard',
-          resourceId: card.id,
-          after: card
-        }
-      });
+      await writeAudit(this.prisma, { actorId, module: 'device', action: 'smartcard.updated', resource: 'smartCard', resourceId: card.id, before: exists as unknown as Prisma.InputJsonValue, after: card as unknown as Prisma.InputJsonValue });
 
       return card;
     } catch (error: unknown) {

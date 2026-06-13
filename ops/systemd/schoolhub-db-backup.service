@@ -1,0 +1,13 @@
+[Unit]
+Description=SchoolHub PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=schoolhub
+WorkingDirectory=/opt/schoolhub
+Environment=ROOT_DIR=/opt/schoolhub
+Environment=BACKUP_DIR=/home/schoolhub/backups/database
+Environment=RETENTION_DAYS=14
+ExecStart=/bin/bash /opt/schoolhub/scripts/backup_database.sh

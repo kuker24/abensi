@@ -1,0 +1,57 @@
+package id.sch.man1rokanhulu.absensi.ui.components
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+fun modeLabel(mode: String): String = when (mode) {
+    "GATE_IN" -> "Gerbang Masuk"
+    "GATE_OUT" -> "Gerbang Keluar"
+    "MUSHOLA" -> "Mushola"
+    "CHECK_ONLY" -> "Cek Saja"
+    else -> mode.replace('_', ' ')
+}
+
+fun modeHelp(mode: String): String = when (mode) {
+    "GATE_IN" -> "Untuk siswa/petugas yang masuk area sekolah."
+    "GATE_OUT" -> "Untuk siswa/petugas yang keluar area sekolah."
+    "MUSHOLA" -> "Untuk scan kehadiran mushola."
+    "CHECK_ONLY" -> "Untuk cek QR tanpa mencatat hadir."
+    else -> "Mode scan aktif."
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ModeChipRow(
+    allowedModes: List<String>,
+    currentMode: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val list = allowedModes.ifEmpty { listOf("CHECK_ONLY") }
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        list.forEach { mode ->
+            FilterChip(
+                selected = mode == currentMode,
+                onClick = { onSelect(mode) },
+                label = { Text(modeLabel(mode), style = MaterialTheme.typography.labelLarge) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+        }
+    }
+}

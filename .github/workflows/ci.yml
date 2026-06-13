@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, fix/**]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolhub_test
+          POSTGRES_USER: schoolhub
+          POSTGRES_PASSWORD: schoolhub_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U schoolhub -d schoolhub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_test?schema=public
+      DIRECT_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      JWT_ISSUER: schoolhub-ci
+      JWT_AUDIENCE: schoolhub-web-ci
+      JWT_EXPIRES_IN: 15m
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+      CORS_ORIGIN: http://localhost:5173
+      PUBLIC_APP_ORIGIN: http://localhost:5173
+      WORKER_INTERVAL_MS: 15000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+            apps/worker/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix apps/api
+      - run: npm ci --prefix apps/web
+      - run: npm ci --prefix apps/worker
+      - run: npx prisma format --schema prisma/schema.prisma
+      - run: git diff --exit-code prisma/schema.prisma
+      - run: npx prisma validate --schema prisma/schema.prisma
+      - run: npx prisma generate --schema prisma/schema.prisma
+      - run: npm run typecheck:all
+      - run: npm run lint:all
+      - run: npm run lint --prefix apps/worker
+      - run: npm run test:api
+      - run: npm run test:web
+      - run: npm run build:all
+      - run: npm audit --audit-level=high
+      - run: npm audit --audit-level=moderate --prefix apps/worker
+
+  docker:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      POSTGRES_DB: schoolhub
+      POSTGRES_USER: schoolhub
+      POSTGRES_PASSWORD: ci-compose-password
+      DATABASE_URL: postgresql://schoolhub:ci-compose-password@postgres:5432/schoolhub?schema=public
+      DIRECT_URL: postgresql://schoolhub:ci-compose-password@postgres:5432/schoolhub?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      JWT_ISSUER: schoolhub-ci
+      JWT_AUDIENCE: schoolhub-web-ci
+      JWT_EXPIRES_IN: 15m
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+      CORS_ORIGIN: https://example.invalid
+      PUBLIC_APP_ORIGIN: https://example.invalid
+      WORKER_INTERVAL_MS: 15000
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker-compose.production.yml config
+      - run: docker compose -f docker-compose.production.yml build

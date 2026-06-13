@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateGeofenceDto } from './access-geofence.dto';
+import { writeAudit } from '../../common/audit-log';
 
 @Injectable()
 export class AccessGeofenceService {
@@ -25,7 +27,7 @@ export class AccessGeofenceService {
     });
   }
 
-  async updatePolicy(payload: UpdateGeofenceDto, actorId: string) {
+  async updatePolicy(payload: UpdateGeofenceDto, actorId: string, actorRole?: Role) {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.geofencePolicy.upsert({
         where: { id: 1 },
@@ -36,15 +38,14 @@ export class AccessGeofenceService {
         }
       });
 
-      await tx.auditEntry.create({
-        data: {
-          actorId,
-          module: 'access',
-          action: 'access.geofence.updated',
-          resource: 'geofencePolicy',
-          resourceId: String(updated.id),
-          after: updated
-        }
+      await writeAudit(tx, {
+        actorId,
+        actorRole: actorRole ?? null,
+        module: 'access',
+        action: 'access.geofence.updated',
+        resource: 'geofencePolicy',
+        resourceId: String(updated.id),
+        after: updated as unknown as Prisma.InputJsonValue
       });
 
       return updated;

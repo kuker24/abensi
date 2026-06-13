@@ -1,0 +1,18 @@
+export function AdminDashboard(): JSX.Element;
+export function PicketDashboardPage(): JSX.Element;
+export function ItDashboardPage(): JSX.Element;
+export function SessionsPage(props: { admin?: boolean }): JSX.Element;
+export function HistoryPage(): JSX.Element;
+export function AnomalyPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function MasterDataPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function SchedulePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function DevicesPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function ReportsPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function LiveMonitorPage(): JSX.Element;
+export function SettingsPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function AuditPage(): JSX.Element;
+export function PicketBookPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function TeacherLeavesPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function NotificationsPage(): JSX.Element;
+export function DeveloperControlPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function HelpPage(props: { role?: string }): JSX.Element;

@@ -21,6 +21,13 @@ export class SessionGeoDto {
   lng?: number;
 }
 
+export class CloseSessionDto extends SessionGeoDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  earlyCheckoutReason?: string;
+}
+
 export class AttendanceItemDto {
   @IsString()
   studentId!: string;

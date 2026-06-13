@@ -9,7 +9,7 @@ import { AccessGeofenceService } from './access-geofence.service';
 
 @Controller('access/geofence')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN_TU, Role.OPERATOR_IT)
+@Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER)
 export class AccessGeofenceController {
   constructor(private readonly geofenceService: AccessGeofenceService) {}
 
@@ -19,7 +19,7 @@ export class AccessGeofenceController {
   }
 
   @Put()
-  updatePolicy(@Body() body: UpdateGeofenceDto, @CurrentUser() user: { sub: string }) {
-    return this.geofenceService.updatePolicy(body, user.sub);
+  updatePolicy(@Body() body: UpdateGeofenceDto, @CurrentUser() user: { sub: string; role: Role }) {
+    return this.geofenceService.updatePolicy(body, user.sub, user.role);
   }
 }

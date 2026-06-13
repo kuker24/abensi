@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -18,7 +19,7 @@ import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 import { extractRequestMeta } from '../../common/request-meta';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { EscalateFlagDto, ResolveFlagDto } from './reconciliation.dto';
+import { EscalateFlagDto, ResolveFlagDto, UpdateFlagWorkflowDto } from './reconciliation.dto';
 import { ReconciliationService } from './reconciliation.service';
 
 @Controller()
@@ -27,7 +28,7 @@ export class ReconciliationController {
 
   @Get('reconciliation/flags')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
   listFlags(
     @Query('status') status?: ReconciliationStatus,
     @Query('type') type?: ReconciliationFlagType,
@@ -48,7 +49,7 @@ export class ReconciliationController {
 
   @Post('reconciliation/flags/:id/resolve')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
   resolveFlag(
     @Param('id') flagId: string,
     @Body() body: ResolveFlagDto,
@@ -58,9 +59,21 @@ export class ReconciliationController {
     return this.reconciliationService.resolveFlag(flagId, body.reason, user, extractRequestMeta(request));
   }
 
+  @Patch('reconciliation/flags/:id/workflow')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  updateWorkflow(
+    @Param('id') flagId: string,
+    @Body() body: UpdateFlagWorkflowDto,
+    @CurrentUser() user: { sub: string; role: Role },
+    @Req() request: Request
+  ) {
+    return this.reconciliationService.updateFlagWorkflow(flagId, body, user, extractRequestMeta(request));
+  }
+
   @Post('reconciliation/flags/:id/escalate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
   escalateFlag(
     @Param('id') flagId: string,
     @Body() body: EscalateFlagDto,
@@ -72,11 +85,24 @@ export class ReconciliationController {
 
   @Post('internal/reconciliation/run')
   runInternal(@Headers('x-worker-token') workerToken?: string) {
-    const expected = process.env.WORKER_TOKEN ?? 'worker-dev-token';
-    if (!workerToken || workerToken !== expected) {
+    this.assertWorker(workerToken);
+    return this.reconciliationService.runPendingReconciliation();
+  }
+
+  @Post('internal/sessions/mark-missed')
+  markMissedInternal(@Headers('x-worker-token') workerToken?: string) {
+    this.assertWorker(workerToken);
+    return this.reconciliationService.runAutoMissedSessions();
+  }
+
+  private assertWorker(workerToken?: string) {
+    const expected = process.env.WORKER_TOKEN;
+    if (process.env.NODE_ENV === 'production' && (!expected || expected === 'worker-dev-token')) {
+      throw new ForbiddenException('Worker token production belum aman.');
+    }
+    const finalExpected = expected ?? 'worker-dev-token';
+    if (!workerToken || workerToken !== finalExpected) {
       throw new ForbiddenException('Invalid worker token');
     }
-
-    return this.reconciliationService.runPendingReconciliation();
   }
 }

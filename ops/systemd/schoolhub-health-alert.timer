@@ -1,0 +1,11 @@
+[Unit]
+Description=Run SchoolHub health alert check every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=schoolhub-health-alert.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,17 @@
+{
+  "name": "SchoolHub e-Hadir",
+  "short_name": "e-Hadir",
+  "description": "Absensi digital MAN 1 Rokan Hulu",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07111F",
+  "theme_color": "#0EA5E9",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

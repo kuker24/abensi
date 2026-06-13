@@ -4,13 +4,17 @@ import { parsePagination } from '../../common/pagination';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AuditChainService } from '../security/audit-chain.service';
 import { AuditService } from './audit.service';
 
 @Controller('audit')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN_TU, Role.OPERATOR_IT)
+@Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER)
 export class AuditController {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    private readonly auditChain: AuditChainService
+  ) {}
 
   @Get()
   list(
@@ -22,19 +26,12 @@ export class AuditController {
     @Query('module') module?: string,
     @Query('action') action?: string
   ) {
-    const pagination = parsePagination({
-      page,
-      limit,
-      defaultLimit: 50,
-      maxLimit: 200
-    });
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 200 });
+    return this.auditService.list(pagination, { actorId, from, to, module, action });
+  }
 
-    return this.auditService.list(pagination, {
-      actorId,
-      from,
-      to,
-      module,
-      action
-    });
+  @Get('verify-chain')
+  verifyChain(@Query('limit') limit?: string) {
+    return this.auditChain.verify(limit ? Number(limit) : 10000);
   }
 }
