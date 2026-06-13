@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/current-user.decorator';
@@ -56,6 +56,22 @@ export class AuthController {
     const result = await this.authService.login(body.username, body.password, extractRequestMeta(request), body.expectedRole);
     setAuthCookies(response, result);
     return loginResponse(result);
+  }
+
+  @Get('sso/config')
+  ssoConfig() {
+    const enabled = process.env.SSO_ENABLED === 'true'
+      && Boolean(process.env.WORKOS_CLIENT_ID)
+      && Boolean(process.env.WORKOS_CLIENT_SECRET)
+      && Boolean(process.env.WORKOS_ISSUER)
+      && Boolean(process.env.WORKOS_AUDIENCE)
+      && Boolean(process.env.WORKOS_REDIRECT_URI);
+    return { enabled, provider: enabled ? 'workos' : null };
+  }
+
+  @Post('sso/workos/callback')
+  async workosCallback() {
+    throw new HttpException('SSO WorkOS belum dikonfigurasi pada server.', HttpStatus.SERVICE_UNAVAILABLE);
   }
 
   @Get('csrf')

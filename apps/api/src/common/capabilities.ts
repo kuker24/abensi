@@ -13,6 +13,10 @@ export const CAPABILITIES = [
   'session.open',
   'session.close',
   'gateAttendance.read',
+  'gateAttendance.record',
+  'attendanceOverrides.create',
+  'attendanceOverrides.approve',
+  'attendanceOverrides.revoke',
   'devices.read',
   'devices.manage',
   'reconciliation.read',
@@ -36,7 +40,8 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'schedules.read', 'schedules.manage',
     'classAttendance.read', 'classAttendance.record', 'classAttendance.correct',
     'session.open', 'session.close',
-    'gateAttendance.read',
+    'gateAttendance.read', 'gateAttendance.record',
+    'attendanceOverrides.create', 'attendanceOverrides.approve', 'attendanceOverrides.revoke',
     'devices.read', 'devices.manage',
     'reconciliation.read', 'reconciliation.escalate', 'reconciliation.resolve',
     'settings.read', 'settings.manage',
@@ -46,7 +51,7 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
   ],
   [Role.OPERATOR_IT]: [
     'devices.read', 'devices.manage',
-    'gateAttendance.read',
+    'gateAttendance.read', 'gateAttendance.record',
     'settings.read',
     'audit.read',
     'profile.self.read', 'profile.self.update'
@@ -60,7 +65,7 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
   [Role.GURU_PIKET]: [
     'classAttendance.read',
     'session.open', 'session.close',
-    'gateAttendance.read',
+    'gateAttendance.read', 'gateAttendance.record', 'attendanceOverrides.create',
     'reconciliation.read', 'reconciliation.escalate',
     'reports.read',
     'profile.self.read', 'profile.self.update'

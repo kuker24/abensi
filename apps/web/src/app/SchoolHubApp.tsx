@@ -37,26 +37,10 @@ import { API_BASE, AUTH_EXPIRED_EVENT, apiFetch, defaultPathFor, go, normalizeRo
 import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
+import { WorkOSLoginHandler, WorkOSSSOButton } from './workos-auth';
 import { hasCapability, type Capability } from './capabilities';
 
-const SSO_ENABLED = import.meta.env.VITE_SSO_ENABLED === 'true';
-
-/* SSO stubs — used when VITE_SSO_ENABLED is not 'true' */
-function StubSSOButton(_props: { returnTo?: string }) { return null; }
-function StubLoginHandler() { return null; }
-function stubUseWorkOSAuth() { return { workosUser: null as null, isLoading: false, getAccessToken: null as null, signOut: null as null }; }
-
-let WorkOSSSOButton: typeof StubSSOButton | typeof import('./workos-auth').WorkOSSSOButton = StubSSOButton;
-let WorkOSLoginHandler: typeof StubLoginHandler | typeof import('./workos-auth').WorkOSLoginHandler = StubLoginHandler;
-let useWorkOSAuth: typeof stubUseWorkOSAuth | typeof import('./workos-auth').useWorkOSAuth = stubUseWorkOSAuth;
-
-if (SSO_ENABLED) {
-  void import('./workos-auth').then((m) => {
-    WorkOSSSOButton = m.WorkOSSSOButton;
-    WorkOSLoginHandler = m.WorkOSLoginHandler;
-    useWorkOSAuth = m.useWorkOSAuth;
-  }).catch(() => { /* SSO deps not installed */ });
-}
+const SSO_ENABLED = import.meta.env.VITE_SSO_ENABLED === 'true' && Boolean(import.meta.env.VITE_WORKOS_CLIENT_ID);
 
 
 type Notify = (message: string, type?: string) => void;
@@ -348,7 +332,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode; resetKey: string
   }
 }
 
-function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username: string, password: string) => Promise<void> }) {
+function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: LoginRole, username: string, password: string) => Promise<void>; showSso?: boolean }) {
   const [role, setRoleState] = useState<LoginRole>('guru');
   const [id, setId] = useState(ROLE_PRESETS.guru.id);
   const [pw, setPw] = useState('');
@@ -438,7 +422,7 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
           </Field>
           {err && <div className="inline-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
           <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Masuk <ArrowRight size={14} /></Btn>
-          {SSO_ENABLED && <>
+          {showSso && <>
             <div className="hline" style={{ margin: '20px 0 16px' }} />
             <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
             <WorkOSSSOButton returnTo={defaultPathFor(null)} />
@@ -662,16 +646,11 @@ function App() {
   const [sessionChecked, setSessionChecked] = useState(() => !readStoredUser());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const [backendSsoEnabled, setBackendSsoEnabled] = useState(false);
   const toastIdRef = useRef(0);
 
-  // WorkOS AuthKit integration (only when SSO is enabled)
-  const { workosUser, isLoading: workosLoading, signOut: workosSignOut } = useWorkOSAuth();
-
-  // Sync WorkOS user with app state — DISABLED: requires backend token exchange
-  // WorkOS SSO is not yet integrated with SchoolHub backend auth.
-  // When SSO_ENABLED=true, the SSO button renders but login must go through
-  // backend /auth/sso/workos/callback which maps provider identity to a SchoolHub user.
-  // Creating a local-only user with a hardcoded role is forbidden by product rules.
+  // WorkOS SSO intentionally does not create local users in the browser.
+  // SSO must complete via backend token exchange/callback and /auth/me.
   const notify: Notify = (message, type = 'ok') => {
     const id = ++toastIdRef.current;
     const duration = type === 'bad' ? 8000 : type === 'warn' ? 6000 : 3600;
@@ -681,6 +660,15 @@ function App() {
   const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
   useEffect(() => { const onPop = () => setPath(window.location.pathname === '/' ? '' : window.location.pathname); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark'); }, []);
+  useEffect(() => {
+    if (!SSO_ENABLED) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/auth/sso/config`, { headers: { accept: 'application/json' }, credentials: 'include' })
+      .then((response) => response.ok ? response.json() : { enabled: false })
+      .then((data) => { if (!cancelled) setBackendSsoEnabled(data?.enabled === true); })
+      .catch(() => { if (!cancelled) setBackendSsoEnabled(false); });
+    return () => { cancelled = true; };
+  }, []);
   // Unsaved changes warning — DISABLED: warn only when form state is dirty, not on every page.
   // Individual pages should set dirty state before enabling beforeunload.
   // To re-enable: add formDirty state and check it in the handler.
@@ -756,22 +744,14 @@ function App() {
     setSessionChecked(true);
     setUser(null);
 
-    // Also sign out from WorkOS if user was authenticated via SSO
-    if (SSO_ENABLED && workosUser && workosSignOut) {
-      workosSignOut({ returnTo: window.location.origin + '/login' });
-    } else {
-      go('/login');
-    }
+    go('/login');
   }
   const confirmLayer = <ConfirmDialog dialog={confirmDialog} onCancel={() => { confirmDialog?.resolve(false); setConfirmDialog(null); }} onConfirm={() => { confirmDialog?.resolve(true); setConfirmDialog(null); }} />;
 
-  // Show loading state while WorkOS is checking auth
-  if (workosLoading) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-
   if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : '/login'), 0); return null; }
   if (!sessionChecked && path !== '/login') return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (path === '/login') return <><WorkOSLoginHandler /><LoginScreen onLogin={handleLogin} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (!user) return <LoginScreen onLogin={handleLogin} />;
+  if (path === '/login') return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (!user) return <LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} />;
   const exists = routeExists(path);
   const allowed = exists && canAccessRoute(path, user);
   const screen = (() => {

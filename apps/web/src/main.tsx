@@ -6,30 +6,28 @@ import { App } from './App';
 import './styles.css';
 
 const workosClientId = import.meta.env.VITE_WORKOS_CLIENT_ID;
+const ssoEnabled = import.meta.env.VITE_SSO_ENABLED === 'true' && Boolean(workosClientId);
 
-if (!workosClientId) {
-  console.error('Missing VITE_WORKOS_CLIENT_ID environment variable');
-}
+const app = (
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>
+);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AuthKitProvider
-      clientId={workosClientId}
-      onRedirectCallback={({ state }) => {
-        // Restore app state after authentication redirect
-        if (state?.returnTo) {
-          window.location.href = state.returnTo;
-        }
-      }}
-      onRefreshFailure={({ signIn }) => {
-        // Session expired - prompt re-authentication
-        console.warn('AuthKit session expired, prompting re-authentication');
-        signIn();
-      }}
-    >
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </AuthKitProvider>
+    {ssoEnabled ? (
+      <AuthKitProvider
+        clientId={workosClientId}
+        onRedirectCallback={({ state }) => {
+          if (state?.returnTo) window.location.href = state.returnTo;
+        }}
+        onRefreshFailure={({ signIn }) => {
+          signIn();
+        }}
+      >
+        {app}
+      </AuthKitProvider>
+    ) : app}
   </React.StrictMode>
 );

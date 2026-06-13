@@ -115,6 +115,11 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
   let authExpiredNotified = false;
   if (response.status === 401 && canRefresh) {
     if (await refreshAuth()) {
+      if (isUnsafeMethod(options.method)) {
+        delete headers['x-csrf-token'];
+        const csrfToken = await ensureCsrfToken();
+        if (csrfToken) headers['x-csrf-token'] = csrfToken;
+      }
       response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
     } else {
       notifyAuthExpired();
