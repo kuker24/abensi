@@ -24,7 +24,7 @@ COPY --from=build /workspace/packages /app/packages
 COPY --from=build /workspace/apps/api/node_modules ./node_modules
 COPY --from=build /workspace/apps/api/dist ./dist
 COPY --from=build /workspace/apps/api/package*.json ./
-COPY --from=build /workspace/prisma /app/prisma
+COPY --from=build /workspace/prisma ./prisma
 
 USER node
 EXPOSE 3000
