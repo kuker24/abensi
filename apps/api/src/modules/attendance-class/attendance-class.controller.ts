@@ -4,17 +4,20 @@ import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AttendanceClassService } from './attendance-class.service';
 import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDto } from './attendance-class.dto';
 
 @Controller('attendance/class-sessions')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
 export class AttendanceClassController {
   constructor(private readonly attendanceClassService: AttendanceClassService) {}
 
   @Get()
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.OPERATOR_IT, Role.DEVELOPER)
+  @Capabilities('classAttendance.read')
   listSessions(
     @CurrentUser() user: { sub: string; role: string },
     @Query('date') date?: string,
@@ -33,6 +36,7 @@ export class AttendanceClassController {
 
   @Post(':id/open')
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('session.open')
   openSession(
     @Param('id') sessionId: string,
     @CurrentUser() user: { sub: string; role: string },
@@ -42,7 +46,8 @@ export class AttendanceClassController {
   }
 
   @Put(':id/attendance')
-  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.DEVELOPER)
+  @Capabilities('classAttendance.record')
   recordAttendance(
     @Param('id') sessionId: string,
     @CurrentUser() user: { sub: string; role: string },
@@ -53,6 +58,7 @@ export class AttendanceClassController {
 
   @Post(':id/close')
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('session.close')
   closeSession(
     @Param('id') sessionId: string,
     @CurrentUser() user: { sub: string; role: string },
@@ -63,18 +69,21 @@ export class AttendanceClassController {
 
   @Get(':id/summary')
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.OPERATOR_IT, Role.DEVELOPER)
+  @Capabilities('classAttendance.read')
   summary(@Param('id') sessionId: string, @CurrentUser() user: { sub: string; role: string }) {
     return this.attendanceClassService.summary(sessionId, user);
   }
 
   @Get(':id/roster')
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.OPERATOR_IT, Role.DEVELOPER)
+  @Capabilities('classAttendance.read')
   roster(@Param('id') sessionId: string, @CurrentUser() user: { sub: string; role: string }) {
     return this.attendanceClassService.roster(sessionId, user);
   }
 
   @Patch(':id/attendance/:studentId')
-  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.DEVELOPER)
+  @Capabilities('classAttendance.correct')
   correctAttendance(
     @Param('id') sessionId: string,
     @Param('studentId') studentId: string,

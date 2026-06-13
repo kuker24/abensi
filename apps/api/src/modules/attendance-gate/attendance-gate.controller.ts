@@ -6,27 +6,32 @@ import { extractRequestMeta } from '../../common/request-meta';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CreateAttendanceOverrideDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
+import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 import { AttendanceGateService } from './attendance-gate.service';
 
 @Controller('attendance')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
 @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
 export class AttendanceGateController {
   constructor(private readonly attendanceGateService: AttendanceGateService) {}
 
   @Get('policy')
+  @Capabilities('settings.read')
   getAttendancePolicy() {
     return this.attendanceGateService.getAttendancePolicy();
   }
 
   @Put('policy')
+  @Capabilities('settings.manage')
   updateAttendancePolicy(@Body() body: UpdateAttendancePolicyDto, @CurrentUser() user: { sub: string; role: Role }) {
     return this.attendanceGateService.updateAttendancePolicy(body, user);
   }
 
   @Get('gate/logs')
+  @Capabilities('gateAttendance.read')
   listLogs(
     @Query('date') date?: string,
     @Query('userId') userId?: string,
@@ -44,6 +49,7 @@ export class AttendanceGateController {
   }
 
   @Get('prayer/logs')
+  @Capabilities('gateAttendance.read')
   listPrayerLogs(
     @Query('date') date?: string,
     @Query('studentId') studentId?: string,
@@ -55,11 +61,13 @@ export class AttendanceGateController {
   }
 
   @Post('gate/tap')
+  @Capabilities('gateAttendance.read')
   tap(@Body() body: TapGateDto, @CurrentUser() user: { sub: string; role: Role }) {
     return this.attendanceGateService.tap(body, user);
   }
 
   @Post('qr-scan')
+  @Capabilities('gateAttendance.read')
   qrScan(@Body() body: QrScanDto, @CurrentUser() user: { sub: string; role: Role }) {
     return this.attendanceGateService.qrScan(body, user);
   }
@@ -77,6 +85,24 @@ export class AttendanceGateController {
   @Post('overrides/:id/revoke')
   revokeOverride(@Param('id') id: string, @Body() body: ReviewAttendanceOverrideDto, @CurrentUser() user: { sub: string; role: Role }, @Req() request: Request) {
     return this.attendanceGateService.revokeOverride(id, body, user, extractRequestMeta(request));
+  }
+}
+
+@Controller('device/gate')
+export class DeviceGateEventsController {
+  constructor(private readonly attendanceGateService: AttendanceGateService) {}
+
+  @Post('events')
+  gateEvent(
+    @Body() body: DeviceGateEventDto,
+    @Headers('x-reader-device-id') deviceId: string | undefined,
+    @Req() request: Request
+  ) {
+    return this.attendanceGateService.deviceGateEvent(body, {
+      deviceId,
+      method: request.method,
+      path: request.originalUrl.split('?')[0]
+    });
   }
 }
 

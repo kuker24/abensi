@@ -38,6 +38,7 @@ import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
 import { WorkOSSSOButton, WorkOSLoginHandler, useWorkOSAuth } from './workos-auth';
+import { hasCapability, type Capability } from './capabilities';
 
 
 type Notify = (message: string, type?: string) => void;
@@ -179,6 +180,38 @@ function navKeyForRole(role?: string): NavKey {
   return 'admin';
 }
 
+const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
+  '/admin/dashboard': ['reports.read'],
+  '/admin/it-dashboard': ['devices.read'],
+  '/admin/picket-dashboard': ['reconciliation.read'],
+  '/admin/sessions': ['classAttendance.read'],
+  '/admin/history': ['gateAttendance.read'],
+  '/admin/anomaly': ['reconciliation.read'],
+  '/admin/picket': ['reconciliation.read'],
+  '/admin/master-data': ['users.read', 'academic.read'],
+  '/admin/schedule': ['schedules.read'],
+  '/admin/devices': ['devices.read'],
+  '/admin/reports': ['reports.read'],
+  '/admin/live-monitor': ['gateAttendance.read'],
+  '/admin/settings': ['settings.read'],
+  '/admin/audit': ['audit.read'],
+  '/admin/teacher-leaves': ['schedules.read'],
+  '/admin/notifications': ['profile.self.read'],
+  '/admin/developer-control': ['settings.manage'],
+  '/admin/help': ['profile.self.read'],
+  '/guru/dashboard': ['classAttendance.read'],
+  '/guru/presensi': ['classAttendance.record'],
+  '/guru/koreksi': ['classAttendance.correct'],
+  '/guru/rekap': ['reports.read'],
+  '/guru/izin': ['profile.self.update'],
+  '/guru/kehadiran-saya': ['profile.self.read'],
+  '/guru/notifikasi': ['profile.self.read'],
+  '/guru/panduan': ['profile.self.read'],
+  '/siswa/dashboard': ['profile.self.read'],
+  '/siswa/notifikasi': ['profile.self.read'],
+  '/siswa/panduan': ['profile.self.read']
+};
+
 const ROUTE_ACCESS: Record<string, string[]> = {
   '/admin/dashboard': ['ADMIN_TU', 'DEVELOPER'],
   '/admin/it-dashboard': ['OPERATOR_IT', 'DEVELOPER'],
@@ -213,7 +246,13 @@ const ROUTE_ACCESS: Record<string, string[]> = {
 
 function canAccessRoute(path: string, user: User | null) {
   const allowed = ROUTE_ACCESS[path];
-  return Boolean(user?.role && allowed?.includes(String(user.role)));
+  const requiredCapabilities = ROUTE_CAPABILITIES[path] || [];
+  return Boolean(user?.role && allowed?.includes(String(user.role)) && requiredCapabilities.every((capability) => hasCapability(String(user.role), capability)));
+}
+
+function navItemsForUser(user: User | null): NavItem[] {
+  const role = navKeyForRole(user?.role);
+  return NAV_ITEMS_BY_ROLE[role].filter(([, url]) => canAccessRoute(url, user));
 }
 
 function routeExists(path: string) {
@@ -400,11 +439,11 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
 }
 
 function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: string; onLogout: () => void; isOpen?: boolean; onClose?: () => void }) {
-  const role = navKeyForRole(user?.role);
-  const grouped = useMemo(() => NAV_ITEMS_BY_ROLE[role].reduce<Record<string, NavItem[]>>((acc, item) => {
+  const itemsForUser = useMemo(() => navItemsForUser(user), [user]);
+  const grouped = useMemo(() => itemsForUser.reduce<Record<string, NavItem[]>>((acc, item) => {
     (acc[item[0]] ||= []).push(item);
     return acc;
-  }, {}), [role]);
+  }, {}), [itemsForUser]);
   const handleNav = useCallback((url: string) => { go(url); onClose?.(); }, [onClose]);
   return (
     <aside className={`side${isOpen ? ' side-open' : ''}`} aria-label="Navigasi utama">
@@ -452,10 +491,9 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
 function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: { crumbs: string[]; user: User; onOpenTutorial: () => void; onToggleSidebar: () => void; connection: ConnectionStatus }) {
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
-  const role = navKeyForRole(user?.role);
   const menuItems = useMemo(
-    () => NAV_ITEMS_BY_ROLE[role].map(([section, url, label]) => ({ section, url, label })),
-    [role]
+    () => navItemsForUser(user).map(([section, url, label]) => ({ section, url, label })),
+    [user]
   );
   const normalized = query.trim().toLowerCase();
   const results = useMemo(
@@ -595,8 +633,7 @@ function Unauthorized({ user }: { user: User | null }) {
 }
 
 function NotFound({ user }: { user: User | null }) {
-  const role = navKeyForRole(user?.role);
-  return <div className="content"><PageHead eyebrow="HALAMAN TIDAK DITEMUKAN" title="Menu ini belum tersedia" sub="Alamat yang dibuka tidak terdaftar di e-Hadir. Pilih menu yang tersedia untuk peran Anda." actions={<Btn onClick={() => go(defaultPathFor(user))}><Home size={14} /> Kembali ke dasbor</Btn>} /><Card title="Menu yang bisa Anda buka" sub="Gunakan daftar ini bila bingung mencari halaman."><div className="quick-route-list">{NAV_ITEMS_BY_ROLE[role].map(([, url, label, Ico]) => <button key={url} type="button" onClick={() => go(url)}><Ico size={15} /><span>{label}</span><ChevronRight size={13} /></button>)}</div></Card></div>;
+  return <div className="content"><PageHead eyebrow="HALAMAN TIDAK DITEMUKAN" title="Menu ini belum tersedia" sub="Alamat yang dibuka tidak terdaftar di e-Hadir. Pilih menu yang tersedia untuk peran Anda." actions={<Btn onClick={() => go(defaultPathFor(user))}><Home size={14} /> Kembali ke dasbor</Btn>} /><Card title="Menu yang bisa Anda buka" sub="Gunakan daftar ini bila bingung mencari halaman."><div className="quick-route-list">{navItemsForUser(user).map(([, url, label, Ico]) => <button key={url} type="button" onClick={() => go(url)}><Ico size={15} /><span>{label}</span><ChevronRight size={13} /></button>)}</div></Card></div>;
 }
 
 function App() {
