@@ -2,7 +2,11 @@ import { BadRequestException } from '@nestjs/common';
 import { Role, SessionStatus, TeacherSessionStatus } from '@prisma/client';
 import { AttendanceClassService } from './attendance-class.service';
 
-function makeService(sessionOverrides: Record<string, unknown> = {}, existingPresence: Record<string, unknown> | null = null) {
+function makeService(
+  sessionOverrides: Record<string, unknown> = {},
+  existingPresence: Record<string, unknown> | null = null,
+  geofencePolicy: Record<string, unknown> | null = null
+) {
   const now = new Date();
   const session = {
     id: 'session-1',
@@ -39,7 +43,7 @@ function makeService(sessionOverrides: Record<string, unknown> = {}, existingPre
       findUnique: jest.fn().mockResolvedValue(session)
     },
     geofencePolicy: {
-      findUnique: jest.fn().mockResolvedValue(null)
+      findUnique: jest.fn().mockResolvedValue(geofencePolicy)
     },
     $transaction: jest.fn((callback) => callback(tx))
   } as any;
@@ -48,6 +52,17 @@ function makeService(sessionOverrides: Record<string, unknown> = {}, existingPre
 }
 
 const guru = { sub: 'guru-1', role: Role.GURU_MAPEL };
+const TEST_SCHOOL_LOCATION = { latitude: -6.2, longitude: 106.816666 };
+
+function browserGeo(overrides: Partial<{ latitude: number; longitude: number; accuracyMeter: number; capturedAt: string; source: 'browser_geolocation' }> = {}) {
+  return {
+    ...TEST_SCHOOL_LOCATION,
+    accuracyMeter: 12,
+    capturedAt: new Date().toISOString(),
+    source: 'browser_geolocation' as const,
+    ...overrides
+  };
+}
 
 describe('AttendanceClassService record attendance policy', () => {
   it('menolak presensi siswa di luar roster kelas', async () => {
@@ -69,13 +84,13 @@ describe('AttendanceClassService teacher check-in/out', () => {
   it('mencatat checkInAt saat guru membuka sesi', async () => {
     const { service, tx } = makeService({ status: SessionStatus.SCHEDULED });
 
-    await service.openSession('session-1', guru, { lat: 0.923, lng: 100.31 });
+    await service.openSession('session-1', guru, browserGeo());
 
     expect(tx.teacherSessionPresence.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({
         checkInAt: expect.any(Date),
-        checkInLat: 0.923,
-        checkInLng: 100.31,
+        checkInLat: TEST_SCHOOL_LOCATION.latitude,
+        checkInLng: TEST_SCHOOL_LOCATION.longitude,
         checkInById: 'guru-1',
         status: TeacherSessionStatus.HADIR
       })
@@ -91,13 +106,13 @@ describe('AttendanceClassService teacher check-in/out', () => {
       { id: 'presence-1', status: TeacherSessionStatus.HADIR, checkInAt: new Date(Date.now() - 60 * 60 * 1000) }
     );
 
-    await service.closeSession('session-1', guru, { lat: 0.923, lng: 100.31 });
+    await service.closeSession('session-1', guru, browserGeo());
 
     expect(tx.teacherSessionPresence.upsert).toHaveBeenCalledWith(expect.objectContaining({
       update: expect.objectContaining({
         checkOutAt: expect.any(Date),
-        checkOutLat: 0.923,
-        checkOutLng: 100.31,
+        checkOutLat: TEST_SCHOOL_LOCATION.latitude,
+        checkOutLng: TEST_SCHOOL_LOCATION.longitude,
         checkOutById: 'guru-1',
         earlyCheckoutReason: null
       })
@@ -105,6 +120,30 @@ describe('AttendanceClassService teacher check-in/out', () => {
     expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: 'teacher.session.checkout' })
     }));
+  });
+
+  it('menolak koordinat pembukaan sesi di luar geofence', async () => {
+    const { service } = makeService(
+      { status: SessionStatus.SCHEDULED },
+      null,
+      { enforceSessionOpen: true, allowPicketOverride: true, requireGateTapForOpen: false, centerLat: -6.2, centerLng: 106.816666, radiusMeter: 50 }
+    );
+
+    await expect(service.openSession('session-1', guru, browserGeo({ latitude: -6.3, longitude: 106.9 }))).rejects.toThrow('Di luar area sekolah.');
+  });
+
+  it('menolak koordinat tidak valid dari panggilan API langsung', async () => {
+    const { service } = makeService({ status: SessionStatus.SCHEDULED });
+
+    await expect(service.openSession('session-1', guru, browserGeo({ latitude: 120 }))).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('menolak lokasi stale dan akurasi terlalu rendah', async () => {
+    const { service } = makeService({ status: SessionStatus.SCHEDULED });
+    const stale = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    await expect(service.openSession('session-1', guru, browserGeo({ capturedAt: stale }))).rejects.toThrow('Lokasi sudah kedaluwarsa');
+    await expect(service.openSession('session-1', guru, browserGeo({ accuracyMeter: 1000 }))).rejects.toThrow('Akurasi lokasi terlalu rendah');
   });
 
   it('menolak absen keluar sebelum jam selesai tanpa alasan', async () => {

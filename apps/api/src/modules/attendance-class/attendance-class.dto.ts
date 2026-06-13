@@ -3,9 +3,14 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsISO8601,
+  IsIn,
+  IsLatitude,
+  IsLongitude,
   IsNumber,
   IsOptional,
   IsString,
+  Min,
   MinLength,
   ValidateNested
 } from 'class-validator';
@@ -13,12 +18,28 @@ import { Type } from 'class-transformer';
 
 export class SessionGeoDto {
   @IsOptional()
-  @IsNumber()
-  lat?: number;
+  @Type(() => Number)
+  @IsLatitude()
+  latitude?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsLongitude()
+  longitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
-  lng?: number;
+  @Min(0)
+  accuracyMeter?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  capturedAt?: string;
+
+  @IsOptional()
+  @IsIn(['browser_geolocation'])
+  source?: 'browser_geolocation';
 }
 
 export class CloseSessionDto extends SessionGeoDto {

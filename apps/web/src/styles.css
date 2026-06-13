@@ -1024,6 +1024,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 /* Enhanced search focus */
 .searchbox input:focus-visible { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-glow); background: var(--bg-3); }
 
+.inline-note { display: inline-flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); color: var(--fg-muted); font-size: var(--text-sm); }
+.inline-note.ok { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+.inline-note.bad { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); }
+.inline-note.warn { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
+
 /* ========= print styles ========= */
 @media print {
   *, *::before, *::after { box-shadow: none !important; text-shadow: none !important; animation: none !important; transition: none !important; }

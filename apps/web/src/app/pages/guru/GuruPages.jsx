@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, Wifi, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
 import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, today } from '../../api';
 import { riskConfirm } from '../../confirm';
+import { BrowserGeoError, captureBrowserGeolocation } from '../../geolocation';
 import { useRemote } from '../../hooks';
 import { Avatar, Btn, Card, DataTable, EmptyState, ErrorState, Field, HorizontalBarList, LoadingState, PageHead, RosterProgress, RoleTaskPanel, SelectInput, SimpleHelpBox, StackedBar, StatCardPremium, StatusDonut, StatusPill, StepGuide, TextInput, statusLabel } from '../../ui';
 import { MyAttendancePage } from '../siswa/MyAttendancePage.jsx';
@@ -95,6 +96,7 @@ export function ClassInputPage({ notify }) {
   const [earlyReason, setEarlyReason] = useState('Kelas diakhiri lebih awal atas kondisi yang sudah dicatat.');
   const [nowTick, setNowTick] = useState(Date.now());
   const [actionLoading, setActionLoading] = useState('');
+  const [geoStatus, setGeoStatus] = useState({ tone: 'info', message: 'Lokasi browser akan diminta saat absen masuk dan keluar.' });
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
     return () => clearInterval(timer);
@@ -125,10 +127,17 @@ export function ClassInputPage({ notify }) {
   async function openSession() {
     if (!sessionId) { notify('Pilih sesi terlebih dahulu.', 'warn'); return; }
     setActionLoading('open');
+    setGeoStatus({ tone: 'info', message: 'Meminta izin lokasi akurat dari browser...' });
     try {
-      await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify({ lat: 0.923, lng: 100.31 }) });
+      const location = await captureBrowserGeolocation();
+      setGeoStatus({ tone: 'ok', message: `Lokasi diterima (akurasi ±${Math.round(location.accuracyMeter)} m).` });
+      await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify(location) });
       sessions.refresh(); rosterState.refresh(); notify('Absen masuk guru tercatat. Silakan isi presensi siswa awal pembelajaran.');
-    } catch (error) { notify(error.message || 'Gagal membuka sesi.', 'bad'); } finally { setActionLoading(''); }
+    } catch (error) {
+      const message = error instanceof BrowserGeoError ? error.message : (error.message || 'Gagal membuka sesi.');
+      setGeoStatus({ tone: 'bad', message });
+      notify(message, 'bad');
+    } finally { setActionLoading(''); }
   }
   async function saveBatch() {
     if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
@@ -145,16 +154,24 @@ export function ClassInputPage({ notify }) {
     if (progressPercent < 100 && !await riskConfirm('Masih ada siswa yang belum dicek penuh. Tetap absen keluar dan akhiri kelas?')) return;
     if (!await riskConfirm('Absen keluar dan akhiri kelas? Pastikan presensi siswa awal pembelajaran sudah disimpan.')) return;
     setActionLoading('close');
+    setGeoStatus({ tone: 'info', message: 'Mengambil lokasi keluar kelas dari browser...' });
     try {
-      await apiFetch(`/attendance/class-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ lat: 0.923, lng: 100.31, ...(isEarlyCheckout ? { earlyCheckoutReason: earlyReason } : {}) }) });
+      const location = await captureBrowserGeolocation();
+      setGeoStatus({ tone: 'ok', message: `Lokasi keluar diterima (akurasi ±${Math.round(location.accuracyMeter)} m).` });
+      await apiFetch(`/attendance/class-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ ...location, ...(isEarlyCheckout ? { earlyCheckoutReason: earlyReason } : {}) }) });
       sessions.refresh(); rosterState.refresh(); notify('Absen keluar guru tercatat. Rekonsiliasi akan berjalan otomatis.');
-    } catch (error) { notify(error.message || 'Gagal menutup sesi.', 'bad'); } finally { setActionLoading(''); }
+    } catch (error) {
+      const message = error instanceof BrowserGeoError ? error.message : (error.message || 'Gagal menutup sesi.');
+      setGeoStatus({ tone: 'bad', message });
+      notify(message, 'bad');
+    } finally { setActionLoading(''); }
   }
   return <div className="content teacher-attendance-flow"><PageHead eyebrow="ISI PRESENSI KELAS" title={current ? `${current.subject?.name} · ${current.schoolClass?.code}` : 'Pilih sesi'} sub="Ikuti langkah dari kiri ke kanan agar tidak terlewat." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{s.schoolClass?.code} · {s.subject?.name} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
     <StepGuide title="Urutan kerja guru" steps={['Pilih sesi yang benar.', 'Klik Absen Masuk / Mulai Kelas.', 'Tandai siswa hadir/izin/sakit/telat/alpa.', 'Klik Simpan Presensi Awal.', 'Saat selesai, klik Absen Keluar / Akhiri Kelas.']} />
     <div className="attendance-checkpoint"><div><span className="eyebrow"><span className="dot" /> CHECKPOINT PRESENSI</span><b>{progressPercent}% selesai</b><small>{completedCount}/{roster.length || 0} siswa sudah memiliki status. {isOpen ? 'Sesi sedang bisa diisi.' : 'Buka sesi terlebih dahulu untuk mengubah status.'}</small></div><RosterProgress current={completedCount} total={roster.length} /></div>
     <div className="grid g-4"><StatCardPremium icon={<Clock size={18} />} label="Jam Mulai" value={startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'} sub={teacherPresence?.checkInAt ? `Masuk ${formatDateTime(teacherPresence.checkInAt)}` : 'Guru belum absen masuk'} /><StatCardPremium icon={<DoorOpen size={18} />} label="Jam Selesai" value={endsAt ? endsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'} sub={teacherPresence?.checkOutAt ? `Keluar ${formatDateTime(teacherPresence.checkOutAt)}` : isEarlyCheckout ? 'Belum waktunya keluar' : 'Sudah boleh absen keluar'} tone={isEarlyCheckout ? 'warn' : 'ok'} /><StatCardPremium icon={<Activity size={18} />} label="Status Guru" value={teacherPresence?.status ? statusLabel(teacherPresence.status) : statusLabel(current?.status)} sub="Masuk/keluar kelas" /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Siswa Tercatat" value={roster.length} sub={`${counts.HADIR || 0} hadir · ${counts.ALPA || 0} alpa`} /></div>
     <Card title="Aksi guru" sub="Aksi presensi siswa dipisah dari absen keluar guru agar data awal pembelajaran tidak berubah tanpa sengaja.">
+      <div className={`inline-note ${geoStatus.tone}`} style={{ marginBottom: 12 }}><MapPin size={14} /> {geoStatus.message}</div>
       {isOpen && roster.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>

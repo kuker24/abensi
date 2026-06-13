@@ -41,6 +41,82 @@ function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   return earthRadius * c;
 }
 
+type GeofencePolicyForValidation = {
+  centerLat: number;
+  centerLng: number;
+  radiusMeter: number;
+};
+
+type NormalizedSessionGeo = {
+  latitude: number;
+  longitude: number;
+  accuracyMeter: number;
+  capturedAt: Date;
+  source: 'browser_geolocation';
+  distanceMeter: number | null;
+  insideGeofence: boolean | null;
+};
+
+function numberFromEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  const parsed = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function hasAnyGeo(payload?: SessionGeoDto) {
+  return payload?.latitude !== undefined || payload?.longitude !== undefined || payload?.accuracyMeter !== undefined || payload?.capturedAt !== undefined || payload?.source !== undefined;
+}
+
+function normalizeSessionGeo(payload: SessionGeoDto | undefined, required: boolean, policy?: GeofencePolicyForValidation | null): NormalizedSessionGeo | null {
+  if (!hasAnyGeo(payload)) {
+    if (required) throw new BadRequestException('Koordinat wajib saat geofence aktif.');
+    return null;
+  }
+
+  if (
+    payload?.latitude === undefined ||
+    payload.longitude === undefined ||
+    payload.accuracyMeter === undefined ||
+    !payload.capturedAt ||
+    payload.source !== 'browser_geolocation'
+  ) {
+    throw new BadRequestException('Data lokasi browser tidak lengkap.');
+  }
+
+  if (payload.latitude < -90 || payload.latitude > 90 || payload.longitude < -180 || payload.longitude > 180) {
+    throw new BadRequestException('Koordinat lokasi tidak valid.');
+  }
+
+  const capturedAt = new Date(payload.capturedAt);
+  if (Number.isNaN(capturedAt.getTime())) {
+    throw new BadRequestException('Waktu pengambilan lokasi tidak valid.');
+  }
+
+  const maxAgeSeconds = numberFromEnv('SESSION_GEO_MAX_AGE_SECONDS', 120);
+  const ageMs = Math.abs(Date.now() - capturedAt.getTime());
+  if (ageMs > maxAgeSeconds * 1000) {
+    throw new BadRequestException('Lokasi sudah kedaluwarsa. Ambil ulang lokasi.');
+  }
+
+  const maxAccuracyMeter = numberFromEnv('SESSION_GEO_MAX_ACCURACY_METER', 100);
+  if (payload.accuracyMeter > maxAccuracyMeter) {
+    throw new BadRequestException('Akurasi lokasi terlalu rendah. Coba lagi di area terbuka.');
+  }
+
+  const distanceMeter = policy ? haversineDistanceMeters(policy.centerLat, policy.centerLng, payload.latitude, payload.longitude) : null;
+  const insideGeofence = policy ? distanceMeter !== null && distanceMeter <= policy.radiusMeter : null;
+
+  return {
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    accuracyMeter: payload.accuracyMeter,
+    capturedAt,
+    source: payload.source,
+    distanceMeter,
+    insideGeofence
+  };
+}
+
 function dayBounds(value: Date | string) {
   return jakartaBusinessDayBounds(value);
 }
@@ -209,16 +285,12 @@ export class AttendanceClassService {
       throw new ForbiddenException('Override guru piket sedang dinonaktifkan.');
     }
 
-    if (policy && policy.enforceSessionOpen) {
-      if (geo?.lat === undefined || geo?.lng === undefined) {
-        throw new BadRequestException('Koordinat wajib saat geofence aktif.');
-      }
-      const distance = haversineDistanceMeters(policy.centerLat, policy.centerLng, geo.lat, geo.lng);
-      if (distance > policy.radiusMeter) {
-        throw new ForbiddenException('Di luar area sekolah.');
-      }
+    const validatedGeo = normalizeSessionGeo(geo, Boolean(policy?.enforceSessionOpen), policy);
+    if (policy?.enforceSessionOpen && validatedGeo?.insideGeofence === false) {
+      throw new ForbiddenException('Di luar area sekolah.');
     }
 
+    let gateTapSatisfied: boolean | null = policy?.requireGateTapForOpen ? false : null;
     if (policy?.requireGateTapForOpen) {
       const { start: dayStart, end: dayEnd } = dayBounds(new Date());
 
@@ -236,6 +308,7 @@ export class AttendanceClassService {
       if (!gateTap) {
         throw new ForbiddenException('Guru belum tap gerbang hari ini.');
       }
+      gateTapSatisfied = true;
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -275,8 +348,8 @@ export class AttendanceClassService {
         update: {
           status: teacherStatus,
           checkInAt,
-          checkInLat: geo?.lat ?? null,
-          checkInLng: geo?.lng ?? null,
+          checkInLat: validatedGeo?.latitude ?? null,
+          checkInLng: validatedGeo?.longitude ?? null,
           checkInById: actor.sub,
           checkOutAt: null,
           checkOutLat: null,
@@ -289,8 +362,8 @@ export class AttendanceClassService {
           teacherId: session.teacherId,
           status: teacherStatus,
           checkInAt,
-          checkInLat: geo?.lat ?? null,
-          checkInLng: geo?.lng ?? null,
+          checkInLat: validatedGeo?.latitude ?? null,
+          checkInLng: validatedGeo?.longitude ?? null,
           checkInById: actor.sub
         }
       });
@@ -302,7 +375,22 @@ export class AttendanceClassService {
         action: 'teacher.session.checkin',
         resource: 'teacherSessionPresence',
         resourceId: teacherPresence.id,
-        after: { sessionId, teacherId: session.teacherId, checkInAt, status: teacherStatus, lat: geo?.lat ?? null, lng: geo?.lng ?? null }
+        after: {
+          sessionId,
+          teacherId: session.teacherId,
+          checkInAt,
+          status: teacherStatus,
+          latitude: validatedGeo?.latitude ?? null,
+          longitude: validatedGeo?.longitude ?? null,
+          accuracyMeter: validatedGeo?.accuracyMeter ?? null,
+          capturedAt: validatedGeo?.capturedAt.toISOString() ?? null,
+          source: validatedGeo?.source ?? null,
+          distanceMeter: validatedGeo?.distanceMeter ?? null,
+          insideGeofence: validatedGeo?.insideGeofence ?? null,
+          geofenceEnforced: Boolean(policy?.enforceSessionOpen),
+          gateTapRequired: Boolean(policy?.requireGateTapForOpen),
+          gateTapSatisfied
+        }
       });
       await writeAudit(tx, {
         actorId: actor.sub,
@@ -442,6 +530,7 @@ export class AttendanceClassService {
       throw new BadRequestException('Sesi tidak dalam status OPEN.');
     }
 
+    const closeGeo = normalizeSessionGeo(payload, false, null);
     const now = new Date();
     const isEarlyCheckout = now.getTime() < session.endsAt.getTime();
     const earlyCheckoutReason = payload.earlyCheckoutReason?.trim();
@@ -491,8 +580,8 @@ export class AttendanceClassService {
         update: {
           status: teacherStatus,
           checkOutAt: now,
-          checkOutLat: payload.lat ?? null,
-          checkOutLng: payload.lng ?? null,
+          checkOutLat: closeGeo?.latitude ?? null,
+          checkOutLng: closeGeo?.longitude ?? null,
           checkOutById: actor.sub,
           earlyCheckoutReason: isEarlyCheckout ? earlyCheckoutReason : null
         },
@@ -501,8 +590,8 @@ export class AttendanceClassService {
           teacherId: session.teacherId,
           status: teacherStatus,
           checkOutAt: now,
-          checkOutLat: payload.lat ?? null,
-          checkOutLng: payload.lng ?? null,
+          checkOutLat: closeGeo?.latitude ?? null,
+          checkOutLng: closeGeo?.longitude ?? null,
           checkOutById: actor.sub,
           earlyCheckoutReason: isEarlyCheckout ? earlyCheckoutReason : null
         }
@@ -522,8 +611,14 @@ export class AttendanceClassService {
           checkOutAt: now,
           durationMinutes: durationMinutes(teacherPresence.checkInAt, teacherPresence.checkOutAt),
           earlyCheckout: isEarlyCheckout,
-          lat: payload.lat ?? null,
-          lng: payload.lng ?? null
+          latitude: closeGeo?.latitude ?? null,
+          longitude: closeGeo?.longitude ?? null,
+          accuracyMeter: closeGeo?.accuracyMeter ?? null,
+          capturedAt: closeGeo?.capturedAt.toISOString() ?? null,
+          source: closeGeo?.source ?? null,
+          distanceMeter: closeGeo?.distanceMeter ?? null,
+          insideGeofence: closeGeo?.insideGeofence ?? null,
+          geofenceEnforced: false
         }
       });
       await writeAudit(tx, {
