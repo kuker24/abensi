@@ -219,7 +219,14 @@ export class AuthService {
     if (!await bcrypt.compare(currentPassword, user.passwordHash)) throw publicLoginError();
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false } });
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false, sessionVersion: { increment: 1 } }
+      });
+      const revoked = await tx.authSession.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'password-change' }
+      });
       await writeAudit(tx, {
         actorId: userId,
         actorRole,
@@ -229,7 +236,7 @@ export class AuthService {
         resourceId: userId,
         requestIp: meta.requestIp ?? null,
         requestDevice: meta.requestDevice ?? null,
-        after: { passwordChanged: true }
+        after: { passwordChanged: true, sessionsRevoked: revoked.count }
       });
     });
     return { ok: true };

@@ -60,7 +60,8 @@ export class AuthController {
 
   @Get('sso/config')
   ssoConfig() {
-    const enabled = process.env.SSO_ENABLED === 'true'
+    const enabled = process.env.SSO_IMPLEMENTATION_READY === 'true'
+      && process.env.SSO_ENABLED === 'true'
       && Boolean(process.env.WORKOS_CLIENT_ID)
       && Boolean(process.env.WORKOS_CLIENT_SECRET)
       && Boolean(process.env.WORKOS_ISSUER)
@@ -99,9 +100,12 @@ export class AuthController {
   async changePassword(
     @CurrentUser() user: { sub: string; role: Role },
     @Body() body: ChangePasswordDto,
-    @Req() request: Request
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
   ) {
-    return this.authService.changePassword(user.sub, user.role, body.currentPassword, body.newPassword, extractRequestMeta(request));
+    const result = await this.authService.changePassword(user.sub, user.role, body.currentPassword, body.newPassword, extractRequestMeta(request));
+    clearAuthCookies(response);
+    return result;
   }
 
   @Post('logout')

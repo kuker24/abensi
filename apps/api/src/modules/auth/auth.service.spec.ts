@@ -3,12 +3,13 @@ import { Role } from '@prisma/client';
 import { AuthService } from './auth.service';
 
 jest.mock('bcryptjs', () => ({
-  compare: jest.fn(async () => true)
+  compare: jest.fn(async () => true),
+  hash: jest.fn(async () => 'new-password-hash')
 }));
 
 function makeService() {
   const prisma: any = {
-    user: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn(), update: jest.fn() },
     authSession: { create: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
     $transaction: jest.fn(async (fn: any) => fn(prisma)),
     auditEntry: {
@@ -96,6 +97,39 @@ describe('AuthService role-aware login', () => {
     });
     expect(prisma.auditEntry.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: 'auth.refresh.reuse_detected', resourceId: 'old-session' })
+    });
+  });
+
+  it('changes password atomically, revokes active sessions, and writes audit', async () => {
+    const { prisma, service } = makeService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'u1',
+      username: 'guru',
+      fullName: 'Guru Mapel',
+      role: Role.GURU_MAPEL,
+      active: true,
+      passwordHash: 'old-hash'
+    });
+    prisma.authSession.updateMany.mockResolvedValue({ count: 3 });
+
+    await expect(service.changePassword('u1', Role.GURU_MAPEL, 'Old#123456', 'New#123456')).resolves.toEqual({ ok: true });
+
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'u1' },
+      data: {
+        passwordHash: 'new-password-hash',
+        passwordChangedAt: expect.any(Date),
+        mustChangePassword: false,
+        sessionVersion: { increment: 1 }
+      }
+    });
+    expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', revokedAt: null },
+      data: { revokedAt: expect.any(Date), revokedReason: 'password-change' }
+    });
+    expect(prisma.auditEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'auth.password.changed', resourceId: 'u1' })
     });
   });
 });

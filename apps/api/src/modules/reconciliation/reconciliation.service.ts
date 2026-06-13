@@ -332,15 +332,17 @@ export class ReconciliationService {
         }
       });
 
-      await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.session.update({
-          where: { id: session.id },
+      const markedMissed = await this.prisma.$transaction(async (tx) => {
+        const updateResult = await tx.session.updateMany({
+          where: { id: session.id, status: SessionStatus.SCHEDULED },
           data: {
             status: SessionStatus.MISSED,
             closedAt: new Date(),
             reconciledAt: null
           }
         });
+
+        if (updateResult.count !== 1) return false;
 
         await tx.teacherSessionPresence.upsert({
           where: { sessionId_teacherId: { sessionId: session.id, teacherId: session.teacherId } },
@@ -359,7 +361,7 @@ export class ReconciliationService {
           resource: 'session',
           resourceId: session.id,
           after: {
-            status: updated.status,
+            status: SessionStatus.MISSED,
             teacherId: session.teacherId,
             classCode: session.schoolClass.code,
             subjectName: session.subject.name,
@@ -376,7 +378,13 @@ export class ReconciliationService {
             href: '/admin/sessions'
           }))
         });
+        return true;
       });
+
+      if (!markedMissed) {
+        processed.push({ sessionId: session.id, skipped: true, reason: 'SESSION_STATE_CONFLICT' });
+        continue;
+      }
 
       const reconciliation = await this.reconcileSession(session.id, actorId);
       processed.push({ sessionId: session.id, approvedLeave: Boolean(approvedLeave), reconciliation });

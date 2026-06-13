@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
@@ -41,18 +41,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       issuer: process.env.JWT_ISSUER || 'schoolhub-ehadir-dev',
       audience: process.env.JWT_AUDIENCE || 'schoolhub-ehadir-web',
       algorithms: ['HS256'],
-      passReqToCallback: false
+      passReqToCallback: true
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(request: Request, payload: JwtPayload) {
     if (!payload.jti) {
       throw new UnauthorizedException('Token tidak memiliki identitas sesi yang valid.');
     }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, username: true, role: true, active: true, sessionVersion: true }
+      select: { id: true, username: true, role: true, active: true, sessionVersion: true, mustChangePassword: true }
     });
 
     if (!user || !user.active) {
@@ -70,6 +70,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
     }
 
-    return { sub: user.id, username: user.username, role: user.role, sessionId: payload.sid ?? null };
+    const allowedWhilePasswordChangeRequired = [
+      '/auth/me',
+      '/auth/csrf',
+      '/auth/refresh',
+      '/auth/change-password',
+      '/auth/logout',
+      '/auth/logout-all'
+    ];
+    const requestPath = request.path.replace(/^\/api\/v\d+/, '');
+    if (user.mustChangePassword && !allowedWhilePasswordChangeRequired.includes(requestPath)) {
+      throw new ForbiddenException({ code: 'PASSWORD_CHANGE_REQUIRED', message: 'Password wajib diganti sebelum mengakses fitur lain.' });
+    }
+
+    return { sub: user.id, username: user.username, role: user.role, sessionId: payload.sid ?? null, mustChangePassword: user.mustChangePassword };
   }
 }
