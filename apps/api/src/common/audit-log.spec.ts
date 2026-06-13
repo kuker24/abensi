@@ -26,4 +26,26 @@ describe('writeAudit synthetic actors', () => {
       })
     }));
   });
+
+  it('mengambil PostgreSQL advisory transaction lock sebelum menghitung hash chain', async () => {
+    const lock = jest.fn().mockResolvedValue([]);
+    const create = jest.fn().mockResolvedValue({ id: 'audit-1' });
+    const findUnique = jest.fn().mockResolvedValue({ id: 1, lastHash: 'prev', lastEntryId: 'audit-0' });
+    const client: any = {
+      $queryRawUnsafe: lock,
+      auditEntry: { create },
+      auditChainState: { findUnique, upsert: jest.fn() }
+    };
+
+    await writeAudit(client, {
+      actorId: 'user-1',
+      actorRole: Role.ADMIN_TU,
+      action: 'test.audit.locked',
+      resource: 'test',
+      resourceId: 'r1'
+    });
+
+    expect(lock).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(389551911)');
+    expect(lock.mock.invocationCallOrder[0]).toBeLessThan(findUnique.mock.invocationCallOrder[0]);
+  });
 });

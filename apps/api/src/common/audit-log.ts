@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson, canonicalize } from '../modules/security/canonical-json';
 
 type AuditClient = {
+  $queryRawUnsafe?: (query: string) => Promise<unknown>;
   auditEntry: {
     create: (args: { data: Prisma.AuditEntryUncheckedCreateInput }) => Promise<unknown>;
     findMany?: (args: { where?: Prisma.AuditEntryWhereInput; orderBy?: Prisma.AuditEntryOrderByWithRelationInput; take?: number }) => Promise<Array<{ id: string; entryHash: string | null; createdAt: Date }>>;
@@ -72,7 +73,14 @@ function normalizeActorForAudit(payload: AuditLogInput) {
   };
 }
 
+async function lockAuditChain(client: AuditClient) {
+  if (client.$queryRawUnsafe) {
+    await client.$queryRawUnsafe('SELECT pg_advisory_xact_lock(389551911)');
+  }
+}
+
 export async function writeAudit(client: AuditClient, payload: AuditLogInput) {
+  await lockAuditChain(client);
   const module = inferModule(payload.action, payload.module);
   const before = normalizeJson(payload.before);
   const after = normalizeJson(payload.after);
