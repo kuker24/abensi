@@ -784,7 +784,7 @@ function App() {
   if (!sessionChecked && path !== '/login') return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (path === '/login') return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!user) return <LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} />;
-  if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { const next = { ...user, mustChangePassword: false }; localStorage.setItem(USER_KEY, JSON.stringify(next)); setUser(next); notify('Password berhasil diganti.', 'ok'); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { localStorage.removeItem(USER_KEY); setSessionChecked(true); setUser(null); notify('Password berhasil diganti. Silakan masuk kembali.', 'ok'); go('/login'); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   const exists = routeExists(path);
   const allowed = exists && canAccessRoute(path, user);
   const screen = (() => {

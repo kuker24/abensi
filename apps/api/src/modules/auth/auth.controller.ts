@@ -60,19 +60,12 @@ export class AuthController {
 
   @Get('sso/config')
   ssoConfig() {
-    const enabled = process.env.SSO_IMPLEMENTATION_READY === 'true'
-      && process.env.SSO_ENABLED === 'true'
-      && Boolean(process.env.WORKOS_CLIENT_ID)
-      && Boolean(process.env.WORKOS_CLIENT_SECRET)
-      && Boolean(process.env.WORKOS_ISSUER)
-      && Boolean(process.env.WORKOS_AUDIENCE)
-      && Boolean(process.env.WORKOS_REDIRECT_URI);
-    return { enabled, provider: enabled ? 'workos' : null };
+    return { enabled: false, provider: null, code: 'SSO_NOT_IMPLEMENTED' };
   }
 
   @Post('sso/workos/callback')
   async workosCallback() {
-    throw new HttpException('SSO WorkOS belum dikonfigurasi pada server.', HttpStatus.SERVICE_UNAVAILABLE);
+    throw new HttpException({ code: 'SSO_NOT_IMPLEMENTED', message: 'SSO WorkOS belum tersedia.' }, HttpStatus.NOT_IMPLEMENTED);
   }
 
   @Get('csrf')
