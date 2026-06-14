@@ -11,8 +11,11 @@ coverage/
 .DS_Store
 *.log
 apps/android-reader/.gradle/
+apps/android-reader/local.properties
 apps/android-reader/**/build/
 apps/android-reader/**/*.apk
+apps/android-reader/**/*.aab
+apps/android-reader/output/
 tools/apk-builder/.venv/
 tools/apk-builder/**/__pycache__/
 tools/apk-builder/.pytest_cache/
