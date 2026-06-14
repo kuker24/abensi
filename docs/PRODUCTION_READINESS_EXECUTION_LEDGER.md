@@ -58,8 +58,53 @@ Last refreshed: 2026-06-14
 - 2026-06-14: CI runs `27499654705` and `27499803893` exposed full-stack API path/base URL and CSRF/login path behavior; commits `77475eb`, `f0536f7`, and `64569cf` added CSRF regression coverage and normalized Playwright request paths/base URL.
 - 2026-06-14: Split CI PR run `27500077999` at `64569cf379bf078d4ead118519bb5fbe0195457d` passed all jobs: validate, android, docker, codeql, postgres-integration, upgrade-migrations, security-supply-chain, web-quality-gates, full-stack-e2e, backup-restore-drill.
 
+## Mandatory second-pass execution scope
+
+Started after owner escalation on 2026-06-14 from protected baseline head `91beb9303fd0b837325b20196a9b39279eda203c`.
+
+Protection checks completed before work resumed:
+
+- Branch: `fix/full-production-readiness`.
+- PR: #2, open, not draft, same branch/head.
+- Local branch fast-forwarded to `origin/fix/full-production-readiness`.
+- Minimum known head `91beb9303fd0b837325b20196a9b39279eda203c` verified as current/ancestor.
+- Working tree was clean.
+- No replacement PR, no push to `main`, no merge, and no auto-merge.
+
+### Second-pass phase tracker
+
+| Step | Scope | Status | Evidence requirements before PASS |
+| --- | --- | --- | --- |
+| 2 | Execution ledger update plan | PASS | Ledger records protected baseline, all mandatory implementation steps, phase-specific evidence requirements, and final evidence rules. |
+| 3 | Enrollment period semantics | TODO | Corrective migration, domain-service changes, unit tests, real PostgreSQL semantic/concurrency tests. |
+| 4 | Remove silent SessionRoster recapture | TODO | No implicit recapture outside scheduled open; audited repair with reason/evidence; flow tests and FK rejection proof. |
+| 5 | Real upgrade migration fixtures | TODO | Isolated DB per scenario, legacy cutoff migration, populated fixtures, exact pass/abort assertions, archive/audit/constraint checks. |
+| 6 | Deterministic PostgreSQL concurrency matrix | TODO | Transaction barriers and final DB/audit assertions for all requested race scenarios. |
+| 7 | Transactional outbox + live SSE | TODO | Same-transaction outbox writes, publisher claim/retry/DLQ, Redis fan-out, durable resume, distributed tests. |
+| 8 | Worker security fail-closed | TODO | Constant-time signed requests, Redis-mandatory nonce in production, cross-replica/retry/DLQ/readiness tests. |
+| 9 | Expanded real full-stack E2E | TODO | Real API/web/PostgreSQL/Redis/cookies/CSRF/TLS coverage; no localStorage auth seeding. |
+| 10 | True visual regression | TODO | Playwright screenshot baselines committed, pixel-diff assertions, expected/actual/diff artifacts. |
+| 11 | Complete accessibility | TODO | WCAG 2.2 AA critical/serious zero coverage for major pages/states plus authenticated flows. |
+| 12 | Typed React router registry | TODO | Single typed registry drives routes/nav/titles/guards/breadcrumbs/errors; route behavior tests. |
+| 13 | Real supply-chain gates | TODO | Git-history secrets, production image scans, Node/container/Android SBOMs, Android security/static scans, expiring risk acceptance. |
+| 14 | Mandatory CI TLS fixture | TODO | Local CA/cert, actual reverse proxy HTTPS, secure cookies, CSRF, SSE, HSTS, trusted proxy, no internal exposure. |
+| 15 | Backup/restore, performance, observability | TODO | Meaningful seeded encrypted restore drill, record/constraint/index/audit verification, perf thresholds, logs/metrics/runbooks. |
+| 16 | Mandatory CI restructuring | TODO | Required jobs for every listed gate with no placeholders/skips. |
+| 17 | Validation loop | TODO | Targeted local validation, pushed commits, final GitHub Actions green run, all failures fixed by root cause. |
+| 18 | Final evidence and PR | TODO | Evidence and PR body updated to exact final SHA/run/results; qualified reviewer requested. |
+| 19 | Final report | TODO | Full inventory of implementation, tests, scans, artifacts, CI, reviewers, risks, and final status. |
+
+### Evidence rules for second pass
+
+- A phase is not PASS if the implementation is TODO-only, file-existence-only, marker-only, mocked where real PostgreSQL/Redis/TLS is required, or if a CI job name overstates its coverage.
+- All corrective database changes must be additive; deployed migrations must not be rewritten.
+- Every bug fix must have a regression test in the same logical phase.
+- Concurrency evidence must use deterministic transaction barriers, not `Promise.all` alone.
+- Full-stack evidence must use real cookies/CSRF and must not seed authentication through localStorage.
+- Final status can only be **READY FOR HUMAN REVIEW** or **NOT READY FOR MERGE**.
+
 ## Current stop condition
 
-- CI is green for the implemented gates.
+- CI is green for the previously implemented gates, but the owner has identified remaining placeholder/smoke-only coverage.
 - PR #2 remains unmerged.
-- Final recommendation remains **NOT READY FOR MERGE** until remaining non-CI scope gaps are closed or explicitly accepted by the owner.
+- Final recommendation remains **NOT READY FOR MERGE** until all mandatory second-pass implementation and validation gates above are real, green, evidenced at the exact final head, and a qualified technical reviewer is requested.
