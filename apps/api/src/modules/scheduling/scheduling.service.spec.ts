@@ -4,9 +4,11 @@ import { SchedulingService } from './scheduling.service';
 
 function makePrisma() {
   const tx = {
+    $queryRaw: jest.fn(async () => [{ id: 'generated-1' }]),
     session: {
       create: jest.fn(async ({ data }) => ({ id: 'session-1', ...data })),
       findFirst: jest.fn(),
+      findMany: jest.fn(async () => [{ id: 'generated-1', startsAt: new Date('2026-06-14T00:15:00.000Z') }]),
       findUnique: jest.fn(),
       update: jest.fn()
     },
@@ -118,6 +120,44 @@ describe('SchedulingService timezone handling', () => {
         effectiveFrom: new Date('2026-06-13T17:00:00.000Z'),
         effectiveTo: new Date('2026-06-29T17:00:00.000Z')
       })
+    });
+  });
+
+  it('generates weekly sessions with one PostgreSQL-safe insert and no aborted-transaction lookup', async () => {
+    const { prisma, tx } = makePrisma();
+    const service = new SchedulingService(prisma as any);
+    prisma.weeklySchedule.findUnique.mockResolvedValue({
+      id: 'weekly-1',
+      active: true,
+      classId: 'class-1',
+      subjectId: 'subject-1',
+      teacherId: 'teacher-1',
+      roomId: 'room-1',
+      dayOfWeek: 0,
+      startTime: '07:15',
+      endTime: '08:45',
+      effectiveFrom: new Date('2026-06-13T17:00:00.000Z'),
+      effectiveTo: null
+    });
+
+    const result = await service.generateSessionsFromWeeklySchedule('weekly-1', {
+      from: '2026-06-14',
+      to: '2026-06-14'
+    }, 'actor-1');
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.session.create).not.toHaveBeenCalled();
+    expect(tx.session.findFirst).not.toHaveBeenCalled();
+    expect(tx.session.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ weeklyScheduleId: 'weekly-1' })
+    }));
+    expect(result).toMatchObject({
+      generatedCount: 1,
+      skippedCount: 0,
+      generatedIds: ['generated-1'],
+      skippedIds: [],
+      requestedRange: { from: '2026-06-14', to: '2026-06-14' },
+      scheduleId: 'weekly-1'
     });
   });
 });
