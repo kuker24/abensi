@@ -29,6 +29,7 @@ akun_beta.txt
 
 # Local/CI generated artifacts
 artifacts/
+apps/api/.prisma-generate/
 
 # Local Playwright artifacts
 apps/web/test-results/

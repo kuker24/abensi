@@ -73,7 +73,7 @@ jobs:
       - run: npx prisma format --schema prisma/schema.prisma
       - run: git diff --exit-code prisma/schema.prisma
       - run: npx prisma validate --schema prisma/schema.prisma
-      - run: npx prisma generate --schema prisma/schema.prisma
+      - run: npm run prisma:generate
       - run: npx prisma migrate deploy --schema prisma/schema.prisma
       - run: npm run audit:preflight-chain -- --json=artifacts/audit/audit-chain-preflight-after-migrate.json
       - run: npm run audit:verify-chain
@@ -242,7 +242,7 @@ jobs:
             apps/web/package-lock.json
             apps/worker/package-lock.json
       - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web && npm ci --prefix apps/worker
-      - run: npx prisma generate --schema prisma/schema.prisma
+      - run: npm run prisma:generate
       - run: npx prisma migrate deploy --schema prisma/schema.prisma
       - run: npm run preflight:production -- --json=artifacts/preflight/production-readiness-preflight.json --write-sql-table
       - run: npm run test:integration -- --json=artifacts/integration/postgres-integration.json

@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma && npm run prisma:generate --prefix apps/api",
     "prisma:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "build:all": "npm run build --prefix apps/api && npm run build --prefix apps/web",

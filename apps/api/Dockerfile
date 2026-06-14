@@ -9,9 +9,9 @@ RUN npm ci
 
 COPY apps/api ./
 COPY prisma ../../prisma
+COPY scripts ../../scripts
 
-RUN npx prisma generate --schema ../../prisma/schema.prisma
-RUN mkdir -p ../../node_modules && cp -a node_modules/@prisma ../../node_modules/ && cp -a node_modules/.prisma ../../node_modules/
+RUN npm run prisma:generate
 RUN npm run build
 
 FROM node:20-bookworm-slim

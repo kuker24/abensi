@@ -31,7 +31,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `cd ../.. && npx prisma generate --schema prisma/schema.prisma && (cd apps/api && npx prisma generate --schema ../../prisma/schema.prisma) && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:migrate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:seed && PORT=${apiPort} CORS_ORIGIN=${webOrigin} PUBLIC_APP_ORIGIN=${webOrigin} npm run start:dev --prefix apps/api`,
+      command: `cd ../.. && npm run prisma:generate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:migrate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:seed && PORT=${apiPort} CORS_ORIGIN=${webOrigin} PUBLIC_APP_ORIGIN=${webOrigin} npm run start:dev --prefix apps/api`,
       url: `${apiOrigin}/health/live`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000
