@@ -8,6 +8,7 @@ const apiPort = Number(process.env.FULL_STACK_API_PORT ?? 3000);
 const webPort = Number(process.env.FULL_STACK_WEB_PORT ?? 4174);
 const apiOrigin = `http://127.0.0.1:${apiPort}`;
 const webOrigin = `http://127.0.0.1:${webPort}`;
+const workerToken = process.env.FULL_STACK_WORKER_TOKEN ?? 'full-stack-worker-token-with-redis-nonce-32chars';
 
 export default defineConfig({
   testDir: './e2e-full-stack',
@@ -31,7 +32,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `cd ../.. && npm run prisma:generate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:migrate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:seed && PORT=${apiPort} CORS_ORIGIN=${webOrigin} PUBLIC_APP_ORIGIN=${webOrigin} npm run start:dev --prefix apps/api`,
+      command: `cd ../.. && npm run prisma:generate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:migrate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:seed && PORT=${apiPort} CORS_ORIGIN=${webOrigin} PUBLIC_APP_ORIGIN=${webOrigin} WORKER_TOKEN=${workerToken} WORKER_REQUIRE_SIGNATURE=true WORKER_REQUIRE_DISTRIBUTED_NONCE=true npm run start:dev --prefix apps/api`,
       url: `${apiOrigin}/api/v1/health/live`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000
