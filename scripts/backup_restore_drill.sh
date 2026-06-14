@@ -19,4 +19,33 @@ psql "$RESTORE_PG_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCA
 openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_PASSPHRASE -in "$backup" | gunzip | psql "$RESTORE_PG_URL" -v ON_ERROR_STOP=1 >/dev/null
 RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" DATABASE_URL="$RESTORE_DATABASE_URL" npm run audit:verify-chain
 DATABASE_URL="$RESTORE_DATABASE_URL" npm run verify:post-migration -- --json=artifacts/backup-restore/post-restore-verify.json
-printf '{"ok":true,"backup":"%s"}\n' "$backup" > artifacts/backup-restore/result.json
+integrity_json="$(psql "$RESTORE_PG_URL" -tAc "select json_build_object(
+  'users', (select count(*) from \"User\"),
+  'sessions', (select count(*) from \"Session\"),
+  'gateLogs', (select count(*) from \"GateLog\"),
+  'auditEntries', (select count(*) from \"AuditEntry\"),
+  'sessionRoster', (select count(*) from \"SessionRoster\"),
+  'outboxEvents', (select count(*) from \"OutboxEvent\"),
+  'classEnrollmentOverlapConstraint', exists(select 1 from pg_constraint where conname = 'ClassEnrollment_student_no_overlap_excl'),
+  'sessionRosterAttendanceFk', exists(select 1 from pg_constraint where conname = 'StudentAttendance_session_roster_fkey'),
+  'outboxStatusIndex', exists(select 1 from pg_indexes where indexname = 'OutboxEvent_status_lockedAt_createdAt_idx'),
+  'auditSequenceIndex', exists(select 1 from pg_indexes where indexname = 'AuditEntry_actorId_chainSequence_key')
+)::text;")"
+printf '%s\n' "$integrity_json" > artifacts/backup-restore/restore-integrity.json
+node <<'NODE' "$integrity_json"
+const data = JSON.parse(process.argv[1]);
+const requireSeeded = process.env.BACKUP_RESTORE_REQUIRE_SEEDED === 'true';
+const requiredChecks = ['classEnrollmentOverlapConstraint', 'sessionRosterAttendanceFk', 'outboxStatusIndex'];
+const missingChecks = requiredChecks.filter((key) => data[key] !== true);
+const seededFailures = [];
+if (requireSeeded) {
+  for (const [key, min] of Object.entries({ users: 5, sessions: 1, gateLogs: 1, auditEntries: 1, sessionRoster: 1 })) {
+    if (Number(data[key] || 0) < min) seededFailures.push(`${key}<${min}`);
+  }
+}
+if (missingChecks.length || seededFailures.length) {
+  console.error(JSON.stringify({ ok: false, missingChecks, seededFailures, data }, null, 2));
+  process.exit(1);
+}
+NODE
+printf '{"ok":true,"backup":"%s","integrity":%s}\n' "$backup" "$integrity_json" > artifacts/backup-restore/result.json

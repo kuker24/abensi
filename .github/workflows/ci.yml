@@ -516,6 +516,10 @@ jobs:
       JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
       WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
       READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+      ADMIN_PASSWORD: Admin#12345678
+      DEFAULT_USER_PASSWORD: User#12345678
+      DEVELOPER_PASSWORD: Dev#12345678
+      BACKUP_RESTORE_REQUIRE_SEEDED: 'true'
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -525,6 +529,7 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - run: npm run prisma:seed
       - run: psql postgresql://schoolhub:schoolhub_test_password@localhost:5432/postgres -c 'CREATE DATABASE schoolhub_restore;'
       - run: npm run ops:backup-restore-drill
       - if: always()

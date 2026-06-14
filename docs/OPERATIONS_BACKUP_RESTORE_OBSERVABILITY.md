@@ -15,7 +15,7 @@ BACKUP_ENCRYPTION_PASSPHRASE=... \
 npm run ops:backup-restore-drill
 ```
 
-The drill restores into a fresh schema, then runs `audit:verify-chain` and `verify:post-migration`.
+The drill restores into a fresh schema, then runs `audit:verify-chain`, `verify:post-migration`, and restore-integrity assertions for key record counts, `SessionRoster`/attendance FK integrity, enrollment overlap constraints, and outbox publish indexes. CI sets `BACKUP_RESTORE_REQUIRE_SEEDED=true` after running the production seed so an empty database cannot pass the drill.
 
 ## RPO/RTO
 
@@ -44,7 +44,15 @@ Worker health is written as JSON to `WORKER_HEALTH_FILE` and includes queue coun
 Run:
 
 ```bash
-BASE_URL=https://ehadir.example.sch.id npm run test:perf-smoke
+BASE_URL=https://ehadir.example.sch.id \
+ADMIN_PASSWORD='...' \
+PERF_MAX_P95_MS=1500 \
+PERF_MAX_ENDPOINT_MS=2500 \
+npm run test:perf-smoke
 ```
 
-Thresholds are intentionally smoke-level and must be tightened with real staging traffic before launch.
+The smoke uses real cookie login, exercises health/detail/dashboard/session/reconciliation/notification endpoints for multiple iterations, verifies Prometheus metrics are exposed, writes `artifacts/perf/perf-smoke.json`, and fails if P95 or any endpoint exceeds the configured thresholds. Thresholds are intentionally smoke-level and must be tightened with real staging traffic before launch.
+
+## Log verification
+
+`npm run test:observability-logs -- <api-log-file>` parses API stdout and verifies request logs are structured JSON with request ID, method, path, status, duration, redacted user-agent, and IP. The TLS CI fixture runs this check against the API log it captures during real HTTPS traffic.

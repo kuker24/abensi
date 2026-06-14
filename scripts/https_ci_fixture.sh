@@ -174,4 +174,5 @@ bad_forwarded=$(curl --cacert certs/https-ci/ca.crt -ksS -o /dev/null -w '%{http
 test "$bad_forwarded" = "400"
 
 docker logs schoolhub-tls-ci > artifacts/https-ci/nginx.log 2>&1 || true
+OBSERVABILITY_OUTPUT=artifacts/https-ci/observability-log-check.json node scripts/observability_log_check.mjs artifacts/https-ci/api.log
 printf '{"ok":true,"base":"%s","httpPort":%s,"httpsPort":%s}\n' "$base" "$http_port" "$https_port" > artifacts/https-ci/result.json
