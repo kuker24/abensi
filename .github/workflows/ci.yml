@@ -428,6 +428,68 @@ jobs:
             apps/web/test-results/
             artifacts/full-stack-e2e/
 
+  tls-fixture:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolhub_tls
+          POSTGRES_USER: schoolhub
+          POSTGRES_PASSWORD: schoolhub_test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U schoolhub -d schoolhub_tls"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_tls?schema=public
+      DIRECT_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_tls?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      JWT_ISSUER: schoolhub-ci
+      JWT_AUDIENCE: schoolhub-web-ci
+      JWT_EXPIRES_IN: 15m
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+      SCHOOL_TIMEZONE: Asia/Jakarta
+      SSO_ENABLED: 'false'
+      ADMIN_PASSWORD: Admin#12345678
+      DEFAULT_USER_PASSWORD: User#12345678
+      DEVELOPER_PASSWORD: Dev#12345678
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+      - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web
+      - run: npm run test:https-ci-fixture
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tls-fixture-artifacts
+          if-no-files-found: ignore
+          path: |
+            artifacts/https-ci/
+            certs/https-ci/ca.crt
+
   backup-restore-drill:
     runs-on: ubuntu-latest
     permissions:

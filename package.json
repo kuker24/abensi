@@ -24,6 +24,7 @@
     "test:a11y": "bash scripts/a11y_smoke.sh",
     "test:visual": "bash scripts/visual_regression.sh",
     "test:https-smoke": "bash scripts/https_smoke.sh",
+    "test:https-ci-fixture": "bash scripts/https_ci_fixture.sh",
     "security:secrets": "bash scripts/secret_scan.sh",
     "security:container-scan": "bash scripts/container_scan.sh",
     "security:sbom": "bash scripts/generate_sbom.sh",
