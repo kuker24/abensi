@@ -86,6 +86,28 @@ function previousBusinessDate(value: Date) {
   return dbDateFromBusinessKey(addCalendarDays(businessDateKey(value), -1));
 }
 
+const ACTIVE_ENROLLMENT_STATUS = 'ACTIVE';
+const INACTIVE_ENROLLMENT_STATUSES = new Set(['CANCELLED', 'REVOKED']);
+
+type EnrollmentAdministrativeStatus = 'ACTIVE' | 'CANCELLED' | 'REVOKED';
+
+function activeEnrollmentValidityWhere(asOf: Date): Prisma.ClassEnrollmentWhereInput {
+  return {
+    active: true,
+    administrativeStatus: ACTIVE_ENROLLMENT_STATUS,
+    effectiveFrom: { lte: asOf },
+    OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }]
+  };
+}
+
+function normalizeAdministrativeReason(reason: string) {
+  const normalized = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (normalized.length < 10) {
+    throw new BadRequestException({ code: 'ENROLLMENT_ADMIN_REASON_REQUIRED', message: 'Alasan pembatalan/pencabutan minimal 10 karakter.' });
+  }
+  return normalized;
+}
+
 function enrollmentConflictCode(error: unknown) {
   const text = `${error instanceof Error ? error.message : ''} ${JSON.stringify((error as { meta?: unknown })?.meta ?? {})}`;
   if (text.includes('ClassEnrollment_student_no_overlap_excl')) return 'ENROLLMENT_PERIOD_OVERLAP';
@@ -130,6 +152,31 @@ export class AcademicService {
     throw new BadRequestException({ code: 'SEMESTER_REQUIRED', message: 'Semester aktif wajib tersedia sebelum mendaftarkan siswa.' });
   }
 
+  private async assertEnrollmentWithinAcademicPeriod(
+    tx: Prisma.TransactionClient,
+    period: { academicYearId: string; semesterId: string },
+    effectiveFrom: Date,
+    effectiveTo: Date | null
+  ) {
+    const semester = await tx.semester.findUnique({
+      where: { id: period.semesterId },
+      include: { academicYear: true }
+    });
+    if (!semester) throw new BadRequestException('Semester tidak ditemukan.');
+    if (semester.academicYearId !== period.academicYearId) {
+      throw new BadRequestException({ code: 'SEMESTER_YEAR_MISMATCH', message: 'Semester tidak berada pada tahun ajaran yang dipilih.' });
+    }
+
+    const startsAt = semester.startsAt ?? semester.academicYear?.startsAt ?? null;
+    const endsAt = semester.endsAt ?? semester.academicYear?.endsAt ?? null;
+    if (startsAt && effectiveFrom < schoolBusinessDate(startsAt)) {
+      throw new BadRequestException({ code: 'ENROLLMENT_OUTSIDE_ACADEMIC_PERIOD', message: 'Tanggal mulai pendaftaran berada di luar semester/tahun ajaran.' });
+    }
+    if (effectiveTo && endsAt && effectiveTo > schoolBusinessDate(endsAt)) {
+      throw new BadRequestException({ code: 'ENROLLMENT_OUTSIDE_ACADEMIC_PERIOD', message: 'Tanggal selesai pendaftaran berada di luar semester/tahun ajaran.' });
+    }
+  }
+
   private async createEnrollmentTransfer(
     tx: Prisma.TransactionClient,
     payload: CreateStudentDto,
@@ -149,12 +196,12 @@ export class AcademicService {
     if (effectiveTo && effectiveTo < effectiveFrom) {
       throw new BadRequestException({ code: 'ENROLLMENT_INVALID_PERIOD', message: 'Tanggal selesai pendaftaran tidak boleh sebelum tanggal mulai.' });
     }
+    await this.assertEnrollmentWithinAcademicPeriod(tx, period, effectiveFrom, effectiveTo);
 
     const existingActive = await tx.classEnrollment.findFirst({
       where: {
         studentId: payload.userId,
-        effectiveFrom: { lte: effectiveFrom },
-        OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveFrom } }]
+        ...activeEnrollmentValidityWhere(effectiveFrom)
       },
       orderBy: { effectiveFrom: 'desc' }
     });
@@ -175,7 +222,6 @@ export class AcademicService {
       closedEnrollment = await tx.classEnrollment.update({
         where: { id: existingActive.id },
         data: {
-          active: false,
           effectiveTo: closingDate,
           endedById: actor.sub,
           endedReason: reason
@@ -191,7 +237,8 @@ export class AcademicService {
         semesterId: period.semesterId,
         effectiveFrom,
         effectiveTo,
-        active: effectiveTo === null,
+        active: true,
+        administrativeStatus: ACTIVE_ENROLLMENT_STATUS,
         createdById: actor.sub
       }
     });
@@ -302,12 +349,14 @@ export class AcademicService {
   }
 
   async listStudents(pagination: PaginationQuery, classId?: string) {
-    const where = {
-      role: 'SISWA',
+    const asOf = schoolBusinessDate();
+    const currentEnrollmentWhere = activeEnrollmentValidityWhere(asOf);
+    const where: Prisma.UserWhereInput = {
+      role: Role.SISWA,
       ...(classId
         ? {
             enrollments: {
-              some: { classId, active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gte: schoolBusinessDate() } }] }
+              some: { classId, ...currentEnrollmentWhere }
             }
           }
         : {})
@@ -323,7 +372,7 @@ export class AcademicService {
           fullName: true,
           cardStatus: true,
           enrollments: {
-            where: { active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gte: schoolBusinessDate() } }] },
+            where: currentEnrollmentWhere,
             select: {
               id: true,
               classId: true,
@@ -331,6 +380,8 @@ export class AcademicService {
               semesterId: true,
               effectiveFrom: true,
               effectiveTo: true,
+              active: true,
+              administrativeStatus: true,
               schoolClass: { select: { code: true, name: true } },
               academicYear: { select: { code: true, name: true } },
               semester: { select: { code: true, name: true } }
@@ -698,10 +749,48 @@ export class AcademicService {
         schoolClass: { select: { id: true, code: true, name: true } },
         academicYear: { select: { id: true, code: true, name: true } },
         semester: { select: { id: true, code: true, name: true } },
+        administrativeStatusChangedBy: { select: { id: true, fullName: true, username: true } },
         createdBy: { select: { id: true, fullName: true, username: true } },
         endedBy: { select: { id: true, fullName: true, username: true } }
       },
       orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }]
+    });
+  }
+
+  async setEnrollmentAdministrativeStatus(
+    enrollmentId: string,
+    status: Exclude<EnrollmentAdministrativeStatus, 'ACTIVE'>,
+    reason: string,
+    actor: { sub: string; role: string }
+  ) {
+    if (!INACTIVE_ENROLLMENT_STATUSES.has(status)) {
+      throw new BadRequestException({ code: 'ENROLLMENT_ADMIN_STATUS_INVALID', message: 'Status administrasi pendaftaran tidak valid.' });
+    }
+    const normalizedReason = normalizeAdministrativeReason(reason);
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.classEnrollment.findUnique({ where: { id: enrollmentId } });
+      if (!before) throw new NotFoundException('Pendaftaran kelas tidak ditemukan.');
+      const updated = await tx.classEnrollment.update({
+        where: { id: enrollmentId },
+        data: {
+          active: false,
+          administrativeStatus: status,
+          administrativeStatusChangedAt: new Date(),
+          administrativeStatusChangedById: actor.sub,
+          administrativeStatusReason: normalizedReason
+        }
+      });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'academic',
+        action: status === 'CANCELLED' ? 'student.enrollment_cancelled' : 'student.enrollment_revoked',
+        resource: 'classEnrollment',
+        resourceId: enrollmentId,
+        before,
+        after: updated
+      });
+      return updated;
     });
   }
 

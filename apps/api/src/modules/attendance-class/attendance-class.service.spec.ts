@@ -317,6 +317,15 @@ describe('AttendanceClassService teacher check-in/out', () => {
     expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: 'teacher.session.checkin' })
     }));
+    expect(tx.classEnrollment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        classId: 'class-1',
+        active: true,
+        administrativeStatus: 'ACTIVE',
+        effectiveFrom: expect.objectContaining({ lte: expect.any(Date) }),
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }]
+      })
+    }));
   });
 
   it('mencatat checkOutAt saat guru menutup sesi setelah jam selesai', async () => {

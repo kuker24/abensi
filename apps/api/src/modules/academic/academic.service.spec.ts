@@ -16,9 +16,11 @@ function makePrisma(): any {
       create: jest.fn()
     },
     user: {
+      count: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
-      findUniqueOrThrow: jest.fn()
+      findUniqueOrThrow: jest.fn(),
+      create: jest.fn()
     },
     academicYear: {
       findUnique: jest.fn(),
@@ -30,6 +32,7 @@ function makePrisma(): any {
     },
     classEnrollment: {
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn()
@@ -110,7 +113,7 @@ describe('AcademicService', () => {
       semesterId: 'sem-1',
       effectiveFrom: new Date('2026-06-13T17:00:00.000Z')
     });
-    prisma.classEnrollment.update.mockResolvedValue({ id: 'enroll-old', active: false });
+    prisma.classEnrollment.update.mockResolvedValue({ id: 'enroll-old', active: true, effectiveTo: new Date('2026-06-14T17:00:00.000Z') });
     prisma.classEnrollment.create.mockResolvedValue({ id: 'enroll-new', classId: 'class-new', studentId: 'siswa-1' });
     const service = new AcademicService(prisma);
 
@@ -119,10 +122,11 @@ describe('AcademicService', () => {
     expect(result.id).toBe('enroll-new');
     expect(prisma.classEnrollment.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'enroll-old' },
-      data: expect.objectContaining({ active: false, endedById: 'admin-1' })
+      data: expect.objectContaining({ endedById: 'admin-1', effectiveTo: expect.any(Date) })
     }));
+    expect(prisma.classEnrollment.update.mock.calls[0][0].data.active).toBeUndefined();
     expect(prisma.classEnrollment.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ classId: 'class-new', studentId: 'siswa-1', academicYearId: 'year-1', semesterId: 'sem-1', createdById: 'admin-1' })
+      data: expect.objectContaining({ classId: 'class-new', studentId: 'siswa-1', academicYearId: 'year-1', semesterId: 'sem-1', active: true, administrativeStatus: 'ACTIVE', createdById: 'admin-1' })
     }));
     expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'student.transferred' }) });
   });
@@ -158,6 +162,54 @@ describe('AcademicService', () => {
 
     await expect(service.enrollStudent({ userId: 'siswa-1', classId: 'class-1', academicYearId: 'year-wrong', semesterId: 'sem-1', effectiveFrom: '2026-06-16' }, 'admin-1')).rejects.toThrow('Semester tidak berada pada tahun ajaran');
     expect(prisma.classEnrollment.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps a future effectiveTo administratively active during creation', async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue({ id: 'siswa-1', role: 'SISWA' });
+    prisma.schoolClass.findUnique.mockResolvedValue({ id: 'class-1', code: 'XI-A' });
+    prisma.semester.findUnique.mockResolvedValue({ id: 'sem-1', academicYearId: 'year-1', academicYear: { id: 'year-1' } });
+    prisma.classEnrollment.findFirst.mockResolvedValue(null);
+    prisma.classEnrollment.create.mockResolvedValue({ id: 'enroll-1', active: true, administrativeStatus: 'ACTIVE' });
+    const service = new AcademicService(prisma);
+
+    await service.enrollStudent({ userId: 'siswa-1', classId: 'class-1', semesterId: 'sem-1', effectiveFrom: '2026-06-16', effectiveTo: '2026-06-30' }, 'admin-1');
+
+    expect(prisma.classEnrollment.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ active: true, administrativeStatus: 'ACTIVE', effectiveTo: expect.any(Date) })
+    }));
+  });
+
+  it('lists only enrollments valid for today instead of treating active=true as open ended', async () => {
+    const prisma = makePrisma();
+    prisma.user.count.mockResolvedValue(1);
+    prisma.user.findMany.mockResolvedValue([]);
+    const service = new AcademicService(prisma);
+
+    await service.listStudents({ page: 1, limit: 10, skip: 0 }, 'class-1');
+
+    expect(prisma.user.count).toHaveBeenCalledWith({ where: expect.objectContaining({
+      enrollments: { some: expect.objectContaining({ classId: 'class-1', active: true, administrativeStatus: 'ACTIVE', effectiveFrom: expect.objectContaining({ lte: expect.any(Date) }) }) }
+    }) });
+    expect(prisma.user.count.mock.calls[0][0].where.enrollments.some.OR).toEqual([{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }]);
+    expect(prisma.user.findMany.mock.calls[0][0].select.enrollments.where).toEqual(expect.objectContaining({ active: true, administrativeStatus: 'ACTIVE' }));
+  });
+
+  it('administratively cancels an enrollment without mutating its effective dates', async () => {
+    const prisma = makePrisma();
+    prisma.classEnrollment.findUnique.mockResolvedValue({ id: 'enroll-1', active: true, administrativeStatus: 'ACTIVE', effectiveFrom: new Date('2026-06-16T00:00:00.000Z'), effectiveTo: new Date('2026-06-30T00:00:00.000Z') });
+    prisma.classEnrollment.update.mockResolvedValue({ id: 'enroll-1', active: false, administrativeStatus: 'CANCELLED' });
+    const service = new AcademicService(prisma);
+
+    await service.setEnrollmentAdministrativeStatus('enroll-1', 'CANCELLED', 'Pembatalan administratif karena salah input kelas', actor);
+
+    expect(prisma.classEnrollment.update).toHaveBeenCalledWith({
+      where: { id: 'enroll-1' },
+      data: expect.objectContaining({ active: false, administrativeStatus: 'CANCELLED', administrativeStatusReason: 'Pembatalan administratif karena salah input kelas' })
+    });
+    expect(prisma.classEnrollment.update.mock.calls[0][0].data.effectiveFrom).toBeUndefined();
+    expect(prisma.classEnrollment.update.mock.calls[0][0].data.effectiveTo).toBeUndefined();
+    expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'student.enrollment_cancelled' }) });
   });
 
 });

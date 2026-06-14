@@ -10,7 +10,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { IMPORT_FILE_INTERCEPTOR_OPTIONS, parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AcademicService } from './academic.service';
-import { CreateAcademicYearDto, CreateClassDto, CreateRoomDto, CreateSemesterDto, CreateStudentDto, CreateSubjectDto, ImportAcademicDto, ImportAcademicRowDto, ImportStudentsDto, ImportStudentRowDto, UpdateAcademicYearDto, UpdateClassDto, UpdateRoomDto, UpdateSemesterDto, UpdateSubjectDto } from './academic.dto';
+import { CreateAcademicYearDto, CreateClassDto, CreateRoomDto, CreateSemesterDto, CreateStudentDto, CreateSubjectDto, EnrollmentAdministrativeStatusDto, ImportAcademicDto, ImportAcademicRowDto, ImportStudentsDto, ImportStudentRowDto, UpdateAcademicYearDto, UpdateClassDto, UpdateRoomDto, UpdateSemesterDto, UpdateSubjectDto } from './academic.dto';
 
 @Controller('academic')
 @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
@@ -156,6 +156,16 @@ export class AcademicController {
   @Capabilities('academic.manage')
   transferStudent(@Body() body: CreateStudentDto, @CurrentUser() user: { sub: string }) {
     return this.academicService.enrollStudent(body, user.sub);
+  }
+
+  @Post('enrollments/:id/administrative-status')
+  @Capabilities('academic.manage')
+  setEnrollmentAdministrativeStatus(
+    @Param('id') id: string,
+    @Body() body: EnrollmentAdministrativeStatusDto,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.academicService.setEnrollmentAdministrativeStatus(id, body.status, body.reason, user);
   }
 
   @Get('students/:id/enrollments')

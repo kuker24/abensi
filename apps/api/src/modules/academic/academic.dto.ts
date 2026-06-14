@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsISO8601, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateClassDto {
@@ -34,6 +34,16 @@ export class CreateStudentDto {
   @IsOptional()
   @IsISO8601()
   effectiveTo?: string;
+}
+
+export class EnrollmentAdministrativeStatusDto {
+  @IsString()
+  @IsIn(['CANCELLED', 'REVOKED'])
+  status!: 'CANCELLED' | 'REVOKED';
+
+  @IsString()
+  @MinLength(10)
+  reason!: string;
 }
 
 export class UpdateClassDto {

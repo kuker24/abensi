@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, QrCredentialStatus, Role } from '@prisma/client';
+import { businessDayBounds } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { writeAudit } from '../../common/audit-log';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -150,8 +151,15 @@ export class QrCredentialsService {
   }
 
   async bulkGenerate(payload: BulkGenerateQrCredentialDto, actor: Actor) {
+    const asOf = businessDayBounds().date;
+    const currentEnrollmentWhere: Prisma.ClassEnrollmentWhereInput = {
+      active: true,
+      administrativeStatus: 'ACTIVE',
+      effectiveFrom: { lte: asOf },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }]
+    };
     const where: Prisma.UserWhereInput = { active: true, role: { in: [Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.ADMIN_TU, Role.OPERATOR_IT] } };
-    if (payload.classId) where.enrollments = { some: { classId: payload.classId } };
+    if (payload.classId) where.enrollments = { some: { classId: payload.classId, ...currentEnrollmentWhere } };
     if (payload.onlyMissing) where.qrCredentials = { none: { status: QrCredentialStatus.ACTIVE } };
     const users = await this.prisma.user.findMany({ where, select: { id: true, fullName: true, role: true }, take: 1000, orderBy: { fullName: 'asc' } });
     if (!users.length && payload.onlyMissing) return { count: 0, items: [], mode: 'only_missing', message: 'Semua pengguna target sudah punya QR aktif.' };
@@ -180,11 +188,18 @@ export class QrCredentialsService {
   }
 
   async readiness(params: { classId?: string }) {
+    const asOf = businessDayBounds().date;
+    const currentEnrollmentWhere: Prisma.ClassEnrollmentWhereInput = {
+      active: true,
+      administrativeStatus: 'ACTIVE',
+      effectiveFrom: { lte: asOf },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }]
+    };
     const userWhere: Prisma.UserWhereInput = {
       active: true,
       role: { in: [Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.ADMIN_TU, Role.OPERATOR_IT] }
     };
-    if (params.classId) userWhere.enrollments = { some: { classId: params.classId } };
+    if (params.classId) userWhere.enrollments = { some: { classId: params.classId, ...currentEnrollmentWhere } };
 
     const [targetUsers, classes] = await Promise.all([
       this.prisma.user.findMany({
@@ -202,6 +217,7 @@ export class QrCredentialsService {
         take: 300,
         include: {
           enrollments: {
+            where: currentEnrollmentWhere,
             select: {
               student: {
                 select: {

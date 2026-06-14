@@ -167,6 +167,7 @@ export class AttendanceClassService {
       where: {
         classId: session.classId,
         active: true,
+        administrativeStatus: 'ACTIVE',
         effectiveFrom: { lte: effectiveDate },
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveDate } }],
         student: { active: true, role: Role.SISWA }
@@ -197,8 +198,8 @@ export class AttendanceClassService {
         semesterIdSnapshot: enrollment.semesterId,
         semesterNameSnapshot: enrollment.semester?.name ?? null,
         captureSource: source,
-        activeAtCapture: enrollment.active,
-        metadata: { businessDate: businessDateKey(effectiveDate) }
+        activeAtCapture: enrollment.active && (enrollment.administrativeStatus ?? 'ACTIVE') === 'ACTIVE',
+        metadata: { businessDate: businessDateKey(effectiveDate), administrativeStatus: enrollment.administrativeStatus ?? 'ACTIVE' }
       })),
       skipDuplicates: true
     });

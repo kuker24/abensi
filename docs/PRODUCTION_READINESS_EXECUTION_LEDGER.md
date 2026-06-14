@@ -76,7 +76,7 @@ Protection checks completed before work resumed:
 | Step | Scope | Status | Evidence requirements before PASS |
 | --- | --- | --- | --- |
 | 2 | Execution ledger update plan | PASS | Ledger records protected baseline, all mandatory implementation steps, phase-specific evidence requirements, and final evidence rules. |
-| 3 | Enrollment period semantics | TODO | Corrective migration, domain-service changes, unit tests, real PostgreSQL semantic/concurrency tests. |
+| 3 | Enrollment period semantics | PASS (CI pending) | Corrective migration `0032_enrollment_administrative_status`; `active` is now administrative-only; future `effectiveTo` remains active; current roster/listing uses `effectiveFrom`/`effectiveTo` + `administrativeStatus`; cancellation/revocation endpoint requires reason and audit; unit and real PostgreSQL integration scenarios added. |
 | 4 | Remove silent SessionRoster recapture | TODO | No implicit recapture outside scheduled open; audited repair with reason/evidence; flow tests and FK rejection proof. |
 | 5 | Real upgrade migration fixtures | TODO | Isolated DB per scenario, legacy cutoff migration, populated fixtures, exact pass/abort assertions, archive/audit/constraint checks. |
 | 6 | Deterministic PostgreSQL concurrency matrix | TODO | Transaction barriers and final DB/audit assertions for all requested race scenarios. |
@@ -102,6 +102,10 @@ Protection checks completed before work resumed:
 - Concurrency evidence must use deterministic transaction barriers, not `Promise.all` alone.
 - Full-stack evidence must use real cookies/CSRF and must not seed authentication through localStorage.
 - Final status can only be **READY FOR HUMAN REVIEW** or **NOT READY FOR MERGE**.
+
+### Second-pass evidence append log
+
+- 2026-06-14: Step 3 implementation added migration `0032_enrollment_administrative_status`; API typecheck/lint passed; API Jest passed 21 suites / 160 tests; targeted academic/attendance-class tests passed 2 suites / 27 tests. Real PostgreSQL semantic scenarios were added to `scripts/postgres_integration_suite.ts` for CI execution.
 
 ## Current stop condition
 

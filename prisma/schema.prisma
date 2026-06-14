@@ -214,47 +214,48 @@ model User {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  taughtSessions              Session[]                   @relation("TeacherSessions")
-  enrollments                 ClassEnrollment[]
-  createdClassEnrollments     ClassEnrollment[]           @relation("ClassEnrollmentCreatedBy")
-  endedClassEnrollments       ClassEnrollment[]           @relation("ClassEnrollmentEndedBy")
-  sessionRosters              SessionRoster[]             @relation("SessionRosterStudent")
-  gateLogs                    GateLog[]
-  studentAttendances          StudentAttendance[]         @relation("StudentAttendanceUser")
-  correctedStudentAttendances StudentAttendance[]         @relation("StudentAttendanceCorrectedBy")
-  confirmedStudentAttendances StudentAttendance[]         @relation("StudentAttendanceConfirmedBy")
-  teacherPresences            TeacherSessionPresence[]
-  reconciliationFlags         ReconciliationFlag[]        @relation("FlaggedUser")
-  resolvedFlags               ReconciliationFlag[]        @relation("ResolvedByUser")
-  createdEscalations          ReconciliationEscalation[]  @relation("EscalationCreatedByUser")
-  closedEscalations           ReconciliationEscalation[]  @relation("EscalationClosedByUser")
-  createdPicketNotes          PicketNote[]                @relation("PicketNoteCreatedBy")
-  updatedPicketNotes          PicketNote[]                @relation("PicketNoteUpdatedBy")
-  audits                      AuditEntry[]                @relation("AuditActor")
-  smartCard                   SmartCard?
-  qrCredentials               QrCredential[]              @relation("QrCredentialUser")
-  createdQrCredentials        QrCredential[]              @relation("QrCredentialCreatedBy")
-  revokedQrCredentials        QrCredential[]              @relation("QrCredentialRevokedBy")
-  createdDeviceReaders        DeviceReader[]              @relation("DeviceReaderCreatedBy")
-  updatedDeviceReaders        DeviceReader[]              @relation("DeviceReaderUpdatedBy")
-  revokedDeviceReaders        DeviceReader[]              @relation("DeviceReaderRevokedBy")
-  assignedFlags               ReconciliationFlag[]        @relation("FlagAssignedToUser")
-  teacherLeaves               TeacherLeave[]              @relation("TeacherLeaveTeacher")
-  reviewedTeacherLeaves       TeacherLeave[]              @relation("TeacherLeaveReviewedBy")
-  substituteSessions          TeacherLeave[]              @relation("TeacherLeaveSubstitute")
-  weeklySchedules             WeeklySchedule[]
-  notifications               Notification[]
-  prayerAttendances           PrayerAttendanceLog[]       @relation("PrayerAttendanceStudent")
-  createdPrayerLogs           PrayerAttendanceLog[]       @relation("PrayerAttendanceCreatedBy")
-  attendanceOverrides         AttendanceOverride[]        @relation("AttendanceOverrideStudent")
-  createdAttendanceOverrides  AttendanceOverride[]        @relation("AttendanceOverrideCreatedBy")
-  approvedAttendanceOverrides AttendanceOverride[]        @relation("AttendanceOverrideApprovedBy")
-  revokedAttendanceOverrides  AttendanceOverride[]        @relation("AttendanceOverrideRevokedBy")
-  correctionEventsAsStudent   AttendanceCorrectionEvent[] @relation("CorrectionStudent")
-  correctionEventsAsActor     AttendanceCorrectionEvent[] @relation("CorrectionActor")
-  authSessions                AuthSession[]
-  tutorialState               UserTutorialState?          @relation("TutorialStateUser")
-  forcedTutorials             UserTutorialState[]         @relation("TutorialForcedBy")
+  taughtSessions                        Session[]                   @relation("TeacherSessions")
+  enrollments                           ClassEnrollment[]
+  createdClassEnrollments               ClassEnrollment[]           @relation("ClassEnrollmentCreatedBy")
+  endedClassEnrollments                 ClassEnrollment[]           @relation("ClassEnrollmentEndedBy")
+  administrativeChangedClassEnrollments ClassEnrollment[]           @relation("ClassEnrollmentAdministrativeStatusChangedBy")
+  sessionRosters                        SessionRoster[]             @relation("SessionRosterStudent")
+  gateLogs                              GateLog[]
+  studentAttendances                    StudentAttendance[]         @relation("StudentAttendanceUser")
+  correctedStudentAttendances           StudentAttendance[]         @relation("StudentAttendanceCorrectedBy")
+  confirmedStudentAttendances           StudentAttendance[]         @relation("StudentAttendanceConfirmedBy")
+  teacherPresences                      TeacherSessionPresence[]
+  reconciliationFlags                   ReconciliationFlag[]        @relation("FlaggedUser")
+  resolvedFlags                         ReconciliationFlag[]        @relation("ResolvedByUser")
+  createdEscalations                    ReconciliationEscalation[]  @relation("EscalationCreatedByUser")
+  closedEscalations                     ReconciliationEscalation[]  @relation("EscalationClosedByUser")
+  createdPicketNotes                    PicketNote[]                @relation("PicketNoteCreatedBy")
+  updatedPicketNotes                    PicketNote[]                @relation("PicketNoteUpdatedBy")
+  audits                                AuditEntry[]                @relation("AuditActor")
+  smartCard                             SmartCard?
+  qrCredentials                         QrCredential[]              @relation("QrCredentialUser")
+  createdQrCredentials                  QrCredential[]              @relation("QrCredentialCreatedBy")
+  revokedQrCredentials                  QrCredential[]              @relation("QrCredentialRevokedBy")
+  createdDeviceReaders                  DeviceReader[]              @relation("DeviceReaderCreatedBy")
+  updatedDeviceReaders                  DeviceReader[]              @relation("DeviceReaderUpdatedBy")
+  revokedDeviceReaders                  DeviceReader[]              @relation("DeviceReaderRevokedBy")
+  assignedFlags                         ReconciliationFlag[]        @relation("FlagAssignedToUser")
+  teacherLeaves                         TeacherLeave[]              @relation("TeacherLeaveTeacher")
+  reviewedTeacherLeaves                 TeacherLeave[]              @relation("TeacherLeaveReviewedBy")
+  substituteSessions                    TeacherLeave[]              @relation("TeacherLeaveSubstitute")
+  weeklySchedules                       WeeklySchedule[]
+  notifications                         Notification[]
+  prayerAttendances                     PrayerAttendanceLog[]       @relation("PrayerAttendanceStudent")
+  createdPrayerLogs                     PrayerAttendanceLog[]       @relation("PrayerAttendanceCreatedBy")
+  attendanceOverrides                   AttendanceOverride[]        @relation("AttendanceOverrideStudent")
+  createdAttendanceOverrides            AttendanceOverride[]        @relation("AttendanceOverrideCreatedBy")
+  approvedAttendanceOverrides           AttendanceOverride[]        @relation("AttendanceOverrideApprovedBy")
+  revokedAttendanceOverrides            AttendanceOverride[]        @relation("AttendanceOverrideRevokedBy")
+  correctionEventsAsStudent             AttendanceCorrectionEvent[] @relation("CorrectionStudent")
+  correctionEventsAsActor               AttendanceCorrectionEvent[] @relation("CorrectionActor")
+  authSessions                          AuthSession[]
+  tutorialState                         UserTutorialState?          @relation("TutorialStateUser")
+  forcedTutorials                       UserTutorialState[]         @relation("TutorialForcedBy")
 
   @@index([role, active])
   @@index([active, createdAt])
@@ -332,30 +333,35 @@ model Room {
 }
 
 model ClassEnrollment {
-  id             String    @id @default(cuid())
-  classId        String
-  studentId      String
-  academicYearId String?
-  semesterId     String?
-  effectiveFrom  DateTime  @db.Date
-  effectiveTo    DateTime? @db.Date
-  active         Boolean   @default(true)
-  createdById    String?
-  endedById      String?
-  endedReason    String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                              String    @id @default(cuid())
+  classId                         String
+  studentId                       String
+  academicYearId                  String?
+  semesterId                      String?
+  effectiveFrom                   DateTime  @db.Date
+  effectiveTo                     DateTime? @db.Date
+  active                          Boolean   @default(true)
+  administrativeStatus            String    @default("ACTIVE")
+  administrativeStatusChangedAt   DateTime?
+  administrativeStatusChangedById String?
+  administrativeStatusReason      String?
+  createdById                     String?
+  endedById                       String?
+  endedReason                     String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
-  schoolClass  SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student      User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  academicYear AcademicYear?   @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
-  semester     Semester?       @relation(fields: [semesterId], references: [id], onDelete: Restrict)
-  createdBy    User?           @relation("ClassEnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  endedBy      User?           @relation("ClassEnrollmentEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
-  rosters      SessionRoster[]
+  schoolClass                   SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student                       User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear                  AcademicYear?   @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  semester                      Semester?       @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  administrativeStatusChangedBy User?           @relation("ClassEnrollmentAdministrativeStatusChangedBy", fields: [administrativeStatusChangedById], references: [id], onDelete: SetNull)
+  createdBy                     User?           @relation("ClassEnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  endedBy                       User?           @relation("ClassEnrollmentEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
+  rosters                       SessionRoster[]
 
-  @@index([studentId, active, effectiveFrom, effectiveTo])
-  @@index([classId, active, effectiveFrom, effectiveTo])
+  @@index([studentId, administrativeStatus, effectiveFrom, effectiveTo])
+  @@index([classId, administrativeStatus, effectiveFrom, effectiveTo])
   @@index([academicYearId])
   @@index([semesterId])
 }
