@@ -156,8 +156,7 @@ export function ClassInputPage({ notify }) {
     if (progressPercent < 100) {
       if (!await riskConfirm(`Masih ada ${defaultedCount} siswa ALPA default yang belum dikonfirmasi. Finalisasi sebagai ALPA dan akhiri kelas?`)) return;
       finalizeDefaultAlpa = true;
-    }
-    if (!await riskConfirm('Absen keluar dan akhiri kelas? Pastikan presensi siswa awal pembelajaran sudah disimpan.')) return;
+    } else if (!await riskConfirm('Absen keluar dan akhiri kelas? Pastikan presensi siswa awal pembelajaran sudah disimpan.')) return;
     setActionLoading('close');
     setGeoStatus({ tone: 'info', message: 'Mengambil lokasi keluar kelas dari browser...' });
     try {
