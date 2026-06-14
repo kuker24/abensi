@@ -458,6 +458,40 @@ model GateLogDeduplication {
   @@index([canonicalGateLogId])
 }
 
+model GateLogArchive {
+  id                    String             @id @default(cuid())
+  originalGateLogId     String             @unique
+  canonicalGateLogId    String
+  userId                String
+  direction             GateDirection
+  originalBusinessDate  DateTime?          @db.Date
+  correctedBusinessDate DateTime           @db.Date
+  tappedAt              DateTime
+  serverReceivedAt      DateTime?
+  deviceId              String?
+  readerId              String?
+  cardId                String?
+  qrCredentialId        String?
+  scanMode              AndroidReaderMode?
+  appVersion            String?
+  signatureVerified     Boolean?
+  deviceEventId         String?
+  deviceTimestamp       DateTime?
+  nonceHash             String?
+  bodyHash              String?
+  manualReason          String?
+  createdById           String?
+  usedOverrideId        String?
+  completeOriginalRow   Json
+  dedupeReason          String
+  migrationVersion      String
+  archivedAt            DateTime           @default(now())
+
+  @@index([userId, correctedBusinessDate, direction])
+  @@index([canonicalGateLogId])
+  @@index([archivedAt])
+}
+
 model RejectedDeviceScan {
   id               String         @id @default(cuid())
   eventId          String?
