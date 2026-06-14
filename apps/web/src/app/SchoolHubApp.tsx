@@ -406,7 +406,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
           <div className="login-role-label">MASUK SEBAGAI</div>
           <div className="row login-role-tabs" style={{ gap: 6, margin: '10px 0 22px' }} role="tablist" aria-label="Pilih jenis akun">
             {(['guru', 'admin', 'siswa'] as LoginRole[]).map((v) => (
-              <button type="button" key={v} className={`btn sm login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} style={{ flex: 1 }} role="tab" aria-selected={role === v} aria-pressed={role === v}>
+              <button type="button" key={v} className={`btn sm login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} style={{ flex: 1 }} role="tab" aria-selected={role === v}>
                 {v === 'guru' ? 'Guru' : v === 'admin' ? 'Admin/TU' : 'Siswa'}
               </button>
             ))}

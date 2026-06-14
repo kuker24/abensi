@@ -29,11 +29,11 @@ describe('writeAudit synthetic actors', () => {
   });
 
   it('mengambil PostgreSQL advisory transaction lock sebelum menghitung hash chain', async () => {
-    const lock = jest.fn().mockResolvedValue([]);
+    const lock = jest.fn().mockResolvedValue(1);
     const create = jest.fn().mockResolvedValue({ id: 'audit-1' });
     const findUnique = jest.fn().mockResolvedValue({ id: 1, lastSequence: 41n, lastHash: 'prev', lastEntryId: 'audit-0' });
     const client: any = {
-      $queryRawUnsafe: lock,
+      $executeRawUnsafe: lock,
       auditEntry: { create },
       auditChainState: { findUnique, upsert: jest.fn() }
     };

@@ -5,6 +5,7 @@ import { canonicalJson, canonicalize } from '../modules/security/canonical-json'
 
 type AuditClient = {
   $queryRawUnsafe?: (query: string) => Promise<unknown>;
+  $executeRawUnsafe?: (query: string) => Promise<unknown>;
   $transaction?: unknown;
   auditEntry: {
     create: (args: { data: Prisma.AuditEntryUncheckedCreateInput }) => Promise<unknown>;
@@ -77,8 +78,12 @@ function normalizeActorForAudit(payload: AuditLogInput) {
 }
 
 async function lockAuditChain(client: AuditClient) {
+  if (client.$executeRawUnsafe) {
+    await client.$executeRawUnsafe('SELECT pg_advisory_xact_lock(389551911)');
+    return;
+  }
   if (client.$queryRawUnsafe) {
-    await client.$queryRawUnsafe('SELECT pg_advisory_xact_lock(389551911)');
+    await client.$queryRawUnsafe('SELECT pg_advisory_xact_lock(389551911) IS NULL AS locked');
   }
 }
 
