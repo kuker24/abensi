@@ -46,7 +46,7 @@ const SSO_ENABLED = import.meta.env.VITE_SSO_ENABLED === 'true' && Boolean(impor
 type Notify = (message: string, type?: string) => void;
 type LoginRole = 'guru' | 'admin' | 'siswa';
 type NavIcon = typeof Home;
-type NavItem = readonly [section: string, url: string, label: string, icon: NavIcon];
+type NavItem = readonly [section: string, url: AppRoutePath, label: string, icon: NavIcon];
 type NavKey = 'admin' | 'operator' | 'picket' | 'guru' | 'siswa' | 'developer';
 type ConnectionStatus = 'checking' | 'online' | 'offline';
 
@@ -120,57 +120,80 @@ const ROLE_LABEL: Record<Role, string> = {
   DEVELOPER: 'Developer'
 };
 
-const ROUTE_TITLE: Record<string, string[]> = {
-  '/admin/dashboard': ['Admin/TU', 'Mulai Hari Ini'],
-  '/admin/it-dashboard': ['Operator IT', 'Cek Sistem'],
-  '/admin/picket-dashboard': ['Guru Piket', 'Tugas Piket Hari Ini'],
-  '/admin/sessions': ['Admin/TU', 'Sesi Hari Ini'],
-  '/admin/history': ['Admin/TU', 'Riwayat Scan'],
-  '/admin/anomaly': ['Admin/TU', 'Masalah yang Perlu Dicek'],
-  '/admin/picket': ['Admin/TU', 'Catatan Piket'],
-  '/admin/master-data': ['Admin/TU', 'Akun & Data Sekolah'],
-  '/admin/schedule': ['Admin/TU', 'Jadwal Kelas'],
-  '/admin/devices': ['Admin/TU', 'HP Scanner & Kartu'],
-  '/admin/reports': ['Admin/TU', 'Laporan Sekolah'],
-  '/admin/live-monitor': ['Admin/TU', 'Aktivitas Sekarang'],
-  '/admin/settings': ['Admin/TU', 'Aturan Absensi'],
-  '/admin/audit': ['Admin/TU', 'Riwayat Perubahan'],
-  '/admin/teacher-leaves': ['Admin/TU', 'Pengajuan Guru'],
-  '/admin/notifications': ['Sistem', 'Tugas / Notifikasi'],
-  '/admin/developer-control': ['Developer', 'Pusat Kontrol'],
-  '/admin/help': ['Bantuan', 'Panduan'],
-  '/guru/izin': ['Guru', 'Izin / Sakit / Dinas'],
-  '/guru/notifikasi': ['Guru', 'Tugas / Notifikasi'],
-  '/guru/panduan': ['Guru', 'Panduan'],
-  '/siswa/notifikasi': ['Siswa', 'Tugas / Notifikasi'],
-  '/siswa/panduan': ['Siswa', 'Panduan'],
-  '/guru/dashboard': ['Guru', 'Mulai Mengajar'],
-  '/guru/presensi': ['Guru', 'Isi Presensi Kelas'],
-  '/guru/koreksi': ['Guru', 'Perbaiki Presensi'],
-  '/guru/rekap': ['Guru', 'Laporan Kelas Saya'],
-  '/guru/kehadiran-saya': ['Guru', 'Kehadiran Saya'],
-  '/siswa/dashboard': ['Siswa', 'Kehadiran Saya']
+type RouteRenderContext = { user: User; notify: Notify };
+
+type AppRouteDefinition = {
+  path: string;
+  area: string;
+  title: string;
+  roles: readonly Role[];
+  capabilities: readonly Capability[];
+  render: (context: RouteRenderContext) => ReactNode;
 };
+
+export const ROUTES = [
+  { path: '/admin/dashboard', area: 'Admin/TU', title: 'Mulai Hari Ini', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <AdminDashboard /> },
+  { path: '/admin/it-dashboard', area: 'Operator IT', title: 'Cek Sistem', roles: ['OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: () => <ItDashboardPage /> },
+  { path: '/admin/picket-dashboard', area: 'Guru Piket', title: 'Tugas Piket Hari Ini', roles: ['GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: () => <PicketDashboardPage /> },
+  { path: '/admin/sessions', area: 'Admin/TU', title: 'Sesi Hari Ini', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['classAttendance.read'], render: () => <SessionsPage admin /> },
+  { path: '/admin/history', area: 'Admin/TU', title: 'Riwayat Scan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['gateAttendance.read'], render: () => <HistoryPage /> },
+  { path: '/admin/anomaly', area: 'Admin/TU', title: 'Masalah yang Perlu Dicek', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <AnomalyPage notify={notify} /> },
+  { path: '/admin/picket', area: 'Admin/TU', title: 'Catatan Piket', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <PicketBookPage notify={notify} /> },
+  { path: '/admin/master-data', area: 'Admin/TU', title: 'Akun & Data Sekolah', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['users.read', 'academic.read'], render: ({ notify }) => <MasterDataPage notify={notify} /> },
+  { path: '/admin/schedule', area: 'Admin/TU', title: 'Jadwal Kelas', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <SchedulePage notify={notify} /> },
+  { path: '/admin/devices', area: 'Admin/TU', title: 'HP Scanner & Kartu', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: ({ notify }) => <DevicesPage notify={notify} /> },
+  { path: '/admin/reports', area: 'Admin/TU', title: 'Laporan Sekolah', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <ReportsPage notify={notify} /> },
+  { path: '/admin/live-monitor', area: 'Admin/TU', title: 'Aktivitas Sekarang', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <LiveMonitorPage /> },
+  { path: '/admin/settings', area: 'Admin/TU', title: 'Aturan Absensi', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['settings.read'], render: ({ notify }) => <SettingsPage notify={notify} /> },
+  { path: '/admin/audit', area: 'Admin/TU', title: 'Riwayat Perubahan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['audit.read'], render: () => <AuditPage /> },
+  { path: '/admin/teacher-leaves', area: 'Admin/TU', title: 'Pengajuan Guru', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <TeacherLeavesPage notify={notify} /> },
+  { path: '/admin/notifications', area: 'Sistem', title: 'Tugas / Notifikasi', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
+  { path: '/admin/developer-control', area: 'Developer', title: 'Pusat Kontrol', roles: ['DEVELOPER'], capabilities: ['settings.manage'], render: ({ notify }) => <DeveloperControlPage notify={notify} /> },
+  { path: '/admin/help', area: 'Bantuan', title: 'Panduan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> },
+  { path: '/guru/dashboard', area: 'Guru', title: 'Mulai Mengajar', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.read'], render: () => <TeacherDashboard /> },
+  { path: '/guru/presensi', area: 'Guru', title: 'Isi Presensi Kelas', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.record'], render: ({ notify }) => <ClassInputPage notify={notify} /> },
+  { path: '/guru/koreksi', area: 'Guru', title: 'Perbaiki Presensi', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.correct'], render: ({ notify }) => <CorrectionPage notify={notify} /> },
+  { path: '/guru/rekap', area: 'Guru', title: 'Laporan Kelas Saya', roles: ['GURU_MAPEL'], capabilities: ['reports.self.read'], render: () => <TeacherRecapPage /> },
+  { path: '/guru/izin', area: 'Guru', title: 'Izin / Sakit / Dinas', roles: ['GURU_MAPEL'], capabilities: ['profile.self.update'], render: ({ notify }) => <TeacherLeavePage notify={notify} /> },
+  { path: '/guru/kehadiran-saya', area: 'Guru', title: 'Kehadiran Saya', roles: ['GURU_MAPEL'], capabilities: ['reports.self.read'], render: () => <MyAttendancePage /> },
+  { path: '/guru/notifikasi', area: 'Guru', title: 'Tugas / Notifikasi', roles: ['GURU_MAPEL'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
+  { path: '/guru/panduan', area: 'Guru', title: 'Panduan', roles: ['GURU_MAPEL'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> },
+  { path: '/siswa/dashboard', area: 'Siswa', title: 'Kehadiran Saya', roles: ['SISWA'], capabilities: ['reports.self.read'], render: () => <MyAttendancePage student title="Kehadiran Saya" /> },
+  { path: '/siswa/notifikasi', area: 'Siswa', title: 'Tugas / Notifikasi', roles: ['SISWA'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
+  { path: '/siswa/panduan', area: 'Siswa', title: 'Panduan', roles: ['SISWA'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> }
+] as const satisfies readonly AppRouteDefinition[];
+
+export type AppRoutePath = typeof ROUTES[number]['path'];
+
+const ROUTE_BY_PATH = Object.fromEntries(ROUTES.map((route) => [route.path, route])) as unknown as Record<AppRoutePath, AppRouteDefinition>;
+
+function routeForPath(path: string): AppRouteDefinition | undefined {
+  return ROUTE_BY_PATH[path as AppRoutePath];
+}
+
+function navItem(section: string, path: AppRoutePath, icon: NavIcon, label = ROUTE_BY_PATH[path].title): NavItem {
+  return [section, path, label, icon];
+}
 
 const NAV_ITEMS_BY_ROLE: Record<NavKey, NavItem[]> = {
   admin: [
-    ['MULAI HARI INI', '/admin/dashboard', 'Ringkasan Hari Ini', LayoutDashboard], ['MULAI HARI INI', '/admin/sessions', 'Cek Sesi Kelas', Radar], ['MULAI HARI INI', '/admin/anomaly', 'Cek Masalah', Flag], ['MULAI HARI INI', '/admin/live-monitor', 'Aktivitas Sekarang', Activity],
-    ['KERJA HARIAN', '/admin/history', 'Riwayat Scan', BookOpen], ['KERJA HARIAN', '/admin/picket', 'Catatan Piket', ListChecks], ['KERJA HARIAN', '/admin/teacher-leaves', 'Izin Guru', CheckSquare], ['DATA SEKOLAH', '/admin/master-data', 'Akun & Data Sekolah', Users], ['DATA SEKOLAH', '/admin/schedule', 'Jadwal Kelas', Calendar],
-    ['PERANGKAT', '/admin/devices', 'HP Scanner & Kartu', CreditCard], ['LAPORAN', '/admin/reports', 'Laporan Sekolah', FileText], ['BANTUAN & SISTEM', '/admin/notifications', 'Tugas / Notifikasi', Bell], ['BANTUAN & SISTEM', '/admin/help', 'Panduan', BookOpen], ['BANTUAN & SISTEM', '/admin/settings', 'Aturan Absensi', Settings], ['BANTUAN & SISTEM', '/admin/audit', 'Riwayat Perubahan', Database]
+    navItem('MULAI HARI INI', '/admin/dashboard', LayoutDashboard, 'Ringkasan Hari Ini'), navItem('MULAI HARI INI', '/admin/sessions', Radar, 'Cek Sesi Kelas'), navItem('MULAI HARI INI', '/admin/anomaly', Flag, 'Cek Masalah'), navItem('MULAI HARI INI', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
+    navItem('KERJA HARIAN', '/admin/history', BookOpen, 'Riwayat Scan'), navItem('KERJA HARIAN', '/admin/picket', ListChecks, 'Catatan Piket'), navItem('KERJA HARIAN', '/admin/teacher-leaves', CheckSquare, 'Izin Guru'), navItem('DATA SEKOLAH', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA SEKOLAH', '/admin/schedule', Calendar, 'Jadwal Kelas'),
+    navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN & SISTEM', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN & SISTEM', '/admin/help', BookOpen, 'Panduan'), navItem('BANTUAN & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('BANTUAN & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan')
   ],
   operator: [
-    ['MULAI HARI INI', '/admin/it-dashboard', 'Cek Sistem', LayoutDashboard], ['PERANGKAT', '/admin/devices', 'HP Scanner & Kartu', CreditCard], ['PERANGKAT', '/admin/live-monitor', 'Aktivitas Sekarang', Activity], ['CEK KEAMANAN', '/admin/audit', 'Riwayat Perubahan', Database], ['BANTUAN', '/admin/notifications', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/admin/help', 'Panduan Operator', BookOpen]
+    navItem('MULAI HARI INI', '/admin/it-dashboard', LayoutDashboard, 'Cek Sistem'), navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('CEK KEAMANAN', '/admin/audit', Database, 'Riwayat Perubahan'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Operator')
   ],
   developer: [
-    ['KONTROL', '/admin/developer-control', 'Pusat Kontrol', Shield], ['KONTROL', '/admin/dashboard', 'Ringkasan Admin', LayoutDashboard], ['KONTROL', '/admin/it-dashboard', 'Cek Sistem', Radar], ['KONTROL', '/admin/live-monitor', 'Aktivitas Sekarang', Activity],
-    ['DATA & SISTEM', '/admin/master-data', 'Akun & Data Sekolah', Users], ['DATA & SISTEM', '/admin/devices', 'HP Scanner & Kartu', CreditCard], ['DATA & SISTEM', '/admin/settings', 'Aturan Absensi', Settings], ['DATA & SISTEM', '/admin/audit', 'Riwayat Perubahan', Database],
-    ['BANTUAN', '/admin/help', 'Panduan Developer', BookOpen]
+    navItem('KONTROL', '/admin/developer-control', Shield, 'Pusat Kontrol'), navItem('KONTROL', '/admin/dashboard', LayoutDashboard, 'Ringkasan Admin'), navItem('KONTROL', '/admin/it-dashboard', Radar, 'Cek Sistem'), navItem('KONTROL', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
+    navItem('DATA & SISTEM', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA & SISTEM', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('DATA & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('DATA & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan'),
+    navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Developer')
   ],
   picket: [
-    ['MULAI HARI INI', '/admin/picket-dashboard', 'Tugas Piket Hari Ini', LayoutDashboard], ['KERJA PIKET', '/admin/picket', 'Catatan Piket', ListChecks], ['KERJA PIKET', '/admin/sessions', 'Cek Sesi Kelas', Radar], ['KERJA PIKET', '/admin/anomaly', 'Cek Masalah', Flag], ['KERJA PIKET', '/admin/history', 'Riwayat Scan', BookOpen], ['KERJA PIKET', '/admin/live-monitor', 'Aktivitas Sekarang', Activity], ['BANTUAN', '/admin/notifications', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/admin/help', 'Panduan Piket', BookOpen]
+    navItem('MULAI HARI INI', '/admin/picket-dashboard', LayoutDashboard, 'Tugas Piket Hari Ini'), navItem('KERJA PIKET', '/admin/picket', ListChecks, 'Catatan Piket'), navItem('KERJA PIKET', '/admin/sessions', Radar, 'Cek Sesi Kelas'), navItem('KERJA PIKET', '/admin/anomaly', Flag, 'Cek Masalah'), navItem('KERJA PIKET', '/admin/history', BookOpen, 'Riwayat Scan'), navItem('KERJA PIKET', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Piket')
   ],
-  guru: [['MULAI MENGAJAR', '/guru/dashboard', 'Ringkasan Mengajar', Home], ['MULAI MENGAJAR', '/guru/presensi', 'Isi Presensi Kelas', CheckSquare], ['MULAI MENGAJAR', '/guru/koreksi', 'Perbaiki Presensi', Edit3], ['LAPORAN', '/guru/rekap', 'Laporan Kelas Saya', FileText], ['PRIBADI', '/guru/izin', 'Izin / Sakit / Dinas', Calendar], ['PRIBADI', '/guru/kehadiran-saya', 'Kehadiran Saya', UserIcon], ['BANTUAN', '/guru/notifikasi', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/guru/panduan', 'Panduan', BookOpen]],
-  siswa: [['UTAMA', '/siswa/dashboard', 'Kehadiran Saya', Home], ['BANTUAN', '/siswa/notifikasi', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/siswa/panduan', 'Panduan', BookOpen]]
+  guru: [navItem('MULAI MENGAJAR', '/guru/dashboard', Home, 'Ringkasan Mengajar'), navItem('MULAI MENGAJAR', '/guru/presensi', CheckSquare, 'Isi Presensi Kelas'), navItem('MULAI MENGAJAR', '/guru/koreksi', Edit3, 'Perbaiki Presensi'), navItem('LAPORAN', '/guru/rekap', FileText, 'Laporan Kelas Saya'), navItem('PRIBADI', '/guru/izin', Calendar, 'Izin / Sakit / Dinas'), navItem('PRIBADI', '/guru/kehadiran-saya', UserIcon, 'Kehadiran Saya'), navItem('BANTUAN', '/guru/notifikasi', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/guru/panduan', BookOpen, 'Panduan')],
+  siswa: [navItem('UTAMA', '/siswa/dashboard', Home, 'Kehadiran Saya'), navItem('BANTUAN', '/siswa/notifikasi', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/siswa/panduan', BookOpen, 'Panduan')]
 };
 
 function navKeyForRole(role?: string): NavKey {
@@ -182,83 +205,19 @@ function navKeyForRole(role?: string): NavKey {
   return 'admin';
 }
 
-const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
-  '/admin/dashboard': ['reports.operational.read'],
-  '/admin/it-dashboard': ['devices.read'],
-  '/admin/picket-dashboard': ['reconciliation.read'],
-  '/admin/sessions': ['classAttendance.read'],
-  '/admin/history': ['gateAttendance.read'],
-  '/admin/anomaly': ['reconciliation.read'],
-  '/admin/picket': ['reconciliation.read'],
-  '/admin/master-data': ['users.read', 'academic.read'],
-  '/admin/schedule': ['schedules.read'],
-  '/admin/devices': ['devices.read'],
-  '/admin/reports': ['reports.school.read'],
-  '/admin/live-monitor': ['reports.operational.read'],
-  '/admin/settings': ['settings.read'],
-  '/admin/audit': ['audit.read'],
-  '/admin/teacher-leaves': ['schedules.read'],
-  '/admin/notifications': ['profile.self.read'],
-  '/admin/developer-control': ['settings.manage'],
-  '/admin/help': ['profile.self.read'],
-  '/guru/dashboard': ['classAttendance.read'],
-  '/guru/presensi': ['classAttendance.record'],
-  '/guru/koreksi': ['classAttendance.correct'],
-  '/guru/rekap': ['reports.self.read'],
-  '/guru/izin': ['profile.self.update'],
-  '/guru/kehadiran-saya': ['reports.self.read'],
-  '/guru/notifikasi': ['profile.self.read'],
-  '/guru/panduan': ['profile.self.read'],
-  '/siswa/dashboard': ['reports.self.read'],
-  '/siswa/notifikasi': ['profile.self.read'],
-  '/siswa/panduan': ['profile.self.read']
-};
-
-const ROUTE_ACCESS: Record<string, string[]> = {
-  '/admin/dashboard': ['ADMIN_TU', 'DEVELOPER'],
-  '/admin/it-dashboard': ['OPERATOR_IT', 'DEVELOPER'],
-  '/admin/picket-dashboard': ['GURU_PIKET', 'DEVELOPER'],
-  '/admin/sessions': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/history': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/anomaly': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/picket': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/master-data': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/schedule': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/devices': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/reports': ['ADMIN_TU', 'DEVELOPER'],
-  '/admin/live-monitor': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/settings': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/audit': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/teacher-leaves': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/notifications': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/developer-control': ['DEVELOPER'],
-  '/admin/help': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/guru/dashboard': ['GURU_MAPEL'],
-  '/guru/presensi': ['GURU_MAPEL'],
-  '/guru/koreksi': ['GURU_MAPEL'],
-  '/guru/rekap': ['GURU_MAPEL'],
-  '/guru/izin': ['GURU_MAPEL'],
-  '/guru/kehadiran-saya': ['GURU_MAPEL'],
-  '/guru/notifikasi': ['GURU_MAPEL'],
-  '/guru/panduan': ['GURU_MAPEL'],
-  '/siswa/dashboard': ['SISWA'],
-  '/siswa/notifikasi': ['SISWA'],
-  '/siswa/panduan': ['SISWA']
-};
-
-function canAccessRoute(path: string, user: User | null) {
-  const allowed = ROUTE_ACCESS[path];
-  const requiredCapabilities = ROUTE_CAPABILITIES[path] || [];
-  return Boolean(user?.role && allowed?.includes(String(user.role)) && requiredCapabilities.every((capability) => hasCapability(String(user.role), capability)));
+export function canAccessRoute(path: string, user: User | null) {
+  const route = routeForPath(path);
+  return Boolean(user?.role && route?.roles.includes(user.role as Role) && route.capabilities.every((capability) => hasCapability(String(user.role), capability)));
 }
 
-function navItemsForUser(user: User | null): NavItem[] {
+export function navItemsForUser(user: User | null): NavItem[] {
   const role = navKeyForRole(user?.role);
   return NAV_ITEMS_BY_ROLE[role].filter(([, url]) => canAccessRoute(url, user));
 }
 
-function routeExists(path: string) {
-  return Boolean(ROUTE_ACCESS[path]);
+export function routeCrumbs(path: string): [string, string] | ['e-Hadir'] {
+  const route = routeForPath(path);
+  return route ? [route.area, route.title] : ['e-Hadir'];
 }
 
 function roleLabel(role?: string): string {
@@ -598,7 +557,7 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
 }
 
 function AppLayout({ user, path, onLogout, children }: { user: User; path: string; onLogout: () => void; children: ReactNode }) {
-  const crumbs = ROUTE_TITLE[path] || ['e-Hadir'];
+  const crumbs = routeCrumbs(path);
   const [connection, setConnection] = useState<ConnectionStatus>(() => navigator.onLine ? 'checking' : 'offline');
   const [tutorialOpenKey, setTutorialOpenKey] = useState(0);
   const [tutorialEnabled, setTutorialEnabled] = useState(false);
@@ -785,42 +744,10 @@ function App() {
   if (path === '/login') return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!user) return <LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} />;
   if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { localStorage.removeItem(USER_KEY); setSessionChecked(true); setUser(null); notify('Password berhasil diganti. Silakan masuk kembali.', 'ok'); go('/login'); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  const exists = routeExists(path);
+  const route = routeForPath(path);
+  const exists = Boolean(route);
   const allowed = exists && canAccessRoute(path, user);
-  const screen = (() => {
-    if (!exists) return <NotFound user={user} />;
-    if (!allowed) return <Unauthorized user={user} />;
-    if (path === '/admin/dashboard') return <AdminDashboard />;
-    if (path === '/admin/it-dashboard') return <ItDashboardPage />;
-    if (path === '/admin/picket-dashboard') return <PicketDashboardPage />;
-    if (path === '/admin/sessions') return <SessionsPage admin />;
-    if (path === '/admin/history') return <HistoryPage />;
-    if (path === '/admin/anomaly') return <AnomalyPage notify={notify} />;
-    if (path === '/admin/picket') return <PicketBookPage notify={notify} />;
-    if (path === '/admin/master-data') return <MasterDataPage notify={notify} />;
-    if (path === '/admin/schedule') return <SchedulePage notify={notify} />;
-    if (path === '/admin/devices') return <DevicesPage notify={notify} />;
-    if (path === '/admin/reports') return <ReportsPage notify={notify} />;
-    if (path === '/admin/live-monitor') return <LiveMonitorPage />;
-    if (path === '/admin/settings') return <SettingsPage notify={notify} />;
-    if (path === '/admin/audit') return <AuditPage />;
-    if (path === '/admin/teacher-leaves') return <TeacherLeavesPage notify={notify} />;
-    if (path === '/admin/notifications') return <NotificationsPage />;
-    if (path === '/admin/developer-control') return <DeveloperControlPage notify={notify} />;
-    if (path === '/admin/help') return <HelpPage role={String(user.role)} />;
-    if (path === '/guru/dashboard') return <TeacherDashboard />;
-    if (path === '/guru/presensi') return <ClassInputPage notify={notify} />;
-    if (path === '/guru/koreksi') return <CorrectionPage notify={notify} />;
-    if (path === '/guru/rekap') return <TeacherRecapPage />;
-    if (path === '/guru/izin') return <TeacherLeavePage notify={notify} />;
-    if (path === '/guru/kehadiran-saya') return <MyAttendancePage />;
-    if (path === '/guru/notifikasi') return <NotificationsPage />;
-    if (path === '/guru/panduan') return <HelpPage role={String(user.role)} />;
-    if (path === '/siswa/dashboard') return <MyAttendancePage student title="Kehadiran Saya" />;
-    if (path === '/siswa/notifikasi') return <NotificationsPage />;
-    if (path === '/siswa/panduan') return <HelpPage role={String(user.role)} />;
-    return <Unauthorized user={user} />;
-  })();
+  const screen = !route ? <NotFound user={user} /> : !allowed ? <Unauthorized user={user} /> : route.render({ user, notify });
   return <><AppLayout user={user} path={path} onLogout={logout}>{screen}</AppLayout><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
 }
 
