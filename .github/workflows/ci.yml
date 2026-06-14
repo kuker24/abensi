@@ -247,6 +247,7 @@ jobs:
       - run: npm run preflight:production -- --json=artifacts/preflight/production-readiness-preflight.json --write-sql-table
       - run: npm run test:integration -- --json=artifacts/integration/postgres-integration.json
       - run: npm run test:concurrency -- --json=artifacts/concurrency/postgres-concurrency.json
+      - run: npm run test:outbox-sse -- --json=artifacts/outbox-sse/outbox-sse-distributed.json
       - run: npm run audit:preflight-chain -- --json=artifacts/audit/audit-chain-preflight-after-concurrency.json
       - run: npm run audit:verify-chain
       - run: npm run verify:post-migration -- --json=artifacts/preflight/post-migration-verify.json
@@ -428,6 +429,85 @@ jobs:
             apps/web/test-results/
             artifacts/full-stack-e2e/
 
+  performance-observability:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolhub_perf
+          POSTGRES_USER: schoolhub
+          POSTGRES_PASSWORD: schoolhub_test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U schoolhub -d schoolhub_perf"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_perf?schema=public
+      DIRECT_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_perf?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      JWT_ISSUER: schoolhub-ci
+      JWT_AUDIENCE: schoolhub-web-ci
+      JWT_EXPIRES_IN: 15m
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+      SCHOOL_TIMEZONE: Asia/Jakarta
+      SSO_ENABLED: 'false'
+      ADMIN_PASSWORD: Admin#12345678
+      DEFAULT_USER_PASSWORD: User#12345678
+      DEVELOPER_PASSWORD: Dev#12345678
+      PERF_MAX_P95_MS: '1500'
+      PERF_MAX_ENDPOINT_MS: '2500'
+      PERF_ITERATIONS: '3'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+      - run: npm ci && npm ci --prefix apps/api
+      - run: npm run prisma:generate
+      - run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - run: npm run prisma:seed
+      - run: npm run build --prefix apps/api
+      - run: |
+          mkdir -p artifacts/observability artifacts/perf
+          (cd apps/api && PORT=3000 npm run start) > artifacts/observability/api.log 2>&1 &
+          api_pid=$!
+          trap 'kill $api_pid >/dev/null 2>&1 || true' EXIT
+          for i in {1..60}; do
+            curl --fail http://127.0.0.1:3000/api/v1/health/live && break
+            sleep 2
+            if [[ $i -eq 60 ]]; then cat artifacts/observability/api.log; exit 1; fi
+          done
+          BASE_URL=http://127.0.0.1:3000/api/v1 PERF_OUTPUT=artifacts/perf/perf-smoke.json npm run test:perf-smoke
+          OBSERVABILITY_OUTPUT=artifacts/observability/log-check.json npm run test:observability-logs -- artifacts/observability/api.log
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: performance-observability-artifacts
+          if-no-files-found: ignore
+          path: |
+            artifacts/perf/
+            artifacts/observability/
+
   tls-fixture:
     runs-on: ubuntu-latest
     permissions:
@@ -528,6 +608,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - run: npm run prisma:generate
       - run: npx prisma migrate deploy --schema prisma/schema.prisma
       - run: npm run prisma:seed
       - run: psql postgresql://schoolhub:schoolhub_test_password@localhost:5432/postgres -c 'CREATE DATABASE schoolhub_restore;'
