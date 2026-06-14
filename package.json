@@ -28,6 +28,7 @@
     "security:container-scan": "bash scripts/container_scan.sh",
     "security:sbom": "bash scripts/generate_sbom.sh",
     "security:license": "bash scripts/license_policy_check.sh",
+    "security:risk-acceptance": "node scripts/risk_acceptance_check.mjs",
     "security:android": "bash scripts/android_release_security.sh",
     "ops:backup-restore-drill": "bash scripts/backup_restore_drill.sh",
     "test:api": "npm run test --prefix apps/api",

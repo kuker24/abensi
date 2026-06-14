@@ -116,9 +116,8 @@ jobs:
         run: |
           test -x apps/android-reader/gradlew
           grep -q 'https\\://services.gradle.org/distributions/gradle-8.7-bin.zip' apps/android-reader/gradle/wrapper/gradle-wrapper.properties
-      - name: Android unit, lint, and debug build
-        working-directory: apps/android-reader
-        run: ./gradlew --no-daemon test lint assembleDebug
+      - name: Android static security, lint, tests, and debug build
+        run: bash scripts/android_release_security.sh
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -127,6 +126,7 @@ jobs:
           path: |
             apps/android-reader/app/build/reports/
             apps/android-reader/app/build/test-results/
+            artifacts/android-security/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-reader-debug-apk
@@ -314,9 +314,15 @@ jobs:
             apps/api/package-lock.json
             apps/web/package-lock.json
             apps/worker/package-lock.json
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
       - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web && npm ci --prefix apps/worker
       - run: npm run security:secrets
       - run: npm run security:license
+      - run: npm run security:risk-acceptance
       - run: npm run security:sbom
       - run: npm audit --audit-level=high
       - run: npm audit --audit-level=high --prefix apps/api
