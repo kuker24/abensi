@@ -21,6 +21,7 @@ tools/apk-builder/**/__pycache__/
 tools/apk-builder/.pytest_cache/
 postgres_data/
 redis_data/
+backups/
 akun_beta.txt
 .last_hardening_backup_path
 .last_deploy_artifact_path

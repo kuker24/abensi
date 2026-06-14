@@ -193,3 +193,275 @@ jobs:
         with:
           languages: javascript-typescript
       - uses: github/codeql-action/analyze@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolhub_test
+          POSTGRES_USER: schoolhub
+          POSTGRES_PASSWORD: schoolhub_test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U schoolhub -d schoolhub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_test?schema=public
+      DIRECT_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      JWT_ISSUER: schoolhub-ci
+      JWT_AUDIENCE: schoolhub-web-ci
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+      SCHOOL_TIMEZONE: Asia/Jakarta
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+            apps/worker/package-lock.json
+      - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web && npm ci --prefix apps/worker
+      - run: npx prisma generate --schema prisma/schema.prisma
+      - run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - run: npm run preflight:production -- --json=artifacts/preflight/production-readiness-preflight.json --write-sql-table
+      - run: npm run test:integration -- --json=artifacts/integration/postgres-integration.json
+      - run: npm run test:concurrency -- --json=artifacts/concurrency/postgres-concurrency.json
+      - run: npm run audit:preflight-chain -- --json=artifacts/audit/audit-chain-preflight-after-concurrency.json
+      - run: npm run audit:verify-chain
+      - run: npm run verify:post-migration -- --json=artifacts/preflight/post-migration-verify.json
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: postgres-integration-artifacts
+          if-no-files-found: ignore
+          path: artifacts/
+
+  upgrade-migrations:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolhub_upgrade
+          POSTGRES_USER: schoolhub
+          POSTGRES_PASSWORD: schoolhub_test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U schoolhub -d schoolhub_upgrade"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_upgrade?schema=public
+      DIRECT_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_upgrade?schema=public
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run test:upgrade-migrations
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: upgrade-migration-artifacts
+          if-no-files-found: ignore
+          path: artifacts/upgrade-migrations/
+
+  security-supply-chain:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+            apps/worker/package-lock.json
+      - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web && npm ci --prefix apps/worker
+      - run: npm run security:secrets
+      - run: npm run security:license
+      - run: npm run security:sbom
+      - run: npm audit --audit-level=high
+      - run: npm audit --audit-level=high --prefix apps/api
+      - run: npm audit --audit-level=high --prefix apps/web
+      - run: npm audit --audit-level=high --prefix apps/worker
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+      - run: npm run security:container-scan
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: security-supply-chain-artifacts
+          if-no-files-found: ignore
+          path: artifacts/
+
+  web-quality-gates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci --prefix apps/web
+      - run: npx --prefix apps/web playwright install --with-deps chromium
+      - run: npm run test:e2e:ui
+      - run: npm run test:a11y
+      - run: npm run test:visual
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: web-quality-artifacts
+          if-no-files-found: ignore
+          path: |
+            apps/web/playwright-report*/
+            apps/web/test-results/
+
+  full-stack-e2e:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolhub_fullstack
+          POSTGRES_USER: schoolhub
+          POSTGRES_PASSWORD: schoolhub_test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U schoolhub -d schoolhub_fullstack"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_fullstack?schema=public
+      DIRECT_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_fullstack?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      JWT_ISSUER: schoolhub-ci
+      JWT_AUDIENCE: schoolhub-web-ci
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+      SCHOOL_TIMEZONE: Asia/Jakarta
+      SSO_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+      - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web
+      - run: npx --prefix apps/web playwright install --with-deps chromium
+      - run: npm run test:e2e:full-stack
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: full-stack-e2e-artifacts
+          if-no-files-found: ignore
+          path: |
+            apps/web/playwright-report-full-stack/
+            apps/web/test-results/
+            artifacts/full-stack-e2e/
+
+  backup-restore-drill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolhub_backup
+          POSTGRES_USER: schoolhub
+          POSTGRES_PASSWORD: schoolhub_test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U schoolhub -d schoolhub_backup"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_backup?schema=public
+      DIRECT_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_backup?schema=public
+      RESTORE_DATABASE_URL: postgresql://schoolhub:schoolhub_test_password@localhost:5432/schoolhub_restore?schema=public
+      BACKUP_ENCRYPTION_PASSPHRASE: ci-backup-passphrase-with-more-than-thirty-two-characters
+      JWT_SECRET: ci-only-random-looking-secret-value-with-more-than-forty-eight-characters
+      WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
+      READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - run: psql postgresql://schoolhub:schoolhub_test_password@localhost:5432/postgres -c 'CREATE DATABASE schoolhub_restore;'
+      - run: npm run ops:backup-restore-drill
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: backup-restore-artifacts
+          if-no-files-found: ignore
+          path: artifacts/backup-restore/

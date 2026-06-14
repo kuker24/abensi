@@ -31,13 +31,13 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:migrate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:seed && PORT=${apiPort} CORS_ORIGIN=${webOrigin} PUBLIC_APP_ORIGIN=${webOrigin} npm run start:dev --prefix apps/api`,
+      command: `cd ../.. && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:migrate && ADMIN_PASSWORD=Admin#12345678 DEFAULT_USER_PASSWORD=User#12345678 DEVELOPER_PASSWORD=Dev#12345678 npm run prisma:seed && PORT=${apiPort} CORS_ORIGIN=${webOrigin} PUBLIC_APP_ORIGIN=${webOrigin} npm run start:dev --prefix apps/api`,
       url: `${apiOrigin}/health/live`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000
     },
     {
-      command: `VITE_API_BASE_URL=${apiOrigin}/api/v1 npm run dev --prefix apps/web -- --host 127.0.0.1 --port ${webPort}`,
+      command: `VITE_API_BASE_URL=${apiOrigin}/api/v1 npm run dev -- --host 127.0.0.1 --port ${webPort}`,
       url: webOrigin,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000
