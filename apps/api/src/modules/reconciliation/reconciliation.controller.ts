@@ -133,7 +133,10 @@ export class ReconciliationController {
       throw new ForbiddenException('Worker token production belum aman.');
     }
     const finalExpected = expected ?? 'worker-dev-token';
-    if (!workerToken || workerToken !== finalExpected) {
+    if (process.env.NODE_ENV === 'production' && finalExpected.length < 32) {
+      throw new ForbiddenException('Worker token production terlalu pendek.');
+    }
+    if (!safeEqual(workerToken, finalExpected)) {
       throw new ForbiddenException('Invalid worker token');
     }
 
@@ -155,6 +158,10 @@ export class ReconciliationController {
     const inserted = await this.redis.setNxPx(nonceKey, '1', 120_000);
     if (inserted === false) throw new ForbiddenException('Worker nonce replay detected');
     if (inserted === null) {
+      const requireDistributedNonce = process.env.NODE_ENV === 'production' || process.env.WORKER_REQUIRE_DISTRIBUTED_NONCE === 'true';
+      if (requireDistributedNonce) {
+        throw new ForbiddenException('Worker nonce store unavailable');
+      }
       const now = Date.now();
       for (const [key, expiresAt] of workerNonceFallback) {
         if (expiresAt <= now) workerNonceFallback.delete(key);

@@ -31,6 +31,10 @@ if (!token) {
   console.error('[worker] WORKER_TOKEN wajib diatur di production.');
   process.exit(1);
 }
+if (process.env.NODE_ENV === 'production' && token.length < 32) {
+  console.error('[worker] WORKER_TOKEN produksi wajib minimal 32 karakter acak.');
+  process.exit(1);
+}
 if (!redisUrl) {
   console.error('[worker] REDIS_URL wajib diatur; worker produksi memakai BullMQ/Redis, bukan setInterval lokal.');
   process.exit(1);

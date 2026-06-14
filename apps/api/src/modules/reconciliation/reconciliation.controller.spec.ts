@@ -11,6 +11,8 @@ function signedHeaders(path: string, token: string, nonce = `nonce-${Date.now()}
 describe('ReconciliationController worker authentication', () => {
   const previousToken = process.env.WORKER_TOKEN;
   const previousRequire = process.env.WORKER_REQUIRE_SIGNATURE;
+  const previousDistributedNonce = process.env.WORKER_REQUIRE_DISTRIBUTED_NONCE;
+  const previousNodeEnv = process.env.NODE_ENV;
   const request = { method: 'POST', originalUrl: '/api/v1/internal/reconciliation/run' } as any;
 
   beforeEach(() => {
@@ -23,6 +25,10 @@ describe('ReconciliationController worker authentication', () => {
     else process.env.WORKER_TOKEN = previousToken;
     if (previousRequire === undefined) delete process.env.WORKER_REQUIRE_SIGNATURE;
     else process.env.WORKER_REQUIRE_SIGNATURE = previousRequire;
+    if (previousDistributedNonce === undefined) delete process.env.WORKER_REQUIRE_DISTRIBUTED_NONCE;
+    else process.env.WORKER_REQUIRE_DISTRIBUTED_NONCE = previousDistributedNonce;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
   });
 
   it('accepts a signed worker request once', async () => {
@@ -52,6 +58,42 @@ describe('ReconciliationController worker authentication', () => {
     const headers = signedHeaders('/api/v1/internal/reconciliation/run', process.env.WORKER_TOKEN!);
 
     await expect(controller.runInternal(request, process.env.WORKER_TOKEN, headers.timestamp, headers.nonce, 'bad')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(redis.setNxPx).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when distributed nonce storage is unavailable in production', async () => {
+    process.env.NODE_ENV = 'production';
+    const service = { runPendingReconciliation: jest.fn() } as any;
+    const redis = { setNxPx: jest.fn().mockResolvedValue(null) } as any;
+    const controller = new ReconciliationController(service, redis);
+    const headers = signedHeaders('/api/v1/internal/reconciliation/run', process.env.WORKER_TOKEN!, 'prod-redis-unavailable');
+
+    await expect(controller.runInternal(request, process.env.WORKER_TOKEN, headers.timestamp, headers.nonce, headers.signature)).rejects.toMatchObject({
+      response: expect.objectContaining({ message: 'Worker nonce store unavailable' })
+    });
+    expect(service.runPendingReconciliation).not.toHaveBeenCalled();
+  });
+
+  it('allows local fallback nonce storage only outside production', async () => {
+    process.env.NODE_ENV = 'test';
+    const service = { runPendingReconciliation: jest.fn().mockResolvedValue({ ok: true }) } as any;
+    const redis = { setNxPx: jest.fn().mockResolvedValue(null) } as any;
+    const controller = new ReconciliationController(service, redis);
+    const headers = signedHeaders('/api/v1/internal/reconciliation/run', process.env.WORKER_TOKEN!, 'dev-fallback-nonce');
+
+    await expect(controller.runInternal(request, process.env.WORKER_TOKEN, headers.timestamp, headers.nonce, headers.signature)).resolves.toEqual({ ok: true });
+    await expect(controller.runInternal(request, process.env.WORKER_TOKEN, headers.timestamp, headers.nonce, headers.signature)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('rejects short production worker secrets before processing', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.WORKER_TOKEN = 'short-secret';
+    const service = { runPendingReconciliation: jest.fn() } as any;
+    const redis = { setNxPx: jest.fn() } as any;
+    const controller = new ReconciliationController(service, redis);
+    const headers = signedHeaders('/api/v1/internal/reconciliation/run', process.env.WORKER_TOKEN!, 'short-prod-token');
+
+    await expect(controller.runInternal(request, process.env.WORKER_TOKEN, headers.timestamp, headers.nonce, headers.signature)).rejects.toBeInstanceOf(ForbiddenException);
     expect(redis.setNxPx).not.toHaveBeenCalled();
   });
 });
