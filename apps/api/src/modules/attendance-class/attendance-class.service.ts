@@ -1,7 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
+  AttendanceConfirmationSource,
+  AttendanceReviewState,
   Prisma,
   Role,
+  RosterCaptureSource,
   SessionStatus,
   StudentAttendanceStatus,
   TeacherSessionStatus,
@@ -16,7 +19,7 @@ import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDt
 import { AccessPolicyService } from '../security/access-policy.service';
 import { writeAudit } from '../../common/audit-log';
 import { assertReasonQuality } from '../security/reason-policy';
-import { jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
+import { businessDateKey, jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
 
 function teacherStatusForCheckIn(startsAt: Date, policyGraceMinutes?: number) {
   const graceMinutes = policyGraceMinutes ?? 15;
@@ -149,6 +152,73 @@ export class AttendanceClassService {
     const existing = await this.prisma.attendancePolicy.findUnique({ where: { id: 1 } });
     if (existing) return existing;
     return this.prisma.attendancePolicy.create({ data: { id: 1 } });
+  }
+
+  private async captureSessionRoster(
+    tx: Prisma.TransactionClient,
+    session: { id: string; classId: string; businessDate: Date; startsAt: Date },
+    source: RosterCaptureSource
+  ) {
+    const existing = await tx.sessionRoster.count({ where: { sessionId: session.id } });
+    if (existing > 0) return existing;
+
+    const effectiveDate = session.businessDate ?? dateOnly(session.startsAt);
+    const enrollments = await tx.classEnrollment.findMany({
+      where: {
+        classId: session.classId,
+        active: true,
+        effectiveFrom: { lte: effectiveDate },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveDate } }],
+        student: { active: true, role: Role.SISWA }
+      },
+      include: {
+        student: { select: { id: true, fullName: true, username: true } },
+        schoolClass: { select: { id: true, code: true, name: true } }
+      },
+      orderBy: { student: { fullName: 'asc' } }
+    });
+
+    if (!enrollments.length) return 0;
+
+    await tx.sessionRoster.createMany({
+      data: enrollments.map((enrollment) => ({
+        sessionId: session.id,
+        studentId: enrollment.studentId,
+        enrollmentId: enrollment.id,
+        studentNameSnapshot: enrollment.student.fullName,
+        studentUsernameSnapshot: enrollment.student.username,
+        classIdSnapshot: enrollment.schoolClass.id,
+        classCodeSnapshot: enrollment.schoolClass.code,
+        classNameSnapshot: enrollment.schoolClass.name,
+        academicYearIdSnapshot: enrollment.academicYearId,
+        academicYearNameSnapshot: null,
+        semesterIdSnapshot: enrollment.semesterId,
+        semesterNameSnapshot: null,
+        captureSource: source,
+        activeAtCapture: enrollment.active,
+        metadata: { businessDate: businessDateKey(effectiveDate) }
+      })),
+      skipDuplicates: true
+    });
+
+    return enrollments.length;
+  }
+
+  private async ensureDefaultAttendances(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    rosterRows: Array<{ studentId: string }>
+  ) {
+    if (!rosterRows.length) return;
+    await tx.studentAttendance.createMany({
+      data: rosterRows.map((item) => ({
+        sessionId,
+        studentId: item.studentId,
+        status: StudentAttendanceStatus.ALPA,
+        reviewState: AttendanceReviewState.DEFAULTED
+      })),
+      skipDuplicates: true
+    });
   }
 
   private async eligibilityForStudents(studentIds: string[], sessionStartsAt: Date) {
@@ -326,16 +396,9 @@ export class AttendanceClassService {
       if (opened.count !== 1) throw new ConflictException('Sesi hanya dapat dibuka dari status SCHEDULED.');
       const updated = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
 
-      const roster = await tx.classEnrollment.findMany({
-        where: { classId: session.classId, student: { active: true, role: Role.SISWA } },
-        select: { studentId: true }
-      });
-      if (roster.length) {
-        await tx.studentAttendance.createMany({
-          data: roster.map((item) => ({ sessionId, studentId: item.studentId, status: StudentAttendanceStatus.ALPA })),
-          skipDuplicates: true
-        });
-      }
+      await this.captureSessionRoster(tx, session, RosterCaptureSource.OPENED);
+      const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      await this.ensureDefaultAttendances(tx, sessionId, roster);
 
       const teacherPresence = await tx.teacherSessionPresence.upsert({
         where: {
@@ -425,11 +488,17 @@ export class AttendanceClassService {
       throw new BadRequestException('Sesi belum OPEN.');
     }
 
-    const enrolled = await this.prisma.classEnrollment.findMany({
-      where: { classId: session.classId, student: { active: true, role: Role.SISWA } },
+    let rosterRows = await this.prisma.sessionRoster.findMany({
+      where: { sessionId },
       select: { studentId: true }
     });
-    const rosterSet = new Set(enrolled.map((item) => item.studentId));
+    if (!rosterRows.length) {
+      await this.prisma.$transaction(async (tx) => {
+        await this.captureSessionRoster(tx, session, RosterCaptureSource.OPENED);
+      });
+      rosterRows = await this.prisma.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+    }
+    const rosterSet = new Set(rosterRows.map((item) => item.studentId));
     const outOfRoster = payload.items.filter((item) => !rosterSet.has(item.studentId)).map((item) => item.studentId);
     if (outOfRoster.length) {
       await this.prisma.$transaction(async (tx) => {
@@ -473,11 +542,19 @@ export class AttendanceClassService {
             sessionId,
             studentId: item.studentId,
             status: item.status,
-            note: item.note
+            note: item.note,
+            reviewState: AttendanceReviewState.CONFIRMED,
+            confirmedAt: new Date(),
+            confirmedById: actor.sub,
+            confirmationSource: AttendanceConfirmationSource.MANUAL_BULK
           },
           update: {
             status: item.status,
-            note: item.note
+            note: item.note,
+            reviewState: AttendanceReviewState.CONFIRMED,
+            confirmedAt: new Date(),
+            confirmedById: actor.sub,
+            confirmationSource: AttendanceConfirmationSource.MANUAL_BULK
           }
         });
         result.push(attendance);
@@ -540,16 +617,30 @@ export class AttendanceClassService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const roster = await tx.classEnrollment.findMany({
-        where: { classId: session.classId, student: { active: true, role: Role.SISWA } },
-        select: { studentId: true }
-      });
-      if (roster.length) {
-        await tx.studentAttendance.createMany({
-          data: roster.map((item) => ({ sessionId, studentId: item.studentId, status: StudentAttendanceStatus.ALPA })),
-          skipDuplicates: true
+      await this.captureSessionRoster(tx, session, RosterCaptureSource.OPENED);
+      const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      await this.ensureDefaultAttendances(tx, sessionId, roster);
+
+      const unreviewedCount = await tx.studentAttendance.count({ where: { sessionId, reviewState: AttendanceReviewState.DEFAULTED } });
+      if (unreviewedCount > 0 && !payload.finalizeDefaultAlpa) {
+        throw new ConflictException({
+          code: 'ATTENDANCE_UNREVIEWED_DEFAULTS',
+          message: 'Masih ada presensi default ALPA yang belum dikonfirmasi.',
+          unreviewedCount
         });
       }
+      if (unreviewedCount > 0) {
+        await tx.studentAttendance.updateMany({
+          where: { sessionId, reviewState: AttendanceReviewState.DEFAULTED },
+          data: {
+            reviewState: AttendanceReviewState.CONFIRMED,
+            confirmedAt: now,
+            confirmedById: actor.sub,
+            confirmationSource: AttendanceConfirmationSource.FINALIZED_DEFAULT
+          }
+        });
+      }
+
       const closed = await tx.session.updateMany({
         where: { id: sessionId, status: SessionStatus.OPEN },
         data: {
@@ -598,6 +689,18 @@ export class AttendanceClassService {
         }
       });
 
+      if (unreviewedCount > 0) {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'class.attendance.finalized_default_alpa',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { finalizedCount: unreviewedCount, source: AttendanceConfirmationSource.FINALIZED_DEFAULT }
+        });
+      }
+
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role as Role,
@@ -645,6 +748,7 @@ export class AttendanceClassService {
       where: { id: sessionId },
       include: {
         attendances: true,
+        rosters: true,
         teacherPresence: true,
         schoolClass: {
           include: {
@@ -680,6 +784,9 @@ export class AttendanceClassService {
     }
 
     const teacherPresence = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
+    const confirmedCount = session.attendances.filter((item) => item.reviewState !== AttendanceReviewState.DEFAULTED).length;
+    const defaultedCount = session.attendances.filter((item) => item.reviewState === AttendanceReviewState.DEFAULTED).length;
+    const rosterTotal = session.rosters.length || session.schoolClass.enrollments.length;
 
     return {
       sessionId,
@@ -688,8 +795,12 @@ export class AttendanceClassService {
       closedAt: session.closedAt,
       teacherPresence,
       teacherDurationMinutes: durationMinutes(teacherPresence?.checkInAt, teacherPresence?.checkOutAt),
-      enrolledCount: session.schoolClass.enrollments.length,
+      enrolledCount: rosterTotal,
+      rosterCount: rosterTotal,
       recordedCount: session.attendances.length,
+      confirmedCount,
+      defaultedCount,
+      progress: rosterTotal > 0 ? confirmedCount / rosterTotal : 0,
       counters
     };
   }
@@ -724,6 +835,10 @@ export class AttendanceClassService {
             }
           }
         },
+        rosters: {
+          include: { student: { select: { cardStatus: true } } },
+          orderBy: { studentNameSnapshot: 'asc' }
+        },
         attendances: true,
         teacherPresence: true
       }
@@ -738,16 +853,40 @@ export class AttendanceClassService {
     }
 
     const attendanceMap = new Map(session.attendances.map((item) => [item.studentId, item]));
-    const eligibilityMap = await this.eligibilityForStudents(session.schoolClass.enrollments.map((item) => item.studentId), session.startsAt);
-    const roster = session.schoolClass.enrollments.map((enrollment) => {
-      const existing = attendanceMap.get(enrollment.studentId);
-      const eligibility = eligibilityMap.get(enrollment.studentId) ?? { allowed: true, locked: false, reasons: [], requirements: { gateIn: true, dhuha: true, dzuhur: true, override: false } };
-      return {
+    const snapshotRows = session.rosters.length
+      ? session.rosters.map((row) => ({
+        studentId: row.studentId,
+        fullName: row.studentNameSnapshot,
+        username: row.studentUsernameSnapshot,
+        cardStatus: row.student.cardStatus,
+        rosterId: row.id,
+        classCodeSnapshot: row.classCodeSnapshot,
+        classNameSnapshot: row.classNameSnapshot
+      }))
+      : session.schoolClass.enrollments.map((enrollment) => ({
         studentId: enrollment.studentId,
         fullName: enrollment.student.fullName,
         username: enrollment.student.username,
         cardStatus: enrollment.student.cardStatus,
+        rosterId: null,
+        classCodeSnapshot: session.schoolClass.code,
+        classNameSnapshot: session.schoolClass.name
+      }));
+    const eligibilityMap = await this.eligibilityForStudents(snapshotRows.map((item) => item.studentId), session.startsAt);
+    const roster = snapshotRows.map((row) => {
+      const existing = attendanceMap.get(row.studentId);
+      const eligibility = eligibilityMap.get(row.studentId) ?? { allowed: true, locked: false, reasons: [], requirements: { gateIn: true, dhuha: true, dzuhur: true, override: false } };
+      return {
+        studentId: row.studentId,
+        rosterId: row.rosterId,
+        fullName: row.fullName,
+        username: row.username,
+        cardStatus: row.cardStatus,
+        classCodeSnapshot: row.classCodeSnapshot,
+        classNameSnapshot: row.classNameSnapshot,
         status: existing?.status ?? StudentAttendanceStatus.ALPA,
+        reviewState: existing?.reviewState ?? AttendanceReviewState.DEFAULTED,
+        confirmedAt: existing?.confirmedAt ?? null,
         note: existing?.note ?? null,
         updatedAt: existing?.updatedAt ?? null,
         eligibility
@@ -791,8 +930,8 @@ export class AttendanceClassService {
     }
 
     const reason = assertReasonQuality(payload.reason, 'Alasan koreksi');
-    const enrollment = await this.prisma.classEnrollment.findUnique({ where: { classId_studentId: { classId: session.classId, studentId } } });
-    if (!enrollment) throw new BadRequestException('Siswa bukan roster kelas sesi ini.');
+    const rosterEntry = await this.prisma.sessionRoster.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
+    if (!rosterEntry) throw new BadRequestException('Siswa bukan roster kelas sesi ini.');
 
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.studentAttendance.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
@@ -806,7 +945,11 @@ export class AttendanceClassService {
           evidenceLabel: 'corrected',
           correctionCount: 1,
           correctedAt: new Date(),
-          correctedById: actor.sub
+          correctedById: actor.sub,
+          reviewState: AttendanceReviewState.CORRECTED,
+          confirmedAt: new Date(),
+          confirmedById: actor.sub,
+          confirmationSource: AttendanceConfirmationSource.CORRECTION
         },
         update: {
           status: payload.status,
@@ -814,7 +957,11 @@ export class AttendanceClassService {
           evidenceLabel: 'corrected',
           correctionCount: { increment: 1 },
           correctedAt: new Date(),
-          correctedById: actor.sub
+          correctedById: actor.sub,
+          reviewState: AttendanceReviewState.CORRECTED,
+          confirmedAt: new Date(),
+          confirmedById: actor.sub,
+          confirmationSource: AttendanceConfirmationSource.CORRECTION
         }
       });
 

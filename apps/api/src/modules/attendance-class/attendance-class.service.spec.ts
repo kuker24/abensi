@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Role, SessionStatus, TeacherSessionStatus } from '@prisma/client';
 import { AttendanceClassService } from './attendance-class.service';
 
@@ -14,6 +14,7 @@ function makeService(
     classId: 'class-1',
     startsAt: new Date(now.getTime() - 5 * 60 * 1000),
     endsAt: new Date(now.getTime() + 30 * 60 * 1000),
+    businessDate: new Date(Date.UTC(2026, 5, 14)),
     status: SessionStatus.OPEN,
     ...sessionOverrides
   };
@@ -24,10 +25,17 @@ function makeService(
       findUniqueOrThrow: jest.fn().mockResolvedValue(updatedSession)
     },
     classEnrollment: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'enrollment-1', studentId: 'siswa-1', active: true, academicYearId: null, semesterId: null, student: { id: 'siswa-1', fullName: 'Siswa Satu', username: 'siswa1' }, schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' } }])
+    },
+    sessionRoster: {
+      count: jest.fn().mockResolvedValue(0),
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
       findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }])
     },
     studentAttendance: {
-      createMany: jest.fn().mockResolvedValue({ count: 1 })
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
     },
     teacherSessionPresence: {
       findUnique: jest.fn().mockResolvedValue(existingPresence),
@@ -66,10 +74,10 @@ function browserGeo(overrides: Partial<{ latitude: number; longitude: number; ac
 
 describe('AttendanceClassService record attendance policy', () => {
   it('menolak presensi siswa di luar roster kelas', async () => {
-    const session = { id: 'session-1', teacherId: 'guru-1', classId: 'class-1', startsAt: new Date(), status: SessionStatus.OPEN };
+    const session = { id: 'session-1', teacherId: 'guru-1', classId: 'class-1', startsAt: new Date(), businessDate: new Date(Date.UTC(2026, 5, 14)), status: SessionStatus.OPEN };
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue(session) },
-      classEnrollment: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]) },
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]) },
       auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
       $transaction: jest.fn(async (callback) => callback(prisma))
     } as any;
@@ -144,6 +152,35 @@ describe('AttendanceClassService teacher check-in/out', () => {
 
     await expect(service.openSession('session-1', guru, browserGeo({ capturedAt: stale }))).rejects.toThrow('Lokasi sudah kedaluwarsa');
     await expect(service.openSession('session-1', guru, browserGeo({ accuracyMeter: 1000 }))).rejects.toThrow('Akurasi lokasi terlalu rendah');
+  });
+
+  it('menolak penutupan sesi jika masih ada ALPA default yang belum dikonfirmasi', async () => {
+    const { service, tx } = makeService(
+      { endsAt: new Date(Date.now() - 5 * 60 * 1000), status: SessionStatus.OPEN },
+      { id: 'presence-1', status: TeacherSessionStatus.HADIR, checkInAt: new Date(Date.now() - 60 * 60 * 1000) }
+    );
+    tx.studentAttendance.count.mockResolvedValueOnce(1);
+
+    await expect(service.closeSession('session-1', guru, browserGeo())).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.session.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: SessionStatus.CLOSED }) }));
+  });
+
+  it('finalisasi eksplisit mengonfirmasi ALPA default dan mencatat audit', async () => {
+    const { service, tx } = makeService(
+      { endsAt: new Date(Date.now() - 5 * 60 * 1000), status: SessionStatus.OPEN },
+      { id: 'presence-1', status: TeacherSessionStatus.HADIR, checkInAt: new Date(Date.now() - 60 * 60 * 1000) }
+    );
+    tx.studentAttendance.count.mockResolvedValueOnce(2);
+
+    await service.closeSession('session-1', guru, { ...browserGeo(), finalizeDefaultAlpa: true });
+
+    expect(tx.studentAttendance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ sessionId: 'session-1' }),
+      data: expect.objectContaining({ confirmedById: 'guru-1' })
+    }));
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'class.attendance.finalized_default_alpa' })
+    }));
   });
 
   it('menolak absen keluar sebelum jam selesai tanpa alasan', async () => {

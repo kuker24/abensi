@@ -3,6 +3,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsBoolean,
   IsISO8601,
   IsIn,
   IsLatitude,
@@ -47,6 +48,10 @@ export class CloseSessionDto extends SessionGeoDto {
   @IsString()
   @MinLength(10)
   earlyCheckoutReason?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  finalizeDefaultAlpa?: boolean;
 }
 
 export class AttendanceItemDto {

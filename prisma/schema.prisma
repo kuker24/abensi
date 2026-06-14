@@ -33,6 +33,26 @@ enum StudentAttendanceStatus {
   ALPA
 }
 
+enum AttendanceReviewState {
+  DEFAULTED
+  CONFIRMED
+  CORRECTED
+}
+
+enum AttendanceConfirmationSource {
+  MANUAL_SINGLE
+  MANUAL_BULK
+  FINALIZED_DEFAULT
+  CORRECTION
+  SYSTEM_BACKFILL
+}
+
+enum RosterCaptureSource {
+  GENERATED
+  OPENED
+  BACKFILL
+}
+
 enum TeacherSessionStatus {
   HADIR
   TELAT
@@ -196,6 +216,7 @@ model User {
 
   taughtSessions              Session[]                   @relation("TeacherSessions")
   enrollments                 ClassEnrollment[]
+  sessionRosters              SessionRoster[]             @relation("SessionRosterStudent")
   gateLogs                    GateLog[]
   studentAttendances          StudentAttendance[]         @relation("StudentAttendanceUser")
   teacherPresences            TeacherSessionPresence[]
@@ -305,15 +326,29 @@ model Room {
 }
 
 model ClassEnrollment {
-  id        String   @id @default(cuid())
-  classId   String
-  studentId String
-  createdAt DateTime @default(now())
+  id             String    @id @default(cuid())
+  classId        String
+  studentId      String
+  academicYearId String?
+  semesterId     String?
+  effectiveFrom  DateTime  @default(now()) @db.Date
+  effectiveTo    DateTime? @db.Date
+  active         Boolean   @default(true)
+  createdById    String?
+  endedById      String?
+  endedReason    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  schoolClass SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolClass SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student     User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  rosters     SessionRoster[]
 
   @@unique([classId, studentId])
+  @@index([studentId, active, effectiveFrom, effectiveTo])
+  @@index([classId, active, effectiveFrom, effectiveTo])
+  @@index([academicYearId])
+  @@index([semesterId])
 }
 
 model Session {
@@ -342,6 +377,7 @@ model Session {
   teacherPresence  TeacherSessionPresence[]
   flags            ReconciliationFlag[]
   correctionEvents AttendanceCorrectionEvent[]
+  rosters          SessionRoster[]
 
   @@index([startsAt])
   @@index([businessDate])
@@ -354,18 +390,22 @@ model Session {
 }
 
 model StudentAttendance {
-  id              String                  @id @default(cuid())
-  sessionId       String
-  studentId       String
-  status          StudentAttendanceStatus
-  note            String?
-  evidenceLabel   String                  @default("normal")
-  usedOverrideId  String?
-  correctionCount Int                     @default(0)
-  correctedAt     DateTime?
-  correctedById   String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  id                 String                        @id @default(cuid())
+  sessionId          String
+  studentId          String
+  status             StudentAttendanceStatus
+  note               String?
+  evidenceLabel      String                        @default("normal")
+  usedOverrideId     String?
+  correctionCount    Int                           @default(0)
+  correctedAt        DateTime?
+  correctedById      String?
+  reviewState        AttendanceReviewState         @default(DEFAULTED)
+  confirmedAt        DateTime?
+  confirmedById      String?
+  confirmationSource AttendanceConfirmationSource?
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
 
   session          Session                     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   student          User                        @relation("StudentAttendanceUser", fields: [studentId], references: [id], onDelete: Cascade)
@@ -378,6 +418,38 @@ model StudentAttendance {
   @@index([studentId, updatedAt])
   @@index([usedOverrideId])
   @@index([evidenceLabel])
+  @@index([reviewState])
+  @@index([confirmedById])
+}
+
+model SessionRoster {
+  id                       String              @id @default(cuid())
+  sessionId                String
+  studentId                String
+  enrollmentId             String?
+  studentNameSnapshot      String
+  studentUsernameSnapshot  String
+  classIdSnapshot          String
+  classCodeSnapshot        String
+  classNameSnapshot        String
+  academicYearIdSnapshot   String?
+  academicYearNameSnapshot String?
+  semesterIdSnapshot       String?
+  semesterNameSnapshot     String?
+  capturedAt               DateTime            @default(now())
+  captureSource            RosterCaptureSource
+  activeAtCapture          Boolean             @default(true)
+  metadata                 Json?
+
+  session    Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student    User             @relation("SessionRosterStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  enrollment ClassEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([classIdSnapshot])
+  @@index([captureSource])
 }
 
 model TeacherSessionPresence {
