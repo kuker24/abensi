@@ -166,27 +166,29 @@ export class SchedulingService {
   }
 
   async updateWeeklySchedule(id: string, payload: UpdateWeeklyScheduleDto, actorId: string) {
-    const before = await this.prisma.weeklySchedule.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Jadwal mingguan tidak ditemukan.');
-    const updated = await this.prisma.weeklySchedule.update({
-      where: { id },
-      data: {
-        classId: payload.classId,
-        subjectId: payload.subjectId,
-        teacherId: payload.teacherId,
-        roomId: payload.roomId || null,
-        academicYearId: payload.academicYearId || null,
-        semesterId: payload.semesterId || null,
-        dayOfWeek: payload.dayOfWeek,
-        startTime: payload.startTime,
-        endTime: payload.endTime,
-        effectiveFrom: dateOnly(payload.effectiveFrom),
-        effectiveTo: payload.effectiveTo ? dateOnly(payload.effectiveTo) : null,
-        active: payload.active ?? true
-      }
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.weeklySchedule.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Jadwal mingguan tidak ditemukan.');
+      const updated = await tx.weeklySchedule.update({
+        where: { id },
+        data: {
+          classId: payload.classId,
+          subjectId: payload.subjectId,
+          teacherId: payload.teacherId,
+          roomId: payload.roomId || null,
+          academicYearId: payload.academicYearId || null,
+          semesterId: payload.semesterId || null,
+          dayOfWeek: payload.dayOfWeek,
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          effectiveFrom: dateOnly(payload.effectiveFrom),
+          effectiveTo: payload.effectiveTo ? dateOnly(payload.effectiveTo) : null,
+          active: payload.active ?? true
+        }
+      });
+      await writeAudit(tx, { actorId, module: 'scheduling', action: 'weekly_schedule.updated', resource: 'weeklySchedule', resourceId: id, before, after: updated });
+      return updated;
     });
-    await writeAudit(this.prisma, { actorId, module: 'scheduling', action: 'weekly_schedule.updated', resource: 'weeklySchedule', resourceId: id, before, after: updated });
-    return updated;
   }
 
   async generateSessionsFromWeeklySchedule(id: string, payload: GenerateSessionsDto, actorId: string) {
@@ -196,39 +198,41 @@ export class SchedulingService {
     const to = startOfDay(payload.to);
     if (to < from) throw new BadRequestException('Tanggal selesai harus setelah tanggal mulai.');
 
-    const generated = [];
-    const skipped = [];
-    for (let day = new Date(from); day <= to; day = new Date(day.getTime() + 24 * 60 * 60 * 1000)) {
-      if (dayOfWeek(day) !== schedule.dayOfWeek) continue;
-      if (day < schedule.effectiveFrom) continue;
-      if (schedule.effectiveTo && day > schedule.effectiveTo) continue;
-      const startsAt = combineDateTime(day, schedule.startTime);
-      const endsAt = combineDateTime(day, schedule.endTime);
-      const existing = await this.prisma.session.findFirst({
-        where: {
-          OR: [
-            { weeklyScheduleId: schedule.id, startsAt },
-            { classId: schedule.classId, startsAt, endsAt }
-          ]
-        }
-      });
-      if (existing) { skipped.push(existing.id); continue; }
-      generated.push(await this.prisma.session.create({
-        data: {
-          weeklyScheduleId: schedule.id,
-          classId: schedule.classId,
-          subjectId: schedule.subjectId,
-          teacherId: schedule.teacherId,
-          roomId: schedule.roomId,
-          startsAt,
-          endsAt,
-          status: SessionStatus.SCHEDULED
-        }
-      }));
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const generated = [];
+      const skipped = [];
+      for (let day = new Date(from); day <= to; day = new Date(day.getTime() + 24 * 60 * 60 * 1000)) {
+        if (dayOfWeek(day) !== schedule.dayOfWeek) continue;
+        if (day < schedule.effectiveFrom) continue;
+        if (schedule.effectiveTo && day > schedule.effectiveTo) continue;
+        const startsAt = combineDateTime(day, schedule.startTime);
+        const endsAt = combineDateTime(day, schedule.endTime);
+        const existing = await tx.session.findFirst({
+          where: {
+            OR: [
+              { weeklyScheduleId: schedule.id, startsAt },
+              { classId: schedule.classId, startsAt, endsAt }
+            ]
+          }
+        });
+        if (existing) { skipped.push(existing.id); continue; }
+        generated.push(await tx.session.create({
+          data: {
+            weeklyScheduleId: schedule.id,
+            classId: schedule.classId,
+            subjectId: schedule.subjectId,
+            teacherId: schedule.teacherId,
+            roomId: schedule.roomId,
+            startsAt,
+            endsAt,
+            status: SessionStatus.SCHEDULED
+          }
+        }));
+      }
 
-    await writeAudit(this.prisma, { actorId, module: 'scheduling', action: 'weekly_schedule.sessions_generated', resource: 'weeklySchedule', resourceId: id, after: { generated: generated.length, skipped: skipped.length } });
-    return { generatedCount: generated.length, skippedCount: skipped.length, items: generated };
+      await writeAudit(tx, { actorId, module: 'scheduling', action: 'weekly_schedule.sessions_generated', resource: 'weeklySchedule', resourceId: id, after: { generated: generated.length, skipped: skipped.length } });
+      return { generatedCount: generated.length, skippedCount: skipped.length, items: generated };
+    });
   }
 
   updateSessionSchedule(sessionId: string, payload: UpdateSessionScheduleDto, actorId: string) {

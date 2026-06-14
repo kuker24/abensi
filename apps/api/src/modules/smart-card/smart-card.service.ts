@@ -37,28 +37,30 @@ export class SmartCardService {
 
   async createCard(payload: CreateSmartCardDto, actorId: string) {
     try {
-      const card = await this.prisma.smartCard.create({
-        data: {
-          uid: payload.uid,
-          userId: payload.userId,
-          status: payload.status,
-          note: payload.note
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              fullName: true,
-              username: true,
-              role: true
+      return await this.prisma.$transaction(async (tx) => {
+        const card = await tx.smartCard.create({
+          data: {
+            uid: payload.uid,
+            userId: payload.userId,
+            status: payload.status,
+            note: payload.note
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                username: true,
+                role: true
+              }
             }
           }
-        }
+        });
+
+        await writeAudit(tx, { actorId, module: 'device', action: 'smartcard.created', resource: 'smartCard', resourceId: card.id, after: card as unknown as Prisma.InputJsonValue });
+
+        return card;
       });
-
-      await writeAudit(this.prisma, { actorId, module: 'device', action: 'smartcard.created', resource: 'smartCard', resourceId: card.id, after: card as unknown as Prisma.InputJsonValue });
-
-      return card;
     } catch (error: unknown) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -77,29 +79,31 @@ export class SmartCardService {
     }
 
     try {
-      const card = await this.prisma.smartCard.update({
-        where: { id: cardId },
-        data: {
-          uid: payload.uid,
-          userId: payload.userId,
-          status: payload.status,
-          note: payload.note
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              fullName: true,
-              username: true,
-              role: true
+      return await this.prisma.$transaction(async (tx) => {
+        const card = await tx.smartCard.update({
+          where: { id: cardId },
+          data: {
+            uid: payload.uid,
+            userId: payload.userId,
+            status: payload.status,
+            note: payload.note
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                username: true,
+                role: true
+              }
             }
           }
-        }
+        });
+
+        await writeAudit(tx, { actorId, module: 'device', action: 'smartcard.updated', resource: 'smartCard', resourceId: card.id, before: exists as unknown as Prisma.InputJsonValue, after: card as unknown as Prisma.InputJsonValue });
+
+        return card;
       });
-
-      await writeAudit(this.prisma, { actorId, module: 'device', action: 'smartcard.updated', resource: 'smartCard', resourceId: card.id, before: exists as unknown as Prisma.InputJsonValue, after: card as unknown as Prisma.InputJsonValue });
-
-      return card;
     } catch (error: unknown) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

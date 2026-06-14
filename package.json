@@ -19,6 +19,7 @@
     "test:api": "npm run test --prefix apps/api",
     "test:web": "npm run test --prefix apps/web",
     "test:e2e": "npm run test:e2e --prefix apps/web",
+    "audit:verify-chain": "ts-node scripts/verify_audit_chain.ts",
     "validate:final": "bash scripts/validate_final.sh"
   },
   "dependencies": {

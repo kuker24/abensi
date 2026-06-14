@@ -129,14 +129,16 @@ export class SystemCleanupService {
       protectedData: PROTECTED_DATA
     };
 
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'system_cleanup',
-      action: 'system_cleanup.previewed',
-      resource: 'systemCleanup',
-      resourceId: 'preview',
-      after: { counts: Object.fromEntries(Object.entries(result.categories).map(([key, value]) => [key, value.count])), protectedData: PROTECTED_DATA }
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'system_cleanup',
+        action: 'system_cleanup.previewed',
+        resource: 'systemCleanup',
+        resourceId: 'preview',
+        after: { counts: Object.fromEntries(Object.entries(result.categories).map(([key, value]) => [key, value.count])), protectedData: PROTECTED_DATA }
+      });
     });
 
     return result;

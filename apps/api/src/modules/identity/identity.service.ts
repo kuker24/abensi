@@ -50,36 +50,38 @@ export class IdentityService {
 
     const passwordHash = await bcrypt.hash(payload.password, 10);
 
-    const user = await this.prisma.user.create({
-      data: {
-        username: payload.username,
-        fullName: payload.fullName,
-        passwordHash,
-        mustChangePassword: true,
-        role: payload.role,
-        cardStatus: payload.cardStatus
-      },
-      select: {
-        id: true,
-        username: true,
-        fullName: true,
-        role: true,
-        cardStatus: true,
-        active: true
-      }
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          username: payload.username,
+          fullName: payload.fullName,
+          passwordHash,
+          mustChangePassword: true,
+          role: payload.role,
+          cardStatus: payload.cardStatus
+        },
+        select: {
+          id: true,
+          username: true,
+          fullName: true,
+          role: true,
+          cardStatus: true,
+          active: true
+        }
+      });
 
-    await writeAudit(this.prisma, {
-      actorId,
-      actorRole: actorRole as Role | undefined,
-      module: 'identity',
-      action: 'user.created',
-      resource: 'user',
-      resourceId: user.id,
-      after: user as Prisma.InputJsonValue
-    });
+      await writeAudit(tx, {
+        actorId,
+        actorRole: actorRole as Role | undefined,
+        module: 'identity',
+        action: 'user.created',
+        resource: 'user',
+        resourceId: user.id,
+        after: user as Prisma.InputJsonValue
+      });
 
-    return user;
+      return user;
+    });
   }
 
   async updateUser(userId: string, payload: UpdateUserDto, actor: { sub: string; role: string }) {
@@ -276,16 +278,18 @@ export class IdentityService {
     const counts = await this.protectedRelationCounts(userId);
     const reasons = this.relationBlockReasons(counts);
     if (reasons.length > 0) {
-      await writeAudit(this.prisma, {
-        actorId: actor.sub,
-        actorRole: actor.role as Role,
-        module: 'identity',
-        action: 'identity.user.permanent_delete_blocked',
-        resource: 'user',
-        resourceId: target.id,
-        reason: payload.reason,
-        before: target as Prisma.InputJsonValue,
-        after: { blockedReasons: reasons, relationCounts: counts } as Prisma.InputJsonValue
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'identity',
+          action: 'identity.user.permanent_delete_blocked',
+          resource: 'user',
+          resourceId: target.id,
+          reason: payload.reason,
+          before: target as Prisma.InputJsonValue,
+          after: { blockedReasons: reasons, relationCounts: counts } as Prisma.InputJsonValue
+        });
       });
       throw new ConflictException(`Akun ini punya riwayat penting (${reasons.slice(0, 5).join(', ')}). Nonaktifkan saja agar data tetap aman.`);
     }
@@ -353,33 +357,36 @@ export class IdentityService {
       return { committed: false, ...preview };
     }
 
-    const created = [];
-    for (const row of rows) {
-      const passwordHash = await bcrypt.hash(row.password!.trim(), 10);
-      created.push(await this.prisma.user.create({
-        data: {
-          username: row.username.trim(),
-          fullName: row.fullName.trim(),
-          role: row.role,
-          passwordHash,
-          mustChangePassword: true,
-          cardStatus: CardStatus.ACTIVE
-        },
-        select: { id: true, username: true, fullName: true, role: true, active: true }
-      }));
-    }
+    const prepared = await Promise.all(rows.map(async (row) => ({ row, passwordHash: await bcrypt.hash(row.password!.trim(), 10) })));
 
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'identity',
-      action: 'user.import.committed',
-      resource: 'user',
-      resourceId: 'bulk-import',
-      after: { count: created.length, usernames: created.map((item) => item.username) }
+    return this.prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const { row, passwordHash } of prepared) {
+        created.push(await tx.user.create({
+          data: {
+            username: row.username.trim(),
+            fullName: row.fullName.trim(),
+            role: row.role,
+            passwordHash,
+            mustChangePassword: true,
+            cardStatus: CardStatus.ACTIVE
+          },
+          select: { id: true, username: true, fullName: true, role: true, active: true }
+        }));
+      }
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'identity',
+        action: 'user.import.committed',
+        resource: 'user',
+        resourceId: 'bulk-import',
+        after: { count: created.length, usernames: created.map((item) => item.username) }
+      });
+
+      return { committed: true, createdCount: created.length, items: created };
     });
-
-    return { committed: true, createdCount: created.length, items: created };
   }
 
   async getMe(userId: string) {
@@ -411,30 +418,32 @@ export class IdentityService {
   }
 
   async updateMe(userId: string, payload: UpdateMeDto) {
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        fullName: payload.fullName
-      },
-      select: {
-        id: true,
-        username: true,
-        fullName: true,
-        role: true,
-        active: true,
-        cardStatus: true
-      }
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: {
+          fullName: payload.fullName
+        },
+        select: {
+          id: true,
+          username: true,
+          fullName: true,
+          role: true,
+          active: true,
+          cardStatus: true
+        }
+      });
 
-    await writeAudit(this.prisma, {
-      actorId: userId,
-      module: 'identity',
-      action: 'user.profile.updated',
-      resource: 'user',
-      resourceId: userId,
-      after: user as Prisma.InputJsonValue
-    });
+      await writeAudit(tx, {
+        actorId: userId,
+        module: 'identity',
+        action: 'user.profile.updated',
+        resource: 'user',
+        resourceId: userId,
+        after: user as Prisma.InputJsonValue
+      });
 
-    return user;
+      return user;
+    });
   }
 }

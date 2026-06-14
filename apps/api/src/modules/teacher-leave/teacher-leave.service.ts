@@ -53,25 +53,28 @@ export class TeacherLeaveService {
     }
     const { date } = dayRange(payload.date);
 
-    const leave = await this.prisma.teacherLeave.create({
-      data: {
-        teacherId: user.sub,
-        type: payload.type,
-        date,
-        reason: payload.reason
-      },
-      include: { teacher: { select: { fullName: true } } }
-    });
+    const leave = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.teacherLeave.create({
+        data: {
+          teacherId: user.sub,
+          type: payload.type,
+          date,
+          reason: payload.reason
+        },
+        include: { teacher: { select: { fullName: true } } }
+      });
 
-    await writeAudit(this.prisma, {
-      actorId: user.sub,
-      actorRole: user.role,
-      module: 'teacher-leave',
-      action: 'teacher_leave.submitted',
-      resource: 'teacherLeave',
-      resourceId: leave.id,
-      reason: payload.reason,
-      after: leave
+      await writeAudit(tx, {
+        actorId: user.sub,
+        actorRole: user.role,
+        module: 'teacher-leave',
+        action: 'teacher_leave.submitted',
+        resource: 'teacherLeave',
+        resourceId: created.id,
+        reason: payload.reason,
+        after: created
+      });
+      return created;
     });
 
     await this.notifications.notifyRoles([Role.ADMIN_TU], {

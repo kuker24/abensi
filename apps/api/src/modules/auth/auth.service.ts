@@ -207,9 +207,11 @@ export class AuthService {
   }
 
   async revokeUserSessions(userId: string, actorId: string | null, reason: string) {
-    const revoked = await this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
-    await writeAudit(this.prisma, { actorId, module: 'auth', action: 'auth.user_sessions.revoked', resource: 'user', resourceId: userId, reason, after: { count: revoked.count } });
-    return revoked.count;
+    return this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
+      await writeAudit(tx, { actorId, module: 'auth', action: 'auth.user_sessions.revoked', resource: 'user', resourceId: userId, reason, after: { count: revoked.count } });
+      return revoked.count;
+    });
   }
 
   async changePassword(userId: string, actorRole: Role, currentPassword: string, newPassword: string, meta: RequestMeta = {}) {
@@ -320,16 +322,18 @@ export class AuthService {
   }
 
   private async writeLoginAudit(action: string, actorId: string | null, username: string, meta: RequestMeta, details: Record<string, unknown>) {
-    await writeAudit(this.prisma, {
-      actorId,
-      actorRole: details.role && typeof details.role === 'string' ? details.role as Role : null,
-      module: 'auth',
-      action,
-      resource: 'authSession',
-      resourceId: username,
-      requestIp: meta.requestIp ?? null,
-      requestDevice: meta.requestDevice ?? null,
-      after: details as Prisma.InputJsonValue
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId,
+        actorRole: details.role && typeof details.role === 'string' ? details.role as Role : null,
+        module: 'auth',
+        action,
+        resource: 'authSession',
+        resourceId: username,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: details as Prisma.InputJsonValue
+      });
     });
   }
 }

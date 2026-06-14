@@ -512,14 +512,16 @@ export class AttendanceGateService {
     if (asharLog) return null;
     if (override) return override.id;
 
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role,
-      module: 'attendance',
-      action: 'attendance.student.checkout.blocked_missing_ashar',
-      resource: 'user',
-      resourceId: studentId,
-      after: { studentId, attendanceDate, requiredEndTime, message: 'Siswa masih punya jadwal sampai sore dan belum scan Ashar.' }
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'attendance',
+        action: 'attendance.student.checkout.blocked_missing_ashar',
+        resource: 'user',
+        resourceId: studentId,
+        after: { studentId, attendanceDate, requiredEndTime, message: 'Siswa masih punya jadwal sampai sore dan belum scan Ashar.' }
+      });
     });
     throw new ForbiddenException('Siswa ini masih punya jadwal sampai sore. Scan Ashar dulu sebelum pulang.');
   }
@@ -867,6 +869,8 @@ export class AttendanceGateService {
   }
 
   private async securityAudit(action: string, resourceId: string, after: Prisma.InputJsonValue) {
-    await writeAudit(this.prisma, { module: 'attendance_security', action, resource: 'attendanceSecurityEvent', resourceId, after });
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, { module: 'attendance_security', action, resource: 'attendanceSecurityEvent', resourceId, after });
+    });
   }
 }

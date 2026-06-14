@@ -112,20 +112,22 @@ export class AcademicService {
   }
 
   async updateClass(id: string, payload: UpdateClassDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.schoolClass.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Kelas tidak ditemukan.');
-    const updated = await this.prisma.schoolClass.update({ where: { id }, data: payload });
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'academic',
-      action: 'class.updated',
-      resource: 'class',
-      resourceId: id,
-      before,
-      after: updated
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.schoolClass.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Kelas tidak ditemukan.');
+      const updated = await tx.schoolClass.update({ where: { id }, data: payload });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'academic',
+        action: 'class.updated',
+        resource: 'class',
+        resourceId: id,
+        before,
+        after: updated
+      });
+      return updated;
     });
-    return updated;
   }
 
   async listSubjects(pagination: PaginationQuery) {
@@ -160,20 +162,22 @@ export class AcademicService {
   }
 
   async updateSubject(id: string, payload: UpdateSubjectDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.subject.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Mapel tidak ditemukan.');
-    const updated = await this.prisma.subject.update({ where: { id }, data: payload });
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'academic',
-      action: 'subject.updated',
-      resource: 'subject',
-      resourceId: id,
-      before,
-      after: updated
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.subject.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Mapel tidak ditemukan.');
+      const updated = await tx.subject.update({ where: { id }, data: payload });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'academic',
+        action: 'subject.updated',
+        resource: 'subject',
+        resourceId: id,
+        before,
+        after: updated
+      });
+      return updated;
     });
-    return updated;
   }
 
   async listStudents(pagination: PaginationQuery, classId?: string) {
@@ -470,20 +474,22 @@ export class AcademicService {
   }
 
   async updateAcademicYear(id: string, payload: UpdateAcademicYearDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.academicYear.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Tahun ajaran tidak ditemukan.');
-    const updated = await this.prisma.academicYear.update({
-      where: { id },
-      data: {
-        ...(payload.code !== undefined ? { code: payload.code } : {}),
-        ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
-        ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
-        ...(payload.active !== undefined ? { active: payload.active } : {})
-      }
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.academicYear.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Tahun ajaran tidak ditemukan.');
+      const updated = await tx.academicYear.update({
+        where: { id },
+        data: {
+          ...(payload.code !== undefined ? { code: payload.code } : {}),
+          ...(payload.name !== undefined ? { name: payload.name } : {}),
+          ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
+          ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
+          ...(payload.active !== undefined ? { active: payload.active } : {})
+        }
+      });
+      await writeAudit(tx, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'academic_year.updated', resource: 'academicYear', resourceId: id, before, after: updated });
+      return updated;
     });
-    await writeAudit(this.prisma, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'academic_year.updated', resource: 'academicYear', resourceId: id, before, after: updated });
-    return updated;
   }
 
   async listSemesters(pagination: PaginationQuery) {
@@ -512,20 +518,22 @@ export class AcademicService {
   }
 
   async updateSemester(id: string, payload: UpdateSemesterDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.semester.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Semester tidak ditemukan.');
-    const updated = await this.prisma.semester.update({
-      where: { id },
-      data: {
-        ...(payload.code !== undefined ? { code: payload.code } : {}),
-        ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
-        ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
-        ...(payload.active !== undefined ? { active: payload.active } : {})
-      }
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.semester.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Semester tidak ditemukan.');
+      const updated = await tx.semester.update({
+        where: { id },
+        data: {
+          ...(payload.code !== undefined ? { code: payload.code } : {}),
+          ...(payload.name !== undefined ? { name: payload.name } : {}),
+          ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
+          ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
+          ...(payload.active !== undefined ? { active: payload.active } : {})
+        }
+      });
+      await writeAudit(tx, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'semester.updated', resource: 'semester', resourceId: id, before, after: updated });
+      return updated;
     });
-    await writeAudit(this.prisma, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'semester.updated', resource: 'semester', resourceId: id, before, after: updated });
-    return updated;
   }
 
   async listRooms(pagination: PaginationQuery) {
@@ -545,11 +553,13 @@ export class AcademicService {
   }
 
   async updateRoom(id: string, payload: UpdateRoomDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.room.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Ruang tidak ditemukan.');
-    const updated = await this.prisma.room.update({ where: { id }, data: payload });
-    await writeAudit(this.prisma, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'room.updated', resource: 'room', resourceId: id, before, after: updated });
-    return updated;
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.room.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Ruang tidak ditemukan.');
+      const updated = await tx.room.update({ where: { id }, data: payload });
+      await writeAudit(tx, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'room.updated', resource: 'room', resourceId: id, before, after: updated });
+      return updated;
+    });
   }
 
   importTemplate(target = 'academic') {

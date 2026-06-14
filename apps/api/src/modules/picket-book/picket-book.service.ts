@@ -38,65 +38,69 @@ export class PicketBookService {
   }
 
   async create(payload: CreatePicketNoteDto, actor: { sub: string; role: string }) {
-    const created = await this.prisma.picketNote.create({
-      data: {
-        date: businessDayBounds(payload.date).date,
-        title: payload.title,
-        body: payload.body,
-        category: payload.category ?? 'UMUM',
-        severity: payload.severity ?? 'INFO',
-        createdById: actor.sub
-      },
-      include: { createdBy: { select: { id: true, username: true, fullName: true, role: true } } }
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.picketNote.create({
+        data: {
+          date: businessDayBounds(payload.date).date,
+          title: payload.title,
+          body: payload.body,
+          category: payload.category ?? 'UMUM',
+          severity: payload.severity ?? 'INFO',
+          createdById: actor.sub
+        },
+        include: { createdBy: { select: { id: true, username: true, fullName: true, role: true } } }
+      });
 
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'picket',
-      action: 'picket.note.created',
-      resource: 'picketNote',
-      resourceId: created.id,
-      after: created
-    });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'picket',
+        action: 'picket.note.created',
+        resource: 'picketNote',
+        resourceId: created.id,
+        after: created
+      });
 
-    return created;
+      return created;
+    });
   }
 
   async update(id: string, payload: UpdatePicketNoteDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.picketNote.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Catatan piket tidak ditemukan.');
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.picketNote.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Catatan piket tidak ditemukan.');
 
-    const updated = await this.prisma.picketNote.update({
-      where: { id },
-      data: {
-        ...(payload.date ? { date: businessDayBounds(payload.date).date } : {}),
-        ...(payload.title !== undefined ? { title: payload.title } : {}),
-        ...(payload.body !== undefined ? { body: payload.body } : {}),
-        ...(payload.category !== undefined ? { category: payload.category } : {}),
-        ...(payload.severity !== undefined ? { severity: payload.severity } : {}),
-        ...(payload.active !== undefined ? { active: payload.active } : {}),
-        updatedById: actor.sub
-      },
-      include: {
-        createdBy: { select: { id: true, username: true, fullName: true, role: true } },
-        updatedBy: { select: { id: true, username: true, fullName: true, role: true } }
-      }
+      const updated = await tx.picketNote.update({
+        where: { id },
+        data: {
+          ...(payload.date ? { date: businessDayBounds(payload.date).date } : {}),
+          ...(payload.title !== undefined ? { title: payload.title } : {}),
+          ...(payload.body !== undefined ? { body: payload.body } : {}),
+          ...(payload.category !== undefined ? { category: payload.category } : {}),
+          ...(payload.severity !== undefined ? { severity: payload.severity } : {}),
+          ...(payload.active !== undefined ? { active: payload.active } : {}),
+          updatedById: actor.sub
+        },
+        include: {
+          createdBy: { select: { id: true, username: true, fullName: true, role: true } },
+          updatedBy: { select: { id: true, username: true, fullName: true, role: true } }
+        }
+      });
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'picket',
+        action: payload.active === false ? 'picket.note.deactivated' : 'picket.note.updated',
+        resource: 'picketNote',
+        resourceId: id,
+        reason: payload.reason,
+        before,
+        after: updated
+      });
+
+      return updated;
     });
-
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'picket',
-      action: payload.active === false ? 'picket.note.deactivated' : 'picket.note.updated',
-      resource: 'picketNote',
-      resourceId: id,
-      reason: payload.reason,
-      before,
-      after: updated
-    });
-
-    return updated;
   }
 
   async deactivate(id: string, actor: { sub: string; role: string }, reason?: string) {

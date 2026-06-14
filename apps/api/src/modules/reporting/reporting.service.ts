@@ -1492,16 +1492,18 @@ export class ReportingService {
       const csvText = this.toCsv(rows);
       const buffer = Buffer.from(csvText, 'utf-8');
       const checksum = createHash('sha256').update(buffer).digest('hex');
-      if (actor) await writeAudit(this.prisma, {
-        actorId: actor.sub,
-        actorRole: actor.role,
-        module: 'reporting',
-        action: 'report.exported',
-        resource: 'report',
-        resourceId: normalizedType,
-        requestIp: requestMeta?.requestIp ?? null,
-        requestDevice: requestMeta?.requestDevice ?? null,
-        after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
+      if (actor) await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role,
+          module: 'reporting',
+          action: 'report.exported',
+          resource: 'report',
+          resourceId: normalizedType,
+          requestIp: requestMeta?.requestIp ?? null,
+          requestDevice: requestMeta?.requestDevice ?? null,
+          after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
+        });
       });
       return { buffer, contentType: 'text/csv; charset=utf-8', filename, checksum };
     }
@@ -1540,16 +1542,18 @@ export class ReportingService {
     const raw = await workbook.xlsx.writeBuffer();
     const buffer = Buffer.from(raw);
     const checksum = createHash('sha256').update(buffer).digest('hex');
-    if (actor) await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role,
-      module: 'reporting',
-      action: 'report.exported',
-      resource: 'report',
-      resourceId: normalizedType,
-      requestIp: requestMeta?.requestIp ?? null,
-      requestDevice: requestMeta?.requestDevice ?? null,
-      after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
+    if (actor) await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'reporting',
+        action: 'report.exported',
+        resource: 'report',
+        resourceId: normalizedType,
+        requestIp: requestMeta?.requestIp ?? null,
+        requestDevice: requestMeta?.requestDevice ?? null,
+        after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
+      });
     });
 
     return {

@@ -432,14 +432,16 @@ export class AttendanceClassService {
     const rosterSet = new Set(enrolled.map((item) => item.studentId));
     const outOfRoster = payload.items.filter((item) => !rosterSet.has(item.studentId)).map((item) => item.studentId);
     if (outOfRoster.length) {
-      await writeAudit(this.prisma, {
-        actorId: actor.sub,
-        actorRole: actor.role as Role,
-        module: 'attendance',
-        action: 'attendance.class.rejected_out_of_roster',
-        resource: 'session',
-        resourceId: sessionId,
-        after: { outOfRoster }
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'attendance.class.rejected_out_of_roster',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { outOfRoster }
+        });
       });
       throw new BadRequestException('Ada siswa yang bukan roster kelas sesi ini.');
     }

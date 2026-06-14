@@ -71,7 +71,7 @@ describe('AttendanceClassService record attendance policy', () => {
       session: { findUnique: jest.fn().mockResolvedValue(session) },
       classEnrollment: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]) },
       auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
-      $transaction: jest.fn()
+      $transaction: jest.fn(async (callback) => callback(prisma))
     } as any;
     const service = new AttendanceClassService(prisma);
 

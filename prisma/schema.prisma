@@ -591,6 +591,7 @@ model UserTutorialState {
 
 model AuditEntry {
   id               String   @id @default(cuid())
+  sequence         BigInt   @unique
   actorId          String?
   actorRole        Role?
   action           String
@@ -621,10 +622,11 @@ model AuditEntry {
 }
 
 model AuditChainState {
-  id          Int      @id
-  lastHash    String?
-  lastEntryId String?
-  updatedAt   DateTime @updatedAt
+  id           Int      @id
+  lastSequence BigInt   @default(0)
+  lastHash     String?
+  lastEntryId  String?
+  updatedAt    DateTime @updatedAt
 }
 
 model TeacherLeave {

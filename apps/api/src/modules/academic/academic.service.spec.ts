@@ -1,7 +1,7 @@
 import { AcademicService } from './academic.service';
 
 function makePrisma(): any {
-  return {
+  const prisma = {
     schoolClass: {
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -25,8 +25,9 @@ function makePrisma(): any {
     auditEntry: {
       create: jest.fn()
     },
-    $transaction: jest.fn(async (cb: any) => cb(makePrisma()))
+    $transaction: jest.fn(async (cb: any) => cb(prisma))
   } as any;
+  return prisma;
 }
 
 describe('AcademicService', () => {
