@@ -7,6 +7,8 @@
     "lint": "node --check src/index.js"
   },
   "dependencies": {
-    "axios": "^1.17.0"
+    "axios": "^1.17.0",
+    "bullmq": "^5.78.1",
+    "ioredis": "^5.11.1"
   }
 }

@@ -33,7 +33,7 @@ async function bootstrap() {
     origin: corsOrigins(),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type', 'accept', 'x-csrf-token', 'x-reader-device-id', 'x-reader-timestamp', 'x-reader-nonce', 'x-reader-body-hash', 'x-reader-signature', 'x-worker-token']
+    allowedHeaders: ['authorization', 'content-type', 'accept', 'x-csrf-token', 'x-reader-device-id', 'x-reader-timestamp', 'x-reader-nonce', 'x-reader-body-hash', 'x-reader-signature', 'x-worker-token', 'x-worker-timestamp', 'x-worker-nonce', 'x-worker-signature', 'x-worker-job']
   });
   app.useGlobalPipes(
     new ValidationPipe({

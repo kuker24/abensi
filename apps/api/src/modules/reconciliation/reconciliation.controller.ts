@@ -12,6 +12,7 @@ import {
   UseGuards
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ReconciliationFlagType, ReconciliationStatus, Role } from '@prisma/client';
 import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
@@ -23,10 +24,23 @@ import { extractRequestMeta } from '../../common/request-meta';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EscalateFlagDto, ResolveFlagDto, UpdateFlagWorkflowDto } from './reconciliation.dto';
 import { ReconciliationService } from './reconciliation.service';
+import { RedisService } from '../redis/redis.service';
+
+const workerNonceFallback = new Map<string, number>();
+
+function safeEqual(left?: string, right?: string) {
+  if (!left || !right) return false;
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 @Controller()
 export class ReconciliationController {
-  constructor(private readonly reconciliationService: ReconciliationService) {}
+  constructor(
+    private readonly reconciliationService: ReconciliationService,
+    private readonly redis: RedisService
+  ) {}
 
   @Get('reconciliation/flags')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
@@ -90,18 +104,30 @@ export class ReconciliationController {
   }
 
   @Post('internal/reconciliation/run')
-  runInternal(@Headers('x-worker-token') workerToken?: string) {
-    this.assertWorker(workerToken);
+  async runInternal(
+    @Req() request: Request,
+    @Headers('x-worker-token') workerToken?: string,
+    @Headers('x-worker-timestamp') timestamp?: string,
+    @Headers('x-worker-nonce') nonce?: string,
+    @Headers('x-worker-signature') signature?: string
+  ) {
+    await this.assertWorker(request, workerToken, timestamp, nonce, signature);
     return this.reconciliationService.runPendingReconciliation();
   }
 
   @Post('internal/sessions/mark-missed')
-  markMissedInternal(@Headers('x-worker-token') workerToken?: string) {
-    this.assertWorker(workerToken);
+  async markMissedInternal(
+    @Req() request: Request,
+    @Headers('x-worker-token') workerToken?: string,
+    @Headers('x-worker-timestamp') timestamp?: string,
+    @Headers('x-worker-nonce') nonce?: string,
+    @Headers('x-worker-signature') signature?: string
+  ) {
+    await this.assertWorker(request, workerToken, timestamp, nonce, signature);
     return this.reconciliationService.runAutoMissedSessions();
   }
 
-  private assertWorker(workerToken?: string) {
+  private async assertWorker(request: Request, workerToken?: string, timestamp?: string, nonce?: string, signature?: string) {
     const expected = process.env.WORKER_TOKEN;
     if (process.env.NODE_ENV === 'production' && (!expected || expected === 'worker-dev-token')) {
       throw new ForbiddenException('Worker token production belum aman.');
@@ -109,6 +135,32 @@ export class ReconciliationController {
     const finalExpected = expected ?? 'worker-dev-token';
     if (!workerToken || workerToken !== finalExpected) {
       throw new ForbiddenException('Invalid worker token');
+    }
+
+    const requireSignature = process.env.NODE_ENV === 'production' || process.env.WORKER_REQUIRE_SIGNATURE === 'true';
+    if (!requireSignature && !signature && !timestamp && !nonce) return;
+    if (!timestamp || !nonce || !signature) throw new ForbiddenException('Worker signature headers missing');
+
+    const parsedTimestamp = Date.parse(timestamp);
+    if (!Number.isFinite(parsedTimestamp) || Math.abs(Date.now() - parsedTimestamp) > 120_000) {
+      throw new ForbiddenException('Worker signature timestamp invalid');
+    }
+
+    const path = request.originalUrl.split('?')[0];
+    const payload = `${timestamp}.${nonce}.${request.method.toUpperCase()}.${path}`;
+    const expectedSignature = createHmac('sha256', finalExpected).update(payload).digest('hex');
+    if (!safeEqual(signature, expectedSignature)) throw new ForbiddenException('Worker signature invalid');
+
+    const nonceKey = `worker:nonce:${nonce}`;
+    const inserted = await this.redis.setNxPx(nonceKey, '1', 120_000);
+    if (inserted === false) throw new ForbiddenException('Worker nonce replay detected');
+    if (inserted === null) {
+      const now = Date.now();
+      for (const [key, expiresAt] of workerNonceFallback) {
+        if (expiresAt <= now) workerNonceFallback.delete(key);
+      }
+      if (workerNonceFallback.has(nonce)) throw new ForbiddenException('Worker nonce replay detected');
+      workerNonceFallback.set(nonce, now + 120_000);
     }
   }
 }

@@ -72,6 +72,17 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  async setNxPx(key: string, value: string, ttlMs: number) {
+    try {
+      const client = await this.ensureConnected();
+      if (!client) return null;
+      const result = await client.set(key, value, { PX: ttlMs, NX: true });
+      return result === 'OK';
+    } catch {
+      return null;
+    }
+  }
+
   async incrWithTtl(key: string, ttlSeconds: number) {
     try {
       const client = await this.ensureConnected();
