@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { Role, SessionStatus, TeacherSessionStatus } from '@prisma/client';
+import { AttendanceConfirmationSource, AttendanceReviewState, Role, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
 import { AttendanceClassService } from './attendance-class.service';
 
 function makeService(
@@ -83,8 +83,149 @@ describe('AttendanceClassService record attendance policy', () => {
     } as any;
     const service = new AttendanceClassService(prisma);
 
-    await expect(service.recordAttendance('session-1', guru, { items: [{ studentId: 'siswa-luar', status: 'HADIR' as any }] })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.recordAttendance('session-1', guru, { items: [{ studentId: 'siswa-luar', status: 'HADIR' as any, confirm: true }] })).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'attendance.class.rejected_out_of_roster' }) }));
+  });
+});
+
+
+describe('AttendanceClassService explicit attendance review', () => {
+  const session = {
+    id: 'session-1',
+    teacherId: 'guru-1',
+    classId: 'class-1',
+    startsAt: new Date('2026-06-14T01:00:00.000Z'),
+    endsAt: new Date('2026-06-14T02:00:00.000Z'),
+    businessDate: new Date(Date.UTC(2026, 5, 14)),
+    status: SessionStatus.OPEN
+  };
+
+  function makeRecordService(existingUpdatedAt = new Date('2026-06-14T01:05:00.000Z')) {
+    const tx = {
+      session: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      studentAttendance: {
+        createMany: jest.fn().mockResolvedValue({ count: 2 }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'attendance-1',
+          sessionId: 'session-1',
+          studentId: 'siswa-1',
+          status: StudentAttendanceStatus.ALPA,
+          reviewState: AttendanceReviewState.DEFAULTED,
+          updatedAt: existingUpdatedAt
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'attendance-1',
+          sessionId: 'session-1',
+          studentId: 'siswa-1',
+          status: StudentAttendanceStatus.HADIR,
+          reviewState: AttendanceReviewState.CONFIRMED,
+          updatedAt: new Date('2026-06-14T01:06:00.000Z')
+        }),
+        create: jest.fn()
+      },
+      auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]) },
+      attendancePolicy: { findUnique: jest.fn().mockResolvedValue({ requireStudentClassEligibility: false }) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+    return { service: new AttendanceClassService(prisma), prisma, tx, existingUpdatedAt };
+  }
+
+  it('save tanpa baris eksplisit tidak mengonfirmasi ALPA default', async () => {
+    const tx = { auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) } };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    const result = await service.recordAttendance('session-1', guru, { items: [] });
+
+    expect(result.updated).toBe(0);
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'class.attendance.noop_save' })
+    }));
+  });
+
+  it('mengonfirmasi tepat satu baris yang eksplisit berubah', async () => {
+    const { service, tx, existingUpdatedAt } = makeRecordService();
+
+    const result = await service.recordAttendance('session-1', guru, {
+      items: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, updatedAt: existingUpdatedAt.toISOString(), confirm: true }]
+    });
+
+    expect(result.updated).toBe(1);
+    expect(tx.studentAttendance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: StudentAttendanceStatus.HADIR,
+        reviewState: AttendanceReviewState.CONFIRMED,
+        confirmationSource: AttendanceConfirmationSource.MANUAL_SINGLE,
+        confirmedById: 'guru-1'
+      })
+    }));
+  });
+
+  it('menolak layar stale agar tidak menimpa presensi terbaru', async () => {
+    const { service, tx } = makeRecordService(new Date('2026-06-14T01:07:00.000Z'));
+
+    await expect(service.recordAttendance('session-1', guru, {
+      items: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, updatedAt: '2026-06-14T01:05:00.000Z', confirm: true }]
+    })).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.studentAttendance.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('konfirmasi massal hadir hanya mengubah baris DEFAULTED yang eligible', async () => {
+    const tx = {
+      studentAttendance: {
+        createMany: jest.fn().mockResolvedValue({ count: 2 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 2 })
+      },
+      auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }, { studentId: 'siswa-2' }]) },
+      attendancePolicy: { findUnique: jest.fn().mockResolvedValue({ requireStudentClassEligibility: false }) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    const result = await service.bulkConfirmPresent('session-1', guru);
+
+    expect(result.updated).toBe(2);
+    expect(tx.studentAttendance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ reviewState: AttendanceReviewState.DEFAULTED }),
+      data: expect.objectContaining({ status: StudentAttendanceStatus.HADIR, confirmationSource: AttendanceConfirmationSource.MANUAL_BULK })
+    }));
+  });
+
+  it('konfirmasi massal ALPA hanya memfinalkan baris DEFAULTED sebagai ALPA', async () => {
+    const tx = {
+      studentAttendance: {
+        createMany: jest.fn().mockResolvedValue({ count: 2 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 2 })
+      },
+      auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }, { studentId: 'siswa-2' }]) },
+      attendancePolicy: { findUnique: jest.fn().mockResolvedValue({ requireStudentClassEligibility: false }) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    const result = await service.bulkConfirmAlpa('session-1', guru);
+
+    expect(result.updated).toBe(2);
+    expect(tx.studentAttendance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ reviewState: AttendanceReviewState.DEFAULTED }),
+      data: expect.objectContaining({ status: StudentAttendanceStatus.ALPA, confirmationSource: AttendanceConfirmationSource.MANUAL_BULK })
+    }));
   });
 });
 

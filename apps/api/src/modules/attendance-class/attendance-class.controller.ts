@@ -56,6 +56,26 @@ export class AttendanceClassController {
     return this.attendanceClassService.recordAttendance(sessionId, user, body);
   }
 
+  @Post(':id/attendance/bulk-present')
+  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.DEVELOPER)
+  @Capabilities('classAttendance.record')
+  bulkConfirmPresent(
+    @Param('id') sessionId: string,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.attendanceClassService.bulkConfirmPresent(sessionId, user);
+  }
+
+  @Post(':id/attendance/bulk-alpa')
+  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.DEVELOPER)
+  @Capabilities('classAttendance.record')
+  bulkConfirmAlpa(
+    @Param('id') sessionId: string,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.attendanceClassService.bulkConfirmAlpa(sessionId, user);
+  }
+
   @Post(':id/close')
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.DEVELOPER)
   @Capabilities('session.close')

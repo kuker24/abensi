@@ -1,6 +1,5 @@
 import { StudentAttendanceStatus } from '@prisma/client';
 import {
-  ArrayMinSize,
   IsArray,
   IsEnum,
   IsBoolean,
@@ -64,11 +63,18 @@ export class AttendanceItemDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  updatedAt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  confirm?: boolean;
 }
 
 export class BatchAttendanceDto {
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => AttendanceItemDto)
   items!: AttendanceItemDto[];

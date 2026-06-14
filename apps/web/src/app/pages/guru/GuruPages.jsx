@@ -107,7 +107,11 @@ export function ClassInputPage({ notify }) {
   }, [sessions.data]);
   const rosterState = useRemote(() => sessionId ? apiFetch(`/attendance/class-sessions/${sessionId}/roster`) : Promise.resolve({ roster: [] }), [sessionId]);
   const [roster, setRoster] = useState([]);
-  useEffect(() => { if (rosterState.data?.roster) setRoster(rosterState.data.roster); }, [rosterState.data]);
+  useEffect(() => {
+    if (rosterState.data?.roster) {
+      setRoster(rosterState.data.roster.map((row) => ({ ...row, dirty: false, explicitlyConfirmed: false })));
+    }
+  }, [rosterState.data]);
   const current = itemsOf(sessions.data).find((s) => s.id === sessionId);
   const sessionDetail = rosterState.data?.session || current;
   const teacherPresence = sessionDetail?.teacherPresence || current?.teacherPresence?.find?.((item) => item.teacherId === current?.teacher?.id) || null;
@@ -116,14 +120,14 @@ export function ClassInputPage({ notify }) {
   const isEarlyCheckout = Boolean(endsAt && nowTick < endsAt.getTime());
   const isOpen = current?.status === 'OPEN' || sessionDetail?.status === 'OPEN';
   const counts = STATUS.reduce((acc, st) => ({ ...acc, [st]: roster.filter((r) => r.status === st).length }), {});
-  const completedCount = roster.filter((r) => r.reviewState && r.reviewState !== 'DEFAULTED').length;
+  const completedCount = roster.filter((r) => (r.reviewState && r.reviewState !== 'DEFAULTED') || r.explicitlyConfirmed).length;
   const defaultedCount = Math.max(0, roster.length - completedCount);
   const presentLikeCount = counts.HADIR + counts.TELAT + counts.IZIN + counts.SAKIT;
   const progressPercent = roster.length ? Math.round((completedCount / roster.length) * 100) : 0;
   const setStatus = (studentId, status) => setRoster((prev) => prev.map((r) => {
     if (r.studentId !== studentId) return r;
     if (r.eligibility?.locked && ['HADIR', 'TELAT'].includes(status)) return r;
-    return { ...r, status, reviewState: 'CONFIRMED' };
+    return { ...r, status, dirty: true, explicitlyConfirmed: true };
   }));
   async function openSession() {
     if (!sessionId) { notify('Pilih sesi terlebih dahulu.', 'warn'); return; }
@@ -144,10 +148,32 @@ export function ClassInputPage({ notify }) {
     if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
     setActionLoading('save');
     try {
-      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance`, { method: 'PUT', body: JSON.stringify({ items: roster.map((r) => ({ studentId: r.studentId, status: r.status, note: r.note || undefined })) }) });
+      const items = roster
+        .filter((r) => r.dirty || r.explicitlyConfirmed)
+        .map((r) => ({ studentId: r.studentId, status: r.status, note: r.note || undefined, updatedAt: r.updatedAt || undefined, confirm: true }));
+      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance`, { method: 'PUT', body: JSON.stringify({ items }) });
       rosterState.refresh();
       notify(result.message || 'Presensi siswa awal pembelajaran tersimpan.');
     } catch (error) { notify(error.message || 'Gagal menyimpan presensi.', 'bad'); } finally { setActionLoading(''); }
+  }
+  async function bulkPresent() {
+    if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
+    setActionLoading('bulk-present');
+    try {
+      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance/bulk-present`, { method: 'POST' });
+      rosterState.refresh();
+      notify(result.message || 'Semua siswa yang memenuhi syarat dikonfirmasi hadir.');
+    } catch (error) { notify(error.message || 'Gagal konfirmasi hadir massal.', 'bad'); } finally { setActionLoading(''); }
+  }
+  async function bulkAlpa() {
+    if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
+    if (!await riskConfirm('Semua siswa yang masih ALPA default akan dikonfirmasi ALPA. Status yang sudah dikonfirmasi tidak diubah.', 'Konfirmasi Alpa')) return;
+    setActionLoading('bulk-alpa');
+    try {
+      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance/bulk-alpa`, { method: 'POST' });
+      rosterState.refresh();
+      notify(result.message || 'ALPA default dikonfirmasi.');
+    } catch (error) { notify(error.message || 'Gagal konfirmasi ALPA.', 'bad'); } finally { setActionLoading(''); }
   }
   async function closeSession() {
     if (!sessionId || !roster.length) { notify('Pilih sesi dan isi presensi terlebih dahulu.', 'warn'); return; }
@@ -186,7 +212,7 @@ export function ClassInputPage({ notify }) {
           </div>
           <RosterProgress current={presentLikeCount} total={roster.length} />
         </div>
-      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Absen Masuk / Mulai Kelas</Btn><Btn onClick={() => setRoster((prev) => prev.map((r) => r.eligibility?.locked ? r : ({ ...r, status: 'HADIR', reviewState: 'CONFIRMED' })))} disabled={!isOpen || Boolean(actionLoading)}><Users size={14} /> Tandai semua Hadir</Btn><Btn variant="danger" onClick={async () => { if (await riskConfirm('SEMUA siswa akan dikonfirmasi ALPA, termasuk yang sudah ditandai. Lanjutkan?', 'Konfirmasi Alpa')) setRoster((prev) => prev.map((r) => ({ ...r, status: 'ALPA', reviewState: 'CONFIRMED' }))); }} disabled={!isOpen || Boolean(actionLoading)}><X size={14} /> Konfirmasi Alpa</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan Presensi Awal</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !isOpen || Boolean(actionLoading)}>Absen Keluar / Akhiri Kelas <ArrowRight size={14} /></Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
+      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Absen Masuk / Mulai Kelas</Btn><Btn loading={actionLoading === 'bulk-present'} onClick={bulkPresent} disabled={!isOpen || Boolean(actionLoading)}><Users size={14} /> Konfirmasi semua Hadir</Btn><Btn variant="danger" loading={actionLoading === 'bulk-alpa'} onClick={bulkAlpa} disabled={!isOpen || Boolean(actionLoading)}><X size={14} /> Konfirmasi ALPA Default</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan Presensi Awal</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !isOpen || Boolean(actionLoading)}>Absen Keluar / Akhiri Kelas <ArrowRight size={14} /></Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
     <div className="grid g-2 chart-summary"><Card title="Presensi siswa awal pembelajaran" sub="Cukup isi di awal kelas. Tandai semua Hadir, lalu ubah siswa yang Telat/Izin/Sakit/Alpa."><StatusDonut counts={counts} title="Status siswa" /></Card><Card title="Ringkasan sebelum absen keluar" sub="Periksa ulang sebelum mengakhiri kelas."><StackedBar segments={STATUS.map((st) => ({ label: statusLabel(st), value: counts[st] || 0, tone: st === 'HADIR' ? 'ok' : st === 'ALPA' ? 'bad' : st === 'TELAT' ? 'warn' : 'info' }))} /></Card></div><div className="dock dock-sticky" aria-label="Ringkasan status presensi"><div className="dock-stats">{STATUS.map((st) => <span className="s" key={st}><span className="k">{statusLabel(st)}</span><span className="v">{counts[st] || 0}</span></span>)}</div>{isOpen && <Btn size="sm" variant="primary" loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || Boolean(actionLoading)}><Save size={13} /> Simpan</Btn>}</div>{rosterState.loading ? <LoadingState /> : rosterState.error ? <ErrorState error={rosterState.error} /> : <div className="roster">{roster.map((s, i) => <div key={s.studentId} className="roster-row"><div className="roster-idx">{String(i + 1).padStart(2, '0')}</div><Avatar name={s.fullName} /><div className="roster-student"><div className="roster-name">{s.fullName}</div><div className="roster-meta">{s.username} · kartu {statusLabel(s.cardStatus)} · {s.eligibility?.locked ? `Terkunci: ${s.eligibility.reasons?.join(', ')}` : 'Syarat scan lengkap/diizinkan'}</div></div><div className="statuspick">{STATUS.map((st) => <button key={st} className={`${s.status === st ? 'on ' : ''}${st.toLowerCase()}`} disabled={!isOpen || Boolean(actionLoading) || (s.eligibility?.locked && ['HADIR', 'TELAT'].includes(st))} title={s.eligibility?.locked && ['HADIR', 'TELAT'].includes(st) ? s.eligibility.reasons?.join(', ') : ''} onClick={() => setStatus(s.studentId, st)}>{statusLabel(st)}</button>)}</div></div>)}</div>}</div>;
 }
 

@@ -471,6 +471,35 @@ export class AttendanceClassService {
     });
   }
 
+  private parseExpectedAttendanceUpdatedAt(value: string | undefined, studentId: string): Date | null {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException({
+        code: 'ATTENDANCE_INVALID_VERSION',
+        message: `Versi presensi siswa ${studentId} tidak valid.`
+      });
+    }
+    return parsed;
+  }
+
+  private async ensureRosterRowsForSession(
+    session: { id: string; classId: string; businessDate: Date; startsAt: Date },
+    source: RosterCaptureSource = RosterCaptureSource.OPENED
+  ) {
+    let rosterRows = await this.prisma.sessionRoster.findMany({
+      where: { sessionId: session.id },
+      select: { studentId: true }
+    });
+    if (!rosterRows.length) {
+      await this.prisma.$transaction(async (tx) => {
+        await this.captureSessionRoster(tx, session, source);
+      });
+      rosterRows = await this.prisma.sessionRoster.findMany({ where: { sessionId: session.id }, select: { studentId: true } });
+    }
+    return rosterRows;
+  }
+
   async recordAttendance(sessionId: string, actor: AuthenticatedUser, payload: BatchAttendanceDto) {
     const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
     if (!session) {
@@ -488,18 +517,33 @@ export class AttendanceClassService {
       throw new BadRequestException('Sesi belum OPEN.');
     }
 
-    let rosterRows = await this.prisma.sessionRoster.findMany({
-      where: { sessionId },
-      select: { studentId: true }
-    });
-    if (!rosterRows.length) {
+    const explicitItems = (payload.items ?? []).filter((item) => item.confirm === true);
+    const ignoredCount = (payload.items ?? []).length - explicitItems.length;
+
+    if (!explicitItems.length) {
       await this.prisma.$transaction(async (tx) => {
-        await this.captureSessionRoster(tx, session, RosterCaptureSource.OPENED);
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'class.attendance.noop_save',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { updated: 0, ignoredCount, reason: 'no_explicit_confirmation' }
+        });
       });
-      rosterRows = await this.prisma.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      return {
+        updated: 0,
+        rejected: [],
+        rejectedCount: 0,
+        ignoredCount,
+        message: 'Tidak ada baris presensi yang dikonfirmasi.'
+      };
     }
+
+    const rosterRows = await this.ensureRosterRowsForSession(session, RosterCaptureSource.OPENED);
     const rosterSet = new Set(rosterRows.map((item) => item.studentId));
-    const outOfRoster = payload.items.filter((item) => !rosterSet.has(item.studentId)).map((item) => item.studentId);
+    const outOfRoster = explicitItems.filter((item) => !rosterSet.has(item.studentId)).map((item) => item.studentId);
     if (outOfRoster.length) {
       await this.prisma.$transaction(async (tx) => {
         await writeAudit(tx, {
@@ -515,8 +559,8 @@ export class AttendanceClassService {
       throw new BadRequestException('Ada siswa yang bukan roster kelas sesi ini.');
     }
 
-    const eligibilityMap = await this.eligibilityForStudents(payload.items.map((item) => item.studentId), session.startsAt);
-    const rejected = payload.items
+    const eligibilityMap = await this.eligibilityForStudents(explicitItems.map((item) => item.studentId), session.startsAt);
+    const rejected = explicitItems
       .filter((item) => (item.status === StudentAttendanceStatus.HADIR || item.status === StudentAttendanceStatus.TELAT) && eligibilityMap.get(item.studentId)?.locked)
       .map((item) => ({
         studentId: item.studentId,
@@ -524,39 +568,80 @@ export class AttendanceClassService {
         reasons: eligibilityMap.get(item.studentId)?.reasons ?? ['Syarat presensi belum lengkap']
       }));
     const rejectedIds = new Set(rejected.map((item) => item.studentId));
-    const allowedItems = payload.items.filter((item) => !rejectedIds.has(item.studentId));
+    const allowedItems = explicitItems.filter((item) => !rejectedIds.has(item.studentId));
 
     return this.prisma.$transaction(async (tx) => {
       const stillOpen = await tx.session.updateMany({ where: { id: sessionId, status: SessionStatus.OPEN }, data: { updatedAt: new Date() } });
       if (stillOpen.count !== 1) throw new ConflictException('Sesi sudah tidak OPEN. Presensi baru ditolak.');
+
       const result = [];
+      const confirmationSource = allowedItems.length === 1 ? AttendanceConfirmationSource.MANUAL_SINGLE : AttendanceConfirmationSource.MANUAL_BULK;
       for (const item of allowedItems) {
-        const attendance = await tx.studentAttendance.upsert({
-          where: {
-            sessionId_studentId: {
-              sessionId,
-              studentId: item.studentId
-            }
-          },
-          create: {
-            sessionId,
-            studentId: item.studentId,
-            status: item.status,
-            note: item.note,
-            reviewState: AttendanceReviewState.CONFIRMED,
-            confirmedAt: new Date(),
-            confirmedById: actor.sub,
-            confirmationSource: AttendanceConfirmationSource.MANUAL_BULK
-          },
-          update: {
-            status: item.status,
-            note: item.note,
-            reviewState: AttendanceReviewState.CONFIRMED,
-            confirmedAt: new Date(),
-            confirmedById: actor.sub,
-            confirmationSource: AttendanceConfirmationSource.MANUAL_BULK
-          }
+        const before = await tx.studentAttendance.findUnique({
+          where: { sessionId_studentId: { sessionId, studentId: item.studentId } }
         });
+        const expectedUpdatedAt = this.parseExpectedAttendanceUpdatedAt(item.updatedAt, item.studentId);
+
+        if (before && !expectedUpdatedAt) {
+          throw new ConflictException({
+            code: 'ATTENDANCE_VERSION_REQUIRED',
+            message: 'Data presensi berubah atau belum memiliki versi. Muat ulang daftar siswa sebelum menyimpan.',
+            studentId: item.studentId
+          });
+        }
+        if (!before && expectedUpdatedAt) {
+          throw new ConflictException({
+            code: 'ATTENDANCE_STALE_VERSION',
+            message: 'Baris presensi sudah berubah. Muat ulang daftar siswa sebelum menyimpan.',
+            studentId: item.studentId
+          });
+        }
+        if (before && expectedUpdatedAt && before.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+          throw new ConflictException({
+            code: 'ATTENDANCE_STALE_VERSION',
+            message: 'Baris presensi sudah berubah. Muat ulang daftar siswa sebelum menyimpan.',
+            studentId: item.studentId,
+            expectedUpdatedAt: expectedUpdatedAt.toISOString(),
+            currentUpdatedAt: before.updatedAt.toISOString()
+          });
+        }
+
+        const now = new Date();
+        let attendance;
+        if (before) {
+          const updated = await tx.studentAttendance.updateMany({
+            where: { id: before.id, updatedAt: expectedUpdatedAt ?? undefined },
+            data: {
+              status: item.status,
+              note: item.note,
+              reviewState: AttendanceReviewState.CONFIRMED,
+              confirmedAt: now,
+              confirmedById: actor.sub,
+              confirmationSource
+            }
+          });
+          if (updated.count !== 1) {
+            throw new ConflictException({
+              code: 'ATTENDANCE_STALE_VERSION',
+              message: 'Baris presensi sudah berubah. Muat ulang daftar siswa sebelum menyimpan.',
+              studentId: item.studentId
+            });
+          }
+          attendance = await tx.studentAttendance.findUniqueOrThrow({ where: { id: before.id } });
+        } else {
+          attendance = await tx.studentAttendance.create({
+            data: {
+              sessionId,
+              studentId: item.studentId,
+              status: item.status,
+              note: item.note,
+              reviewState: AttendanceReviewState.CONFIRMED,
+              confirmedAt: now,
+              confirmedById: actor.sub,
+              confirmationSource
+            }
+          });
+        }
         result.push(attendance);
       }
 
@@ -564,10 +649,10 @@ export class AttendanceClassService {
         actorId: actor.sub,
         actorRole: actor.role as Role,
         module: 'attendance',
-        action: 'class.attendance.recorded',
+        action: confirmationSource === AttendanceConfirmationSource.MANUAL_SINGLE ? 'class.attendance.confirmed_single' : 'class.attendance.confirmed_bulk',
         resource: 'session',
         resourceId: sessionId,
-        after: { count: result.length, rejectedCount: rejected.length }
+        after: { count: result.length, rejectedCount: rejected.length, ignoredCount, source: confirmationSource }
       });
 
       if (rejected.length) {
@@ -586,7 +671,96 @@ export class AttendanceClassService {
         updated: result.length,
         rejected,
         rejectedCount: rejected.length,
+        ignoredCount,
         message: rejected.length ? 'Sebagian siswa belum memenuhi syarat scan wajib sehingga tidak disimpan sebagai hadir/telat.' : 'Presensi siswa tersimpan.'
+      };
+    });
+  }
+
+  async bulkConfirmPresent(sessionId: string, actor: AuthenticatedUser) {
+    return this.bulkConfirmDefaults(sessionId, actor, StudentAttendanceStatus.HADIR);
+  }
+
+  async bulkConfirmAlpa(sessionId: string, actor: AuthenticatedUser) {
+    return this.bulkConfirmDefaults(sessionId, actor, StudentAttendanceStatus.ALPA);
+  }
+
+  private async bulkConfirmDefaults(sessionId: string, actor: AuthenticatedUser, targetStatus: StudentAttendanceStatus) {
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+    if (this.accessPolicy && !await this.accessPolicy.canWriteClassAttendance(actor, sessionId)) {
+      throw new ForbiddenException('Bukan sesi Anda.');
+    }
+    if (!this.accessPolicy && actor.role === Role.GURU_MAPEL && session.teacherId !== actor.sub) {
+      throw new ForbiddenException('Bukan sesi Anda.');
+    }
+    if (session.status !== SessionStatus.OPEN) throw new BadRequestException('Sesi belum OPEN.');
+
+    const rosterRows = await this.ensureRosterRowsForSession(session, RosterCaptureSource.OPENED);
+    const rosterStudentIds = rosterRows.map((row) => row.studentId);
+    if (!rosterStudentIds.length) {
+      throw new ConflictException({ code: 'SESSION_ROSTER_EMPTY', message: 'Roster sesi kosong sehingga tidak dapat dikonfirmasi massal.' });
+    }
+
+    let rejected: Array<{ studentId: string; status: StudentAttendanceStatus; reasons: string[] }> = [];
+    let allowedIds = rosterStudentIds;
+    if (targetStatus === StudentAttendanceStatus.HADIR) {
+      const eligibilityMap = await this.eligibilityForStudents(rosterStudentIds, session.startsAt);
+      rejected = rosterStudentIds
+        .filter((studentId) => eligibilityMap.get(studentId)?.locked)
+        .map((studentId) => ({
+          studentId,
+          status: targetStatus,
+          reasons: eligibilityMap.get(studentId)?.reasons ?? ['Syarat presensi belum lengkap']
+        }));
+      const rejectedIds = new Set(rejected.map((item) => item.studentId));
+      allowedIds = rosterStudentIds.filter((studentId) => !rejectedIds.has(studentId));
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await this.ensureDefaultAttendances(tx, sessionId, rosterRows);
+      const updated = allowedIds.length
+        ? await tx.studentAttendance.updateMany({
+          where: { sessionId, studentId: { in: allowedIds }, reviewState: AttendanceReviewState.DEFAULTED },
+          data: {
+            status: targetStatus,
+            reviewState: AttendanceReviewState.CONFIRMED,
+            confirmedAt: now,
+            confirmedById: actor.sub,
+            confirmationSource: AttendanceConfirmationSource.MANUAL_BULK
+          }
+        })
+        : { count: 0 };
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: targetStatus === StudentAttendanceStatus.HADIR ? 'class.attendance.bulk_confirm_present' : 'class.attendance.bulk_confirm_alpa',
+        resource: 'session',
+        resourceId: sessionId,
+        after: { count: updated.count, rejectedCount: rejected.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
+      });
+      if (rejected.length) {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'attendance.class.blocked_by_policy',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { rejected }
+        });
+      }
+
+      return {
+        updated: updated.count,
+        rejected,
+        rejectedCount: rejected.length,
+        message: targetStatus === StudentAttendanceStatus.HADIR
+          ? `${updated.count} siswa default dikonfirmasi hadir.`
+          : `${updated.count} siswa default dikonfirmasi ALPA.`
       };
     });
   }
@@ -633,6 +807,7 @@ export class AttendanceClassService {
         await tx.studentAttendance.updateMany({
           where: { sessionId, reviewState: AttendanceReviewState.DEFAULTED },
           data: {
+            status: StudentAttendanceStatus.ALPA,
             reviewState: AttendanceReviewState.CONFIRMED,
             confirmedAt: now,
             confirmedById: actor.sub,
