@@ -7,6 +7,14 @@ export const CSRF_HEADER = 'x-csrf-token';
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const EXEMPT_PATH_SUFFIXES = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/csrf',
+  '/attendance/reader-scan',
+  '/attendance/qr-reader-scan',
+  '/device/gate/events',
+  '/internal/reconciliation/run',
+  '/internal/sessions/mark-missed',
   '/api/v1/auth/login',
   '/api/v1/auth/refresh',
   '/api/v1/auth/csrf',
