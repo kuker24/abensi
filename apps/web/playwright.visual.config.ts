@@ -15,6 +15,7 @@ export default defineConfig({
     ['html', { outputFolder: 'playwright-report-visual', open: 'never' }],
     ['junit', { outputFile: 'test-results/visual-junit.xml' }]
   ],
+  snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}/{arg}{ext}',
   use: {
     baseURL: 'http://127.0.0.1:4176',
     trace: 'on-first-retry',

@@ -1,6 +1,4 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { mkdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
 
 const USER_KEY = 'schoolhub_user';
 
@@ -22,30 +20,48 @@ async function mockApi(page: Page) {
   });
 }
 
+async function stabilizeBrowser(page: Page) {
+  await page.addInitScript(() => {
+    const fixed = new Date('2026-06-14T02:00:00.000Z').valueOf();
+    const RealDate = Date;
+    class FixedDate extends RealDate {
+      constructor(value?: string | number | Date) {
+        super(value ?? fixed);
+      }
+      static now() { return fixed; }
+    }
+    window.Date = FixedDate as DateConstructor;
+  });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+}
+
 async function seedUser(page: Page, user: { id: string; username: string; fullName: string; role: string }) {
   await page.addInitScript((args: { key: string; value: unknown }) => localStorage.setItem(args.key, JSON.stringify(args.value)), { key: USER_KEY, value: user });
 }
 
-async function captureStable(page: Page, name: string) {
-  mkdirSync('test-results/visual-snapshots', { recursive: true });
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  const path = join('test-results/visual-snapshots', `${test.info().project.name}-${name}.png`);
-  await page.screenshot({ path, fullPage: true, animations: 'disabled' });
-  expect(statSync(path).size).toBeGreaterThan(20_000);
+async function expectStableScreenshot(page: Page, name: string) {
+  await expect(page).toHaveScreenshot(`${name}.png`, {
+    fullPage: true,
+    animations: 'disabled',
+    caret: 'hide',
+    maxDiffPixelRatio: 0.005,
+    threshold: 0.2
+  });
 }
 
-test('role dashboards render deterministic non-empty visual snapshots', async ({ page }) => {
-  await mockApi(page);
-  const cases = [
-    [{ id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' }, '/admin/dashboard', 'admin-dashboard'],
-    [{ id: 'guru-1', username: 'guru.matematika', fullName: 'Guru Demo', role: 'GURU_MAPEL' }, '/guru/dashboard', 'guru-dashboard'],
-    [{ id: 'siswa-1', username: 'siswa.citra', fullName: 'Citra', role: 'SISWA' }, '/siswa/dashboard', 'siswa-dashboard']
-  ] as const;
+const cases = [
+  [{ id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' }, '/admin/dashboard', 'admin-dashboard'],
+  [{ id: 'guru-1', username: 'guru.matematika', fullName: 'Guru Demo', role: 'GURU_MAPEL' }, '/guru/dashboard', 'guru-dashboard'],
+  [{ id: 'siswa-1', username: 'siswa.citra', fullName: 'Citra', role: 'SISWA' }, '/siswa/dashboard', 'siswa-dashboard']
+] as const;
 
-  for (const [user, path, name] of cases) {
+for (const [user, path, name] of cases) {
+  test(`${name} matches committed visual baseline`, async ({ page }) => {
+    await stabilizeBrowser(page);
+    await mockApi(page);
     await seedUser(page, user);
     await page.goto(path);
     await expect(page.locator('#main-content')).toBeVisible();
-    await captureStable(page, name);
-  }
-});
+    await expectStableScreenshot(page, name);
+  });
+}
