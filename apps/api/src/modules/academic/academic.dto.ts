@@ -18,6 +18,22 @@ export class CreateStudentDto {
 
   @IsString()
   classId!: string;
+
+  @IsOptional()
+  @IsString()
+  academicYearId?: string;
+
+  @IsOptional()
+  @IsString()
+  semesterId?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  effectiveFrom?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  effectiveTo?: string;
 }
 
 export class UpdateClassDto {

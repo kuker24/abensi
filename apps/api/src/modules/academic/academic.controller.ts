@@ -152,6 +152,18 @@ export class AcademicController {
     return this.academicService.enrollStudent(body, user.sub);
   }
 
+  @Post('enrollments/transfer')
+  @Capabilities('academic.manage')
+  transferStudent(@Body() body: CreateStudentDto, @CurrentUser() user: { sub: string }) {
+    return this.academicService.enrollStudent(body, user.sub);
+  }
+
+  @Get('students/:id/enrollments')
+  @Capabilities('academic.read')
+  enrollmentHistory(@Param('id') id: string) {
+    return this.academicService.listEnrollmentHistory(id);
+  }
+
   @Post('students/import/preview')
   @Capabilities('academic.manage')
   previewStudentsImport(@Body() body: ImportStudentsDto) {

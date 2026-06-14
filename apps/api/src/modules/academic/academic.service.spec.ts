@@ -17,10 +17,22 @@ function makePrisma(): any {
     },
     user: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn()
     },
+    academicYear: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn()
+    },
+    semester: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn()
+    },
     classEnrollment: {
-      upsert: jest.fn()
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn()
     },
     auditEntry: {
       create: jest.fn()
@@ -84,4 +96,68 @@ describe('AcademicService', () => {
     expect(result.committed).toBe(false);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it('transfers a student by closing the previous period and opening the new class atomically', async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue({ id: 'siswa-1', role: 'SISWA' });
+    prisma.schoolClass.findUnique.mockResolvedValue({ id: 'class-new', code: 'XI-A' });
+    prisma.semester.findUnique.mockResolvedValue({ id: 'sem-1', academicYearId: 'year-1', academicYear: { id: 'year-1' } });
+    prisma.classEnrollment.findFirst.mockResolvedValue({
+      id: 'enroll-old',
+      classId: 'class-old',
+      studentId: 'siswa-1',
+      academicYearId: 'year-1',
+      semesterId: 'sem-1',
+      effectiveFrom: new Date('2026-06-13T17:00:00.000Z')
+    });
+    prisma.classEnrollment.update.mockResolvedValue({ id: 'enroll-old', active: false });
+    prisma.classEnrollment.create.mockResolvedValue({ id: 'enroll-new', classId: 'class-new', studentId: 'siswa-1' });
+    const service = new AcademicService(prisma);
+
+    const result = await service.enrollStudent({ userId: 'siswa-1', classId: 'class-new', semesterId: 'sem-1', effectiveFrom: '2026-06-16' }, 'admin-1');
+
+    expect(result.id).toBe('enroll-new');
+    expect(prisma.classEnrollment.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'enroll-old' },
+      data: expect.objectContaining({ active: false, endedById: 'admin-1' })
+    }));
+    expect(prisma.classEnrollment.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ classId: 'class-new', studentId: 'siswa-1', academicYearId: 'year-1', semesterId: 'sem-1', createdById: 'admin-1' })
+    }));
+    expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'student.transferred' }) });
+  });
+
+  it('reuses an existing enrollment for the same class and period instead of creating a duplicate', async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue({ id: 'siswa-1', role: 'SISWA' });
+    prisma.schoolClass.findUnique.mockResolvedValue({ id: 'class-1', code: 'XI-A' });
+    prisma.semester.findUnique.mockResolvedValue({ id: 'sem-1', academicYearId: 'year-1', academicYear: { id: 'year-1' } });
+    prisma.classEnrollment.findFirst.mockResolvedValue({
+      id: 'enroll-existing',
+      classId: 'class-1',
+      studentId: 'siswa-1',
+      academicYearId: 'year-1',
+      semesterId: 'sem-1',
+      effectiveFrom: new Date('2026-06-13T17:00:00.000Z')
+    });
+    const service = new AcademicService(prisma);
+
+    const result = await service.enrollStudent({ userId: 'siswa-1', classId: 'class-1', semesterId: 'sem-1', effectiveFrom: '2026-06-16' }, 'admin-1');
+
+    expect(result.id).toBe('enroll-existing');
+    expect(prisma.classEnrollment.create).not.toHaveBeenCalled();
+    expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'student.enrollment_reused' }) });
+  });
+
+  it('rejects a semester that does not belong to the selected academic year', async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue({ id: 'siswa-1', role: 'SISWA' });
+    prisma.schoolClass.findUnique.mockResolvedValue({ id: 'class-1', code: 'XI-A' });
+    prisma.semester.findUnique.mockResolvedValue({ id: 'sem-1', academicYearId: 'year-real', academicYear: { id: 'year-real' } });
+    const service = new AcademicService(prisma);
+
+    await expect(service.enrollStudent({ userId: 'siswa-1', classId: 'class-1', academicYearId: 'year-wrong', semesterId: 'sem-1', effectiveFrom: '2026-06-16' }, 'admin-1')).rejects.toThrow('Semester tidak berada pada tahun ajaran');
+    expect(prisma.classEnrollment.create).not.toHaveBeenCalled();
+  });
+
 });

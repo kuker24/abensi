@@ -216,6 +216,8 @@ model User {
 
   taughtSessions              Session[]                   @relation("TeacherSessions")
   enrollments                 ClassEnrollment[]
+  createdClassEnrollments     ClassEnrollment[]           @relation("ClassEnrollmentCreatedBy")
+  endedClassEnrollments       ClassEnrollment[]           @relation("ClassEnrollmentEndedBy")
   sessionRosters              SessionRoster[]             @relation("SessionRosterStudent")
   gateLogs                    GateLog[]
   studentAttendances          StudentAttendance[]         @relation("StudentAttendanceUser")
@@ -291,8 +293,9 @@ model AcademicYear {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  semesters       Semester[]
-  weeklySchedules WeeklySchedule[]
+  semesters        Semester[]
+  weeklySchedules  WeeklySchedule[]
+  classEnrollments ClassEnrollment[]
 }
 
 model Semester {
@@ -306,8 +309,9 @@ model Semester {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
-  weeklySchedules WeeklySchedule[]
+  academicYear     AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  weeklySchedules  WeeklySchedule[]
+  classEnrollments ClassEnrollment[]
 
   @@unique([academicYearId, code])
   @@index([active])
@@ -331,7 +335,7 @@ model ClassEnrollment {
   studentId      String
   academicYearId String?
   semesterId     String?
-  effectiveFrom  DateTime  @default(now()) @db.Date
+  effectiveFrom  DateTime  @db.Date
   effectiveTo    DateTime? @db.Date
   active         Boolean   @default(true)
   createdById    String?
@@ -340,11 +344,14 @@ model ClassEnrollment {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  schoolClass SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student     User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  rosters     SessionRoster[]
+  schoolClass  SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student      User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear?   @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  semester     Semester?       @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  createdBy    User?           @relation("ClassEnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  endedBy      User?           @relation("ClassEnrollmentEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
+  rosters      SessionRoster[]
 
-  @@unique([classId, studentId])
   @@index([studentId, active, effectiveFrom, effectiveTo])
   @@index([classId, active, effectiveFrom, effectiveTo])
   @@index([academicYearId])

@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { CardStatus, Prisma, Role } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
+import { addCalendarDays, businessDateKey, businessDayBounds } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAcademicYearDto, CreateClassDto, CreateRoomDto, CreateSemesterDto, CreateStudentDto, CreateSubjectDto, ImportAcademicRowDto, ImportStudentRowDto, UpdateAcademicYearDto, UpdateClassDto, UpdateRoomDto, UpdateSemesterDto, UpdateSubjectDto } from './academic.dto';
@@ -73,9 +74,129 @@ function temporaryPassword() {
   return `Ehadir#${randomBytes(5).toString('base64url')}`;
 }
 
+function dbDateFromBusinessKey(key: string) {
+  return businessDayBounds(key).date;
+}
+
+function schoolBusinessDate(value: Date | string = new Date()) {
+  return dbDateFromBusinessKey(typeof value === 'string' ? businessDateKey(new Date(value)) : businessDateKey(value));
+}
+
+function previousBusinessDate(value: Date) {
+  return dbDateFromBusinessKey(addCalendarDays(businessDateKey(value), -1));
+}
+
+function enrollmentConflictCode(error: unknown) {
+  const text = `${error instanceof Error ? error.message : ''} ${JSON.stringify((error as { meta?: unknown })?.meta ?? {})}`;
+  if (text.includes('ClassEnrollment_student_no_overlap_excl')) return 'ENROLLMENT_PERIOD_OVERLAP';
+  if (text.includes('ClassEnrollment_valid_period_chk')) return 'ENROLLMENT_INVALID_PERIOD';
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') return 'ENROLLMENT_CONCURRENT_TRANSFER';
+  return null;
+}
+
 @Injectable()
 export class AcademicService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async resolveAcademicPeriod(
+    tx: Prisma.TransactionClient,
+    payload: { academicYearId?: string; semesterId?: string }
+  ) {
+    if (payload.semesterId) {
+      const semester = await tx.semester.findUnique({ where: { id: payload.semesterId }, include: { academicYear: true } });
+      if (!semester) throw new BadRequestException('Semester tidak ditemukan.');
+      if (payload.academicYearId && semester.academicYearId !== payload.academicYearId) {
+        throw new BadRequestException({ code: 'SEMESTER_YEAR_MISMATCH', message: 'Semester tidak berada pada tahun ajaran yang dipilih.' });
+      }
+      return { academicYearId: semester.academicYearId, semesterId: semester.id };
+    }
+
+    const academicYearId = payload.academicYearId;
+    const semester = await tx.semester.findFirst({
+      where: {
+        active: true,
+        ...(academicYearId ? { academicYearId } : { academicYear: { active: true } })
+      },
+      orderBy: [{ startsAt: 'desc' }, { createdAt: 'desc' }]
+    });
+    if (semester) return { academicYearId: semester.academicYearId, semesterId: semester.id };
+
+    const activeYear = academicYearId
+      ? await tx.academicYear.findUnique({ where: { id: academicYearId } })
+      : await tx.academicYear.findFirst({ where: { active: true }, orderBy: { createdAt: 'desc' } });
+    if (!activeYear) {
+      throw new BadRequestException({ code: 'ACADEMIC_PERIOD_REQUIRED', message: 'Tahun ajaran dan semester aktif wajib tersedia sebelum mendaftarkan siswa.' });
+    }
+    throw new BadRequestException({ code: 'SEMESTER_REQUIRED', message: 'Semester aktif wajib tersedia sebelum mendaftarkan siswa.' });
+  }
+
+  private async createEnrollmentTransfer(
+    tx: Prisma.TransactionClient,
+    payload: CreateStudentDto,
+    actor: { sub: string; role?: string },
+    reason = 'Pendaftaran/transfer kelas'
+  ) {
+    const [student, schoolClass] = await Promise.all([
+      tx.user.findUnique({ where: { id: payload.userId } }),
+      tx.schoolClass.findUnique({ where: { id: payload.classId } })
+    ]);
+    if (!student || student.role !== Role.SISWA) throw new BadRequestException('Akun siswa tidak ditemukan.');
+    if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan.');
+
+    const period = await this.resolveAcademicPeriod(tx, payload);
+    const effectiveFrom = payload.effectiveFrom ? schoolBusinessDate(payload.effectiveFrom) : schoolBusinessDate();
+    const effectiveTo = payload.effectiveTo ? schoolBusinessDate(payload.effectiveTo) : null;
+    if (effectiveTo && effectiveTo < effectiveFrom) {
+      throw new BadRequestException({ code: 'ENROLLMENT_INVALID_PERIOD', message: 'Tanggal selesai pendaftaran tidak boleh sebelum tanggal mulai.' });
+    }
+
+    const existingActive = await tx.classEnrollment.findFirst({
+      where: {
+        studentId: payload.userId,
+        effectiveFrom: { lte: effectiveFrom },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveFrom } }]
+      },
+      orderBy: { effectiveFrom: 'desc' }
+    });
+
+    if (existingActive && existingActive.classId === payload.classId && existingActive.academicYearId === period.academicYearId && existingActive.semesterId === period.semesterId) {
+      return { enrollment: existingActive, closedEnrollment: null, reused: true };
+    }
+
+    let closedEnrollment = null;
+    if (existingActive) {
+      const closingDate = previousBusinessDate(effectiveFrom);
+      if (closingDate < existingActive.effectiveFrom) {
+        throw new ConflictException({
+          code: 'ENROLLMENT_SAME_DAY_TRANSFER_REQUIRES_REPAIR',
+          message: 'Transfer pada tanggal mulai pendaftaran yang sama memerlukan perbaikan riwayat eksplisit.'
+        });
+      }
+      closedEnrollment = await tx.classEnrollment.update({
+        where: { id: existingActive.id },
+        data: {
+          active: false,
+          effectiveTo: closingDate,
+          endedById: actor.sub,
+          endedReason: reason
+        }
+      });
+    }
+
+    const enrollment = await tx.classEnrollment.create({
+      data: {
+        classId: payload.classId,
+        studentId: payload.userId,
+        academicYearId: period.academicYearId,
+        semesterId: period.semesterId,
+        effectiveFrom,
+        effectiveTo,
+        active: effectiveTo === null,
+        createdById: actor.sub
+      }
+    });
+    return { enrollment, closedEnrollment, reused: false };
+  }
 
   async listClasses(pagination: PaginationQuery) {
     const [total, items] = await Promise.all([
@@ -186,7 +307,7 @@ export class AcademicService {
       ...(classId
         ? {
             enrollments: {
-              some: { classId }
+              some: { classId, active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gte: schoolBusinessDate() } }] }
             }
           }
         : {})
@@ -202,10 +323,19 @@ export class AcademicService {
           fullName: true,
           cardStatus: true,
           enrollments: {
+            where: { active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gte: schoolBusinessDate() } }] },
             select: {
+              id: true,
               classId: true,
-              schoolClass: { select: { code: true, name: true } }
-            }
+              academicYearId: true,
+              semesterId: true,
+              effectiveFrom: true,
+              effectiveTo: true,
+              schoolClass: { select: { code: true, name: true } },
+              academicYear: { select: { code: true, name: true } },
+              semester: { select: { code: true, name: true } }
+            },
+            orderBy: { effectiveFrom: 'desc' }
           }
         },
         orderBy: { fullName: 'asc' },
@@ -344,11 +474,7 @@ export class AcademicService {
           credentialRows.push({ fullName: student.fullName, username: student.username, temporaryPassword: '', classCode: row.classCode, note: 'Akun sudah ada; password tidak diubah' });
         }
 
-        await tx.classEnrollment.upsert({
-          where: { classId_studentId: { classId: schoolClass.id, studentId: student.id } },
-          create: { classId: schoolClass.id, studentId: student.id },
-          update: {}
-        });
+        await this.createEnrollmentTransfer(tx, { userId: student.id, classId: schoolClass.id }, actor, 'Import siswa massal');
         result.enrollments += 1;
       }
 
@@ -427,11 +553,7 @@ export class AcademicService {
             tx.user.findUniqueOrThrow({ where: { username: row.username! } }),
             tx.schoolClass.findUniqueOrThrow({ where: { code: row.classCode! } })
           ]);
-          await tx.classEnrollment.upsert({
-            where: { classId_studentId: { classId: schoolClass.id, studentId: student.id } },
-            create: { classId: schoolClass.id, studentId: student.id },
-            update: {}
-          });
+          await this.createEnrollmentTransfer(tx, { userId: student.id, classId: schoolClass.id }, actor, 'Import akademik');
           result.enrollments += 1;
         }
       }
@@ -569,32 +691,43 @@ export class AcademicService {
     return 'type,code,name,yearLabel,username,classCode\nclass,X-1,Kelas X-1,2026/2027,,\nsubject,MTK,Matematika,,,\nenrollment,,,,siswa.contoh,X-1\n';
   }
 
-  enrollStudent(payload: CreateStudentDto, actorId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const enrollment = await tx.classEnrollment.upsert({
-        where: {
-          classId_studentId: {
-            classId: payload.classId,
-            studentId: payload.userId
-          }
-        },
-        create: {
-          classId: payload.classId,
-          studentId: payload.userId
-        },
-        update: {}
-      });
-
-      await writeAudit(tx, {
-        actorId,
-        module: 'academic',
-        action: 'student.enrolled',
-        resource: 'classEnrollment',
-        resourceId: enrollment.id,
-        after: enrollment
-      });
-
-      return enrollment;
+  async listEnrollmentHistory(studentId: string) {
+    return this.prisma.classEnrollment.findMany({
+      where: { studentId },
+      include: {
+        schoolClass: { select: { id: true, code: true, name: true } },
+        academicYear: { select: { id: true, code: true, name: true } },
+        semester: { select: { id: true, code: true, name: true } },
+        createdBy: { select: { id: true, fullName: true, username: true } },
+        endedBy: { select: { id: true, fullName: true, username: true } }
+      },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }]
     });
+  }
+
+  async enrollStudent(payload: CreateStudentDto, actorId: string) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { enrollment, closedEnrollment, reused } = await this.createEnrollmentTransfer(tx, payload, { sub: actorId }, 'Pendaftaran/transfer kelas manual');
+
+        await writeAudit(tx, {
+          actorId,
+          module: 'academic',
+          action: closedEnrollment ? 'student.transferred' : reused ? 'student.enrollment_reused' : 'student.enrolled',
+          resource: 'classEnrollment',
+          resourceId: enrollment.id,
+          before: closedEnrollment,
+          after: enrollment
+        });
+
+        return enrollment;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      const code = enrollmentConflictCode(error);
+      if (code) {
+        throw new ConflictException({ code, message: 'Pendaftaran siswa berbenturan dengan periode kelas lain. Muat ulang dan coba lagi.' });
+      }
+      throw error;
+    }
   }
 }

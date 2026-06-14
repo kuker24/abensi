@@ -117,6 +117,18 @@ async function main() {
     create: { code: 'X-MIA-1', name: 'Kelas X MIA 1', yearLabel: '2025/2026' }
   });
 
+  const academicYear = await prisma.academicYear.upsert({
+    where: { code: '2025/2026' },
+    update: { name: 'Tahun Ajaran 2025/2026', active: true },
+    create: { code: '2025/2026', name: 'Tahun Ajaran 2025/2026', startsAt: jakartaDateTime('2025-07-01', 0, 0), endsAt: jakartaDateTime('2026-06-30', 23, 59), active: true }
+  });
+  const semester = await prisma.semester.upsert({
+    where: { academicYearId_code: { academicYearId: academicYear.id, code: 'GANJIL' } },
+    update: { name: 'Semester Ganjil', active: true },
+    create: { academicYearId: academicYear.id, code: 'GANJIL', name: 'Semester Ganjil', startsAt: jakartaDateTime('2025-07-01', 0, 0), endsAt: jakartaDateTime('2025-12-31', 23, 59), active: true }
+  });
+  const enrollmentStart = jakartaDateTime('2025-07-01', 0, 0);
+
   const subject = await prisma.subject.upsert({
     where: { code: 'MTK-W' },
     update: { name: 'Matematika Wajib' },
@@ -124,19 +136,20 @@ async function main() {
   });
 
   for (const student of students) {
-    await prisma.classEnrollment.upsert({
-      where: {
-        classId_studentId: {
-          classId: schoolClass.id,
-          studentId: student.id
-        }
-      },
-      update: {},
-      create: {
-        classId: schoolClass.id,
-        studentId: student.id
-      }
+    const existingEnrollment = await prisma.classEnrollment.findFirst({
+      where: { classId: schoolClass.id, studentId: student.id, effectiveFrom: enrollmentStart }
     });
+    if (!existingEnrollment) {
+      await prisma.classEnrollment.create({
+        data: {
+          classId: schoolClass.id,
+          studentId: student.id,
+          academicYearId: academicYear.id,
+          semesterId: semester.id,
+          effectiveFrom: enrollmentStart
+        }
+      });
+    }
   }
 
   const today = new Date();
