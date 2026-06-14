@@ -219,7 +219,7 @@ body {
 /* Topbar */
 .topbar { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; gap: 12px; padding: 10px 22px; min-height: 56px; background: var(--surface-glass); backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .top-spacer { flex: 1; }
-.crumb { font-size: var(--text-sm); color: var(--fg-dim); display: flex; align-items: center; gap: 4px; }
+.crumb { font-size: var(--text-sm); color: var(--fg); display: flex; align-items: center; gap: 4px; }
 .crumb .now { color: var(--fg); font-weight: 600; }
 
 /* System ribbon / connection status in topbar */

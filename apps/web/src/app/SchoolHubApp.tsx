@@ -362,7 +362,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
     <div className="login login-v2">
       <div className="login-left">
         <div className="login-left-overlay" />
-        <div className="login-left-content">
+        <div className="login-left-content" tabIndex={0} aria-label="Informasi e-Hadir MAN 1 Rokan Hulu">
           <div className="login-topbar">
             <div className="row" style={{ gap: 12 }}>
               <div className="brand-mark login-brand-mark">
