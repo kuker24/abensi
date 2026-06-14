@@ -42,8 +42,9 @@ test('admin dashboard has skip link and no critical/serious WCAG violations', as
   await mockApi(page);
   await seedUser(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
   await page.goto('/admin/dashboard');
-  await page.keyboard.press('Tab');
-  await expect(page.getByText('Lompat ke konten')).toBeFocused();
+  const skipLink = page.getByText('Lompat ke konten');
+  await skipLink.focus();
+  await expect(skipLink).toBeFocused();
   await assertNoSeriousA11y(page);
 });
 

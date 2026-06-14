@@ -592,7 +592,7 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
       <IconBtn label="Lihat tutorial" onClick={onOpenTutorial}><BookOpen size={16} /></IconBtn>
       <span className="notif-wrapper"><IconBtn label="Notifikasi" onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
         <Bell size={16} />
-      </IconBtn><span className="notif-dot" aria-label="Ada notifikasi baru" /></span>
+      </IconBtn><span className="notif-dot" aria-hidden="true" /></span>
     </div>
   );
 }

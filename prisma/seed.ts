@@ -8,7 +8,8 @@ import {
   StudentAttendanceStatus,
   TeacherSessionStatus,
   ReaderType,
-  PrayerType
+  PrayerType,
+  RosterCaptureSource
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
@@ -380,7 +381,35 @@ async function main() {
     StudentAttendanceStatus.SAKIT
   ];
 
-  for (const [index, student] of students.slice(0, 4).entries()) {
+  const rosterStudents = students.slice(0, 4);
+  for (const session of [sessionA, sessionB]) {
+    await prisma.sessionRoster.createMany({
+      data: await Promise.all(rosterStudents.map(async (student) => {
+        const enrollment = await prisma.classEnrollment.findFirst({
+          where: { classId: classXmia1.id, studentId: student.id, effectiveFrom: enrollmentStart }
+        });
+        return {
+          sessionId: session.id,
+          studentId: student.id,
+          enrollmentId: enrollment?.id ?? null,
+          studentNameSnapshot: student.fullName,
+          studentUsernameSnapshot: student.username,
+          classIdSnapshot: classXmia1.id,
+          classCodeSnapshot: classXmia1.code,
+          classNameSnapshot: classXmia1.name,
+          academicYearIdSnapshot: academicYear.id,
+          academicYearNameSnapshot: academicYear.name,
+          semesterIdSnapshot: semester.id,
+          semesterNameSnapshot: semester.name,
+          captureSource: RosterCaptureSource.BACKFILL,
+          activeAtCapture: true
+        };
+      })),
+      skipDuplicates: true
+    });
+  }
+
+  for (const [index, student] of rosterStudents.entries()) {
     await prisma.studentAttendance.upsert({
       where: {
         sessionId_studentId: {
