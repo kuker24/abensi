@@ -8,7 +8,7 @@ import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AttendanceClassService } from './attendance-class.service';
-import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDto } from './attendance-class.dto';
+import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, RepairSessionRosterDto, SessionGeoDto } from './attendance-class.dto';
 
 @Controller('attendance/class-sessions')
 @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
@@ -106,9 +106,10 @@ export class AttendanceClassController {
   @Capabilities('classAttendance.correct')
   repairRoster(
     @Param('id') sessionId: string,
+    @Body() body: RepairSessionRosterDto,
     @CurrentUser() user: { sub: string; role: string }
   ) {
-    return this.attendanceClassService.repairSessionRoster(sessionId, user);
+    return this.attendanceClassService.repairSessionRoster(sessionId, user, body.reason);
   }
 
   @Patch(':id/attendance/:studentId')

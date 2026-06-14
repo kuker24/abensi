@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { AttendanceConfirmationSource, AttendanceReviewState, Role, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
 import { AttendanceClassService } from './attendance-class.service';
 
@@ -139,6 +139,7 @@ describe('AttendanceClassService explicit attendance review', () => {
     const tx = { auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) } };
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue(session) },
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]) },
       $transaction: jest.fn((callback) => callback(tx))
     } as any;
     const service = new AttendanceClassService(prisma);
@@ -231,6 +232,91 @@ describe('AttendanceClassService explicit attendance review', () => {
 
 
 describe('AttendanceClassService session roster integrity', () => {
+  const openSession = {
+    id: 'session-1',
+    teacherId: 'guru-1',
+    classId: 'class-1',
+    startsAt: new Date('2026-06-14T01:00:00.000Z'),
+    endsAt: new Date('2026-06-14T02:00:00.000Z'),
+    businessDate: new Date(Date.UTC(2026, 5, 14)),
+    status: SessionStatus.OPEN
+  };
+
+  it('record attendance rejects missing roster without recapturing', async () => {
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(openSession) },
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([]) },
+      classEnrollment: { findMany: jest.fn() },
+      $transaction: jest.fn()
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.recordAttendance('session-1', guru, { items: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, confirm: true }] })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+    });
+    expect(prisma.classEnrollment.findMany).not.toHaveBeenCalled();
+  });
+
+  it('bulk confirmation rejects missing roster without recapturing', async () => {
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(openSession) },
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([]) },
+      classEnrollment: { findMany: jest.fn() },
+      $transaction: jest.fn()
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.bulkConfirmPresent('session-1', guru)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+    });
+    expect(prisma.classEnrollment.findMany).not.toHaveBeenCalled();
+  });
+
+  it('close rejects missing roster without recapturing', async () => {
+    const tx = {
+      sessionRoster: { findMany: jest.fn().mockResolvedValue([]) },
+      classEnrollment: { findMany: jest.fn() }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue({ ...openSession, endsAt: new Date(Date.now() - 60_000) }) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.closeSession('session-1', guru, {})).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+    });
+    expect(tx.classEnrollment.findMany).not.toHaveBeenCalled();
+  });
+
+  it('correction rejects missing roster distinctly from out-of-roster student', async () => {
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(openSession) },
+      sessionRoster: {
+        count: jest.fn().mockResolvedValue(0),
+        findUnique: jest.fn()
+      }
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.correctAttendance('session-1', 'siswa-1', guru, { status: StudentAttendanceStatus.HADIR, reason: 'Koreksi manual dengan bukti tertulis' })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+    });
+    expect(prisma.sessionRoster.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('repair workflow is admin/developer only and requires a quality reason', async () => {
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(openSession) },
+      $transaction: jest.fn()
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.repairSessionRoster('session-1', guru, 'Perbaikan roster dengan bukti operator')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.repairSessionRoster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU }, 'singkat')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('summary raises data-integrity error instead of falling back to current enrollment', async () => {
     const prisma = {
       session: {
@@ -283,18 +369,19 @@ describe('AttendanceClassService session roster integrity', () => {
     } as any;
     const service = new AttendanceClassService(prisma);
 
-    const result = await service.repairSessionRoster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU });
+    const result = await service.repairSessionRoster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU }, 'Perbaikan roster karena data legacy tidak memiliki snapshot');
 
-    expect(result).toEqual({ sessionId: 'session-1', beforeCount: 0, afterCount: 1, fromAttendanceCount: 1 });
+    expect(result).toEqual({ sessionId: 'session-1', beforeCount: 0, afterCount: 1, fromAttendanceCount: 1, source: 'audited_repair' });
     expect(tx.sessionRoster.createMany).toHaveBeenCalledWith(expect.objectContaining({
       data: [expect.objectContaining({
         studentId: 'siswa-1',
         captureSource: 'BACKFILL',
-        classCodeSnapshot: 'X-1'
+        classCodeSnapshot: 'X-1',
+        metadata: expect.objectContaining({ source: 'audited_repair', unverifiable: true })
       })]
     }));
     expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ action: 'session_roster.repaired' })
+      data: expect.objectContaining({ action: 'session_roster.repaired', reason: 'Perbaikan roster karena data legacy tidak memiliki snapshot' })
     }));
   });
 });

@@ -141,6 +141,13 @@ function sessionAtOrAfter(sessionTime: Date, time: string | null | undefined, fa
   return localMinutesOfDay(sessionTime) >= minutesOf(time, fallback);
 }
 
+function sessionRosterMissingException() {
+  return new ConflictException({
+    code: 'SESSION_ROSTER_MISSING',
+    message: 'Roster snapshot sesi tidak ditemukan. Jalankan perbaikan roster ter-audit.'
+  });
+}
+
 @Injectable()
 export class AttendanceClassService {
   constructor(
@@ -157,7 +164,8 @@ export class AttendanceClassService {
   private async captureSessionRoster(
     tx: Prisma.TransactionClient,
     session: { id: string; classId: string; businessDate: Date; startsAt: Date },
-    source: RosterCaptureSource
+    source: RosterCaptureSource,
+    metadata: Prisma.InputJsonObject = {}
   ) {
     const existing = await tx.sessionRoster.count({ where: { sessionId: session.id } });
     if (existing > 0) return existing;
@@ -199,7 +207,11 @@ export class AttendanceClassService {
         semesterNameSnapshot: enrollment.semester?.name ?? null,
         captureSource: source,
         activeAtCapture: enrollment.active && (enrollment.administrativeStatus ?? 'ACTIVE') === 'ACTIVE',
-        metadata: { businessDate: businessDateKey(effectiveDate), administrativeStatus: enrollment.administrativeStatus ?? 'ACTIVE' }
+        metadata: {
+          businessDate: businessDateKey(effectiveDate),
+          administrativeStatus: enrollment.administrativeStatus ?? 'ACTIVE',
+          ...metadata
+        }
       })),
       skipDuplicates: true
     });
@@ -486,20 +498,12 @@ export class AttendanceClassService {
     return parsed;
   }
 
-  private async ensureRosterRowsForSession(
-    session: { id: string; classId: string; businessDate: Date; startsAt: Date },
-    source: RosterCaptureSource = RosterCaptureSource.OPENED
-  ) {
-    let rosterRows = await this.prisma.sessionRoster.findMany({
+  private async ensureRosterRowsForSession(session: { id: string }) {
+    const rosterRows = await this.prisma.sessionRoster.findMany({
       where: { sessionId: session.id },
       select: { studentId: true }
     });
-    if (!rosterRows.length) {
-      await this.prisma.$transaction(async (tx) => {
-        await this.captureSessionRoster(tx, session, source);
-      });
-      rosterRows = await this.prisma.sessionRoster.findMany({ where: { sessionId: session.id }, select: { studentId: true } });
-    }
+    if (!rosterRows.length) throw sessionRosterMissingException();
     return rosterRows;
   }
 
@@ -520,6 +524,7 @@ export class AttendanceClassService {
       throw new BadRequestException('Sesi belum OPEN.');
     }
 
+    const rosterRows = await this.ensureRosterRowsForSession(session);
     const explicitItems = (payload.items ?? []).filter((item) => item.confirm === true);
     const ignoredCount = (payload.items ?? []).length - explicitItems.length;
 
@@ -544,7 +549,6 @@ export class AttendanceClassService {
       };
     }
 
-    const rosterRows = await this.ensureRosterRowsForSession(session, RosterCaptureSource.OPENED);
     const rosterSet = new Set(rosterRows.map((item) => item.studentId));
     const outOfRoster = explicitItems.filter((item) => !rosterSet.has(item.studentId)).map((item) => item.studentId);
     if (outOfRoster.length) {
@@ -699,7 +703,7 @@ export class AttendanceClassService {
     }
     if (session.status !== SessionStatus.OPEN) throw new BadRequestException('Sesi belum OPEN.');
 
-    const rosterRows = await this.ensureRosterRowsForSession(session, RosterCaptureSource.OPENED);
+    const rosterRows = await this.ensureRosterRowsForSession(session);
     const rosterStudentIds = rosterRows.map((row) => row.studentId);
     if (!rosterStudentIds.length) {
       throw new ConflictException({ code: 'SESSION_ROSTER_EMPTY', message: 'Roster sesi kosong sehingga tidak dapat dikonfirmasi massal.' });
@@ -794,8 +798,8 @@ export class AttendanceClassService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      await this.captureSessionRoster(tx, session, RosterCaptureSource.OPENED);
       const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      if (!roster.length) throw sessionRosterMissingException();
       await this.ensureDefaultAttendances(tx, sessionId, roster);
 
       const unreviewedCount = await tx.studentAttendance.count({ where: { sessionId, reviewState: AttendanceReviewState.DEFAULTED } });
@@ -951,7 +955,7 @@ export class AttendanceClassService {
     }
 
     if (!session.rosters.length && session.status !== SessionStatus.SCHEDULED) {
-      throw new ConflictException({ code: 'SESSION_ROSTER_MISSING', message: 'Roster snapshot sesi tidak ditemukan. Jalankan perbaikan roster ter-audit.' });
+      throw sessionRosterMissingException();
     }
 
     const teacherPresence = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
@@ -1023,7 +1027,7 @@ export class AttendanceClassService {
           after: { status: session.status }
         });
       });
-      throw new ConflictException({ code: 'SESSION_ROSTER_MISSING', message: 'Roster snapshot sesi tidak ditemukan. Jalankan perbaikan roster ter-audit.' });
+      throw sessionRosterMissingException();
     }
 
     const attendanceMap = new Map(session.attendances.map((item) => [item.studentId, item]));
@@ -1079,20 +1083,27 @@ export class AttendanceClassService {
     };
   }
 
-  async repairSessionRoster(sessionId: string, actor: AuthenticatedUser) {
+  async repairSessionRoster(sessionId: string, actor: AuthenticatedUser, reasonInput: string) {
+    const reason = assertReasonQuality(reasonInput, 'Alasan perbaikan roster');
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: { schoolClass: { select: { id: true, code: true, name: true } } }
     });
     if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
 
-    if (actor.role === Role.GURU_MAPEL && session.teacherId !== actor.sub) {
-      throw new ForbiddenException('Bukan sesi Anda.');
+    if (!(actor.role === Role.ADMIN_TU || actor.role === Role.DEVELOPER)) {
+      throw new ForbiddenException('Perbaikan roster hanya boleh dilakukan admin/developer.');
     }
 
     return this.prisma.$transaction(async (tx) => {
       const beforeCount = await tx.sessionRoster.count({ where: { sessionId } });
-      await this.captureSessionRoster(tx, session, RosterCaptureSource.BACKFILL);
+      await this.captureSessionRoster(tx, session, RosterCaptureSource.BACKFILL, {
+        source: 'audited_repair',
+        repairReason: reason,
+        repairedBy: actor.sub,
+        evidence: 'effective_dated_enrollment_range',
+        unverifiable: false
+      });
       const existing = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
       const existingIds = new Set(existing.map((item) => item.studentId));
       const missingAttendances = await tx.studentAttendance.findMany({
@@ -1117,7 +1128,13 @@ export class AttendanceClassService {
             semesterNameSnapshot: null,
             captureSource: RosterCaptureSource.BACKFILL,
             activeAtCapture: false,
-            metadata: { source: 'audited_repair', repairedBy: actor.sub }
+            metadata: {
+              source: 'audited_repair',
+              repairReason: reason,
+              repairedBy: actor.sub,
+              evidence: 'orphan_attendance_row',
+              unverifiable: true
+            }
           })),
           skipDuplicates: true
         });
@@ -1131,11 +1148,12 @@ export class AttendanceClassService {
         action: 'session_roster.repaired',
         resource: 'session',
         resourceId: sessionId,
+        reason,
         before: { rosterCount: beforeCount },
-        after: { rosterCount: afterCount, fromAttendanceCount: missingAttendances.length }
+        after: { rosterCount: afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
       });
 
-      return { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length };
+      return { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' };
     });
   }
 
@@ -1162,6 +1180,8 @@ export class AttendanceClassService {
     }
 
     const reason = assertReasonQuality(payload.reason, 'Alasan koreksi');
+    const rosterCount = await this.prisma.sessionRoster.count({ where: { sessionId } });
+    if (!rosterCount) throw sessionRosterMissingException();
     const rosterEntry = await this.prisma.sessionRoster.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
     if (!rosterEntry) throw new BadRequestException('Siswa bukan roster kelas sesi ini.');
 

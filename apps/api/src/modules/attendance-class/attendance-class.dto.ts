@@ -80,6 +80,12 @@ export class BatchAttendanceDto {
   items!: AttendanceItemDto[];
 }
 
+export class RepairSessionRosterDto {
+  @IsString()
+  @MinLength(10)
+  reason!: string;
+}
+
 export class CorrectAttendanceDto {
   @IsEnum(StudentAttendanceStatus)
   status!: StudentAttendanceStatus;
