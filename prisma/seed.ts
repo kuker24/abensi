@@ -95,6 +95,7 @@ async function ensureSession(params: {
       where: { id: existing.id },
       data: {
         endsAt: params.endsAt,
+        businessDate: gateBusinessDate(params.startsAt),
         status: params.status,
         openedAt: params.status === SessionStatus.SCHEDULED ? null : params.startsAt,
         closedAt: params.status === SessionStatus.CLOSED ? params.endsAt : null
@@ -109,6 +110,7 @@ async function ensureSession(params: {
       teacherId: params.teacherId,
       startsAt: params.startsAt,
       endsAt: params.endsAt,
+      businessDate: gateBusinessDate(params.startsAt),
       status: params.status,
       openedAt: params.status === SessionStatus.SCHEDULED ? null : params.startsAt,
       closedAt: params.status === SessionStatus.CLOSED ? params.endsAt : null

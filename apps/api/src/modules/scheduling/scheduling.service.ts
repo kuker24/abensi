@@ -6,6 +6,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { businessDayBounds, businessWeekday, localDateTimeToUtc } from '../../common/business-time';
 import type { CreateSessionDto, CreateWeeklyScheduleDto, GenerateSessionsDto, UpdateSessionScheduleDto, UpdateWeeklyScheduleDto } from './scheduling.dto';
 
+function businessDateAsDbDate(value: Date) {
+  const { key } = businessDayBounds(value);
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
 function parseSchoolDateTime(value: string) {
   const localMatch = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?)?$/.exec(value);
   if (localMatch) {
@@ -104,6 +110,7 @@ export class SchedulingService {
           teacherId: payload.teacherId,
           startsAt,
           endsAt,
+          businessDate: businessDateAsDbDate(startsAt),
           status: SessionStatus.SCHEDULED
         }
       });
@@ -207,27 +214,28 @@ export class SchedulingService {
         if (schedule.effectiveTo && day > schedule.effectiveTo) continue;
         const startsAt = combineDateTime(day, schedule.startTime);
         const endsAt = combineDateTime(day, schedule.endTime);
-        const existing = await tx.session.findFirst({
-          where: {
-            OR: [
-              { weeklyScheduleId: schedule.id, startsAt },
-              { classId: schedule.classId, startsAt, endsAt }
-            ]
-          }
-        });
-        if (existing) { skipped.push(existing.id); continue; }
-        generated.push(await tx.session.create({
-          data: {
-            weeklyScheduleId: schedule.id,
-            classId: schedule.classId,
-            subjectId: schedule.subjectId,
-            teacherId: schedule.teacherId,
-            roomId: schedule.roomId,
-            startsAt,
-            endsAt,
-            status: SessionStatus.SCHEDULED
-          }
-        }));
+        const businessDate = businessDateAsDbDate(startsAt);
+        try {
+          generated.push(await tx.session.create({
+            data: {
+              weeklyScheduleId: schedule.id,
+              classId: schedule.classId,
+              subjectId: schedule.subjectId,
+              teacherId: schedule.teacherId,
+              roomId: schedule.roomId,
+              startsAt,
+              endsAt,
+              businessDate,
+              status: SessionStatus.SCHEDULED
+            }
+          }));
+        } catch (error) {
+          const conflict = error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'P2002';
+          if (!conflict) throw error;
+          const existing = await tx.session.findFirst({ where: { weeklyScheduleId: schedule.id, businessDate } });
+          if (existing) { skipped.push(existing.id); continue; }
+          throw error;
+        }
       }
 
       await writeAudit(tx, { actorId, module: 'scheduling', action: 'weekly_schedule.sessions_generated', resource: 'weeklySchedule', resourceId: id, after: { generated: generated.length, skipped: skipped.length } });
@@ -264,7 +272,8 @@ export class SchedulingService {
         where: { id: sessionId },
         data: {
           startsAt,
-          endsAt
+          endsAt,
+          businessDate: businessDateAsDbDate(startsAt)
         },
         include: {
           schoolClass: true,

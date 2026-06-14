@@ -323,6 +323,7 @@ model Session {
   teacherId        String
   startsAt         DateTime
   endsAt           DateTime
+  businessDate     DateTime      @db.Date
   status           SessionStatus @default(SCHEDULED)
   openedAt         DateTime?
   closedAt         DateTime?
@@ -343,6 +344,7 @@ model Session {
   correctionEvents AttendanceCorrectionEvent[]
 
   @@index([startsAt])
+  @@index([businessDate])
   @@index([status])
   @@index([status, startsAt])
   @@index([classId, startsAt])

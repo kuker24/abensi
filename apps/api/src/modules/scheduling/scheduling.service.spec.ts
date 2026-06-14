@@ -6,6 +6,7 @@ function makePrisma() {
   const tx = {
     session: {
       create: jest.fn(async ({ data }) => ({ id: 'session-1', ...data })),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn()
     },
@@ -62,6 +63,7 @@ describe('SchedulingService timezone handling', () => {
       data: expect.objectContaining({
         startsAt: new Date('2026-06-14T00:15:00.000Z'),
         endsAt: new Date('2026-06-14T01:45:00.000Z'),
+        businessDate: new Date('2026-06-14T00:00:00.000Z'),
         status: SessionStatus.SCHEDULED
       })
     });
@@ -82,7 +84,8 @@ describe('SchedulingService timezone handling', () => {
     expect(tx.session.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         startsAt: new Date('2026-06-14T07:15:00.000Z'),
-        endsAt: new Date('2026-06-14T08:45:00.000Z')
+        endsAt: new Date('2026-06-14T08:45:00.000Z'),
+        businessDate: new Date('2026-06-14T00:00:00.000Z')
       })
     });
 

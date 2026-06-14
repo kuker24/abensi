@@ -157,6 +157,7 @@ async function main() {
         where: { id: existingSession.id },
         data: {
           endsAt,
+          businessDate: gateBusinessDate(startsAt),
           status: SessionStatus.CLOSED,
           openedAt: startsAt,
           closedAt: endsAt
@@ -169,6 +170,7 @@ async function main() {
           teacherId: guruMapel.id,
           startsAt,
           endsAt,
+          businessDate: gateBusinessDate(startsAt),
           status: SessionStatus.CLOSED,
           openedAt: startsAt,
           closedAt: endsAt
