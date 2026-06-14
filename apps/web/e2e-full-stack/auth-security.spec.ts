@@ -18,7 +18,7 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
   test('login sets HttpOnly/SameSite cookies, auth/me works, CSRF blocks unsafe mutation, logout clears session', async ({ playwright }) => {
     const context = await playwright.request.newContext({ baseURL: apiBaseURL });
 
-    const login = await context.post('/auth/login', {
+    const login = await context.post('auth/login', {
       data: { username: 'admin.tu', password: adminPassword, expectedRole: 'admin' }
     });
     expect(login.ok()).toBeTruthy();
@@ -32,22 +32,22 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
       expectCookieFlag(cookies, 'schoolhub_refresh_token', 'Secure');
     }
 
-    const me = await context.get('/auth/me');
+    const me = await context.get('auth/me');
     expect(me.ok()).toBeTruthy();
     await expect(me.json()).resolves.toMatchObject({ user: { username: 'admin.tu', role: 'ADMIN_TU' } });
 
-    const missingCsrf = await context.post('/auth/logout');
+    const missingCsrf = await context.post('auth/logout');
     expect(missingCsrf.status()).toBe(403);
 
-    await context.get('/auth/csrf');
+    await context.get('auth/csrf');
     const state = await context.storageState();
     const csrf = state.cookies.find((cookie) => cookie.name === 'schoolhub_csrf_token')?.value;
     expect(csrf).toBeTruthy();
 
-    const logout = await context.post('/auth/logout', { headers: { 'x-csrf-token': csrf! } });
+    const logout = await context.post('auth/logout', { headers: { 'x-csrf-token': csrf! } });
     expect(logout.ok()).toBeTruthy();
 
-    const afterLogout = await context.get('/auth/me');
+    const afterLogout = await context.get('auth/me');
     expect(afterLogout.status()).toBe(401);
     await context.dispose();
   });
@@ -55,20 +55,20 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
   test('login rejects invalid password, role mismatch, and inactive account without localStorage seeding', async ({ playwright }) => {
     const context = await playwright.request.newContext({ baseURL: apiBaseURL });
 
-    await expect((await context.post('/auth/login', { data: { username: 'admin.tu', password: 'wrong-password', expectedRole: 'admin' } })).status()).toBe(401);
-    await expect((await context.post('/auth/login', { data: { username: 'guru.matematika', password: defaultPassword, expectedRole: 'admin' } })).status()).toBe(401);
-    await expect((await context.post('/auth/login', { data: { username: 'operator.it', password: defaultPassword, expectedRole: 'admin' } })).status()).toBe(401);
+    await expect((await context.post('auth/login', { data: { username: 'admin.tu', password: 'wrong-password', expectedRole: 'admin' } })).status()).toBe(401);
+    await expect((await context.post('auth/login', { data: { username: 'guru.matematika', password: defaultPassword, expectedRole: 'admin' } })).status()).toBe(401);
+    await expect((await context.post('auth/login', { data: { username: 'operator.it', password: defaultPassword, expectedRole: 'admin' } })).status()).toBe(401);
     await context.dispose();
   });
 
   test('student self-report is available only through real cookie login', async ({ playwright }) => {
     const context = await playwright.request.newContext({ baseURL: apiBaseURL });
-    const login = await context.post('/auth/login', {
+    const login = await context.post('auth/login', {
       data: { username: 'siswa.citra', password: defaultPassword, expectedRole: 'siswa' }
     });
     expect(login.ok()).toBeTruthy();
 
-    const selfReport = await context.get('/reports/my-attendance?days=14');
+    const selfReport = await context.get('reports/my-attendance?days=14');
     expect(selfReport.ok()).toBeTruthy();
     await context.dispose();
   });
