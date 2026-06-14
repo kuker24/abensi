@@ -173,7 +173,9 @@ export class AttendanceClassService {
       },
       include: {
         student: { select: { id: true, fullName: true, username: true } },
-        schoolClass: { select: { id: true, code: true, name: true } }
+        schoolClass: { select: { id: true, code: true, name: true } },
+        academicYear: { select: { id: true, name: true } },
+        semester: { select: { id: true, name: true } }
       },
       orderBy: { student: { fullName: 'asc' } }
     });
@@ -191,9 +193,9 @@ export class AttendanceClassService {
         classCodeSnapshot: enrollment.schoolClass.code,
         classNameSnapshot: enrollment.schoolClass.name,
         academicYearIdSnapshot: enrollment.academicYearId,
-        academicYearNameSnapshot: null,
+        academicYearNameSnapshot: enrollment.academicYear?.name ?? null,
         semesterIdSnapshot: enrollment.semesterId,
-        semesterNameSnapshot: null,
+        semesterNameSnapshot: enrollment.semester?.name ?? null,
         captureSource: source,
         activeAtCapture: enrollment.active,
         metadata: { businessDate: businessDateKey(effectiveDate) }
@@ -924,18 +926,7 @@ export class AttendanceClassService {
       include: {
         attendances: true,
         rosters: true,
-        teacherPresence: true,
-        schoolClass: {
-          include: {
-            enrollments: {
-              where: {
-                student: {
-                  active: true
-                }
-              }
-            }
-          }
-        }
+        teacherPresence: true
       }
     });
 
@@ -958,10 +949,14 @@ export class AttendanceClassService {
       counters[item.status] += 1;
     }
 
+    if (!session.rosters.length && session.status !== SessionStatus.SCHEDULED) {
+      throw new ConflictException({ code: 'SESSION_ROSTER_MISSING', message: 'Roster snapshot sesi tidak ditemukan. Jalankan perbaikan roster ter-audit.' });
+    }
+
     const teacherPresence = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
     const confirmedCount = session.attendances.filter((item) => item.reviewState !== AttendanceReviewState.DEFAULTED).length;
     const defaultedCount = session.attendances.filter((item) => item.reviewState === AttendanceReviewState.DEFAULTED).length;
-    const rosterTotal = session.rosters.length || session.schoolClass.enrollments.length;
+    const rosterTotal = session.rosters.length;
 
     return {
       sessionId,
@@ -984,32 +979,6 @@ export class AttendanceClassService {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: {
-        schoolClass: {
-          include: {
-            enrollments: {
-              where: {
-                student: {
-                  active: true
-                }
-              },
-              include: {
-                student: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    username: true,
-                    cardStatus: true
-                  }
-                }
-              },
-              orderBy: {
-                student: {
-                  fullName: 'asc'
-                }
-              }
-            }
-          }
-        },
         rosters: {
           include: { student: { select: { cardStatus: true } } },
           orderBy: { studentNameSnapshot: 'asc' }
@@ -1027,26 +996,49 @@ export class AttendanceClassService {
       throw new ForbiddenException('Bukan sesi Anda.');
     }
 
+    if (!session.rosters.length) {
+      if (session.status === SessionStatus.SCHEDULED) {
+        return {
+          session: {
+            id: session.id,
+            status: session.status,
+            startsAt: session.startsAt,
+            endsAt: session.endsAt,
+            openedAt: session.openedAt,
+            closedAt: session.closedAt,
+            teacherPresence: session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null
+          },
+          roster: []
+        };
+      }
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'session_roster.missing_detected',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { status: session.status }
+        });
+      });
+      throw new ConflictException({ code: 'SESSION_ROSTER_MISSING', message: 'Roster snapshot sesi tidak ditemukan. Jalankan perbaikan roster ter-audit.' });
+    }
+
     const attendanceMap = new Map(session.attendances.map((item) => [item.studentId, item]));
-    const snapshotRows = session.rosters.length
-      ? session.rosters.map((row) => ({
-        studentId: row.studentId,
-        fullName: row.studentNameSnapshot,
-        username: row.studentUsernameSnapshot,
-        cardStatus: row.student.cardStatus,
-        rosterId: row.id,
-        classCodeSnapshot: row.classCodeSnapshot,
-        classNameSnapshot: row.classNameSnapshot
-      }))
-      : session.schoolClass.enrollments.map((enrollment) => ({
-        studentId: enrollment.studentId,
-        fullName: enrollment.student.fullName,
-        username: enrollment.student.username,
-        cardStatus: enrollment.student.cardStatus,
-        rosterId: null,
-        classCodeSnapshot: session.schoolClass.code,
-        classNameSnapshot: session.schoolClass.name
-      }));
+    const snapshotRows = session.rosters.map((row) => ({
+      studentId: row.studentId,
+      fullName: row.studentNameSnapshot,
+      username: row.studentUsernameSnapshot,
+      cardStatus: row.student.cardStatus,
+      rosterId: row.id,
+      classCodeSnapshot: row.classCodeSnapshot,
+      classNameSnapshot: row.classNameSnapshot,
+      academicYearIdSnapshot: row.academicYearIdSnapshot,
+      academicYearNameSnapshot: row.academicYearNameSnapshot,
+      semesterIdSnapshot: row.semesterIdSnapshot,
+      semesterNameSnapshot: row.semesterNameSnapshot
+    }));
     const eligibilityMap = await this.eligibilityForStudents(snapshotRows.map((item) => item.studentId), session.startsAt);
     const roster = snapshotRows.map((row) => {
       const existing = attendanceMap.get(row.studentId);
@@ -1059,6 +1051,10 @@ export class AttendanceClassService {
         cardStatus: row.cardStatus,
         classCodeSnapshot: row.classCodeSnapshot,
         classNameSnapshot: row.classNameSnapshot,
+        academicYearIdSnapshot: row.academicYearIdSnapshot,
+        academicYearNameSnapshot: row.academicYearNameSnapshot,
+        semesterIdSnapshot: row.semesterIdSnapshot,
+        semesterNameSnapshot: row.semesterNameSnapshot,
         status: existing?.status ?? StudentAttendanceStatus.ALPA,
         reviewState: existing?.reviewState ?? AttendanceReviewState.DEFAULTED,
         confirmedAt: existing?.confirmedAt ?? null,
@@ -1080,6 +1076,66 @@ export class AttendanceClassService {
       },
       roster
     };
+  }
+
+  async repairSessionRoster(sessionId: string, actor: AuthenticatedUser) {
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { schoolClass: { select: { id: true, code: true, name: true } } }
+    });
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+
+    if (actor.role === Role.GURU_MAPEL && session.teacherId !== actor.sub) {
+      throw new ForbiddenException('Bukan sesi Anda.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const beforeCount = await tx.sessionRoster.count({ where: { sessionId } });
+      await this.captureSessionRoster(tx, session, RosterCaptureSource.BACKFILL);
+      const existing = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      const existingIds = new Set(existing.map((item) => item.studentId));
+      const missingAttendances = await tx.studentAttendance.findMany({
+        where: { sessionId, ...(existingIds.size ? { studentId: { notIn: Array.from(existingIds) } } : {}) },
+        include: { student: { select: { id: true, fullName: true, username: true } } }
+      });
+
+      if (missingAttendances.length) {
+        await tx.sessionRoster.createMany({
+          data: missingAttendances.map((attendance) => ({
+            sessionId,
+            studentId: attendance.studentId,
+            enrollmentId: null,
+            studentNameSnapshot: attendance.student.fullName,
+            studentUsernameSnapshot: attendance.student.username,
+            classIdSnapshot: session.schoolClass.id,
+            classCodeSnapshot: session.schoolClass.code,
+            classNameSnapshot: session.schoolClass.name,
+            academicYearIdSnapshot: null,
+            academicYearNameSnapshot: null,
+            semesterIdSnapshot: null,
+            semesterNameSnapshot: null,
+            captureSource: RosterCaptureSource.BACKFILL,
+            activeAtCapture: false,
+            metadata: { source: 'audited_repair', repairedBy: actor.sub }
+          })),
+          skipDuplicates: true
+        });
+      }
+      const afterCount = await tx.sessionRoster.count({ where: { sessionId } });
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: 'session_roster.repaired',
+        resource: 'session',
+        resourceId: sessionId,
+        before: { rosterCount: beforeCount },
+        after: { rosterCount: afterCount, fromAttendanceCount: missingAttendances.length }
+      });
+
+      return { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length };
+    });
   }
 
   async correctAttendance(

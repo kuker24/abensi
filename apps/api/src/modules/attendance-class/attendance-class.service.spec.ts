@@ -229,6 +229,76 @@ describe('AttendanceClassService explicit attendance review', () => {
   });
 });
 
+
+describe('AttendanceClassService session roster integrity', () => {
+  it('summary raises data-integrity error instead of falling back to current enrollment', async () => {
+    const prisma = {
+      session: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'session-1',
+          teacherId: 'guru-1',
+          status: SessionStatus.OPEN,
+          openedAt: new Date(),
+          closedAt: null,
+          attendances: [],
+          rosters: [],
+          teacherPresence: []
+        })
+      }
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.summary('session-1', guru)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+    });
+  });
+
+  it('repair workflow creates explicit backfill roster rows and audits the repair', async () => {
+    const session = {
+      id: 'session-1',
+      teacherId: 'guru-1',
+      classId: 'class-1',
+      startsAt: new Date('2026-06-14T01:00:00.000Z'),
+      businessDate: new Date(Date.UTC(2026, 5, 14)),
+      schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' }
+    };
+    const tx = {
+      sessionRoster: {
+        count: jest.fn()
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(1),
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      classEnrollment: { findMany: jest.fn().mockResolvedValue([]) },
+      studentAttendance: {
+        findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1', student: { fullName: 'Siswa Satu', username: 'siswa1' } }])
+      },
+      auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    const result = await service.repairSessionRoster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU });
+
+    expect(result).toEqual({ sessionId: 'session-1', beforeCount: 0, afterCount: 1, fromAttendanceCount: 1 });
+    expect(tx.sessionRoster.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({
+        studentId: 'siswa-1',
+        captureSource: 'BACKFILL',
+        classCodeSnapshot: 'X-1'
+      })]
+    }));
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'session_roster.repaired' })
+    }));
+  });
+});
+
 describe('AttendanceClassService teacher check-in/out', () => {
   it('mencatat checkInAt saat guru membuka sesi', async () => {
     const { service, tx } = makeService({ status: SessionStatus.SCHEDULED });

@@ -221,6 +221,8 @@ model User {
   sessionRosters              SessionRoster[]             @relation("SessionRosterStudent")
   gateLogs                    GateLog[]
   studentAttendances          StudentAttendance[]         @relation("StudentAttendanceUser")
+  correctedStudentAttendances StudentAttendance[]         @relation("StudentAttendanceCorrectedBy")
+  confirmedStudentAttendances StudentAttendance[]         @relation("StudentAttendanceConfirmedBy")
   teacherPresences            TeacherSessionPresence[]
   reconciliationFlags         ReconciliationFlag[]        @relation("FlaggedUser")
   resolvedFlags               ReconciliationFlag[]        @relation("ResolvedByUser")
@@ -416,7 +418,10 @@ model StudentAttendance {
 
   session          Session                     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   student          User                        @relation("StudentAttendanceUser", fields: [studentId], references: [id], onDelete: Cascade)
+  roster           SessionRoster               @relation("AttendanceRosterMembership", fields: [sessionId, studentId], references: [sessionId, studentId], onDelete: Cascade)
   usedOverride     AttendanceOverride?         @relation("AttendanceUsedOverride", fields: [usedOverrideId], references: [id], onDelete: SetNull)
+  correctedBy      User?                       @relation("StudentAttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  confirmedBy      User?                       @relation("StudentAttendanceConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
   correctionEvents AttendanceCorrectionEvent[]
 
   @@unique([sessionId, studentId])
@@ -448,9 +453,10 @@ model SessionRoster {
   activeAtCapture          Boolean             @default(true)
   metadata                 Json?
 
-  session    Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student    User             @relation("SessionRosterStudent", fields: [studentId], references: [id], onDelete: Restrict)
-  enrollment ClassEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  session    Session            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student    User               @relation("SessionRosterStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  enrollment ClassEnrollment?   @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  attendance StudentAttendance? @relation("AttendanceRosterMembership")
 
   @@unique([sessionId, studentId])
   @@index([studentId])

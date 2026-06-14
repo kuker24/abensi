@@ -101,6 +101,16 @@ export class AttendanceClassController {
     return this.attendanceClassService.roster(sessionId, user);
   }
 
+  @Post(':id/roster/repair')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('classAttendance.correct')
+  repairRoster(
+    @Param('id') sessionId: string,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.attendanceClassService.repairSessionRoster(sessionId, user);
+  }
+
   @Patch(':id/attendance/:studentId')
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.DEVELOPER)
   @Capabilities('classAttendance.correct')
