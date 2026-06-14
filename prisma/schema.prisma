@@ -492,6 +492,24 @@ model GateLogArchive {
   @@index([archivedAt])
 }
 
+model BusinessDateBackfillReport {
+  id                    String    @id
+  migrationVersion      String
+  sourceTable           String
+  rowId                 String
+  observedTimestamp     DateTime
+  currentBusinessDate   DateTime? @db.Date
+  correctedBusinessDate DateTime  @db.Date
+  dateChanged           Boolean
+  duplicateGroupBefore  Json
+  duplicateGroupAfter   Json
+  createdAt             DateTime  @default(now())
+
+  @@unique([migrationVersion, sourceTable, rowId])
+  @@index([sourceTable, dateChanged])
+  @@index([migrationVersion])
+}
+
 model RejectedDeviceScan {
   id               String         @id @default(cuid())
   eventId          String?
