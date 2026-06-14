@@ -412,7 +412,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     expect(selectTheme.overflow).toBe(false);
     await page.getByRole('button', { name: /Absen Masuk/ }).click();
     await expect(page.getByText('Absen masuk guru tercatat.')).toBeVisible();
-    await page.getByRole('button', { name: /Tandai semua Hadir/ }).click();
+    await page.getByRole('button', { name: /Konfirmasi semua Hadir/ }).click();
     await page.getByRole('button', { name: /Simpan Presensi Awal/ }).click();
     await expect(page.getByText('Presensi siswa awal pembelajaran tersimpan.')).toBeVisible();
     await page.getByRole('button', { name: /Absen Keluar/ }).click();

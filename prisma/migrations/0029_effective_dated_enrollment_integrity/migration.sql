@@ -51,6 +51,7 @@ BEGIN
 END $$;
 
 ALTER TABLE "ClassEnrollment" DROP CONSTRAINT IF EXISTS "ClassEnrollment_classId_studentId_key";
+DROP INDEX IF EXISTS "ClassEnrollment_classId_studentId_key";
 
 ALTER TABLE "ClassEnrollment" ALTER COLUMN "effectiveFrom" DROP DEFAULT;
 

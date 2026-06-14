@@ -87,11 +87,12 @@ async function main() {
     if (disconnected.length) errors.push(`Disconnected audit component(s): ${disconnected.join(', ')}`);
   }
 
-  const lastBySequence = [...entries].sort((a, b) => {
+  const entriesBySequence = [...entries].sort((a, b) => {
     const sequenceDiff = Number((a.sequence ?? 0n) - (b.sequence ?? 0n));
     if (sequenceDiff !== 0) return sequenceDiff;
     return a.createdAt.getTime() - b.createdAt.getTime();
-  }).at(-1);
+  });
+  const lastBySequence = entriesBySequence.length ? entriesBySequence[entriesBySequence.length - 1] : undefined;
 
   if (entries.length > 0) {
     if (!state) errors.push('AuditChainState id=1 is missing');

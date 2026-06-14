@@ -11,6 +11,8 @@ import {
   PrayerType
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { createHash } from 'node:crypto';
+import { auditedTransaction } from '../apps/api/src/common/audit-log';
 
 const prisma = new PrismaClient();
 
@@ -35,6 +37,20 @@ function dayBounds(base: Date) {
   const key = jakartaDateKey(base);
   const start = jakartaDateTime(key, 0, 0);
   return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1) };
+}
+
+function sha256Hex(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function readerSeed(key: string) {
+  return {
+    deviceId: key,
+    apiKeyHash: sha256Hex(key),
+    keyPrefix: key.slice(0, 10),
+    keyLast4: key.slice(-4),
+    keyRotatedAt: new Date()
+  };
 }
 
 function requiredEnv(name: string) {
@@ -477,9 +493,11 @@ async function main() {
     });
   }
 
+  const gateReader = readerSeed('shr_reader_gate_primary_2026');
   await prisma.deviceReader.upsert({
-    where: { apiKey: 'shr_reader_gate_primary_2026' },
+    where: { apiKeyHash: gateReader.apiKeyHash },
     update: {
+      ...gateReader,
       name: 'Reader Gerbang Utama',
       status: 'ACTIVE',
       type: ReaderType.GATE,
@@ -488,8 +506,8 @@ async function main() {
       locationLng: 0
     },
     create: {
+      ...gateReader,
       name: 'Reader Gerbang Utama',
-      apiKey: 'shr_reader_gate_primary_2026',
       status: 'ACTIVE',
       type: ReaderType.GATE,
       locationLabel: 'Gerbang utama',
@@ -498,17 +516,19 @@ async function main() {
     }
   });
 
+  const musholaReader = readerSeed('shr_reader_mushola_2026');
   await prisma.deviceReader.upsert({
-    where: { apiKey: 'shr_reader_mushola_2026' },
+    where: { apiKeyHash: musholaReader.apiKeyHash },
     update: {
+      ...musholaReader,
       name: 'Reader Mushola',
       status: 'ACTIVE',
       type: ReaderType.MUSHOLA,
       locationLabel: 'Mushola'
     },
     create: {
+      ...musholaReader,
       name: 'Reader Mushola',
-      apiKey: 'shr_reader_mushola_2026',
       status: 'ACTIVE',
       type: ReaderType.MUSHOLA,
       locationLabel: 'Mushola'
@@ -665,9 +685,10 @@ async function main() {
     }
   });
 
-  await prisma.auditEntry.create({
-    data: {
+  await auditedTransaction(prisma as any, async ({ audit }) => {
+    await audit.write({
       actorId: admin.id,
+      actorRole: Role.ADMIN_TU,
       action: 'seed.full.completed',
       resource: 'system',
       resourceId: 'seed',
@@ -677,7 +698,7 @@ async function main() {
         sessions: [sessionA.id, sessionB.id, sessionC.id],
         users: 11
       }
-    }
+    });
   });
 
   console.log('Seed full production demo completed.');
