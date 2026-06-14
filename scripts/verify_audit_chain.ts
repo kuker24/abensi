@@ -21,6 +21,19 @@ async function main() {
   let expectedSequence = 1n;
   let previousHash: string | null = null;
   const prevHashUses = new Map<string, number>();
+  const hashOwners = new Map<string, string[]>();
+
+  for (const entry of entries) {
+    if (!entry.entryHash) {
+      errors.push(`Missing entryHash at audit ${entry.id}`);
+    } else {
+      hashOwners.set(entry.entryHash, [...(hashOwners.get(entry.entryHash) ?? []), entry.id]);
+    }
+  }
+
+  for (const [entryHash, owners] of hashOwners) {
+    if (owners.length > 1) errors.push(`Duplicate entryHash ${entryHash} on entries ${owners.join(', ')}`);
+  }
 
   for (const entry of entries) {
     if (entry.sequence !== expectedSequence) {
@@ -30,6 +43,14 @@ async function main() {
 
     if (entry.prevHash !== previousHash) {
       errors.push(`prevHash mismatch at sequence ${entry.sequence}: expected ${previousHash ?? 'GENESIS'}, got ${entry.prevHash ?? 'GENESIS'}`);
+    }
+
+    if (entry.hashVersion !== 1) {
+      errors.push(`Unsupported hashVersion at sequence ${entry.sequence}: ${entry.hashVersion}`);
+    }
+
+    if (entry.prevHash && !hashOwners.has(entry.prevHash)) {
+      errors.push(`Orphan prevHash at sequence ${entry.sequence}: ${entry.prevHash}`);
     }
 
     if (!entry.canonicalPayload) {
