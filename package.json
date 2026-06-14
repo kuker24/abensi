@@ -20,6 +20,9 @@
     "test:web": "npm run test --prefix apps/web",
     "test:e2e": "npm run test:e2e --prefix apps/web",
     "audit:verify-chain": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify_audit_chain.ts",
+    "preflight:production": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/preflight_production_readiness.ts",
+    "verify:post-migration": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify_post_migration.ts",
+    "test:upgrade-migrations": "bash scripts/test_upgrade_migrations.sh",
     "validate:final": "bash scripts/validate_final.sh"
   },
   "dependencies": {
