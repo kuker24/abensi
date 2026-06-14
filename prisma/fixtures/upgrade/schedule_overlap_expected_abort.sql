@@ -1,3 +1,5 @@
--- Fixture marker for automated upgrade-migration scenario.
--- The executable suite validates this fixture inventory and current migrated database pre/post checks.
-SELECT 1;
+\i prisma/fixtures/upgrade/schedule_teacher_overlap_expected_abort.sql
+
+-- Compatibility alias kept for older CI references. The dedicated teacher,
+-- class, and room overlap fixtures are executed separately by the scenario
+-- runner.

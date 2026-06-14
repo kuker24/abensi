@@ -78,7 +78,7 @@ Protection checks completed before work resumed:
 | 2 | Execution ledger update plan | PASS | Ledger records protected baseline, all mandatory implementation steps, phase-specific evidence requirements, and final evidence rules. |
 | 3 | Enrollment period semantics | PASS (CI pending) | Corrective migration `0032_enrollment_administrative_status`; `active` is now administrative-only; future `effectiveTo` remains active; current roster/listing uses `effectiveFrom`/`effectiveTo` + `administrativeStatus`; cancellation/revocation endpoint requires reason and audit; unit and real PostgreSQL integration scenarios added. |
 | 4 | Remove silent SessionRoster recapture | PASS (CI pending) | Implicit recapture removed from record/bulk/close/correction paths; missing OPEN/CLOSED/MISSED roster returns `SESSION_ROSTER_MISSING`; only scheduled open auto-captures; repair is admin/developer-only, requires reason, audits source/evidence, and marks orphan-attendance rows unverifiable. |
-| 5 | Real upgrade migration fixtures | TODO | Isolated DB per scenario, legacy cutoff migration, populated fixtures, exact pass/abort assertions, archive/audit/constraint checks. |
+| 5 | Real upgrade migration fixtures | PASS (CI pending) | Replaced marker inventory with isolated DB-per-scenario runner; each scenario migrates through legacy cutoff `0020`, loads populated SQL, runs read-only legacy preflight, deploys remaining migrations or asserts expected abort/post-verification failure; fixtures cover happy path, GateLog archive/dedup, session collision, teacher/class/room overlap, enrollment overlap, audit branch/orphan/cycle/payload/hash/stale state, roster gap, invalid actor FK, and archive mismatch. |
 | 6 | Deterministic PostgreSQL concurrency matrix | TODO | Transaction barriers and final DB/audit assertions for all requested race scenarios. |
 | 7 | Transactional outbox + live SSE | TODO | Same-transaction outbox writes, publisher claim/retry/DLQ, Redis fan-out, durable resume, distributed tests. |
 | 8 | Worker security fail-closed | TODO | Constant-time signed requests, Redis-mandatory nonce in production, cross-replica/retry/DLQ/readiness tests. |
@@ -107,6 +107,7 @@ Protection checks completed before work resumed:
 
 - 2026-06-14: Step 3 implementation added migration `0032_enrollment_administrative_status`; API typecheck/lint passed; API Jest passed 21 suites / 160 tests; targeted academic/attendance-class tests passed 2 suites / 27 tests. Real PostgreSQL semantic scenarios were added to `scripts/postgres_integration_suite.ts` for CI execution.
 - 2026-06-14: Step 4 implementation removed silent roster recapture from non-open flows, required reasoned audited admin/developer repair, and added missing-roster regression tests. Validation passed: API typecheck, API lint, targeted attendance-class Jest 22 tests, and full API Jest 21 suites / 165 tests.
+- 2026-06-14: Step 5 implementation replaced placeholder upgrade fixture checks with `scripts/run_upgrade_migration_scenarios.mjs`, `scripts/legacy_upgrade_preflight.sql`, and populated SQL fixtures. Local syntax validation passed (`node --check`, `bash -n`); execution requires PostgreSQL/psql and is gated in CI via `npm run test:upgrade-migrations`.
 
 ## Current stop condition
 
