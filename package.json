@@ -28,6 +28,7 @@
     "security:sbom": "bash scripts/generate_sbom.sh",
     "security:license": "bash scripts/license_policy_check.sh",
     "security:android": "bash scripts/android_release_security.sh",
+    "ops:backup-restore-drill": "bash scripts/backup_restore_drill.sh",
     "test:api": "npm run test --prefix apps/api",
     "test:web": "npm run test --prefix apps/web",
     "test:e2e": "npm run test:e2e --prefix apps/web",

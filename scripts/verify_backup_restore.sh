@@ -17,12 +17,21 @@ if [[ -z "$BACKUP_FILE" || ! -f "$BACKUP_FILE" ]]; then
 fi
 
 cd "$ROOT_DIR"
-gunzip -t "$BACKUP_FILE"
+dump_stream() {
+  if [[ "$BACKUP_FILE" == *.enc ]]; then
+    : "${BACKUP_ENCRYPTION_PASSPHRASE:?BACKUP_ENCRYPTION_PASSPHRASE is required for encrypted backup}";
+    openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_PASSPHRASE -in "$BACKUP_FILE"
+  else
+    cat "$BACKUP_FILE"
+  fi
+}
+
+dump_stream | gunzip -t
 
 docker compose -f docker-compose.production.yml --env-file "$ENV_FILE" exec -T postgres \
   sh -lc 'dropdb -U "$POSTGRES_USER" --if-exists "$1" && createdb -U "$POSTGRES_USER" "$1"' sh "$TEST_DB"
 
-zcat "$BACKUP_FILE" | docker compose -f docker-compose.production.yml --env-file "$ENV_FILE" exec -T postgres \
+dump_stream | zcat | docker compose -f docker-compose.production.yml --env-file "$ENV_FILE" exec -T postgres \
   sh -lc 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$1" >/dev/null' sh "$TEST_DB"
 
 TABLE_COUNT="$(docker compose -f docker-compose.production.yml --env-file "$ENV_FILE" exec -T postgres \

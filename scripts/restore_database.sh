@@ -61,7 +61,7 @@ create_database() {
 restore_into_database() {
   local db_name="$1"
   validate_db_name "$db_name"
-  zcat "$BACKUP_FILE" | "${COMPOSE[@]}" exec -T postgres \
+  dump_stream | zcat | "${COMPOSE[@]}" exec -T postgres \
     sh -lc 'psql -v ON_ERROR_STOP=1 --single-transaction -U "$POSTGRES_USER" "$1" >/dev/null' sh "$db_name"
 }
 
@@ -89,7 +89,16 @@ prepare_empty_database() {
   create_database "$db_name"
 }
 
-gunzip -t "$BACKUP_FILE"
+dump_stream() {
+  if [[ "$BACKUP_FILE" == *.enc ]]; then
+    : "${BACKUP_ENCRYPTION_PASSPHRASE:?BACKUP_ENCRYPTION_PASSPHRASE is required for encrypted backup}";
+    openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_PASSPHRASE -in "$BACKUP_FILE"
+  else
+    cat "$BACKUP_FILE"
+  fi
+}
+
+dump_stream | gunzip -t
 
 if [[ -n "$TARGET_DB" ]]; then
   prepare_empty_database "$TARGET_DB"
