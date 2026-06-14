@@ -17,6 +17,7 @@ import { buildPaginationMeta, type PaginationQuery } from '../../common/paginati
 import type { RequestMeta } from '../../common/request-meta';
 import { API_ERROR_CODES } from '@schoolhub/shared';
 import { writeAudit } from '../../common/audit-log';
+import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessPolicyService } from '../security/access-policy.service';
 import { canonicalJson } from '../security/canonical-json';
@@ -640,6 +641,13 @@ export class AttendanceGateService {
           reason: options.manualReason,
           after: { ...log, kind: 'GATE', usedOverrideId: options.usedOverrideId ?? null }
         });
+        await writeLiveMonitorOutboxEvent(tx, {
+          eventType: 'gate.scan_recorded',
+          aggregateType: 'gateLog',
+          aggregateId: log.id,
+          logicalKey: `gate:${log.id}`,
+          payload: { gateLogId: log.id, userId, direction, businessDate: businessDate.toISOString(), tappedAt: scannedAt.toISOString(), source: options.qrCredentialId ? 'qr_reader' : options.manualReason ? 'manual' : 'reader' }
+        });
         return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk tercatat.' : 'Scan gerbang keluar tercatat.', item: log };
       });
     } catch (error) {
@@ -742,6 +750,13 @@ export class AttendanceGateService {
         resourceId: log.id,
         reason: options.manualReason,
         after: log as unknown as Prisma.InputJsonValue
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'prayer.scan_recorded',
+        aggregateType: 'prayerAttendanceLog',
+        aggregateId: log.id,
+        logicalKey: `prayer:${log.id}`,
+        payload: { prayerAttendanceLogId: log.id, studentId, prayerType, attendanceDate: attendanceDate.toISOString(), scannedAt: scannedAt.toISOString(), source }
       });
       const label = prayerType === PrayerType.DHUHA ? 'Dhuha' : prayerType === PrayerType.DZUHUR ? 'Dzuhur' : 'Ashar';
       return { kind: 'PRAYER', message: `Scan ${label} tercatat.`, item: log };

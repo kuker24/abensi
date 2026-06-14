@@ -767,15 +767,28 @@ model AuditEntry {
 }
 
 model OutboxEvent {
-  id          String    @id @default(cuid())
-  topic       String
-  eventType   String
-  payload     Json
-  createdAt   DateTime  @default(now())
-  publishedAt DateTime?
+  id                String    @id @default(cuid())
+  topic             String
+  eventType         String
+  aggregateType     String?
+  aggregateId       String?
+  logicalKey        String?   @unique
+  payload           Json
+  status            String    @default("PENDING")
+  attempts          Int       @default(0)
+  lockedAt          DateTime?
+  lockedBy          String?
+  lastError         String?
+  publishedStreamId String?
+  publishedAt       DateTime?
+  dlqAt             DateTime?
+  createdAt         DateTime  @default(now())
 
   @@index([topic, createdAt])
+  @@index([status, lockedAt, createdAt])
   @@index([publishedAt])
+  @@index([dlqAt])
+  @@index([aggregateType, aggregateId, createdAt])
 }
 
 model AuditChainState {

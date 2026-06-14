@@ -5,6 +5,7 @@ import { createClient, type RedisClientType } from 'redis';
 export class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private readonly client?: RedisClientType;
+  private readonly subscribers = new Set<RedisClientType>();
   private connectPromise?: Promise<void>;
 
   constructor() {
@@ -108,6 +109,55 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  async decr(key: string) {
+    try {
+      const client = await this.ensureConnected();
+      if (!client) return null;
+      return await client.decr(key);
+    } catch {
+      return null;
+    }
+  }
+
+  async publish(channel: string, message: string) {
+    try {
+      const client = await this.ensureConnected();
+      if (!client) return null;
+      return await client.publish(channel, message);
+    } catch {
+      return null;
+    }
+  }
+
+  async xAdd(stream: string, values: Record<string, string>) {
+    try {
+      const client = await this.ensureConnected();
+      if (!client) return null;
+      return await client.xAdd(stream, '*', values);
+    } catch {
+      return null;
+    }
+  }
+
+  async subscribe(channel: string, handler: (message: string) => void | Promise<void>) {
+    const client = await this.ensureConnected();
+    if (!client) return null;
+    const subscriber = client.duplicate();
+    await subscriber.connect();
+    this.subscribers.add(subscriber as RedisClientType);
+    await subscriber.subscribe(channel, async (message) => {
+      await handler(message);
+    });
+    return async () => {
+      try {
+        await subscriber.unsubscribe(channel);
+      } finally {
+        this.subscribers.delete(subscriber as RedisClientType);
+        await subscriber.quit();
+      }
+    };
+  }
+
   async getJson<T>(key: string): Promise<T | null> {
     const raw = await this.get(key);
     if (!raw) return null;
@@ -130,6 +180,10 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
+    for (const subscriber of this.subscribers) {
+      if (subscriber.isOpen) await subscriber.quit();
+    }
+    this.subscribers.clear();
     if (this.client?.isOpen) {
       await this.client.quit();
     }

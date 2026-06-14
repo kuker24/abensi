@@ -18,6 +18,7 @@ import type { AuthenticatedUser } from '../../common/current-user.decorator';
 import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDto } from './attendance-class.dto';
 import { AccessPolicyService } from '../security/access-policy.service';
 import { writeAudit } from '../../common/audit-log';
+import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { assertReasonQuality } from '../security/reason-policy';
 import { businessDateKey, jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
 
@@ -478,6 +479,13 @@ export class AttendanceClassService {
         resourceId: sessionId,
         after: updated as unknown as Prisma.InputJsonValue
       });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'session.opened',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `session:${sessionId}:opened:${checkInAt.toISOString()}`,
+        payload: { sessionId, status: updated.status, openedAt: updated.openedAt?.toISOString() ?? checkInAt.toISOString(), teacherId: session.teacherId }
+      });
 
       return {
         ...updated,
@@ -661,6 +669,13 @@ export class AttendanceClassService {
         resourceId: sessionId,
         after: { count: result.length, rejectedCount: rejected.length, ignoredCount, source: confirmationSource }
       });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'attendance.changed',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `attendance:${sessionId}:record:${Date.now()}:${actor.sub}`,
+        payload: { sessionId, updated: result.length, rejectedCount: rejected.length, ignoredCount, source: confirmationSource }
+      });
 
       if (rejected.length) {
         await writeAudit(tx, {
@@ -748,6 +763,13 @@ export class AttendanceClassService {
         resource: 'session',
         resourceId: sessionId,
         after: { count: updated.count, rejectedCount: rejected.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'attendance.bulk_changed',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `attendance:${sessionId}:bulk:${targetStatus}:${Date.now()}:${actor.sub}`,
+        payload: { sessionId, updated: updated.count, rejectedCount: rejected.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
       });
       if (rejected.length) {
         await writeAudit(tx, {
@@ -916,6 +938,13 @@ export class AttendanceClassService {
         resourceId: sessionId,
         reason: isEarlyCheckout ? earlyCheckoutReason : null,
         after: updated as unknown as Prisma.InputJsonValue
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'session.closed',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `session:${sessionId}:closed:${now.toISOString()}`,
+        payload: { sessionId, status: updated.status, closedAt: updated.closedAt?.toISOString() ?? now.toISOString(), finalizedDefaultCount: unreviewedCount }
       });
 
       return {
@@ -1152,6 +1181,13 @@ export class AttendanceClassService {
         before: { rosterCount: beforeCount },
         after: { rosterCount: afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
       });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'session.roster_repaired',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `session:${sessionId}:roster-repaired:${Date.now()}:${actor.sub}`,
+        payload: { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
+      });
 
       return { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' };
     });
@@ -1243,6 +1279,13 @@ export class AttendanceClassService {
         reason,
         before: before ? { status: before.status, note: before.note } : null,
         after: { status: attendance.status, note: attendance.note, correctionCount: attendance.correctionCount }
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'attendance.corrected',
+        aggregateType: 'studentAttendance',
+        aggregateId: attendance.id,
+        logicalKey: `attendance:${sessionId}:${studentId}:corrected:${attendance.correctionCount}:${Date.now()}`,
+        payload: { sessionId, studentId, status: attendance.status, correctionCount: attendance.correctionCount }
       });
 
       return attendance;

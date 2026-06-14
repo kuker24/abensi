@@ -25,15 +25,16 @@ import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OutboxService, type LiveMonitorEvent } from '../outbox/outbox.service';
 import { ReportingService } from './reporting.service';
 
 type StreamJwtPayload = { sub: string; role: string; sid?: string; ver?: number };
 
-const activeSseByUser = new Map<string, number>();
-let activeSseGlobal = 0;
-
 function sanitizeStreamPayload(value: unknown) {
-  return JSON.parse(JSON.stringify(value));
+  return JSON.parse(JSON.stringify(value, (key, item) => {
+    if (/password|token|secret|hash|signature/i.test(key)) return '[REDACTED]';
+    return item;
+  }));
 }
 
 @Controller('reports')
@@ -41,7 +42,8 @@ export class ReportingController {
   constructor(
     private readonly reportingService: ReportingService,
     private readonly jwtService: JwtService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly outbox: OutboxService
   ) {}
 
   @Get('dashboard')
@@ -93,15 +95,23 @@ export class ReportingController {
   ): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
       let heartbeat: NodeJS.Timeout | null = null;
-      let userKey: string | null = null;
-      let closed = false;
+      let cleanupStarted = false;
+      let releaseConnection: (() => Promise<void>) | null = null;
+      let unsubscribe: (() => Promise<void>) | null = null;
+      const delivered = new Set<string>();
+
+      const emitEvent = (event: LiveMonitorEvent) => {
+        if (subscriber.closed || delivered.has(event.id)) return;
+        delivered.add(event.id);
+        subscriber.next({ id: event.id, type: event.eventType, data: sanitizeStreamPayload(event.payload) });
+      };
 
       const cleanup = () => {
-        if (closed) return;
-        closed = true;
+        if (cleanupStarted) return;
+        cleanupStarted = true;
         if (heartbeat) clearInterval(heartbeat);
-        if (userKey) activeSseByUser.set(userKey, Math.max(0, (activeSseByUser.get(userKey) ?? 1) - 1));
-        activeSseGlobal = Math.max(0, activeSseGlobal - 1);
+        void unsubscribe?.().catch(() => undefined);
+        void releaseConnection?.().catch(() => undefined);
       };
 
       void (async () => {
@@ -109,39 +119,30 @@ export class ReportingController {
         const allowedRoles = new Set<string>([Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
         if (!allowedRoles.has(payload.role)) throw new ForbiddenException('Akses live monitor ditolak.');
 
-        userKey = payload.sub;
         const perUserLimit = Number(process.env.SSE_MAX_CONNECTIONS_PER_USER ?? '3');
         const globalLimit = Number(process.env.SSE_MAX_CONNECTIONS_GLOBAL ?? '100');
-        if ((activeSseByUser.get(userKey) ?? 0) >= perUserLimit || activeSseGlobal >= globalLimit) {
-          throw new ForbiddenException('Batas koneksi live monitor terlampaui.');
-        }
-        activeSseByUser.set(userKey, (activeSseByUser.get(userKey) ?? 0) + 1);
-        activeSseGlobal += 1;
+        const connection = await this.outbox.acquireSseConnection(payload.sub, perUserLimit, globalLimit);
+        if (!connection.ok) throw new ForbiddenException('Batas koneksi live monitor terlampaui.');
+        releaseConnection = connection.release ?? null;
+
+        const subscription = await this.outbox.subscribeLiveMonitor(emitEvent);
+        unsubscribe = subscription ?? null;
 
         const pagination = parsePagination({ page: '1', limit, defaultLimit: 120, maxLimit: 400 });
         const snapshot = await this.reportingService.liveMonitor(pagination);
         subscriber.next({ id: `snapshot-${Date.now()}`, type: 'snapshot', data: sanitizeStreamPayload(snapshot) });
 
         const lastEventId = typeof request?.headers['last-event-id'] === 'string' ? request.headers['last-event-id'] : null;
-        if (lastEventId) {
-          const lastEvent = await this.prisma.outboxEvent.findUnique({ where: { id: lastEventId } });
-          const replay = await this.prisma.outboxEvent.findMany({
-            where: {
-              topic: 'live-monitor',
-              ...(lastEvent ? { createdAt: { gt: lastEvent.createdAt } } : {})
-            },
-            orderBy: { createdAt: 'asc' },
-            take: 100
-          });
-          for (const event of replay) {
-            subscriber.next({ id: event.id, type: event.eventType, data: sanitizeStreamPayload(event.payload) });
-          }
-        }
+        const replay = await this.outbox.replayLiveMonitor(lastEventId, 100);
+        for (const event of replay) emitEvent(event);
 
         heartbeat = setInterval(() => {
-          subscriber.next({ id: `heartbeat-${Date.now()}`, type: 'heartbeat', data: { at: new Date().toISOString() } });
+          if (!subscriber.closed) subscriber.next({ id: `heartbeat-${Date.now()}`, type: 'heartbeat', data: { at: new Date().toISOString() } });
         }, Number(process.env.SSE_HEARTBEAT_MS ?? '25000'));
-      })().catch((error) => subscriber.error(error));
+      })().catch((error) => {
+        cleanup();
+        subscriber.error(error);
+      });
 
       return cleanup;
     });

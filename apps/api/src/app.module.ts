@@ -14,6 +14,7 @@ import { AccessGeofenceModule } from './modules/access-geofence/access-geofence.
 import { DeviceReaderModule } from './modules/device-reader/device-reader.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { OutboxModule } from './modules/outbox/outbox.module';
 import { SmartCardModule } from './modules/smart-card/smart-card.module';
 import { PicketBookModule } from './modules/picket-book/picket-book.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -49,6 +50,7 @@ import { validateEnvironment } from './config/env.validation';
     TeacherLeaveModule,
     TutorialsModule,
     SystemCleanupModule,
+    OutboxModule,
     ReportingModule,
     AuditModule
   ]

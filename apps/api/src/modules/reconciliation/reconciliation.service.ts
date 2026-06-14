@@ -13,6 +13,7 @@ import {
   TeacherSessionStatus
 } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
+import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { businessDayBounds, localMinutesOfDay } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { RequestMeta } from '../../common/request-meta';
@@ -362,6 +363,13 @@ export class ReconciliationService {
             subjectName: session.subject.name,
             approvedLeaveId: approvedLeave?.id ?? null
           }
+        });
+        await writeLiveMonitorOutboxEvent(tx, {
+          eventType: 'session.missed',
+          aggregateType: 'session',
+          aggregateId: session.id,
+          logicalKey: `session:${session.id}:missed:${Date.now()}`,
+          payload: { sessionId: session.id, status: SessionStatus.MISSED, teacherId: session.teacherId, classCode: session.schoolClass.code, subjectName: session.subject.name, approvedLeaveId: approvedLeave?.id ?? null }
         });
 
         await tx.notification.createMany({

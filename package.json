@@ -18,6 +18,7 @@
     "test:perf-smoke": "node scripts/perf_smoke.mjs",
     "test:integration": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/postgres_integration_suite.ts",
     "test:concurrency": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/postgres_concurrency_suite.ts",
+    "test:outbox-sse": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/outbox_sse_distributed_suite.ts",
     "test:e2e:ui": "npm run test:e2e --prefix apps/web",
     "test:e2e:full-stack": "bash scripts/full_stack_e2e.sh",
     "test:a11y": "bash scripts/a11y_smoke.sh",
