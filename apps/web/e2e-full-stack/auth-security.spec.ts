@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-const apiBaseURL = process.env.FULL_STACK_API_BASE_URL ?? 'http://127.0.0.1:3000/api/v1';
+const rawApiBaseURL = process.env.FULL_STACK_API_BASE_URL ?? 'http://127.0.0.1:3000/api/v1/';
+const apiBaseURL = rawApiBaseURL.endsWith('/') ? rawApiBaseURL : `${rawApiBaseURL}/`;
 const adminPassword = process.env.FULL_STACK_ADMIN_PASSWORD ?? 'Admin#12345678';
 const defaultPassword = process.env.FULL_STACK_DEFAULT_PASSWORD ?? 'User#12345678';
 
