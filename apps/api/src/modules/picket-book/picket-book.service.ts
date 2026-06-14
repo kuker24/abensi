@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Role, type Prisma } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
+import { businessDayBounds } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePicketNoteDto, UpdatePicketNoteDto } from './picket-book.dto';
@@ -12,10 +13,7 @@ export class PicketBookService {
   async list(pagination: PaginationQuery, filters: { date?: string; category?: string; severity?: string; active?: string }) {
     const where: Prisma.PicketNoteWhereInput = {};
     if (filters.date) {
-      const start = new Date(filters.date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(filters.date);
-      end.setHours(23, 59, 59, 999);
+      const { start, end } = businessDayBounds(filters.date);
       where.date = { gte: start, lte: end };
     }
     if (filters.category) where.category = filters.category;
@@ -42,7 +40,7 @@ export class PicketBookService {
   async create(payload: CreatePicketNoteDto, actor: { sub: string; role: string }) {
     const created = await this.prisma.picketNote.create({
       data: {
-        date: new Date(payload.date),
+        date: businessDayBounds(payload.date).date,
         title: payload.title,
         body: payload.body,
         category: payload.category ?? 'UMUM',
@@ -72,7 +70,7 @@ export class PicketBookService {
     const updated = await this.prisma.picketNote.update({
       where: { id },
       data: {
-        ...(payload.date ? { date: new Date(payload.date) } : {}),
+        ...(payload.date ? { date: businessDayBounds(payload.date).date } : {}),
         ...(payload.title !== undefined ? { title: payload.title } : {}),
         ...(payload.body !== undefined ? { body: payload.body } : {}),
         ...(payload.category !== undefined ? { category: payload.category } : {}),

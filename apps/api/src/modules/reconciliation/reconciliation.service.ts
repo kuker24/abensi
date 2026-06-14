@@ -13,6 +13,7 @@ import {
   TeacherSessionStatus
 } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
+import { businessDayBounds, localMinutesOfDay } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { RequestMeta } from '../../common/request-meta';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -27,8 +28,7 @@ function minutesOf(time: string | null | undefined, fallback: number) {
 }
 
 function sessionEndsAtOrAfter(sessionEndsAt: Date, time: string | null | undefined, fallback: number) {
-  const minute = sessionEndsAt.getHours() * 60 + sessionEndsAt.getMinutes();
-  return minute >= minutesOf(time, fallback);
+  return localMinutesOfDay(sessionEndsAt) >= minutesOf(time, fallback);
 }
 
 @Injectable()
@@ -52,20 +52,18 @@ export class ReconciliationService {
     if (filters?.from || filters?.to) {
       const createdAtFilter: Prisma.DateTimeFilter = {};
       if (filters.from) {
-        const start = new Date(filters.from);
-        if (Number.isNaN(start.getTime())) {
+        try {
+          createdAtFilter.gte = businessDayBounds(filters.from).start;
+        } catch {
           throw new BadRequestException('Parameter from tidak valid.');
         }
-        start.setHours(0, 0, 0, 0);
-        createdAtFilter.gte = start;
       }
       if (filters.to) {
-        const end = new Date(filters.to);
-        if (Number.isNaN(end.getTime())) {
+        try {
+          createdAtFilter.lte = businessDayBounds(filters.to).end;
+        } catch {
           throw new BadRequestException('Parameter to tidak valid.');
         }
-        end.setHours(23, 59, 59, 999);
-        createdAtFilter.lte = end;
       }
       where.createdAt = createdAtFilter;
     }
@@ -319,10 +317,7 @@ export class ReconciliationService {
 
     const processed = [];
     for (const session of sessions) {
-      const dayStart = new Date(session.startsAt);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(session.startsAt);
-      dayEnd.setHours(23, 59, 59, 999);
+      const { start: dayStart, end: dayEnd } = businessDayBounds(session.startsAt);
 
       const approvedLeave = await this.prisma.teacherLeave.findFirst({
         where: {
@@ -433,10 +428,7 @@ export class ReconciliationService {
       return { sessionId, createdFlags: 0, message: 'session-not-found' };
     }
 
-    const dayStart = new Date(session.startsAt);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(session.startsAt);
-    dayEnd.setHours(23, 59, 59, 999);
+    const { start: dayStart, end: dayEnd } = businessDayBounds(session.startsAt);
 
     const involvedUserIds = new Set<string>([
       session.teacherId,

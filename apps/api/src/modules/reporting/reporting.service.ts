@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { createHash } from 'node:crypto';
+import { businessDateKey, businessDayBounds, businessMonthBounds, businessMonthKey } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { AuthenticatedUser } from '../../common/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -51,15 +52,11 @@ interface ExportResult {
 }
 
 function startOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
+  return businessDayBounds(date).start;
 }
 
 function endOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
+  return businessDayBounds(date).end;
 }
 
 function buildInitials(name: string) {
@@ -105,11 +102,12 @@ function durationMinutes(start?: Date | null, end?: Date | null) {
 }
 
 function safeDateInput(value: string, mode: 'start' | 'end') {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
+  try {
+    const bounds = businessDayBounds(value);
+    return mode === 'start' ? bounds.start : bounds.end;
+  } catch {
     return null;
   }
-  return mode === 'start' ? startOfDay(parsed) : endOfDay(parsed);
 }
 
 @Injectable()
@@ -137,7 +135,7 @@ export class ReportingService {
 
   private resolveDateRange(input: { from?: string; to?: string }, defaultDays = 30): DateRange {
     const now = new Date();
-    const defaultFrom = startOfDay(new Date(now.getTime() - (defaultDays - 1) * 24 * 60 * 60 * 1000));
+    const defaultFrom = businessDayBounds(new Date(now.getTime() - (defaultDays - 1) * 24 * 60 * 60 * 1000)).start;
 
     let from = input.from ? safeDateInput(input.from, 'start') : null;
     let to = input.to ? safeDateInput(input.to, 'end') : null;
@@ -170,31 +168,16 @@ export class ReportingService {
   }
 
   private resolveMonthRange(month?: string): DateRange & { monthLabel: string } {
-    const now = new Date();
-    let year = now.getUTCFullYear();
-    let monthNumber = now.getUTCMonth() + 1;
-
-    if (month) {
-      const match = month.match(/^(\d{4})-(\d{2})$/);
-      if (!match) {
-        throw new BadRequestException('Parameter month harus format YYYY-MM.');
-      }
-
-      year = Number(match[1]);
-      monthNumber = Number(match[2]);
-      if (monthNumber < 1 || monthNumber > 12) {
-        throw new BadRequestException('Nilai month tidak valid.');
-      }
+    const monthLabel = month || businessMonthKey(new Date());
+    if (!/^(\d{4})-(\d{2})$/.test(monthLabel)) {
+      throw new BadRequestException('Parameter month harus format YYYY-MM.');
     }
-
-    const from = new Date(Date.UTC(year, monthNumber - 1, 1, 0, 0, 0, 0));
-    const to = new Date(Date.UTC(year, monthNumber, 0, 23, 59, 59, 999));
-
-    return {
-      from,
-      to,
-      monthLabel: `${year}-${String(monthNumber).padStart(2, '0')}`
-    };
+    try {
+      const { start, end, monthKey } = businessMonthBounds(monthLabel);
+      return { from: start, to: end, monthLabel: monthKey };
+    } catch {
+      throw new BadRequestException('Nilai month tidak valid.');
+    }
   }
 
   private buildSessionWhere(range: DateRange, filters: Pick<RecapFilters, 'classId' | 'subjectId' | 'teacherId'>): Prisma.SessionWhereInput {
@@ -237,10 +220,15 @@ export class ReportingService {
   }
 
   async dashboard(date?: string) {
-    const base = date ? new Date(date) : new Date();
-    const dayStart = startOfDay(base);
-    const dayEnd = endOfDay(base);
-    const cacheKey = `report-dashboard:${dayStart.toISOString().slice(0, 10)}`;
+    let bounds: ReturnType<typeof businessDayBounds>;
+    try {
+      bounds = businessDayBounds(date || new Date());
+    } catch {
+      throw new BadRequestException('Parameter date tidak valid.');
+    }
+    const dayStart = bounds.start;
+    const dayEnd = bounds.end;
+    const cacheKey = `report-dashboard:${bounds.key}`;
     const cached = await this.getCached<Record<string, unknown>>(cacheKey);
     if (cached) return cached;
 
@@ -367,7 +355,7 @@ export class ReportingService {
 
     for (let idx = 0; idx < safeDays; idx += 1) {
       const day = new Date(start.getTime() + idx * 24 * 60 * 60 * 1000);
-      const key = day.toISOString().slice(0, 10);
+      const key = businessDateKey(day);
       series.set(key, {
         date: key,
         sessions: 0,
@@ -377,7 +365,7 @@ export class ReportingService {
     }
 
     for (const session of sessions) {
-      const key = startOfDay(session.startsAt).toISOString().slice(0, 10);
+      const key = businessDateKey(session.startsAt);
       const bucket = series.get(key);
       if (!bucket) continue;
       bucket.sessions += 1;
@@ -387,7 +375,7 @@ export class ReportingService {
     }
 
     for (const flag of flags) {
-      const key = startOfDay(flag.createdAt).toISOString().slice(0, 10);
+      const key = businessDateKey(flag.createdAt);
       const bucket = series.get(key);
       if (!bucket) continue;
       bucket.anomalies += 1;

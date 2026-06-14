@@ -1,10 +1,9 @@
 import { PrayerType, ReconciliationFlagType, Role, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
+import { localDateTimeToUtc } from '../../common/business-time';
 import { ReconciliationService } from './reconciliation.service';
 
 function atLocal(hour: number, minute = 0) {
-  const date = new Date('2026-04-26T00:00:00');
-  date.setHours(hour, minute, 0, 0);
-  return date;
+  return localDateTimeToUtc('2026-04-26', `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
 }
 
 describe('ReconciliationService Ashar policy', () => {

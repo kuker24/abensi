@@ -154,6 +154,10 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
   it('mencatat scan mushola hanya dari signed reader dan prayerType dihitung server', async () => {
     const prisma = makePrisma({ id: 'siswa-1', active: true, role: Role.SISWA });
+    prisma.__policy.dhuhaStartTime = '01:00';
+    prisma.__policy.dhuhaEndTime = '01:01';
+    prisma.__policy.dzuhurStartTime = '02:00';
+    prisma.__policy.dzuhurEndTime = '02:01';
     prisma.__policy.asharStartTime = '00:00';
     prisma.__policy.asharEndTime = '23:59';
     prisma.smartCard.findUnique.mockResolvedValue({ id: 'card-1', uid: 'CARD1', status: CardStatus.ACTIVE, user: { id: 'siswa-1', active: true, role: Role.SISWA } });
@@ -172,6 +176,10 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
   it('menolak scan ibadah duplikat dan tidak menimpa log lama', async () => {
     const prisma = makePrisma({ id: 'siswa-1', active: true, role: Role.SISWA });
+    prisma.__policy.dhuhaStartTime = '01:00';
+    prisma.__policy.dhuhaEndTime = '01:01';
+    prisma.__policy.dzuhurStartTime = '02:00';
+    prisma.__policy.dzuhurEndTime = '02:01';
     prisma.__policy.asharStartTime = '00:00';
     prisma.__policy.asharEndTime = '23:59';
     prisma.smartCard.findUnique.mockResolvedValue({ id: 'card-1', uid: 'CARD1', status: CardStatus.ACTIVE, user: { id: 'siswa-1', active: true, role: Role.SISWA } });

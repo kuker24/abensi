@@ -28,9 +28,7 @@ export class SystemCleanupService {
   }
 
   private cutoff(days = 30) {
-    const date = new Date();
-    date.setDate(date.getDate() - Math.max(1, Number(days) || 30));
-    return date;
+    return new Date(Date.now() - Math.max(1, Number(days) || 30) * 24 * 60 * 60 * 1000);
   }
 
   private async protectedHistoryCount(userId: string) {

@@ -163,16 +163,17 @@ export function metaOf(payload: any): PaginationMeta {
   return payload?.meta || { page: 1, total: itemsOf(payload).length, totalPages: 1 };
 }
 
+const SCHOOL_TIMEZONE = 'Asia/Jakarta';
+
 export function formatDateTime(value?: string | null): string {
   if (!value) return '—';
   try {
-    return new Date(value).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(value).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: SCHOOL_TIMEZONE });
   } catch {
     return String(value);
   }
 }
 
-const SCHOOL_TIMEZONE = 'Asia/Jakarta';
 
 export function today(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: SCHOOL_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());

@@ -3,24 +3,41 @@ import { SessionStatus } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
+import { businessDayBounds, businessWeekday, localDateTimeToUtc } from '../../common/business-time';
 import type { CreateSessionDto, CreateWeeklyScheduleDto, GenerateSessionsDto, UpdateSessionScheduleDto, UpdateWeeklyScheduleDto } from './scheduling.dto';
 
+function parseSchoolDateTime(value: string) {
+  const localMatch = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?)?$/.exec(value);
+  if (localMatch) {
+    return localDateTimeToUtc(localMatch[1], localMatch[2] ?? '00:00');
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Tanggal dan jam tidak valid.');
+  return parsed;
+}
+
+function dateOnly(value: string) {
+  try {
+    return businessDayBounds(value).date;
+  } catch {
+    throw new BadRequestException('Tanggal tidak valid.');
+  }
+}
+
 function combineDateTime(day: Date, time: string) {
-  const [hour, minute] = time.split(':').map(Number);
-  const value = new Date(day);
-  value.setHours(hour, minute, 0, 0);
-  return value;
+  return localDateTimeToUtc(businessDayBounds(day).key, time);
 }
 
 function startOfDay(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new BadRequestException('Tanggal tidak valid.');
-  date.setHours(0, 0, 0, 0);
-  return date;
+  try {
+    return businessDayBounds(value).date;
+  } catch {
+    throw new BadRequestException('Tanggal tidak valid.');
+  }
 }
 
 function dayOfWeek(date: Date) {
-  return date.getDay();
+  return businessWeekday(date);
 }
 
 @Injectable()
@@ -31,12 +48,12 @@ export class SchedulingService {
     const where: Record<string, unknown> = {};
 
     if (date) {
-      const day = new Date(date);
-      const start = new Date(day);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(day);
-      end.setHours(23, 59, 59, 999);
-      where.startsAt = { gte: start, lte: end };
+      try {
+        const { start, end } = businessDayBounds(date);
+        where.startsAt = { gte: start, lte: end };
+      } catch {
+        throw new BadRequestException('Tanggal tidak valid.');
+      }
     }
 
     if (teacherId) where.teacherId = teacherId;
@@ -75,14 +92,18 @@ export class SchedulingService {
   }
 
   createSession(payload: CreateSessionDto, actorId: string) {
+    const startsAt = parseSchoolDateTime(payload.startsAt);
+    const endsAt = parseSchoolDateTime(payload.endsAt);
+    if (endsAt <= startsAt) throw new BadRequestException('Rentang jadwal tidak valid.');
+
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.session.create({
         data: {
           classId: payload.classId,
           subjectId: payload.subjectId,
           teacherId: payload.teacherId,
-          startsAt: new Date(payload.startsAt),
-          endsAt: new Date(payload.endsAt),
+          startsAt,
+          endsAt,
           status: SessionStatus.SCHEDULED
         }
       });
@@ -134,8 +155,8 @@ export class SchedulingService {
           dayOfWeek: payload.dayOfWeek,
           startTime: payload.startTime,
           endTime: payload.endTime,
-          effectiveFrom: new Date(payload.effectiveFrom),
-          effectiveTo: payload.effectiveTo ? new Date(payload.effectiveTo) : null,
+          effectiveFrom: dateOnly(payload.effectiveFrom),
+          effectiveTo: payload.effectiveTo ? dateOnly(payload.effectiveTo) : null,
           active: payload.active ?? true
         }
       });
@@ -159,8 +180,8 @@ export class SchedulingService {
         dayOfWeek: payload.dayOfWeek,
         startTime: payload.startTime,
         endTime: payload.endTime,
-        effectiveFrom: new Date(payload.effectiveFrom),
-        effectiveTo: payload.effectiveTo ? new Date(payload.effectiveTo) : null,
+        effectiveFrom: dateOnly(payload.effectiveFrom),
+        effectiveTo: payload.effectiveTo ? dateOnly(payload.effectiveTo) : null,
         active: payload.active ?? true
       }
     });
@@ -177,7 +198,7 @@ export class SchedulingService {
 
     const generated = [];
     const skipped = [];
-    for (const day = new Date(from); day <= to; day.setDate(day.getDate() + 1)) {
+    for (let day = new Date(from); day <= to; day = new Date(day.getTime() + 24 * 60 * 60 * 1000)) {
       if (dayOfWeek(day) !== schedule.dayOfWeek) continue;
       if (day < schedule.effectiveFrom) continue;
       if (schedule.effectiveTo && day > schedule.effectiveTo) continue;
@@ -211,10 +232,10 @@ export class SchedulingService {
   }
 
   updateSessionSchedule(sessionId: string, payload: UpdateSessionScheduleDto, actorId: string) {
-    const startsAt = new Date(payload.startsAt);
-    const endsAt = new Date(payload.endsAt);
+    const startsAt = parseSchoolDateTime(payload.startsAt);
+    const endsAt = parseSchoolDateTime(payload.endsAt);
 
-    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+    if (endsAt <= startsAt) {
       throw new BadRequestException('Rentang jadwal tidak valid.');
     }
 

@@ -2,16 +2,18 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { NotificationType, Role, SessionStatus, TeacherLeaveStatus, TeacherSessionStatus, type Prisma } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
+import { businessDayBounds } from '../../common/business-time';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateTeacherLeaveDto, ReviewTeacherLeaveDto } from './teacher-leave.dto';
 
 function dayRange(value: string | Date) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new BadRequestException('Tanggal tidak valid.');
-  const start = new Date(date); start.setHours(0, 0, 0, 0);
-  const end = new Date(date); end.setHours(23, 59, 59, 999);
-  return { date: start, start, end };
+  try {
+    const { date, start, end } = businessDayBounds(value);
+    return { date, start, end };
+  } catch {
+    throw new BadRequestException('Tanggal tidak valid.');
+  }
 }
 
 @Injectable()

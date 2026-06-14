@@ -14,16 +14,27 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+function jakartaDateKey(value: Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+}
+
+function jakartaDateTime(dateKey: string, hour: number, minute: number) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0));
+}
+
 function withTime(base: Date, hour: number, minute: number) {
-  const value = new Date(base);
-  value.setHours(hour, minute, 0, 0);
-  return value;
+  return jakartaDateTime(jakartaDateKey(base), hour, minute);
 }
 
 function dateOnly(base: Date) {
-  const value = new Date(base);
-  value.setHours(0, 0, 0, 0);
-  return value;
+  return jakartaDateTime(jakartaDateKey(base), 0, 0);
+}
+
+function dayBounds(base: Date) {
+  const key = jakartaDateKey(base);
+  const start = jakartaDateTime(key, 0, 0);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1) };
 }
 
 function requiredEnv(name: string) {
@@ -112,10 +123,7 @@ function gateBusinessDate(value: Date) {
 }
 
 async function ensureGateLog(userId: string, tappedAt: Date) {
-  const dayStart = new Date(tappedAt);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(tappedAt);
-  dayEnd.setHours(23, 59, 59, 999);
+  const { start: dayStart, end: dayEnd } = dayBounds(tappedAt);
 
   const exists = await prisma.gateLog.findFirst({
     where: {

@@ -26,7 +26,7 @@ import { StepUpAuthService } from '../security/step-up-auth.service';
 import { QrCredentialsService } from '../qr-credentials/qr-credentials.service';
 import { redactQr } from '../qr-credentials/qr-code.util';
 import { MobileAndroidService } from '../mobile/mobile-android.service';
-import { businessDateKey, jakartaBusinessDayBounds } from '../../common/business-time';
+import { businessDateKey, businessWeekday, jakartaBusinessDayBounds, localDateTimeToUtc, localMinutesOfDay } from '../../common/business-time';
 import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
@@ -70,8 +70,7 @@ function formatMinute(minute: number) {
 }
 
 function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dhuhaEndTime: string; dzuhurStartTime: string; dzuhurEndTime: string; asharStartTime?: string; asharEndTime?: string }): PrayerClassification {
-  const localHour = (scannedAt.getUTCHours() + 7) % 24;
-  const minute = localHour * 60 + scannedAt.getUTCMinutes();
+  const minute = localMinutesOfDay(scannedAt);
   const windows = [
     { prayerType: PrayerType.DHUHA, startMinute: minutesOf(policy.dhuhaStartTime, 7 * 60), endMinute: minutesOf(policy.dhuhaEndTime, 10 * 60 + 30) },
     { prayerType: PrayerType.DZUHUR, startMinute: minutesOf(policy.dzuhurStartTime, 11 * 60 + 45), endMinute: minutesOf(policy.dzuhurEndTime, 13 * 60 + 30) },
@@ -162,7 +161,7 @@ export class AttendanceGateService {
     const where: Prisma.GateLogWhereInput = {};
 
     if (date) {
-      const { start, end } = dayBounds(new Date(date));
+      const { start, end } = dayBounds(date);
       where.tappedAt = { gte: start, lte: end };
     }
 
@@ -186,7 +185,7 @@ export class AttendanceGateService {
 
   async listPrayerLogs(pagination: PaginationQuery, date?: string, studentId?: string) {
     const where: Prisma.PrayerAttendanceLogWhereInput = {};
-    if (date) where.attendanceDate = dateOnly(new Date(date));
+    if (date) where.attendanceDate = dateOnly(date);
     if (studentId) where.studentId = studentId;
     const [total, items] = await Promise.all([
       this.prisma.prayerAttendanceLog.count({ where }),
@@ -452,10 +451,9 @@ export class AttendanceGateService {
   }
 
   private cutoffDateFor(value: Date, time: string | null | undefined) {
-    const date = dateOnly(value);
+    const dateKey = jakartaBusinessDayBounds(value).key;
     const cutoff = minutesOf(time || '15:00', 15 * 60);
-    date.setHours(Math.floor(cutoff / 60), cutoff % 60, 0, 0);
-    return date;
+    return localDateTimeToUtc(dateKey, `${String(Math.floor(cutoff / 60)).padStart(2, '0')}:${String(cutoff % 60).padStart(2, '0')}`);
   }
 
   private async studentHasAfternoonSchedule(studentId: string, scannedAt: Date, requiredEndTime: string) {
@@ -473,7 +471,7 @@ export class AttendanceGateService {
     const weeklyCount = await this.prisma.weeklySchedule.count({
       where: {
         active: true,
-        dayOfWeek: scannedAt.getDay(),
+        dayOfWeek: businessWeekday(scannedAt),
         endTime: { gte: requiredEndTime || '15:00' },
         effectiveFrom: { lte: end },
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: start } }],
@@ -751,7 +749,7 @@ export class AttendanceGateService {
   async createOverride(payload: CreateAttendanceOverrideDto, actor: ScanActor, meta: RequestMeta = {}) {
     const policy = await this.getAttendancePolicy();
     if (!policy.allowManualOverride) throw new ForbiddenException('Override manual sedang dinonaktifkan.');
-    const date = dateOnly(payload.date ? new Date(payload.date) : new Date());
+    const date = dateOnly(payload.date || new Date());
     const scope = parseScope(payload.scope);
     const reason = assertReasonQuality(payload.reason, 'Alasan override');
     const student = await this.prisma.user.findUnique({ where: { id: payload.studentId } });

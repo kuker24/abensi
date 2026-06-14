@@ -16,7 +16,7 @@ import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDt
 import { AccessPolicyService } from '../security/access-policy.service';
 import { writeAudit } from '../../common/audit-log';
 import { assertReasonQuality } from '../security/reason-policy';
-import { jakartaBusinessDayBounds } from '../../common/business-time';
+import { jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
 
 function teacherStatusForCheckIn(startsAt: Date, policyGraceMinutes?: number) {
   const graceMinutes = policyGraceMinutes ?? 15;
@@ -135,8 +135,7 @@ function minutesOf(time: string | null | undefined, fallback: number) {
 }
 
 function sessionAtOrAfter(sessionTime: Date, time: string | null | undefined, fallback: number) {
-  const minute = sessionTime.getHours() * 60 + sessionTime.getMinutes();
-  return minute >= minutesOf(time, fallback);
+  return localMinutesOfDay(sessionTime) >= minutesOf(time, fallback);
 }
 
 @Injectable()

@@ -97,10 +97,10 @@ const LiveClock = memo(function LiveClock() {
     return () => clearInterval(t);
   }, []);
   return (
-    <span className="chip" aria-live="off" aria-label={now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}>
+    <span className="chip" aria-live="off" aria-label={now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' })}>
       <Clock size={12} />
-      <span className="hide-sm">{now.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })} · </span>
-      <b>{now.toLocaleTimeString('id-ID', { hour12: false })}</b>
+      <span className="hide-sm">{now.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })} · </span>
+      <b>{now.toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Jakarta' })}</b>
     </span>
   );
 });

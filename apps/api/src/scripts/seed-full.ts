@@ -13,15 +13,21 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+function jakartaDateKey(value: Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+}
+
+function jakartaDateTime(dateKey: string, hour: number, minute: number) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0));
+}
+
 function withTime(base: Date, hour: number, minute: number) {
-  const date = new Date(base);
-  date.setHours(hour, minute, 0, 0);
-  return date;
+  return jakartaDateTime(jakartaDateKey(base), hour, minute);
 }
 
 function gateBusinessDate(value: Date) {
-  const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
-  const [year, month, day] = key.split('-').map(Number);
+  const [year, month, day] = jakartaDateKey(value).split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
 }
 
