@@ -760,6 +760,18 @@ model AuditEntry {
   @@index([entryHash])
 }
 
+model OutboxEvent {
+  id          String    @id @default(cuid())
+  topic       String
+  eventType   String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([topic, createdAt])
+  @@index([publishedAt])
+}
+
 model AuditChainState {
   id           Int      @id
   lastSequence BigInt   @default(0)

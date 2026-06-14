@@ -16,7 +16,7 @@ import {
 import type { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
-import { from, interval, map, Observable, startWith, switchMap } from 'rxjs';
+import { Observable } from 'rxjs';
 import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
@@ -28,6 +28,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ReportingService } from './reporting.service';
 
 type StreamJwtPayload = { sub: string; role: string; sid?: string; ver?: number };
+
+const activeSseByUser = new Map<string, number>();
+let activeSseGlobal = 0;
+
+function sanitizeStreamPayload(value: unknown) {
+  return JSON.parse(JSON.stringify(value));
+}
 
 @Controller('reports')
 export class ReportingController {
@@ -84,30 +91,60 @@ export class ReportingController {
     @Query('limit') limit?: string,
     @Req() request?: Request
   ): Observable<MessageEvent> {
-    return from(this.verifyStreamCookie(request)).pipe(
-      switchMap((payload) => {
+    return new Observable<MessageEvent>((subscriber) => {
+      let heartbeat: NodeJS.Timeout | null = null;
+      let userKey: string | null = null;
+      let closed = false;
+
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (heartbeat) clearInterval(heartbeat);
+        if (userKey) activeSseByUser.set(userKey, Math.max(0, (activeSseByUser.get(userKey) ?? 1) - 1));
+        activeSseGlobal = Math.max(0, activeSseGlobal - 1);
+      };
+
+      void (async () => {
+        const payload = await this.verifyStreamCookie(request);
         const allowedRoles = new Set<string>([Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
-        if (!allowedRoles.has(payload.role)) {
-          throw new ForbiddenException('Akses live monitor ditolak.');
+        if (!allowedRoles.has(payload.role)) throw new ForbiddenException('Akses live monitor ditolak.');
+
+        userKey = payload.sub;
+        const perUserLimit = Number(process.env.SSE_MAX_CONNECTIONS_PER_USER ?? '3');
+        const globalLimit = Number(process.env.SSE_MAX_CONNECTIONS_GLOBAL ?? '100');
+        if ((activeSseByUser.get(userKey) ?? 0) >= perUserLimit || activeSseGlobal >= globalLimit) {
+          throw new ForbiddenException('Batas koneksi live monitor terlampaui.');
+        }
+        activeSseByUser.set(userKey, (activeSseByUser.get(userKey) ?? 0) + 1);
+        activeSseGlobal += 1;
+
+        const pagination = parsePagination({ page: '1', limit, defaultLimit: 120, maxLimit: 400 });
+        const snapshot = await this.reportingService.liveMonitor(pagination);
+        subscriber.next({ id: `snapshot-${Date.now()}`, type: 'snapshot', data: sanitizeStreamPayload(snapshot) });
+
+        const lastEventId = typeof request?.headers['last-event-id'] === 'string' ? request.headers['last-event-id'] : null;
+        if (lastEventId) {
+          const lastEvent = await this.prisma.outboxEvent.findUnique({ where: { id: lastEventId } });
+          const replay = await this.prisma.outboxEvent.findMany({
+            where: {
+              topic: 'live-monitor',
+              ...(lastEvent ? { createdAt: { gt: lastEvent.createdAt } } : {})
+            },
+            orderBy: { createdAt: 'asc' },
+            take: 100
+          });
+          for (const event of replay) {
+            subscriber.next({ id: event.id, type: event.eventType, data: sanitizeStreamPayload(event.payload) });
+          }
         }
 
-        const pagination = parsePagination({
-          page: '1',
-          limit,
-          defaultLimit: 120,
-          maxLimit: 400
-        });
+        heartbeat = setInterval(() => {
+          subscriber.next({ id: `heartbeat-${Date.now()}`, type: 'heartbeat', data: { at: new Date().toISOString() } });
+        }, Number(process.env.SSE_HEARTBEAT_MS ?? '25000'));
+      })().catch((error) => subscriber.error(error));
 
-        return interval(5000).pipe(
-          startWith(0),
-          switchMap(() => from(this.reportingService.liveMonitor(pagination))),
-          map((snapshot) => ({
-            type: 'snapshot',
-            data: snapshot
-          }))
-        );
-      })
-    );
+      return cleanup;
+    });
   }
 
   @Get('my-attendance')
