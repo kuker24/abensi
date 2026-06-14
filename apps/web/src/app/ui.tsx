@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import type { ButtonHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 import { AlertTriangle, Check, Cpu, Loader2, RefreshCw, X } from 'lucide-react';
 import { initials } from './api';
@@ -190,12 +191,27 @@ export function IconBtn({ label, children, ...props }: BtnProps & { label: strin
   return <button className="btn icon ghost" aria-label={label} title={label} {...props}>{children}</button>;
 }
 
+const FieldLabelContext = createContext<string | undefined>(undefined);
+
+function textFromNode(value: ReactNode): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.map(textFromNode).filter(Boolean).join(' ') || undefined;
+  return undefined;
+}
+
+function namedControlProps(props: Record<string, unknown>, fallbackLabel?: string) {
+  if (props['aria-label'] || props['aria-labelledby'] || !fallbackLabel) return props;
+  return { ...props, 'aria-label': fallbackLabel };
+}
+
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
-  return <div className="field"><div className="field-label"><span>{label}</span>{hint && <span className="mono faint" style={{ fontSize: 11 }}>{hint}</span>}</div>{children}</div>;
+  return <div className="field"><div className="field-label"><span>{label}</span>{hint && <span className="mono faint" style={{ fontSize: 11 }}>{hint}</span>}</div><FieldLabelContext.Provider value={textFromNode(label)}>{children}</FieldLabelContext.Provider></div>;
 }
 
 export function TextInput({ icon, type, ...props }: any) {
-  return <label className="input">{icon}{type === 'textarea' ? <textarea {...props} /> : <input type={type} {...props} />}</label>;
+  const fieldLabel = useContext(FieldLabelContext);
+  const controlProps = namedControlProps(props, fieldLabel);
+  return <label className="input">{icon}{type === 'textarea' ? <textarea {...controlProps} /> : <input type={type} {...controlProps} />}</label>;
 }
 
 interface SelectInputProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -203,7 +219,9 @@ interface SelectInputProps extends SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export function SelectInput({ wrapperClassName = '', className = '', ...props }: SelectInputProps) {
-  return <label className={`input select-input ${wrapperClassName}`.trim()}><select className={className} {...props} /></label>;
+  const fieldLabel = useContext(FieldLabelContext);
+  const controlProps = namedControlProps(props as Record<string, unknown>, fieldLabel) as SelectHTMLAttributes<HTMLSelectElement>;
+  return <label className={`input select-input ${wrapperClassName}`.trim()}><select className={className} {...controlProps} /></label>;
 }
 
 export function Card({ title, sub, actions, children, pad = true, variant = 'default' }: { title?: ReactNode; sub?: ReactNode; actions?: ReactNode; children?: ReactNode; pad?: boolean; variant?: 'default' | 'elevated' | 'glass' | 'flat' }) {
@@ -284,7 +302,7 @@ export function DataTable<T extends Record<string, any>>({ rows, columns, empty 
   if (!rows?.length) return <EmptyState title={empty} />;
   const labelFor = (column: Column<T>) => typeof column.header === 'string' ? column.header : String(column.key || '');
   return (
-    <div className="table-wrap">
+    <div className="table-wrap" tabIndex={0} role="region" aria-label="Tabel data">
       <table className="data-table">
         <thead>
           <tr>
@@ -337,7 +355,7 @@ export function RosterProgress({ current, total }: { current: number; total: num
 }
 
 export function SkeletonTable({ rows = 4 }: { rows?: number }) {
-  return <div className="card"><div className="table-wrap"><table className="data-table"><tbody>{Array.from({ length: rows }).map((_, i) => <tr key={i}><td colSpan={6} style={{ padding: 12 }}><div className="skeleton" style={{ height: 14 }} /></td></tr>)}</tbody></table></div></div>;
+  return <div className="card"><div className="table-wrap" tabIndex={0} role="region" aria-label="Tabel sedang dimuat"><table className="data-table"><tbody>{Array.from({ length: rows }).map((_, i) => <tr key={i}><td colSpan={6} style={{ padding: 12 }}><div className="skeleton" style={{ height: 14 }} /></td></tr>)}</tbody></table></div></div>;
 }
 
 export function AsyncTable<T extends Record<string, any>>({ state, columns, empty, onRow }: { state: ApiState<any>; columns: Column<T>[]; empty?: string; onRow?: (row: T) => ReactNode }) {
