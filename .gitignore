@@ -26,6 +26,10 @@ akun_beta.txt
 .last_deploy_artifact_path
 .env.local
 
+# Local/CI generated artifacts
+artifacts/
+
 # Local Playwright artifacts
 apps/web/test-results/
 apps/web/playwright-report/
+apps/web/playwright-report-*/

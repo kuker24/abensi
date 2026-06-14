@@ -23,6 +23,11 @@
     "test:a11y": "bash scripts/a11y_smoke.sh",
     "test:visual": "bash scripts/visual_regression.sh",
     "test:https-smoke": "bash scripts/https_smoke.sh",
+    "security:secrets": "bash scripts/secret_scan.sh",
+    "security:container-scan": "bash scripts/container_scan.sh",
+    "security:sbom": "bash scripts/generate_sbom.sh",
+    "security:license": "bash scripts/license_policy_check.sh",
+    "security:android": "bash scripts/android_release_security.sh",
     "test:api": "npm run test --prefix apps/api",
     "test:web": "npm run test --prefix apps/web",
     "test:e2e": "npm run test:e2e --prefix apps/web",
@@ -39,6 +44,7 @@
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
+    "@cyclonedx/cyclonedx-npm": "^4.2.1",
     "prisma": "^5.22.0",
     "ts-node": "10.9.2",
     "typescript": "5.7.3"
