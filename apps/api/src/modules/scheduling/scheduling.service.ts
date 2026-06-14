@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { SessionStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, SessionStatus } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -44,6 +44,22 @@ function startOfDay(value: string) {
 
 function dayOfWeek(date: Date) {
   return businessWeekday(date);
+}
+
+function scheduleConflictCode(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return null;
+  const text = `${error.message} ${String((error.meta as Record<string, unknown> | undefined)?.target ?? '')}`;
+  if (text.includes('Session_teacher_active_no_overlap_excl')) return 'SESSION_TEACHER_CONFLICT';
+  if (text.includes('Session_class_active_no_overlap_excl')) return 'SESSION_CLASS_CONFLICT';
+  if (text.includes('Session_room_active_no_overlap_excl')) return 'SESSION_ROOM_CONFLICT';
+  if (text.includes('Session_weeklyScheduleId_businessDate_generated_key')) return 'SESSION_GENERATION_DUPLICATE';
+  return null;
+}
+
+function throwScheduleConflict(error: unknown): never {
+  const code = scheduleConflictCode(error);
+  if (!code) throw error;
+  throw new ConflictException({ code, message: 'Jadwal bentrok dengan sesi aktif lain.' });
 }
 
 @Injectable()
@@ -113,7 +129,7 @@ export class SchedulingService {
           businessDate: businessDateAsDbDate(startsAt),
           status: SessionStatus.SCHEDULED
         }
-      });
+      }).catch(throwScheduleConflict);
 
       await writeAudit(tx, {
         actorId,
@@ -230,8 +246,8 @@ export class SchedulingService {
             }
           }));
         } catch (error) {
-          const conflict = error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'P2002';
-          if (!conflict) throw error;
+          const duplicate = scheduleConflictCode(error) === 'SESSION_GENERATION_DUPLICATE' || (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002');
+          if (!duplicate) throwScheduleConflict(error);
           const existing = await tx.session.findFirst({ where: { weeklyScheduleId: schedule.id, businessDate } });
           if (existing) { skipped.push(existing.id); continue; }
           throw error;
@@ -280,7 +296,7 @@ export class SchedulingService {
           subject: true,
           teacher: { select: { id: true, fullName: true, username: true } }
         }
-      });
+      }).catch(throwScheduleConflict);
 
       await writeAudit(tx, {
         actorId,
