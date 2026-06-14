@@ -75,12 +75,15 @@ jobs:
       - run: npx prisma validate --schema prisma/schema.prisma
       - run: npx prisma generate --schema prisma/schema.prisma
       - run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - run: npm run audit:preflight-chain -- --json=artifacts/audit/audit-chain-preflight-after-migrate.json
       - run: npm run audit:verify-chain
       - run: npm run typecheck:all
       - run: npm run lint:all
       - run: npm run lint --prefix apps/worker
       - run: npm run test:api
       - run: npm run test:web
+      - run: npm run audit:preflight-chain -- --json=artifacts/audit/audit-chain-preflight-after-unit-tests.json
+      - run: npm run audit:verify-chain
       - run: npx --prefix apps/web playwright install --with-deps chromium
       - run: npm run test:e2e
       - if: always()
@@ -91,6 +94,7 @@ jobs:
           path: |
             apps/web/playwright-report/
             apps/web/test-results/
+            artifacts/audit/
       - run: npm run build:all
       - run: npm audit --audit-level=high
       - run: npm audit --audit-level=high --prefix apps/api
