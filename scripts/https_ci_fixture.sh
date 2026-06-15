@@ -178,8 +178,10 @@ function jakartaDateTime(dateKey, hour, minute) {
   ]);
   if (!schoolClass || !subject || !teacher) throw new Error('Seeded class/subject/teacher missing for TLS UAT fixture.');
   const dateKey = jakartaDateKey(new Date());
-  const startsAt = jakartaDateTime(dateKey, 10, 0);
-  const endsAt = jakartaDateTime(dateKey, 10, 45);
+  const startsAt = jakartaDateTime(dateKey, 12, 0);
+  const endsAt = jakartaDateTime(dateKey, 12, 45);
+  const existing = await prisma.session.findFirst({ where: { teacherId: teacher.id, startsAt, endsAt } });
+  if (existing) return;
   await prisma.session.create({
     data: {
       classId: schoolClass.id,

@@ -232,8 +232,8 @@ jobs:
         run: |
           docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config > artifacts-vps-compose.yml
           grep -q '127.0.0.1' artifacts-vps-compose.yml
-          grep -Eq 'published: "?8080"?' artifacts-vps-compose.yml
-          ! grep -Eq 'published: "?80"?' artifacts-vps-compose.yml
+          grep -Eq '^[[:space:]]*published: "?8080"?[[:space:]]*$' artifacts-vps-compose.yml
+          ! grep -Eq '^[[:space:]]*published: "?80"?[[:space:]]*$' artifacts-vps-compose.yml
       - name: Deployment dry-run and evidence schema
         run: |
           chmod 600 .env.production.test
