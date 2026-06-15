@@ -642,7 +642,7 @@ if [[ -n "$GURU_SESSION_ID" ]]; then
     ROSTER_FOR_SAVE="$TMP_DIR/guru_roster"
   fi
 
-  ATTENDANCE_ITEMS="$(jq -c '(.roster // []) | map({studentId,status:"IZIN",note:("UAT smoke save " + (now | todateiso8601)),confirm:true})' "$ROSTER_FOR_SAVE.body" 2>/dev/null || echo '[]')"
+  ATTENDANCE_ITEMS="$(jq -c '(.roster // []) | map({studentId,status:"IZIN",note:("UAT smoke save " + (now | todateiso8601)),confirm:true,updatedAt})' "$ROSTER_FOR_SAVE.body" 2>/dev/null || echo '[]')"
   if ! mutating_smoke_enabled; then
     mark_skip "Guru save attendance batch" "read-only smoke tidak menulis presensi"
   elif [[ "$ATTENDANCE_ITEMS" == "[]" ]]; then
