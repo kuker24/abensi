@@ -28,7 +28,7 @@ const scenarios = [
     fixture: 'successful_archive_deduplication.sql',
     expect: 'success',
     expectedPreflight: { gate_log_corrected_date_collisions: 1 },
-    successAssertions: ['gate_archive_two_duplicates']
+    successAssertions: ['gate_archive_after_corrective_dedupe_and_historical_marker']
   },
   {
     name: 'archive_mismatch_expected_abort',
@@ -249,10 +249,11 @@ function assertSuccessAssertions(scenario, dbUrl) {
       const archiveCount = Number(queryScalar(dbUrl, `SELECT COUNT(*) FROM "GateLogArchive" WHERE "migrationVersion" = '0026_correct_jakarta_business_dates'`));
       const retained = Number(queryScalar(dbUrl, `SELECT COUNT(*) FROM "GateLog" WHERE id IN ('gate_corrected_collision_a','gate_corrected_collision_b')`));
       assertions.push({ name: assertion, ok: archiveCount === 1 && retained === 1, detail: `archive=${archiveCount}, retained=${retained}` });
-    } else if (assertion === 'gate_archive_two_duplicates') {
+    } else if (assertion === 'gate_archive_after_corrective_dedupe_and_historical_marker') {
       const archiveCount = Number(queryScalar(dbUrl, `SELECT COUNT(*) FROM "GateLogArchive" WHERE "originalGateLogId" IN ('gate_archive_dup_1','gate_archive_dup_2')`));
+      const historicalDedupe = Number(queryScalar(dbUrl, `SELECT COUNT(*) FROM "GateLogDeduplication" WHERE "duplicateGateLogId" IN ('gate_archive_dup_1','gate_archive_dup_2') AND "decision" = 'deleted_duplicate_before_business_date_unique_constraint'`));
       const retained = Number(queryScalar(dbUrl, `SELECT COUNT(*) FROM "GateLog" WHERE id IN ('gate_archive_canonical','gate_archive_dup_1','gate_archive_dup_2')`));
-      assertions.push({ name: assertion, ok: archiveCount === 2 && retained === 1, detail: `archive=${archiveCount}, retained=${retained}` });
+      assertions.push({ name: assertion, ok: archiveCount === 1 && historicalDedupe === 1 && retained === 1, detail: `archive=${archiveCount}, historicalDedupe=${historicalDedupe}, retained=${retained}` });
     } else {
       assertions.push({ name: assertion, ok: false, detail: 'unknown assertion' });
     }

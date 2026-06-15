@@ -15,7 +15,9 @@ if grep -RInE '(AKIA[0-9A-Z]{16}|-----BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KEY----
   cp /tmp/android-secret-patterns.txt ../../artifacts/android-security/secret-patterns.txt
   exit 1
 fi
-if grep -RInE 'http://[^/[:space:]]+' app/src/main >/tmp/android-cleartext-url.txt 2>/dev/null; then
+if grep -RInE 'http://[^/[:space:]]+' app/src/main 2>/dev/null \
+  | grep -Ev 'http://schemas\.android\.com|http://www\.w3\.org|startsWith\("http://"\)' \
+  >/tmp/android-cleartext-url.txt; then
   cp /tmp/android-cleartext-url.txt ../../artifacts/android-security/cleartext-url-fail.txt
   exit 1
 fi

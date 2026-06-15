@@ -32,8 +32,8 @@ integrity_json="$(psql "$RESTORE_PG_URL" -tAc "select json_build_object(
   'auditSequenceIndex', exists(select 1 from pg_indexes where indexname = 'AuditEntry_actorId_chainSequence_key')
 )::text;")"
 printf '%s\n' "$integrity_json" > artifacts/backup-restore/restore-integrity.json
-node <<'NODE' "$integrity_json"
-const data = JSON.parse(process.argv[1]);
+node - "$integrity_json" <<'NODE'
+const data = JSON.parse(process.argv[2]);
 const requireSeeded = process.env.BACKUP_RESTORE_REQUIRE_SEEDED === 'true';
 const requiredChecks = ['classEnrollmentOverlapConstraint', 'sessionRosterAttendanceFk', 'outboxStatusIndex'];
 const missingChecks = requiredChecks.filter((key) => data[key] !== true);

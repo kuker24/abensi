@@ -14,7 +14,7 @@ for (const line of lines) {
     // Ignore framework startup logs; request logs are structured JSON.
   }
 }
-const required = ['requestId', 'method', 'path', 'status', 'durationMs', 'userAgent', 'ip'];
+const required = ['requestId', 'method', 'path', 'statusCode', 'durationMs', 'userAgent', 'ip'];
 const invalid = parsed.filter((entry) => required.some((key) => !(key in entry)) || (entry.userAgent !== null && entry.userAgent !== '[redacted]'));
 const ok = parsed.length > 0 && invalid.length === 0;
 const report = { ok, file, requestLogCount: parsed.length, invalidCount: invalid.length, sample: parsed.slice(0, 5) };

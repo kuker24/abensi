@@ -42,6 +42,7 @@ openssl x509 -req -days 2 \
   -CAcreateserial \
   -extfile certs/https-ci/localhost.ext \
   -out certs/https-ci/localhost.crt >/dev/null 2>&1
+chmod 0644 certs/https-ci/ca.crt certs/https-ci/localhost.crt certs/https-ci/localhost.key
 
 cat > tmp/https-ci/nginx.conf <<EOF
 map \$http_upgrade \$connection_upgrade { default upgrade; '' ''; }
@@ -134,7 +135,7 @@ for i in {1..60}; do
 done
 
 docker rm -f schoolhub-tls-ci >/dev/null 2>&1 || true
-docker run -d --rm --name schoolhub-tls-ci --network host \
+docker run -d --name schoolhub-tls-ci --network host \
   -v "$PWD/tmp/https-ci/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
   -v "$PWD/certs/https-ci:/etc/nginx/certs:ro" \
   nginxinc/nginx-unprivileged:1.27-alpine >/dev/null
@@ -142,7 +143,7 @@ docker run -d --rm --name schoolhub-tls-ci --network host \
 for i in {1..30}; do
   if curl --cacert certs/https-ci/ca.crt -fsS "$base/health/live" >/dev/null 2>&1; then break; fi
   sleep 2
-  if [[ $i -eq 30 ]]; then docker logs schoolhub-tls-ci > artifacts/https-ci/nginx.log 2>&1 || true; exit 1; fi
+  if [[ $i -eq 30 ]]; then docker ps -a > artifacts/https-ci/docker-ps.txt 2>&1 || true; docker logs schoolhub-tls-ci > artifacts/https-ci/nginx.log 2>&1 || true; exit 1; fi
 done
 
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "http://localhost:${http_port}/health/live" | tee artifacts/https-ci/http-redirect.txt

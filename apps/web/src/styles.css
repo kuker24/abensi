@@ -423,8 +423,8 @@ body {
 .btn.primary:hover { background: var(--primary-2); border-color: var(--primary-2); box-shadow: 0 4px 12px rgba(245,158,11,0.25); }
 .btn.secondary { background: var(--secondary); color: white; border-color: var(--secondary); }
 .btn.secondary:hover { background: var(--secondary-2); border-color: var(--secondary-2); }
-.btn.danger { background: var(--bad); color: white; border-color: var(--bad); }
-.btn.danger:hover { box-shadow: 0 4px 12px rgba(248,113,113,0.25); }
+.btn.danger { background: #b91c1c; color: white; border-color: #b91c1c; }
+.btn.danger:hover { background: #991b1b; border-color: #991b1b; box-shadow: 0 4px 12px rgba(185,28,28,0.25); }
 .btn.primary:disabled { background: #b45309; color: #111827; border-color: #b45309; }
 .btn.danger:disabled { background: #991b1b; color: white; border-color: #991b1b; }
 .btn.ghost { background: transparent; border-color: var(--border); color: var(--fg-muted); }

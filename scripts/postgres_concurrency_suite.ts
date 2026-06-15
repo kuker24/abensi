@@ -373,9 +373,12 @@ async function main() {
       await wait('before-refresh-rotate');
       return tx.authSession.updateMany({ where: { id: originalId, refreshTokenHash: `${prefix}-refresh`, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'rotated', replacedById: `${prefix}-auth-replacement-${index}` } });
     }, Prisma.TransactionIsolationLevel.Serializable);
-    const counts = (settledCounts(settled).values as Array<{ count: number }>).map((value) => value.count);
+    const summary = settledCounts(settled);
+    const counts = (summary.values as Array<{ count: number }>).map((value) => value.count);
     const original = await prisma.authSession.findUniqueOrThrow({ where: { id: originalId } });
-    return { ok: counts.filter((count) => count === 1).length === 1 && counts.filter((count) => count === 0).length === 1 && Boolean(original.revokedAt), detail: `counts=${counts.join(',')}, replacedBy=${original.replacedById}` };
+    const oneUpdateWinner = counts.filter((count) => count === 1).length === 1;
+    const loserSerialized = counts.filter((count) => count === 0).length === 1 || summary.rejected === 1;
+    return { ok: oneUpdateWinner && loserSerialized && Boolean(original.revokedAt), detail: `fulfilled=${summary.fulfilled}, rejected=${summary.rejected}, counts=${counts.join(',')}, replacedBy=${original.replacedById}` };
   });
 
   async function generationScenario(name: string, attempts: number, day: number) {

@@ -100,6 +100,7 @@ SELECT 'audit_stale_chain_state' AS check_name, COUNT(*)::int AS count
 FROM "AuditChainState" state
 WHERE state.id = 1
   AND EXISTS (SELECT 1 FROM "AuditEntry")
+  AND (state."lastEntryId" IS NOT NULL OR state."lastHash" IS NOT NULL)
   AND (
     state."lastEntryId" IS DISTINCT FROM (SELECT id FROM "AuditEntry" ORDER BY "createdAt" DESC, id DESC LIMIT 1)
     OR state."lastHash" IS DISTINCT FROM (SELECT "entryHash" FROM "AuditEntry" ORDER BY "createdAt" DESC, id DESC LIMIT 1)

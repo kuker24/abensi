@@ -15,5 +15,6 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY ops/nginx/web.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /workspace/apps/web/dist /usr/share/nginx/html
+USER 101
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
