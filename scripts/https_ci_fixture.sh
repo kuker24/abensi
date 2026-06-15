@@ -18,8 +18,8 @@ admin_password=${ADMIN_PASSWORD:-Admin#12345678}
 cleanup() {
   set +e
   docker rm -f schoolhub-tls-ci >/dev/null 2>&1 || true
-  [[ -n "${api_pid:-}" ]] && kill "$api_pid" >/dev/null 2>&1 || true
-  [[ -n "${web_pid:-}" ]] && kill "$web_pid" >/dev/null 2>&1 || true
+  if [[ -n "${api_pid:-}" ]]; then kill "$api_pid" >/dev/null 2>&1 || true; fi
+  if [[ -n "${web_pid:-}" ]]; then kill "$web_pid" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
 
@@ -91,12 +91,24 @@ server {
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-Proto https;
     add_header Cache-Control "no-store" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(self)" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
   }
   location /health/ready {
     proxy_pass http://127.0.0.1:${api_port}/api/v1/health/ready;
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-Proto https;
     add_header Cache-Control "no-store" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(self)" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
   }
   location / {
     proxy_pass http://127.0.0.1:${web_port};

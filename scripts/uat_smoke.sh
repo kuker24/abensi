@@ -42,7 +42,7 @@ MUTATING_CSRF_SUCCESS=false
 TMP_DIR="$(mktemp -d)"
 CHECKS_FILE="$TMP_DIR/checks.jsonl"
 : > "$CHECKS_FILE"
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   rm -rf "$TMP_DIR"
 }
