@@ -48,7 +48,7 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
     logging: *default-logging
-    command: ["npx", "prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
@@ -183,7 +183,7 @@ services:
       - "8080"
 
   reverse-proxy:
-    image: nginxinc/nginx-unprivileged:1.27-alpine
+    image: nginxinc/nginx-unprivileged:1.29-alpine
     container_name: schoolhub-nginx
     restart: unless-stopped
     read_only: true

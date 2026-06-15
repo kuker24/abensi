@@ -138,7 +138,7 @@ docker rm -f schoolhub-tls-ci >/dev/null 2>&1 || true
 docker run -d --name schoolhub-tls-ci --network host \
   -v "$PWD/tmp/https-ci/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
   -v "$PWD/certs/https-ci:/etc/nginx/certs:ro" \
-  nginxinc/nginx-unprivileged:1.27-alpine >/dev/null
+  nginxinc/nginx-unprivileged:1.29-alpine >/dev/null
 
 for i in {1..30}; do
   if curl --cacert certs/https-ci/ca.crt -fsS "$base/health/live" >/dev/null 2>&1; then break; fi
