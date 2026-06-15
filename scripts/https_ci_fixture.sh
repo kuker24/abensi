@@ -170,40 +170,75 @@ function jakartaDateTime(dateKey, hour, minute) {
   const [year, month, day] = dateKey.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0));
 }
+function utcDateOnly(value) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0));
+}
 (async () => {
-  const [schoolClass, subject, teacher] = await Promise.all([
-    prisma.schoolClass.findFirst({ orderBy: { createdAt: 'asc' } }),
+  const [subject, teacher] = await Promise.all([
     prisma.subject.findFirst({ orderBy: { createdAt: 'asc' } }),
-    prisma.user.findFirst({ where: { role: 'GURU_MAPEL' }, orderBy: { createdAt: 'asc' } })
+    prisma.user.findFirst({ where: { role: 'GURU_MAPEL', active: true }, orderBy: { createdAt: 'asc' } })
   ]);
-  if (!schoolClass || !subject || !teacher) throw new Error('Seeded class/subject/teacher missing for TLS UAT fixture.');
+  if (!subject || !teacher) throw new Error('Seeded subject/teacher missing for TLS UAT fixture.');
   const dateKey = jakartaDateKey(new Date());
   const startsAt = jakartaDateTime(dateKey, 12, 0);
   const endsAt = jakartaDateTime(dateKey, 12, 45);
-  const existing = await prisma.session.findFirst({ where: { teacherId: teacher.id, startsAt, endsAt } });
-  if (existing) return;
-  await prisma.session.create({
-    data: {
-      classId: schoolClass.id,
-      subjectId: subject.id,
-      teacherId: teacher.id,
-      startsAt,
-      endsAt,
-      businessDate: new Date(Date.UTC(startsAt.getUTCFullYear(), startsAt.getUTCMonth(), startsAt.getUTCDate(), 0, 0, 0, 0)),
-      status: SessionStatus.SCHEDULED
-    }
+  const businessDate = utcDateOnly(startsAt);
+  const enrollment = await prisma.classEnrollment.findFirst({
+    where: {
+      active: true,
+      administrativeStatus: 'ACTIVE',
+      effectiveFrom: { lte: businessDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: businessDate } }],
+      student: { active: true, role: 'SISWA' }
+    },
+    include: { schoolClass: true, student: { select: { username: true } } },
+    orderBy: { createdAt: 'asc' }
   });
-  const policy = await prisma.geofencePolicy.findUnique({ where: { id: 1 } });
-  console.log(`UAT_LATITUDE=${policy?.centerLat ?? 0}`);
-  console.log(`UAT_LONGITUDE=${policy?.centerLng ?? 0}`);
-  console.log('UAT_ACCURACY_METER=25');
+  if (!enrollment) throw new Error(`No active enrolled student found for TLS UAT fixture on ${businessDate.toISOString().slice(0, 10)}.`);
+
+  const existing = await prisma.session.findFirst({ where: { teacherId: teacher.id, startsAt, endsAt }, orderBy: { createdAt: 'asc' } });
+  const data = {
+    classId: enrollment.classId,
+    subjectId: subject.id,
+    teacherId: teacher.id,
+    startsAt,
+    endsAt,
+    businessDate,
+    status: SessionStatus.SCHEDULED,
+    openedAt: null,
+    closedAt: null,
+    reconciledAt: null
+  };
+  const session = existing
+    ? await prisma.$transaction(async (tx) => {
+        await tx.studentAttendance.deleteMany({ where: { sessionId: existing.id } });
+        await tx.teacherSessionPresence.deleteMany({ where: { sessionId: existing.id } });
+        await tx.sessionRoster.deleteMany({ where: { sessionId: existing.id } });
+        return tx.session.update({ where: { id: existing.id }, data });
+      })
+    : await prisma.session.create({ data });
+
+  console.log(`Prepared TLS UAT session ${session.id} for class ${enrollment.schoolClass.code} with active student ${enrollment.student.username}.`);
 })().finally(() => prisma.$disconnect());
 NODE
 node <<'NODE' > artifacts/https-ci/uat-geo.env
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+function jakartaDateKey(value) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+}
+function jakartaDateTime(dateKey, hour, minute) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0));
+}
 (async () => {
+  const teacher = await prisma.user.findFirst({ where: { role: 'GURU_MAPEL', active: true }, orderBy: { createdAt: 'asc' } });
+  const dateKey = jakartaDateKey(new Date());
+  const startsAt = jakartaDateTime(dateKey, 12, 0);
+  const endsAt = jakartaDateTime(dateKey, 12, 45);
+  const session = teacher ? await prisma.session.findFirst({ where: { teacherId: teacher.id, startsAt, endsAt }, orderBy: { createdAt: 'asc' } }) : null;
   const policy = await prisma.geofencePolicy.findUnique({ where: { id: 1 } });
+  console.log(`UAT_SESSION_ID=${session?.id ?? ''}`);
   console.log(`UAT_LATITUDE=${policy?.centerLat ?? 0}`);
   console.log(`UAT_LONGITUDE=${policy?.centerLng ?? 0}`);
   console.log('UAT_ACCURACY_METER=25');
@@ -228,6 +263,7 @@ ADMIN_USERNAME="$admin_username" \
 ADMIN_PASSWORD="$admin_password" \
 GURU_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
 SISWA_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
+UAT_SESSION_ID="${UAT_SESSION_ID:-}" \
 UAT_RESULT_JSON=artifacts/https-ci/uat-read-only-result.json \
 bash scripts/uat_smoke.sh
 
@@ -238,6 +274,7 @@ ADMIN_PASSWORD="$admin_password" \
 GURU_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
 SISWA_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
 ALLOW_MUTATING_SMOKE=YES \
+UAT_SESSION_ID="${UAT_SESSION_ID:-}" \
 UAT_LATITUDE="$UAT_LATITUDE" \
 UAT_LONGITUDE="$UAT_LONGITUDE" \
 UAT_ACCURACY_METER="$UAT_ACCURACY_METER" \

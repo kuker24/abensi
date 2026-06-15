@@ -27,6 +27,7 @@ ALLOW_MUTATING_SMOKE="${ALLOW_MUTATING_SMOKE:-NO}"
 UAT_LATITUDE="${UAT_LATITUDE:-}"
 UAT_LONGITUDE="${UAT_LONGITUDE:-}"
 UAT_ACCURACY_METER="${UAT_ACCURACY_METER:-}"
+UAT_SESSION_ID="${UAT_SESSION_ID:-}"
 UAT_EXPECTED_SAMESITE="${UAT_EXPECTED_SAMESITE:-Lax}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-artifacts}"
 RESULT_JSON="${UAT_RESULT_JSON:-$ARTIFACT_DIR/uat-smoke-result.json}"
@@ -547,7 +548,14 @@ if ! expect_success "Guru list class sessions API" "$code"; then
   exit 1
 fi
 
-if mutating_smoke_enabled; then
+if [[ -n "$UAT_SESSION_ID" ]]; then
+  GURU_SESSION_ID="$(jq -r --arg sid "$UAT_SESSION_ID" '(.items // []) | map(select(.id == $sid)) | .[0].id // empty' "$TMP_DIR/guru_sessions.body" 2>/dev/null || true)"
+  if [[ -z "$GURU_SESSION_ID" ]]; then
+    mark_fail "Guru pilih sesi uji" "UAT_SESSION_ID $UAT_SESSION_ID tidak tersedia untuk guru uji"
+    finish
+    exit 1
+  fi
+elif mutating_smoke_enabled; then
   GURU_SESSION_ID="$(jq -r '
     (.items // []) as $items
     | ([$items[] | select(.status=="SCHEDULED")] | .[0].id)
