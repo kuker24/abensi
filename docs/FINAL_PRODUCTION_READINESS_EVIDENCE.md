@@ -1,141 +1,127 @@
 # Final Production Readiness Evidence
 
-Date: 2026-06-14
+Date: 2026-06-15
 
-Final recommendation: **NOT READY FOR MERGE**
+Final recommendation: **READY FOR HUMAN REVIEW**
 
-This document refreshes the production-readiness evidence after the split CI matrix turned green. It is intentionally conservative: CI is green for the implemented gates, but several requested production-readiness scope items remain incomplete or externally unverifiable.
+This document records the final production-readiness evidence for PR #2 on branch `fix/full-production-readiness`. The PR must still receive human technical review and must not be auto-merged.
 
 ## Branch / PR
 
 - Repository: `kuker24/abensi`
 - Branch: `fix/full-production-readiness`
 - PR: #2
-- Starting implementation head: `e2ab0435cdb9f2f2c6d952fb6fae417d46107d1b`
-- Latest verified implementation head before this docs-only refresh: `64569cf379bf078d4ead118519bb5fbe0195457d`
-- No merge to `main` was performed.
+- Base branch: `main`
+- Protected second-pass baseline: `91beb9303fd0b837325b20196a9b39279eda203c`
+- Final validated implementation head: `89f8dbd7d24c06282e7f543ac56447e6ea23537b`
+- No push to `main`, no automatic merge, and no auto-merge enablement was performed.
 
-## Commits added after `e2ab043`
+## Final CI evidence
 
-- `1c90221` — docs: establish production readiness execution ledger
-- `e8a525f` — fix: require explicit attendance review confirmation
-- `3774635` — feat: enforce effective dated class enrollment
-- `b216814` — fix: enforce immutable session roster attendance integrity
-- `2d8c005` — test: add corrective migration preflight suite
-- `9f37c1e` — fix: cryptographically preflight audit chain
-- `98be9f8` — test: add real postgres integration and concurrency suites
-- `dfadcd0` — test: add real full stack security e2e
-- `bdb18ca` — feat: replace worker polling with redis queues
-- `5a5259b` — feat: stream live monitor through outbox events
-- `0b8f5a4` — test: add accessibility and visual gates
-- `21c8f74` — feat: verify production https entrypoint
-- `981f6d4` — ci: add supply chain and release security gates
-- `d9ce031` — ops: add backup restore observability gates
-- `185a3e0` — ci: split production readiness validation gates
-- `4f06bf5` — docs: refresh production readiness evidence
-- `5f52cd3` — fix: repair production readiness CI gates
-- `5db1db4` — fix: address remaining CI validation failures
-- `3b8a1ae` — fix: satisfy a11y and seeded roster gates
-- `79ec607` — fix: stabilize full stack and accessibility gates
-- `054d7ef` — fix: generate api prisma client for runtime
-- `3e8a5db` — test: stabilize playwright production gates
-- `77475eb` — fix: preserve csrf login exemptions behind prefix
-- `f0536f7` — test: use prefixed full stack api paths
-- `64569cf` — test: normalize full stack api base url
+Latest completed PR CI run at the validated implementation head: **PASS**
 
-## Migrations added in this continuation
+- Pull request run: `27520528883`
+- Head SHA: `89f8dbd7d24c06282e7f543ac56447e6ea23537b`
+- URL: <https://github.com/kuker24/abensi/actions/runs/27520528883>
 
-- `0029_effective_dated_enrollment_integrity`
-- `0030_session_roster_attendance_fk`
-- `0031_outbox_event_stream`
+Passing jobs:
 
-## Database constraints added
+- `validate` — job `81337416819`
+- `android` — job `81337416803`
+- `docker` — job `81337416867`
+- `codeql` — job `81337416797`
+- `postgres-integration` — job `81337416848`
+- `upgrade-migrations` — job `81337416858`
+- `security-supply-chain` — job `81337416923`
+- `web-quality-gates` — job `81337416805`
+- `full-stack-e2e` — job `81337416816`
+- `performance-observability` — job `81337416830`
+- `tls-fixture` — job `81337417008`
+- `backup-restore-drill` — job `81337416836`
 
-- Removed the legacy permanent Prisma uniqueness on `ClassEnrollment(classId, studentId)` during migration `0029`.
-- Added ClassEnrollment FKs for academic year, semester, createdBy, endedBy.
-- Added ClassEnrollment period integrity checks and PostgreSQL GiST exclusion to prevent overlapping enrollment periods per student.
-- Added composite FK `StudentAttendance(sessionId, studentId)` → `SessionRoster(sessionId, studentId)`.
-- Added StudentAttendance FKs for `confirmedById` and `correctedById`.
-- Added `OutboxEvent` table and indexes for replayable live-monitor events.
+Matching push CI run at the same head also passed:
 
-## Local validation evidence
+- Push run: `27520527276`
+- URL: <https://github.com/kuker24/abensi/actions/runs/27520527276>
 
-PASS, run during this continuation:
+## Second-pass commits after protected baseline
 
-- `npm run prisma:generate`
+- `511c6c4` — docs: add second-pass readiness execution plan
+- `f049a7f` — fix: separate enrollment administration from date validity
+- `657efca` — fix: reject missing session roster without recapture
+- `0ebe63e` — test: replace marker upgrade fixtures with real scenarios
+- `3d477ca` — test: expand deterministic postgres concurrency matrix
+- `5f422b7` — feat: implement transactional live monitor outbox
+- `62e45c9` — fix: fail closed worker nonce validation in production
+- `8549871` — test: expand real full stack security coverage
+- `1a4629f` — test: add committed visual regression baselines
+- `5891c58` — fix: complete critical accessibility coverage
+- `577d120` — refactor: centralize typed frontend route registry
+- `582eaa7` — ci: strengthen supply chain security gates
+- `50cfeef` — ci: add real TLS reverse proxy fixture
+- `c448814` — ops: enforce restore performance observability gates
+- `4dd93e6` — ci: require distributed and observability gates
+- `645bf12` — ci: fix production readiness gate failures
+- `7d0d635` — ci: stabilize remaining readiness gates
+- `77599b4` — ci: harden production images for scans
+- `89f8dbd` — ci: refresh worker base packages before scan
+
+## Corrective migrations added in the second pass
+
+- `0032_enrollment_administrative_status`
+- `0033_transactional_outbox_publish_state`
+
+All migration work remained additive/corrective and preserved historical/forensic data.
+
+## Implemented production-readiness closures
+
+- Effective-dated enrollment semantics now separate administrative status from date validity; cancellation/revocation is reasoned and audited.
+- Session roster handling now fails closed when required roster snapshots are missing; non-open flows no longer silently recapture mutable enrollment state.
+- Upgrade migration testing uses populated legacy fixtures and isolated scenario databases for success, repair, and abort paths.
+- PostgreSQL concurrency coverage uses deterministic overlapping transactions/barriers and final database/audit assertions.
+- Live monitor delivery uses durable transactional outbox events, Redis Stream/pub-sub fan-out, retry/DLQ/stale recovery, sanitized SSE replay, and distributed connection controls.
+- Worker internal security fails closed in production without Redis-backed nonce storage and rejects short/unsigned/tampered production requests.
+- Full-stack security E2E uses real API, PostgreSQL, Redis, browser cookies, CSRF, server sessions, worker signatures, and SSE without localStorage auth seeding.
+- Visual regression uses committed pixel baselines across desktop/tablet/mobile dashboards.
+- Accessibility coverage uses broad axe WCAG A/AA checks across authenticated route coverage and login states.
+- Frontend route metadata/rendering is centralized in a typed route registry with invariant tests.
+- Supply-chain gates include current/history secret scanning, risk-acceptance expiry validation, license policy, SBOM validation, Trivy filesystem/image scans, and Android static security checks.
+- TLS behavior is validated in CI through a real generated CA/certificate and Nginx TLS reverse-proxy fixture.
+- Backup/restore, performance, and observability gates produce artifacts and validate restored data, constraints/indexes, latency thresholds, metrics, and structured logs.
+- CI explicitly wires the production readiness gates for validation, Docker, Android, CodeQL, PostgreSQL integration/concurrency/outbox, upgrade migrations, supply chain, web quality/a11y/visuals, full-stack E2E, TLS fixture, backup/restore, and performance/observability.
+
+## Local validation evidence during Step 17
+
+Representative local validation that passed during the final validation loop:
+
 - `npm run typecheck:all`
 - `npm run lint:all`
 - `npm run lint --prefix apps/worker`
-- `npm run test:api` — 21 suites / 157 tests PASS after CSRF regression coverage was added
-- `npm run test:web` — 3 files / 10 tests PASS
-- `npm run build:all`
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run test:e2e:ui` — 15 tests PASS locally
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run test:a11y` — 6 tests PASS locally
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run test:visual` — 3 tests PASS locally
+- `npm run test:api`
+- `npm run test:web`
+- `npx prisma validate --schema prisma/schema.prisma`
+- `npm run prisma:generate`
+- shell syntax checks for operational scripts
+- Node syntax checks for migration/observability scripts
+- TypeScript checks for integration/concurrency/outbox scripts
+- `npm run security:risk-acceptance`
 - `npm run security:secrets`
 - `npm run security:license`
 - `npm run security:sbom`
-- Root/API/Web/Worker `npm audit --audit-level=high` PASS; API still has the documented moderate ExcelJS→UUID advisory with time-limited risk acceptance.
+- web typecheck/Vitest/a11y/visual validation with available Chromium
+- final targeted API typecheck/lint/Jest and worker lint/audit checks after container hardening
 
-Local limitations:
+Local limitations remained: Docker, Android SDK, and long-running real PostgreSQL/Redis/TLS checks were validated by GitHub Actions service/container jobs rather than the local execution environment.
 
-- Docker is unavailable in this execution environment.
-- Local PostgreSQL/Redis are unavailable; real DB/Redis validation was delegated to CI service containers.
-- Owner-controlled public TLS endpoint and Android protected signing secrets are unavailable locally.
+## Residual notes for human reviewers
 
-## CI validation evidence
+These do not currently block human review because the final CI gates are green, but they should be reviewed before merge/deployment:
 
-PASS — split CI matrix completed successfully for PR run `27500077999` at head `64569cf379bf078d4ead118519bb5fbe0195457d`.
-
-Run URL: <https://github.com/kuker24/abensi/actions/runs/27500077999>
-
-Successful jobs:
-
-- `validate` — PASS, job `81281222495`
-- `android` — PASS, job `81281222488`
-- `docker` — PASS, job `81281222536`
-- `codeql` — PASS, job `81281222522`
-- `postgres-integration` — PASS, job `81281222543`
-- `upgrade-migrations` — PASS, job `81281222494`
-- `security-supply-chain` — PASS, job `81281222500`
-- `web-quality-gates` — PASS, job `81281222549`
-- `full-stack-e2e` — PASS, job `81281222571`
-- `backup-restore-drill` — PASS, job `81281222589`
-
-The matching push run `27500076812` also completed successfully at the same head.
-
-## Implemented blocker closures
-
-PASS/PARTIAL:
-
-- Attendance review semantics: no-op save confirms zero rows; backend requires explicit confirmation; frontend tracks dirty/explicit rows; bulk present/ALPA endpoints added; optimistic `updatedAt` version checks reject stale saves.
-- Effective-dated enrollment: periods and semester/year validation added; transfer workflow is serializable; history/API/UI paths added; overlapping primary enrollment is DB-enforced.
-- SessionRoster integrity: mutable current-enrollment fallback removed from class attendance paths; missing roster raises `SESSION_ROSTER_MISSING`; audited repair workflow and composite FK added.
-- Migration safety: read-only production preflight, post-migration verifier, upgrade migration suite entrypoint, approval/rollback docs, and additive corrective migrations added.
-- Audit chain: cryptographic preflight uses canonical JSON and validates chain topology/state before resequencing workflows.
-- Real PostgreSQL tests: integration/concurrency scripts now run in CI against PostgreSQL service containers.
-- Full-stack security E2E: real API/web/PostgreSQL/Redis/cookie/CSRF Playwright gate now passes without localStorage auth seeding.
-- Worker: interval polling replaced with Redis/BullMQ repeatable jobs, retries/backoff, DLQ, graceful shutdown, health file, and signed internal requests with nonce replay protection.
-- SSE/live monitor: per-client 5-second DB polling removed; outbox replay, heartbeat, auth, and connection limits added.
-- A11y/visual: axe WCAG checks and deterministic visual gates now pass in CI.
-- HTTPS: TLS termination model documented; Nginx forwarded-proto redirect/HSTS behavior and HTTPS smoke script added.
-- Supply chain/release: current GitHub Actions pinned to SHAs; Dependabot, secret scan, license check, SBOM, Trivy wrapper, Android release security script, and ExcelJS risk acceptance added.
-- Ops: encrypted backup/restore support, restore drill, structured logs, metrics endpoint, RPO/RTO and rollback docs added.
-- Hygiene: stale tracked backup trees removed; `backups/` ignored; Playwright E2E/a11y/visual specs excluded from Vitest.
-
-## Remaining risks / incomplete scope
-
-FAIL/PENDING — these are why the recommendation remains **NOT READY FOR MERGE** despite green CI:
-
-- React Router typed registry refactor remains incomplete; manual route maps and `pushState` navigation still exist.
-- Upgrade migration fixtures are not yet comprehensive populated legacy datasets for every abort/repair scenario.
-- PostgreSQL concurrency coverage is improved but still not a complete matrix for every critical race condition.
-- Full-stack E2E covers core auth/cookies/CSRF/self-report, but not every gate/prayer/geofence/SSE production flow requested.
-- HTTPS smoke still requires an owner-controlled public TLS endpoint or CI TLS fixture; this environment cannot prove real external TLS.
-- Android release signing is guarded by scripts/docs, but protected signing secrets were not available here.
-- Moderate ExcelJS→UUID advisory is accepted by documented risk acceptance, not fully eliminated.
-- GitHub Actions currently emit Node.js 20 action-deprecation warnings; they are warnings, not current gate failures, but should be tracked.
+- GitHub Actions emitted Node.js 20 action-deprecation warnings for pinned third-party actions; no gate failed, but action upgrades should be tracked.
+- The documented moderate ExcelJS→UUID advisory remains covered by time-limited risk acceptance; high/critical audit gates passed.
+- Android release signing secrets are protected and were not available in this agent environment; static security, lint, tests, and debug build gates passed in CI.
+- The CI TLS fixture validates real TLS reverse-proxy behavior with generated certificates; an owner-controlled public TLS endpoint should still be checked during deployment readiness.
 
 ## Final recommendation
 
-**NOT READY FOR MERGE** until the remaining non-CI scope gaps above are either implemented, explicitly re-scoped by the owner, or accepted with production sign-off.
+**READY FOR HUMAN REVIEW** — PR #2 has green final production-readiness CI at the validated implementation head and is ready for qualified technical review. Do not auto-merge.

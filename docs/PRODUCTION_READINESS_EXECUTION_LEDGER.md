@@ -3,7 +3,7 @@
 Branch: `fix/full-production-readiness`
 PR: #2
 Execution owner: primary implementation agent
-Last refreshed: 2026-06-14
+Last refreshed: 2026-06-15
 
 ## Starting point
 
@@ -90,8 +90,8 @@ Protection checks completed before work resumed:
 | 14 | Mandatory CI TLS fixture | PASS (CI pending) | Added `scripts/https_ci_fixture.sh` and a dedicated `tls-fixture` CI job. The fixture generates a local CA/server cert, starts real API/web against PostgreSQL/Redis, runs an actual Nginx TLS reverse proxy in Docker, verifies HTTP→HTTPS redirect, HSTS, secure HttpOnly cookies, cookie auth, CSRF logout, authenticated SSE snapshot, malformed forwarding rejection, and external blocking of `/api/v1/internal/*`. |
 | 15 | Backup/restore, performance, observability | PASS (CI pending) | Restore drill now requires seeded backup in CI, restores encrypted dump, verifies audit chain/post-migration state plus key record counts, FK/constraint/index integrity, and outbox indexes. Performance smoke now uses real cookie auth, multi-iteration endpoint timing, P95/per-endpoint thresholds, artifact output, and metrics validation. Added structured JSON request-log validator and wired TLS fixture to verify captured API logs. Runbook updated with thresholds, artifacts, and log verification. |
 | 16 | Mandatory CI restructuring | PASS (CI pending) | CI now has explicit required-domain jobs for validate, android static security, docker production compose, CodeQL, PostgreSQL integration/concurrency/outbox-SSE, upgrade migrations, security/supply-chain, web UI/a11y/visual quality, real full-stack E2E, performance/observability, real TLS fixture, and seeded backup/restore drill. Added outbox-SSE distributed suite to PostgreSQL job, performance/observability job with real API/PostgreSQL/Redis, and backup seed/generate steps before restore drill. |
-| 17 | Validation loop | TODO | Targeted local validation, pushed commits, final GitHub Actions green run, all failures fixed by root cause. |
-| 18 | Final evidence and PR | TODO | Evidence and PR body updated to exact final SHA/run/results; qualified reviewer requested. |
+| 17 | Validation loop | PASS | Local validation and CI triage/fix loop completed. Latest validated implementation head `89f8dbd7d24c06282e7f543ac56447e6ea23537b`; PR CI run `27520528883` and push CI run `27520527276` passed all required production-readiness jobs. |
+| 18 | Final evidence and PR | PASS | Final evidence refreshed in `docs/FINAL_PRODUCTION_READINESS_EVIDENCE.md`; PR body updated after final CI with exact final head/run/job evidence; reviewer request recorded in PR timeline. |
 | 19 | Final report | TODO | Full inventory of implementation, tests, scans, artifacts, CI, reviewers, risks, and final status. |
 
 ### Evidence rules for second pass
@@ -119,9 +119,11 @@ Protection checks completed before work resumed:
 - 2026-06-14: Step 14 implementation added the mandatory TLS CI fixture job and script. Local validation passed: `bash -n scripts/https_ci_fixture.sh`, `bash -n scripts/https_smoke.sh`, API typecheck, web typecheck, and `git diff --check`. Full fixture execution requires Docker/PostgreSQL/Redis and is gated by the new `tls-fixture` CI job.
 - 2026-06-14: Step 15 implementation strengthened backup/restore, performance, and observability gates. Local validation passed: `node --check scripts/perf_smoke.mjs`, `node --check scripts/observability_log_check.mjs`, shell syntax for backup/TLS scripts, API typecheck, and a positive structured-log validator sample. Full restore/perf execution requires running PostgreSQL/API stack and is gated in CI.
 - 2026-06-14: Step 16 CI restructuring added outbox-SSE distributed execution, a dedicated performance/observability job, TLS fixture job, and seeded backup restore preconditions. Local validation passed: `git diff --check` and workflow grep verification for new required gates. Full validation is the next step and must use GitHub Actions.
+- 2026-06-15: Step 17 validation loop completed through commits `645bf12`, `7d0d635`, `77599b4`, and `89f8dbd`. Root-cause fixes covered observability log schema, backup restore JSON argv handling, deterministic refresh-token race expectations, upgrade fixture assertions, Android cleartext scan false positives, danger-button contrast, TLS diagnostics, production Docker runtime hardening, Prisma CLI availability without `npx`, Nginx base refresh, and worker OpenSSL package refresh. Local validation included API typecheck/lint/Jest, worker lint/audit, web typecheck/Vitest, syntax checks, and security gates. Final PR run `27520528883` and matching push run `27520527276` passed all CI jobs at `89f8dbd7d24c06282e7f543ac56447e6ea23537b`.
+- 2026-06-15: Step 18 final evidence refreshed `docs/FINAL_PRODUCTION_READINESS_EVIDENCE.md` with the final validated implementation head, CI run IDs, job IDs, implemented closure inventory, local validation evidence, residual reviewer notes, and final recommendation `READY FOR HUMAN REVIEW`.
 
 ## Current stop condition
 
-- CI is green for the previously implemented gates, but the owner has identified remaining placeholder/smoke-only coverage.
-- PR #2 remains unmerged.
-- Final recommendation remains **NOT READY FOR MERGE** until all mandatory second-pass implementation and validation gates above are real, green, evidenced at the exact final head, and a qualified technical reviewer is requested.
+- Mandatory second-pass implementation and validation gates are real, green, and evidenced at the final validated implementation head.
+- PR #2 remains unmerged and auto-merge was not enabled.
+- Final recommendation: **READY FOR HUMAN REVIEW**. A qualified human technical review is still required before any merge/deployment decision.
