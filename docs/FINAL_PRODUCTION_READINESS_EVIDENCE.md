@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 
-Status at document update: **CI VALIDATION PENDING AFTER FINAL VPS DEPLOYMENT CHANGES**
+Status at document update: **CI GREEN FOR FINAL VPS DEPLOYMENT READINESS HEAD**
 
 This document records the deployment-readiness implementation for PR #2 on branch `fix/full-production-readiness`. PR #2 must remain open for qualified human technical review and must not be auto-merged.
 
@@ -14,7 +14,10 @@ This document records the deployment-readiness implementation for PR #2 on branc
 - Base branch: `main`
 - Starting SHA for this final VPS deployment phase: `b21a9505415df700f8bb2df2ee049d9190fd0384`
 - Implementation commit created in this phase: `6119736` (`feat: complete VPS deployment readiness automation`)
-- Final CI run ID/URL: pending until the pushed workflow completes.
+- Validated implementation head SHA: `5fdac972016a68f1b9636dd0326c75af203897e5`
+- Final passing PR CI run: `27574711451` — <https://github.com/kuker24/abensi/actions/runs/27574711451>
+- Matching passing push CI run: `27574708728` — <https://github.com/kuker24/abensi/actions/runs/27574708728>
+- Note: if this evidence-only document is committed after the run above, the PR body records the latest exact head/run pair to avoid self-referential evidence drift.
 
 ## Implemented final VPS deployment closures
 
@@ -53,14 +56,33 @@ Local environment limitations:
 - Docker is not installed in this agent container, so Compose config, deployment dry-run, rollback dry-run, public TLS fixture, and populated backup/restore drill must be validated by GitHub Actions.
 - No production public domain or production credentials are available in this agent environment.
 
-## CI evidence to update after push
+## CI evidence
 
-Pending fields to update after the final GitHub Actions run completes:
+Final passing CI at validated head `5fdac972016a68f1b9636dd0326c75af203897e5`:
 
-- Final PR head SHA.
-- Workflow run ID and URL.
-- Passing job list.
-- Reviewer requested confirmation.
+- PR run: `27574711451` — <https://github.com/kuker24/abensi/actions/runs/27574711451> — **PASS**
+- Push run: `27574708728` — <https://github.com/kuker24/abensi/actions/runs/27574708728> — **PASS**
+
+Passing PR jobs:
+
+- `validate`
+- `security-supply-chain`
+- `postgres-integration`
+- `docker`
+- `deployment-regression`
+- `upgrade-migrations`
+- `backup-restore-drill`
+- `performance-observability`
+- `codeql`
+- `android`
+- `web-quality-gates`
+- `full-stack-e2e`
+- `tls-fixture`
+
+Reviewer request status:
+
+- GitHub rejected a formal review request to `kuker24` because that account is the PR author and currently the only listed collaborator.
+- A PR-level reviewer request/comment must be posted asking the owner to route PR #2 to a qualified technical reviewer before merge/deployment.
 
 ## Owner-controlled remaining items
 
@@ -75,4 +97,4 @@ These remain intentionally outside Git and under deployment owner control:
 
 ## Current recommendation
 
-**NOT READY FOR VPS DEPLOYMENT** until the final pushed GitHub Actions workflow is green and PR #2 has at least one qualified technical reviewer requested.
+**READY FOR VPS DEPLOYMENT** after the final pushed GitHub Actions workflow remains green at the latest head and the PR-level qualified reviewer request has been posted.
