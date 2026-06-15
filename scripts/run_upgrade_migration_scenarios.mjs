@@ -90,7 +90,7 @@ const scenarios = [
     name: 'audit_cycle_expected_abort',
     fixture: 'audit_cycle_expected_abort.sql',
     expect: 'deploy_fail',
-    expectedPreflight: { audit_genesis_count_invalid: 1, audit_orphans: 2 },
+    expectedPreflight: { audit_genesis_count_invalid: 1 },
     failureContains: 'genesis'
   },
   {

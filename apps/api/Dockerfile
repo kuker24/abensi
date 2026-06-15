@@ -1,7 +1,7 @@
-FROM node:20-bookworm-slim AS build
+FROM node:20-alpine AS build
 WORKDIR /workspace/apps/api
 
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl
 
 COPY packages/shared ../../packages/shared
 COPY apps/api/package*.json ./
@@ -13,12 +13,14 @@ COPY scripts ../../scripts
 
 RUN npm run prisma:generate
 RUN npm run build
+RUN npm prune --omit=dev
 
-FROM node:20-bookworm-slim
+FROM node:20-alpine
 WORKDIR /app/apps/api
 ENV NODE_ENV=production
 
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /root/.npm
 
 COPY --from=build /workspace/packages /app/packages
 COPY --from=build /workspace/apps/api/node_modules ./node_modules
