@@ -1,0 +1,6 @@
+# VPS topology override for host-managed TLS (Caddy on Ubuntu host).
+# Requires Docker Compose v2.24+ for !override merge semantics.
+services:
+  reverse-proxy:
+    ports: !override
+      - "127.0.0.1:8080:8080"

@@ -4,6 +4,7 @@ dist/
 .env.*
 !.env.production.example
 !.env.production.supabase.example
+!.env.production.test
 !apps/web/.env.example
 npm-debug.log*
 coverage/
@@ -27,6 +28,15 @@ akun_beta.txt
 .last_deploy_artifact_path
 .env.local
 *.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.dump
+*.dump.enc
+*.sql.gz
+*.backup
+*credentials*.json
 
 # Local/CI generated artifacts
 artifacts/

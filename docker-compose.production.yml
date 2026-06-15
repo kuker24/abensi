@@ -37,6 +37,7 @@ services:
       retries: 5
 
   migrate:
+    image: schoolhub-api:${SCHOOLHUB_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -58,6 +59,7 @@ services:
         condition: service_healthy
 
   api:
+    image: schoolhub-api:${SCHOOLHUB_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -100,10 +102,12 @@ services:
       STEP_UP_FOR_POLICY: ${STEP_UP_FOR_POLICY:-true}
       STEP_UP_FOR_READER_ROTATE: ${STEP_UP_FOR_READER_ROTATE:-true}
       MIN_GATE_STAY_MINUTES: ${MIN_GATE_STAY_MINUTES:-10}
+      ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin.tu}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-Admin TU}
       DEFAULT_USER_PASSWORD: ${DEFAULT_USER_PASSWORD:-}
+      DEVELOPER_BOOTSTRAP_ENABLED: ${DEVELOPER_BOOTSTRAP_ENABLED:-false}
       DEVELOPER_USERNAME: ${DEVELOPER_USERNAME:-developer}
       DEVELOPER_PASSWORD: ${DEVELOPER_PASSWORD:-}
       DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer SchoolHub}
@@ -122,6 +126,7 @@ services:
       retries: 5
 
   worker:
+    image: schoolhub-worker:${SCHOOLHUB_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
@@ -160,6 +165,7 @@ services:
       start_period: 45s
 
   web:
+    image: schoolhub-web:${SCHOOLHUB_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -181,6 +187,11 @@ services:
     logging: *default-logging
     expose:
       - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   reverse-proxy:
     image: nginxinc/nginx-unprivileged:1.29-alpine
@@ -200,6 +211,11 @@ services:
     logging: *default-logging
     ports:
       - "80:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on:
       api:
         condition: service_healthy

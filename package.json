@@ -41,7 +41,8 @@
     "preflight:production": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/preflight_production_readiness.ts",
     "verify:post-migration": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify_post_migration.ts",
     "test:upgrade-migrations": "bash scripts/test_upgrade_migrations.sh",
-    "validate:final": "bash scripts/validate_final.sh"
+    "validate:final": "bash scripts/validate_final.sh",
+    "validate:deployment-evidence": "node scripts/validate_deployment_evidence.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

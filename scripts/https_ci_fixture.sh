@@ -61,6 +61,7 @@ server {
   add_header X-Frame-Options "SAMEORIGIN" always;
   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
   add_header Permissions-Policy "camera=(), microphone=(), geolocation=(self)" always;
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
   if (\$http_x_forwarded_for ~ ".{256,}") { return 400; }
   if (\$http_x_forwarded_for ~ "[^0-9a-fA-F:., ]") { return 400; }
   location ^~ /api/v1/internal/ { return 404; }
@@ -146,34 +147,96 @@ for i in {1..30}; do
   if [[ $i -eq 30 ]]; then docker ps -a > artifacts/https-ci/docker-ps.txt 2>&1 || true; docker logs schoolhub-tls-ci > artifacts/https-ci/nginx.log 2>&1 || true; exit 1; fi
 done
 
-curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "http://localhost:${http_port}/health/live" | tee artifacts/https-ci/http-redirect.txt
-grep -Eq "^30[178] https://localhost:${https_port}/health/live" artifacts/https-ci/http-redirect.txt
-curl --cacert certs/https-ci/ca.crt -fsS -D artifacts/https-ci/live.headers "$base/health/live" -o artifacts/https-ci/live.json
-grep -iq '^strict-transport-security:' artifacts/https-ci/live.headers
-curl --cacert certs/https-ci/ca.crt -fsS -D artifacts/https-ci/ready.headers "$base/health/ready" -o artifacts/https-ci/ready.json
 
-cookie_jar=artifacts/https-ci/cookies.txt
-curl --cacert certs/https-ci/ca.crt -fsS -c "$cookie_jar" -D artifacts/https-ci/login.headers \
-  -H 'content-type: application/json' \
-  --data "{\"username\":\"$admin_username\",\"password\":\"$admin_password\",\"expectedRole\":\"admin\"}" \
-  "$base/api/v1/auth/login" -o artifacts/https-ci/login.json
-grep -iq 'schoolhub_access_token=.*HttpOnly' artifacts/https-ci/login.headers
-grep -iq 'schoolhub_access_token=.*Secure' artifacts/https-ci/login.headers
-curl --cacert certs/https-ci/ca.crt -fsS -b "$cookie_jar" "$base/api/v1/auth/me" -o artifacts/https-ci/me.json
-csrf=$(curl --cacert certs/https-ci/ca.crt -fsS -b "$cookie_jar" -c "$cookie_jar" "$base/api/v1/auth/csrf" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.parse(d).csrfToken))')
-curl --cacert certs/https-ci/ca.crt -fsS -b "$cookie_jar" -c "$cookie_jar" -H "x-csrf-token: $csrf" -X POST "$base/api/v1/auth/logout" -o artifacts/https-ci/logout.json
-curl --cacert certs/https-ci/ca.crt -fsS -c "$cookie_jar" -H 'content-type: application/json' --data "{\"username\":\"$admin_username\",\"password\":\"$admin_password\",\"expectedRole\":\"admin\"}" "$base/api/v1/auth/login" -o /dev/null
-curl --cacert certs/https-ci/ca.crt -fsS -b "$cookie_jar" -D artifacts/https-ci/sse.headers -N --max-time 5 "$base/api/v1/reports/live-monitor/stream?limit=1" -o artifacts/https-ci/sse.txt || true
-grep -iq 'content-type: text/event-stream' artifacts/https-ci/sse.headers
-grep -q 'event: snapshot' artifacts/https-ci/sse.txt
+node <<'NODE'
+const { PrismaClient, SessionStatus } = require('@prisma/client');
+const prisma = new PrismaClient();
+function jakartaDateKey(value) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+}
+function jakartaDateTime(dateKey, hour, minute) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0));
+}
+(async () => {
+  const [schoolClass, subject, teacher] = await Promise.all([
+    prisma.schoolClass.findFirst({ orderBy: { createdAt: 'asc' } }),
+    prisma.subject.findFirst({ orderBy: { createdAt: 'asc' } }),
+    prisma.user.findFirst({ where: { role: 'GURU_MAPEL' }, orderBy: { createdAt: 'asc' } })
+  ]);
+  if (!schoolClass || !subject || !teacher) throw new Error('Seeded class/subject/teacher missing for TLS UAT fixture.');
+  const dateKey = jakartaDateKey(new Date());
+  const startsAt = jakartaDateTime(dateKey, 10, 0);
+  const endsAt = jakartaDateTime(dateKey, 10, 45);
+  await prisma.session.create({
+    data: {
+      classId: schoolClass.id,
+      subjectId: subject.id,
+      teacherId: teacher.id,
+      startsAt,
+      endsAt,
+      businessDate: new Date(Date.UTC(startsAt.getUTCFullYear(), startsAt.getUTCMonth(), startsAt.getUTCDate(), 0, 0, 0, 0)),
+      status: SessionStatus.SCHEDULED
+    }
+  });
+  const policy = await prisma.geofencePolicy.findUnique({ where: { id: 1 } });
+  console.log(`UAT_LATITUDE=${policy?.centerLat ?? 0}`);
+  console.log(`UAT_LONGITUDE=${policy?.centerLng ?? 0}`);
+  console.log('UAT_ACCURACY_METER=25');
+})().finally(() => prisma.$disconnect());
+NODE
+node <<'NODE' > artifacts/https-ci/uat-geo.env
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+(async () => {
+  const policy = await prisma.geofencePolicy.findUnique({ where: { id: 1 } });
+  console.log(`UAT_LATITUDE=${policy?.centerLat ?? 0}`);
+  console.log(`UAT_LONGITUDE=${policy?.centerLng ?? 0}`);
+  console.log('UAT_ACCURACY_METER=25');
+})().finally(() => prisma.$disconnect());
+NODE
+# shellcheck disable=SC1091
+source artifacts/https-ci/uat-geo.env
+
+PUBLIC_APP_ORIGIN="$base" \
+PUBLIC_HTTP_ORIGIN="http://localhost:${http_port}" \
+PUBLIC_HTTPS_CACERT=certs/https-ci/ca.crt \
+CERT_MIN_REMAINING_DAYS=1 \
+PUBLIC_HTTPS_CHECK_INTERNAL_PORTS=NO \
+ADMIN_USERNAME="$admin_username" \
+ADMIN_PASSWORD="$admin_password" \
+PUBLIC_HTTPS_RESULT_JSON=artifacts/https-ci/public-https-result.json \
+bash scripts/public_https_smoke.sh
+
+BASE_URL="$base" \
+CURL_CACERT=certs/https-ci/ca.crt \
+ADMIN_USERNAME="$admin_username" \
+ADMIN_PASSWORD="$admin_password" \
+GURU_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
+SISWA_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
+UAT_RESULT_JSON=artifacts/https-ci/uat-read-only-result.json \
+bash scripts/uat_smoke.sh
+
+BASE_URL="$base" \
+CURL_CACERT=certs/https-ci/ca.crt \
+ADMIN_USERNAME="$admin_username" \
+ADMIN_PASSWORD="$admin_password" \
+GURU_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
+SISWA_PASSWORD="${DEFAULT_USER_PASSWORD:-User#12345678}" \
+ALLOW_MUTATING_SMOKE=YES \
+UAT_LATITUDE="$UAT_LATITUDE" \
+UAT_LONGITUDE="$UAT_LONGITUDE" \
+UAT_ACCURACY_METER="$UAT_ACCURACY_METER" \
+UAT_RESULT_JSON=artifacts/https-ci/uat-mutating-result.json \
+bash scripts/uat_smoke.sh
 
 for path in /api/v1/internal/reconciliation/run /api/v1/internal/sessions/mark-missed; do
-  code=$(curl --cacert certs/https-ci/ca.crt -ksS -o /dev/null -w '%{http_code}' "$base$path")
+  code=$(curl --cacert certs/https-ci/ca.crt -sS -o /dev/null -w '%{http_code}' "$base$path")
   test "$code" = "404"
 done
-bad_forwarded=$(curl --cacert certs/https-ci/ca.crt -ksS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: bad header' "$base/health/live")
+bad_forwarded=$(curl --cacert certs/https-ci/ca.crt -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: bad header' "$base/health/live")
 test "$bad_forwarded" = "400"
 
 docker logs schoolhub-tls-ci > artifacts/https-ci/nginx.log 2>&1 || true
 OBSERVABILITY_OUTPUT=artifacts/https-ci/observability-log-check.json node scripts/observability_log_check.mjs artifacts/https-ci/api.log
-printf '{"ok":true,"base":"%s","httpPort":%s,"httpsPort":%s}\n' "$base" "$http_port" "$https_port" > artifacts/https-ci/result.json
+jq -n --arg base "$base" --argjson httpPort "$http_port" --argjson httpsPort "$https_port" '{ok:true,base:$base,httpPort:$httpPort,httpsPort:$httpsPort}' > artifacts/https-ci/result.json

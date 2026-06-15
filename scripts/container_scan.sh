@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 set -euo pipefail
 mkdir -p artifacts/security artifacts/sbom
 if ! command -v trivy >/dev/null 2>&1; then

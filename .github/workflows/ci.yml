@@ -154,6 +154,15 @@ jobs:
       WORKER_INTERVAL_MS: 15000
       SCHOOL_TIMEZONE: Asia/Jakarta
       SSO_ENABLED: 'false'
+      ADMIN_BOOTSTRAP_ENABLED: 'true'
+      ADMIN_USERNAME: admin.tu
+      ADMIN_PASSWORD: TataUsaha#2026Strong!
+      ADMIN_FULL_NAME: Admin TU
+      DEFAULT_USER_PASSWORD: User#12345678
+      DEVELOPER_BOOTSTRAP_ENABLED: 'false'
+      DEVELOPER_PASSWORD: DeveloperOps#2026Strong!
+      BACKUP_ENCRYPTION_PASSPHRASE: ci-backup-passphrase-with-more-than-thirty-two-characters
+      BACKUP_DIR: artifacts/docker-backups
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - run: docker compose -f docker-compose.production.yml config
@@ -168,6 +177,12 @@ jobs:
           docker compose -f docker-compose.production.yml ps > docker-diagnostics/compose-ps.txt || true
           docker compose -f docker-compose.production.yml logs --no-color > docker-diagnostics/compose-logs.txt || true
           exit 1
+      - run: docker compose -f docker-compose.production.yml run --rm --no-deps api node dist/scripts/ensure-admin.js
+      - run: |
+          mkdir -p artifacts/docker-backups
+          backup_json=$(bash scripts/backup_production.sh .env.production.test --reason ci-docker)
+          backup_path=$(jq -r '.path' <<< "$backup_json")
+          bash scripts/verify_backup.sh --env-file .env.production.test --backup "$backup_path"
       - if: always()
         run: |
           mkdir -p docker-diagnostics
@@ -181,6 +196,70 @@ jobs:
           path: docker-diagnostics/
       - if: always()
         run: docker compose -f docker-compose.production.yml down -v
+
+
+  deployment-regression:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: ShellCheck production scripts
+        run: |
+          shellcheck \
+            scripts/deploy_production.sh \
+            scripts/rollback_production.sh \
+            scripts/deployment_status.sh \
+            scripts/bootstrap_ubuntu_24_04.sh \
+            scripts/uat_smoke.sh \
+            scripts/public_https_smoke.sh \
+            scripts/https_smoke.sh \
+            scripts/https_ci_fixture.sh \
+            scripts/backup_production.sh \
+            scripts/verify_backup.sh \
+            scripts/restore_backup.sh
+      - name: Compose validation for VPS topology
+        run: |
+          docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config > artifacts-vps-compose.yml
+          grep -q '127.0.0.1' artifacts-vps-compose.yml
+          grep -Eq 'published: "?8080"?' artifacts-vps-compose.yml
+          ! grep -Eq 'published: "?80"?' artifacts-vps-compose.yml
+      - name: Deployment dry-run and evidence schema
+        run: |
+          chmod 600 .env.production.test
+          bash scripts/deploy_production.sh .env.production.test --dry-run
+          evidence=$(find artifacts/deployments -path '*/deployment-evidence.json' -type f | head -n 1)
+          node scripts/validate_deployment_evidence.mjs "$evidence"
+      - name: Deployment scripts fail closed on insecure env permissions
+        run: |
+          cp .env.production.test /tmp/schoolhub-insecure.env
+          chmod 644 /tmp/schoolhub-insecure.env
+          if bash scripts/deploy_production.sh /tmp/schoolhub-insecure.env --dry-run; then
+            echo 'deploy dry-run unexpectedly accepted group/world-readable env file' >&2
+            exit 1
+          fi
+      - name: Rollback dry-run
+        run: bash scripts/rollback_production.sh --env-file .env.production.test --target-sha "$GITHUB_SHA" --dry-run
+      - name: UAT script has no legacy browser token dependency and uses geolocation contract
+        run: |
+          ! grep -R -E 'accessToken|Authorization: Bearer|authorization: Bearer' scripts/uat_smoke.sh
+          grep -q 'accuracyMeter' scripts/uat_smoke.sh
+          grep -q 'browser_geolocation' scripts/uat_smoke.sh
+          ! grep -R -E '"lat"|"lng"' scripts/uat_smoke.sh
+      - name: Secret-like files are not tracked and are ignored
+        run: |
+          ! git ls-files | grep -E '(^|/)(\.env|.*\.pem|.*\.key|.*\.dump|.*\.dump\.enc|.*backup.*\.sql\.gz|.*credentials.*\.json)$'
+          git check-ignore .env .env.local absensissh.pem private.key backup.dump.enc generated-credentials.json
 
   codeql:
     runs-on: ubuntu-latest

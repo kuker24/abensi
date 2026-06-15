@@ -8,6 +8,10 @@ const PLACEHOLDER_VALUES = new Set([
   'secret',
   'password',
   'admin',
+  'admin123',
+  'example',
+  'default',
+  'dosen324',
   'Admin#12345',
   'Beta@2026!'
 ]);
@@ -63,6 +67,9 @@ export function validateEnvironment(config: Env) {
     if ((config.SCHOOL_TIMEZONE || 'Asia/Jakarta') !== 'Asia/Jakarta') {
       throw new Error('SCHOOL_TIMEZONE production harus Asia/Jakarta untuk baseline MAN 1 Rokan Hulu.');
     }
+
+    const publicOrigin = requireValue(config, 'PUBLIC_APP_ORIGIN');
+    validateUrl(publicOrigin, 'PUBLIC_APP_ORIGIN', ['https:']);
 
     const cors = requireValue(config, 'CORS_ORIGIN');
     for (const origin of cors.split(',').map((item) => item.trim()).filter(Boolean)) {

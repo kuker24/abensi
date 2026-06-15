@@ -17,7 +17,7 @@ pg_dump --dbname="$SOURCE_PG_URL" | gzip -9 | openssl enc -aes-256-cbc -salt -pb
 openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_PASSPHRASE -in "$backup" | gunzip -t
 psql "$RESTORE_PG_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' >/dev/null
 openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_PASSPHRASE -in "$backup" | gunzip | psql "$RESTORE_PG_URL" -v ON_ERROR_STOP=1 >/dev/null
-RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" DATABASE_URL="$RESTORE_DATABASE_URL" npm run audit:verify-chain
+DATABASE_URL="$RESTORE_DATABASE_URL" npm run audit:verify-chain
 DATABASE_URL="$RESTORE_DATABASE_URL" npm run verify:post-migration -- --json=artifacts/backup-restore/post-restore-verify.json
 integrity_json="$(psql "$RESTORE_PG_URL" -tAc "select json_build_object(
   'users', (select count(*) from \"User\"),
