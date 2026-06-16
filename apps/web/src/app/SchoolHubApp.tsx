@@ -49,6 +49,7 @@ type NavIcon = typeof Home;
 type NavItem = readonly [section: string, url: AppRoutePath, label: string, icon: NavIcon];
 type NavKey = 'admin' | 'operator' | 'picket' | 'guru' | 'siswa' | 'developer';
 type ConnectionStatus = 'checking' | 'online' | 'offline';
+export const NOTIFICATION_REFRESH_EVENT = 'schoolhub_notifications_refresh';
 
 function lazyPage(loader: () => Promise<any>, exportName: string) {
   return lazy(async () => {
@@ -479,6 +480,7 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
 
 function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: { crumbs: string[]; user: User; onOpenTutorial: () => void; onToggleSidebar: () => void; connection: ConnectionStatus }) {
   const [query, setQuery] = useState('');
+  const [unreadCount, setUnreadCount] = useState<number | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const menuItems = useMemo(
     () => navItemsForUser(user).map(([section, url, label]) => ({ section, url, label })),
@@ -495,6 +497,31 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
     setQuery('');
     go(first.url);
   }, [results]);
+  const refreshUnreadCount = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadCount(null);
+      return;
+    }
+    try {
+      const data = await apiFetch<{ unreadCount?: number }>('/notifications?unreadOnly=true&page=1&limit=1');
+      const nextCount = Number(data?.unreadCount ?? 0);
+      setUnreadCount(Number.isFinite(nextCount) ? Math.max(0, nextCount) : 0);
+    } catch {
+      // Fail closed visually: the bell stays usable, but we do not show a fake warning badge.
+      setUnreadCount(null);
+    }
+  }, [user?.id]);
+  useEffect(() => { void refreshUnreadCount(); }, [refreshUnreadCount]);
+  useEffect(() => {
+    const refresh = () => { void refreshUnreadCount(); };
+    const onVisibility = () => { if (document.visibilityState === 'visible') void refreshUnreadCount(); };
+    window.addEventListener(NOTIFICATION_REFRESH_EVENT, refresh);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener(NOTIFICATION_REFRESH_EVENT, refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshUnreadCount]);
   // Ctrl+K to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -508,6 +535,9 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
     return () => window.removeEventListener('keydown', handler);
   }, []);
   const roleStatus = connection === 'online' ? 'Sedang Aktif' : connection === 'checking' ? 'Memeriksa Koneksi' : 'Tidak Terhubung';
+  const safeUnreadCount = unreadCount ?? 0;
+  const notificationLabel = safeUnreadCount > 0 ? `Notifikasi, ${safeUnreadCount} belum dibaca` : 'Notifikasi';
+  const notificationBadge = safeUnreadCount > 99 ? '99+' : String(safeUnreadCount);
   return (
     <div className="topbar">
       <button className="btn icon ghost hamburger" style={{ minWidth: 40, minHeight: 40 }} aria-label="Buka menu navigasi" onClick={onToggleSidebar}>
@@ -549,9 +579,10 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
         <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{roleLabel(user?.role)} {roleStatus}</span>
       </div>
       <IconBtn label="Lihat tutorial" onClick={onOpenTutorial}><BookOpen size={16} /></IconBtn>
-      <span className="notif-wrapper"><IconBtn label="Notifikasi" onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
+      <span className="notif-wrapper"><IconBtn label={notificationLabel} onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
         <Bell size={16} />
-      </IconBtn><span className="notif-dot" aria-hidden="true" /></span>
+        {safeUnreadCount > 0 && <span className="notif-badge" aria-hidden="true">{notificationBadge}</span>}
+      </IconBtn></span>
     </div>
   );
 }

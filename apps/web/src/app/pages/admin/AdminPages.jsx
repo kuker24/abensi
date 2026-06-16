@@ -164,13 +164,89 @@ function ResolveFlagModal({ flag, onClose, onDone }) {
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="resolve-flag-title" onClick={onClose}><div className="card pad-lg elev modal" onClick={(e) => e.stopPropagation()}><div className="eyebrow"><span className="dot" /> TINDAK TANDA MASALAH · ALASAN WAJIB</div><h2 id="resolve-flag-title">{statusLabel(flag.type)} · {flag.user?.fullName || flag.userId}</h2><p className="muted">Catat proses tindak lanjut agar petugas lain paham riwayatnya.</p><div className="grid g-3"><Card title="Alur tindak lanjut" sub="Ubah status kerja tanpa menutup masalah"><div className="form-grid"><Field label="Status proses"><SelectInput value={workflow.reviewStatus} onChange={(e) => setW('reviewStatus', e.target.value)}><option value="OPEN">Belum dicek</option><option value="IN_REVIEW">Sedang dicek</option><option value="ESCALATED">Perlu eskalasi</option><option value="RESOLVED">Selesai</option></SelectInput></Field><Field label="Prioritas"><SelectInput value={workflow.priority} onChange={(e) => setW('priority', e.target.value)}><option value="LOW">Rendah</option><option value="NORMAL">Normal</option><option value="HIGH">Tinggi</option><option value="URGENT">Mendesak</option></SelectInput></Field><Field label="Batas tindak lanjut"><TextInput type="date" value={workflow.dueAt} onChange={(e) => setW('dueAt', e.target.value)} /></Field><Field label="Catatan tindak lanjut"><TextInput type="textarea" rows={3} value={workflow.followUpNote} placeholder="Contoh: sudah konfirmasi ke wali kelas, menunggu bukti izin." onChange={(e) => setW('followUpNote', e.target.value)} /></Field><Btn type="button" loading={workflowLoading} onClick={saveWorkflow}><Save size={14} /> Simpan tindak lanjut</Btn></div></Card><Card title="Riwayat singkat" sub="Jejak kejadian dan tindak lanjut"><div className="timeline-lite">{timeline.map((item, idx) => <div className="timeline-item" key={`${item.label}-${idx}`}><div className="timeline-dot" /><div><b>{item.label}</b><p>{item.body}</p><small>{formatDateTime(item.at)}</small></div></div>)}</div></Card></div><Field label="Alasan penyelesaian/eskalasi" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={4} value={reason} placeholder="Tulis alasan minimal 10 karakter" onChange={(e) => setReason(e.target.value)} /></Field>{err && <div className="inline-error"><AlertTriangle size={14} /> {err}</div>}<div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><Btn variant="ghost" onClick={onClose}>Batal</Btn><Btn disabled={reason.trim().length < 10} loading={loading} onClick={() => act('escalate')}>Eskalasi</Btn><Btn variant="primary" disabled={reason.trim().length < 10} loading={loading} onClick={() => act('resolve')}>Selesaikan</Btn></div></div></div>;
 }
 
-export function MasterDataPage({ notify }) {
-  const [tab, setTab] = useState('student-import');
-  return <div className="content"><PageHead eyebrow="DATA SEKOLAH" title="Akun & Data Sekolah" sub="Untuk siswa: import file, sistem otomatis membuat akun, kelas, pendaftaran, dan QR." /><TabBar value={tab} onChange={setTab} options={[["student-import", "Import Siswa"], ["students", "Daftar Siswa"], ["users", "Buat/Edit Akun"], ["classes", "Kelas"], ["enroll", "Daftarkan Manual"], ["subjects", "Mapel"], ["schedule-help", "Cara Pakai"], ["years", "Tahun Ajaran"], ["semesters", "Semester"], ["rooms", "Ruang"], ["import", "Impor Lanjutan"]]} /><SimpleHelpBox title="Urutan paling mudah" items={['Upload CSV siswa di tab Import Siswa.', 'Klik Periksa, lalu Simpan & Siapkan QR.', 'Buka menu Perangkat Absensi → Cetak Kartu untuk cetak kartu per kelas.']} />{tab === 'student-import' && <StudentImportPanel notify={notify} />}{tab === 'users' && <UsersPanel notify={notify} />}{tab === 'years' && <SimpleCreatePanel title="Tahun Ajaran" path="/academic/years" fields={[["code", "Kode"], ["name", "Nama"]]} notify={notify} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}{tab === 'semesters' && <SimpleCreatePanel title="Semester" path="/academic/semesters" fields={[["academicYearId", "ID Tahun Ajaran"], ["code", "Kode"], ["name", "Nama"]]} notify={notify} columns={[{ header: 'Tahun', render: (r) => r.academicYear?.name || r.academicYearId }, { header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }]} />}{tab === 'rooms' && <SimpleCreatePanel title="Ruang" path="/academic/rooms" fields={[["code", "Kode"], ["name", "Nama"]]} notify={notify} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}{tab === 'classes' && <SimpleCreatePanel title="Kelas" path="/academic/classes" fields={[["code", "Kode"], ["name", "Nama"], ["yearLabel", "Tahun Ajaran"]]} notify={notify} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Tahun', key: 'yearLabel' }]} />}{tab === 'subjects' && <SimpleCreatePanel title="Mapel" path="/academic/subjects" fields={[["code", "Kode"], ["name", "Nama"]]} notify={notify} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }]} />}{tab === 'students' && <StudentsPanel />}{tab === 'enroll' && <EnrollPanel notify={notify} />}{tab === 'schedule-help' && <Card title="Cara pakai data sekolah"><StepGuide steps={['Import siswa massal.', 'Cek daftar siswa per kelas.', 'Cetak kartu dari menu Cetak Kartu.', 'Buat jadwal kelas dari menu Jadwal Kelas.']} /></Card>}{tab === 'import' && <ImportPanel notify={notify} />}</div>;
+const MASTER_DATA_TAB_GROUPS = [
+  { label: 'Siswa', tabs: [['student-import', 'Import Siswa'], ['students', 'Daftar Siswa'], ['enroll', 'Daftarkan Manual']] },
+  { label: 'Akun', tabs: [['users', 'Buat/Edit Akun']] },
+  { label: 'Akademik', tabs: [['classes', 'Kelas'], ['subjects', 'Mapel'], ['years', 'Tahun Ajaran'], ['semesters', 'Semester'], ['rooms', 'Ruang']] },
+  { label: 'Bantuan & Lanjutan', tabs: [['schedule-help', 'Cara Pakai'], ['import', 'Impor Lanjutan']] }
+];
+
+const MASTER_DATA_TABS = MASTER_DATA_TAB_GROUPS.flatMap((group) => group.tabs);
+const MASTER_DATA_TAB_VALUES = new Set(MASTER_DATA_TABS.map(([value]) => value));
+
+const MASTER_DATA_HELP = {
+  'student-import': { title: 'Urutan paling mudah', items: ['Upload CSV siswa di tab Import Siswa.', 'Klik Periksa, lalu Simpan & Siapkan QR.', 'Buka menu Perangkat Absensi → Cetak Kartu untuk cetak kartu per kelas.'] },
+  students: { title: 'Cek daftar siswa', items: ['Gunakan filter kelas untuk verifikasi anggota kelas.', 'Jika siswa belum muncul, cek akun siswa dan pendaftaran kelas.'] },
+  users: { title: 'Kelola akun aman', items: ['Buat akun dengan password sementara, lalu minta pengguna mengganti password.', 'Nonaktifkan akun yang tidak dipakai; jangan hapus jika sudah punya riwayat.'] },
+  classes: { title: 'Data kelas', items: ['Buat kelas setelah label tahun ajaran disepakati.', 'Gunakan kode singkat yang sama dengan jadwal dan kartu.'] },
+  subjects: { title: 'Data mapel', items: ['Isi kode mapel yang mudah dikenali.', 'Nama mapel dipakai di jadwal dan laporan.'] },
+  years: { title: 'Tahun ajaran', items: ['Buat tahun ajaran aktif sebelum membuat semester.', 'Kode contoh: 2026/2027.'] },
+  semesters: { title: 'Semester', items: ['Pilih tahun ajaran dari daftar, bukan mengetik ID database.', 'Nama semester dipakai untuk pendaftaran dan jadwal.'] },
+  rooms: { title: 'Ruang kelas', items: ['Definisikan kode ruang yang dipakai oleh jadwal.', 'Contoh kode: R-A1 atau LAB-1.'] },
+  enroll: { title: 'Pendaftaran manual', items: ['Pilih siswa, kelas, dan tanggal mulai berlaku.', 'Gunakan untuk siswa pindahan atau transfer kelas.'] },
+  'schedule-help': { title: 'Cara pakai', items: ['Mulai dari import siswa, cek daftar siswa, cetak kartu, lalu buat jadwal kelas.'] },
+  import: { title: 'Impor lanjutan', items: ['Gunakan hanya untuk CSV/XLSX pengguna atau akademik yang sudah disiapkan operator.', 'Selalu periksa pratinjau sebelum menyimpan.'] }
+};
+
+function readMasterDataTabFromUrl() {
+  const raw = new URLSearchParams(window.location.search).get('tab') || 'student-import';
+  return MASTER_DATA_TAB_VALUES.has(raw) ? raw : 'student-import';
 }
 
-function TabBar({ value, onChange, options }) {
-  return <div className="tabs">{options.map(([v, label]) => <button key={v} className={`btn sm ${value === v ? 'primary' : 'ghost'}`} onClick={() => onChange(v)}>{label}</button>)}</div>;
+export function MasterDataPage({ notify }) {
+  const [tab, setTab] = useState(readMasterDataTabFromUrl);
+  useEffect(() => {
+    const handlePop = () => setTab(readMasterDataTabFromUrl());
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+  function selectTab(nextTab) {
+    if (!MASTER_DATA_TAB_VALUES.has(nextTab)) nextTab = 'student-import';
+    setTab(nextTab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', nextTab);
+    window.history.pushState({}, '', `${url.pathname}?${url.searchParams.toString()}`);
+  }
+  return <div className="content master-data-page"><PageHead eyebrow="DATA SEKOLAH" title="Akun & Data Sekolah" sub="Kelola siswa, akun, kelas, mapel, tahun ajaran, semester, dan ruang tanpa membuka ID internal." /><TabBar value={tab} onChange={selectTab} groups={MASTER_DATA_TAB_GROUPS} /><ContextualMasterDataHelp tab={tab} />
+    <section id={`master-data-panel-${tab}`} role="tabpanel" aria-labelledby={`master-data-tab-${tab}`} className="master-data-panel">
+      {tab === 'student-import' && <StudentImportPanel notify={notify} />}
+      {tab === 'users' && <UsersPanel notify={notify} />}
+      {tab === 'years' && <SimpleCreatePanel title="Tahun Ajaran" path="/academic/years" fields={[{ key: 'code', label: 'Kode', placeholder: 'contoh: 2026/2027', hint: 'Kode ringkas untuk laporan.' }, { key: 'name', label: 'Nama', placeholder: 'contoh: Tahun Ajaran 2026/2027' }]} notify={notify} empty={{ title: 'Belum ada tahun ajaran.', sub: 'Buat tahun ajaran sebelum membuat semester.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}
+      {tab === 'semesters' && <SemesterPanel notify={notify} />}
+      {tab === 'rooms' && <SimpleCreatePanel title="Ruang" path="/academic/rooms" fields={[{ key: 'code', label: 'Kode Ruang', placeholder: 'contoh: R-A1 atau LAB-1' }, { key: 'name', label: 'Nama Ruang', placeholder: 'contoh: Ruang Kelas X A' }]} notify={notify} empty={{ title: 'Belum ada ruang kelas.', sub: 'Tambahkan ruang agar jadwal bisa memakai lokasi yang jelas.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}
+      {tab === 'classes' && <SimpleCreatePanel title="Kelas" path="/academic/classes" fields={[{ key: 'code', label: 'Kode Kelas', placeholder: 'contoh: X-A' }, { key: 'name', label: 'Nama Kelas', placeholder: 'contoh: Kelas X A' }, { key: 'yearLabel', label: 'Label Tahun Ajaran', placeholder: 'contoh: 2026/2027', hint: 'API kelas saat ini memakai label tahun ajaran, bukan relasi ID.' }]} notify={notify} empty={{ title: 'Belum ada kelas.', sub: 'Isi formulir di sebelah kiri untuk menambahkan kelas.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Tahun', key: 'yearLabel' }]} />}
+      {tab === 'subjects' && <SimpleCreatePanel title="Mapel" path="/academic/subjects" fields={[{ key: 'code', label: 'Kode Mapel', placeholder: 'contoh: MTK' }, { key: 'name', label: 'Nama Mapel', placeholder: 'contoh: Matematika' }]} notify={notify} empty={{ title: 'Belum ada mata pelajaran.', sub: 'Tambahkan kode dan nama mapel untuk jadwal kelas.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }]} />}
+      {tab === 'students' && <StudentsPanel />}
+      {tab === 'enroll' && <EnrollPanel notify={notify} />}
+      {tab === 'schedule-help' && <Card title="Cara pakai data sekolah"><StepGuide steps={['Import siswa massal.', 'Cek daftar siswa per kelas.', 'Cetak kartu dari menu Cetak Kartu.', 'Buat jadwal kelas dari menu Jadwal Kelas.']} /></Card>}
+      {tab === 'import' && <ImportPanel notify={notify} />}
+    </section>
+  </div>;
+}
+
+function ContextualMasterDataHelp({ tab }) {
+  const help = MASTER_DATA_HELP[tab] || MASTER_DATA_HELP['student-import'];
+  return <div className="master-data-help" role="note"><b>{help.title}</b><ul>{help.items.map((item, index) => <li key={index}>{item}</li>)}</ul></div>;
+}
+
+function TabBar({ value, onChange, groups, options }) {
+  if (!groups) return <div className="tabs">{(options || []).map(([v, label]) => <button key={v} className={`btn sm ${value === v ? 'primary' : 'ghost'}`} onClick={() => onChange(v)}>{label}</button>)}</div>;
+  const tabs = groups.flatMap((group) => group.tabs);
+  function move(delta) {
+    const focusedTab = document.activeElement?.id?.replace('master-data-tab-', '');
+    const baseValue = MASTER_DATA_TAB_VALUES.has(focusedTab) ? focusedTab : value;
+    const index = tabs.findIndex(([tab]) => tab === baseValue);
+    const nextIndex = (index + delta + tabs.length) % tabs.length;
+    onChange(tabs[nextIndex][0]);
+    window.requestAnimationFrame(() => document.getElementById(`master-data-tab-${tabs[nextIndex][0]}`)?.focus());
+  }
+  function onKeyDown(event) {
+    if (event.key === 'ArrowRight') { event.preventDefault(); move(1); }
+    if (event.key === 'ArrowLeft') { event.preventDefault(); move(-1); }
+    if (event.key === 'Home') { event.preventDefault(); onChange(tabs[0][0]); window.requestAnimationFrame(() => document.getElementById(`master-data-tab-${tabs[0][0]}`)?.focus()); }
+    if (event.key === 'End') { event.preventDefault(); onChange(tabs[tabs.length - 1][0]); window.requestAnimationFrame(() => document.getElementById(`master-data-tab-${tabs[tabs.length - 1][0]}`)?.focus()); }
+  }
+  return <div className="master-data-tabs-wrap" aria-label="Navigasi data sekolah"><div className="master-data-tab-fade" aria-hidden="true" /><div className="tabs master-data-tabs" role="tablist" aria-label="Tab Master Data" onKeyDown={onKeyDown}>{groups.map((group) => <div className="master-data-tab-group" key={group.label}><span className="master-data-tab-group-label">{group.label}</span>{group.tabs.map(([v, label]) => <button id={`master-data-tab-${v}`} type="button" role="tab" aria-selected={value === v} aria-controls={`master-data-panel-${v}`} tabIndex={value === v ? 0 : -1} key={v} className={`btn sm ${value === v ? 'primary' : 'ghost'}`} onClick={() => onChange(v)}>{label}</button>)}</div>)}</div></div>;
 }
 
 function UsersPanel({ notify }) {
@@ -180,6 +256,9 @@ function UsersPanel({ notify }) {
   const state = useRemote(() => apiFetch('/identity/users?page=1&limit=200'), []);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
   const emptyUserForm = { id: '', username: '', fullName: '', password: '', role: 'SISWA', cardStatus: 'ACTIVE' };
   const [form, set, reset, setForm] = useForm(emptyUserForm);
   const userPresets = [
@@ -189,20 +268,38 @@ function UsersPanel({ notify }) {
     { role: 'OPERATOR_IT', title: 'Buat Akun Operator', desc: 'Untuk pengelola perangkat, kartu, dan sistem.', icon: <ShieldCheck size={18} /> }
   ];
   function applyUserPreset(role) {
-    reset({ id: '', username: '', fullName: '', password: '', role, cardStatus: 'ACTIVE' });
+    setForm((prev) => ({ ...emptyUserForm, username: prev.id ? '' : prev.username, fullName: prev.id ? '' : prev.fullName, role }));
+    setFormError('');
   }
-  const filteredRows = itemsOf(state.data).filter((user) => (statusFilter === 'ALL' || (statusFilter === 'ACTIVE') === Boolean(user.active)) && (roleFilter === 'ALL' || user.role === roleFilter));
+  const allRows = itemsOf(state.data);
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredRows = allRows.filter((user) => {
+    const statusMatches = statusFilter === 'ALL' || (statusFilter === 'ACTIVE') === Boolean(user.active);
+    const roleMatches = roleFilter === 'ALL' || user.role === roleFilter;
+    const searchMatches = !normalizedSearch || `${user.fullName || ''} ${user.username || ''}`.toLowerCase().includes(normalizedSearch);
+    return statusMatches && roleMatches && searchMatches;
+  });
   const filteredState = { ...state, data: { ...(state.data || {}), items: filteredRows, meta: { ...(state.data?.meta || {}), total: filteredRows.length } } };
   async function submit(e) {
     e.preventDefault();
     const password = String(form.password || '').trim();
-    if (!form.id && password.length < 8) { notify('Isi kata sandi sementara minimal 8 karakter.', 'warn'); return; }
-    if (form.id && password && password.length < 8) { notify('Kata sandi baru minimal 8 karakter.', 'warn'); return; }
-    if (form.id) await apiFetch(`/identity/users/${form.id}`, { method: 'PATCH', body: JSON.stringify({ fullName: form.fullName, role: form.role, cardStatus: form.cardStatus, ...(password ? { password } : {}) }) });
-    else await apiFetch('/identity/users', { method: 'POST', body: JSON.stringify({ ...form, password }) });
-    reset(emptyUserForm);
-    state.refresh();
-    notify('Pengguna berhasil disimpan.');
+    if (!form.id && password.length < 8) { setFormError('Isi kata sandi sementara minimal 8 karakter.'); notify('Isi kata sandi sementara minimal 8 karakter.', 'warn'); return; }
+    if (form.id && password && password.length < 8) { setFormError('Kata sandi baru minimal 8 karakter.'); notify('Kata sandi baru minimal 8 karakter.', 'warn'); return; }
+    setSubmitting(true);
+    setFormError('');
+    try {
+      if (form.id) await apiFetch(`/identity/users/${form.id}`, { method: 'PATCH', body: JSON.stringify({ fullName: form.fullName, role: form.role, cardStatus: form.cardStatus, ...(password ? { password } : {}) }) });
+      else await apiFetch('/identity/users', { method: 'POST', body: JSON.stringify({ ...form, password }) });
+      reset(emptyUserForm);
+      state.refresh();
+      notify(`${form.fullName || form.username} berhasil disimpan.`);
+    } catch (error) {
+      const message = error.message || 'Pengguna belum bisa disimpan.';
+      setFormError(message);
+      notify(message, 'bad');
+    } finally {
+      setSubmitting(false);
+    }
   }
   async function deactivate(row) {
     if (!await riskConfirm(`Nonaktifkan ${row.fullName}? Riwayat tetap aman dan akun bisa diaktifkan lagi.`)) return;
@@ -230,30 +327,62 @@ function UsersPanel({ notify }) {
       notify(error.message || 'Akun tidak bisa dihapus permanen karena punya riwayat.', 'bad');
     }
   }
-  return <div className="grid management-grid"><Card title={form.id ? 'Edit Akun' : 'Buat Akun Baru'} sub="Pilih jenis akun dulu, lalu isi nama. Untuk siswa, lanjutkan ke tab Daftarkan Siswa setelah disimpan."><div className="user-preset-grid">{userPresets.map((preset) => <QuickActionCard key={preset.role} title={preset.title} desc={preset.desc} icon={preset.icon} actionLabel="Pilih" onClick={() => applyUserPreset(preset.role)} tone={form.role === preset.role ? 'ok' : ''} />)}</div><form onSubmit={submit} className="form-grid"><Field label="Nama akun"><TextInput value={form.username} placeholder="contoh: siswa.aisyah" onChange={(e) => set('username', e.target.value)} required disabled={Boolean(form.id)} /></Field><Field label="Nama Lengkap"><TextInput value={form.fullName} placeholder="Nama lengkap sesuai data sekolah" onChange={(e) => set('fullName', e.target.value)} required /></Field><Field label="Kata sandi"><TextInput type="password" value={form.password} placeholder={form.id ? 'Kosongkan jika tidak diganti' : 'Isi minimal 8 karakter'} autoComplete="new-password" onChange={(e) => set('password', e.target.value)} minLength={8} required={!form.id} /></Field><Field label="Peran"><SelectInput value={form.role} onChange={(e) => set('role', e.target.value)}>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field><Field label="Status Kartu"><SelectInput value={form.cardStatus} onChange={(e) => set('cardStatus', e.target.value)}><option value="ACTIVE">Aktif</option><option value="LOST">Hilang</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field><Btn variant="primary"><Plus size={14} /> {form.id ? 'Simpan Perubahan' : 'Buat Akun'}</Btn>{form.role === 'SISWA' && !form.id && <Btn type="button" onClick={() => notify('Setelah akun tersimpan, buka tab Daftarkan Siswa untuk memilih kelas.', 'warn')}>Info daftar kelas</Btn>}{form.id && <Btn type="button" variant="ghost" onClick={() => reset(emptyUserForm)}>Batal edit</Btn>}</form><SimpleHelpBox title="Tips akun" items={['Nama akun contoh: siswa.nama atau guru.nama.', 'Gunakan kata sandi sementara yang mudah dibagikan secara pribadi, lalu ganti saat produksi.', 'Jangan hapus akun yang sudah punya riwayat. Nonaktifkan saja.']} /></Card><Card title="Daftar Pengguna" sub="Nonaktifkan untuk menjaga riwayat. Hapus permanen hanya untuk akun test yang benar-benar aman." actions={<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><SelectInput value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="ALL">Semua status</option><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></SelectInput><SelectInput value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}><option value="ALL">Semua peran</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></div>}><AsyncTable state={filteredState} columns={[{ header: 'Nama', render: (r) => <span className="row"><Avatar name={r.fullName} size="sm" /> {r.fullName}</span> }, { header: 'Nama akun', key: 'username' }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Status', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} onRow={(r) => <div className="row"><Btn size="sm" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => setForm({ id: r.id, username: r.username, fullName: r.fullName, password: '', role: r.role, cardStatus: r.cardStatus })}>Edit</Btn>{r.active ? <Btn size="sm" variant="danger" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => deactivate(r)}>Nonaktifkan</Btn> : <Btn size="sm" onClick={() => activate(r)}>Aktifkan Lagi</Btn>}{isDeveloper && <Btn size="sm" variant="danger" onClick={() => permanentDelete(r)}>Hapus Permanen</Btn>}</div>} /></Card></div>;
+  const userEmpty = allRows.length ? { title: 'Tidak ada pengguna yang sesuai dengan filter.', sub: 'Ubah status, peran, atau kata kunci pencarian.' } : { title: 'Belum ada pengguna tambahan.', sub: 'Gunakan formulir di sebelah kiri untuk membuat akun guru, siswa, piket, atau operator.' };
+  return <div className="master-data-user-layout"><div className="master-data-form-panel"><Card title={form.id ? 'Edit Akun' : 'Buat Akun Baru'} sub="Pilih jenis akun dulu, lalu isi nama. Untuk siswa, lanjutkan ke tab Daftarkan Manual setelah disimpan."><div className="user-preset-grid master-data-account-presets">{userPresets.map((preset) => <QuickActionCard key={preset.role} title={preset.title} desc={preset.desc} icon={preset.icon} actionLabel="Pilih" onClick={() => applyUserPreset(preset.role)} tone={form.role === preset.role ? 'ok' : ''} />)}</div><form onSubmit={submit} className="form-grid"><Field label="Nama akun" hint="wajib"><TextInput value={form.username} placeholder="contoh: siswa.aisyah" onChange={(e) => set('username', e.target.value)} required disabled={Boolean(form.id) || submitting} /></Field><Field label="Nama Lengkap" hint="wajib"><TextInput value={form.fullName} placeholder="Nama lengkap sesuai data sekolah" onChange={(e) => set('fullName', e.target.value)} required disabled={submitting} /></Field><Field label="Kata sandi" hint={form.id ? 'opsional saat edit' : 'minimal 8 karakter'}><TextInput type="password" value={form.password} placeholder={form.id ? 'Kosongkan jika tidak diganti' : 'Isi password sementara'} autoComplete="new-password" onChange={(e) => set('password', e.target.value)} minLength={8} required={!form.id} disabled={submitting} /></Field><Field label="Peran"><SelectInput value={form.role} onChange={(e) => set('role', e.target.value)} disabled={submitting}>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field><Field label="Status Kartu"><SelectInput value={form.cardStatus} onChange={(e) => set('cardStatus', e.target.value)} disabled={submitting}><option value="ACTIVE">Aktif</option><option value="LOST">Hilang</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field>{formError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {formError}</div>}<Btn variant="primary" loading={submitting}><Plus size={14} /> {form.id ? 'Simpan Perubahan' : 'Buat Akun'}</Btn>{form.role === 'SISWA' && !form.id && <Btn type="button" disabled={submitting} onClick={() => notify('Setelah akun tersimpan, buka tab Daftarkan Manual untuk memilih kelas.', 'warn')}>Info daftar kelas</Btn>}{form.id && <Btn type="button" variant="ghost" disabled={submitting} onClick={() => { reset(emptyUserForm); setFormError(''); }}>Batal edit</Btn>}</form></Card></div><div className="master-data-list-panel"><Card title="Daftar Pengguna" sub="Nonaktifkan untuk menjaga riwayat. Hapus permanen hanya untuk akun test yang benar-benar aman."><div className="master-data-toolbar" role="search" aria-label="Filter daftar pengguna"><Field label="Cari nama atau username"><TextInput value={search} placeholder="contoh: admin.tu atau Aisyah" onChange={(e) => setSearch(e.target.value)} /></Field><Field label="Status akun"><SelectInput value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="ALL">Semua status</option><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field><Field label="Peran"><SelectInput value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}><option value="ALL">Semua peran</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field></div><div className="master-data-table-region user-table-region"><AsyncTable state={filteredState} empty={userEmpty} columns={[{ header: 'Nama', render: (r) => <span className="row master-data-user-cell"><Avatar name={r.fullName} size="sm" /> <span>{r.fullName}</span></span> }, { header: 'Nama akun', render: (r) => <span className="mono" title={r.username}>{r.username}</span> }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Status', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} onRow={(r) => <div className="row master-data-action-row"><Btn size="sm" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => setForm({ id: r.id, username: r.username, fullName: r.fullName, password: '', role: r.role, cardStatus: r.cardStatus })}>Edit</Btn>{r.active ? <Btn size="sm" variant="danger" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => deactivate(r)}>Nonaktifkan</Btn> : <Btn size="sm" onClick={() => activate(r)}>Aktifkan Lagi</Btn>}{isDeveloper && <Btn size="sm" variant="danger" onClick={() => permanentDelete(r)}>Hapus Permanen</Btn>}</div>} /></div></Card></div></div>;
 }
 
-function SimpleCreatePanel({ title, path, fields, columns, notify }) {
-  const initial = { id: '', ...Object.fromEntries(fields.map(([key]) => [key, ''])) };
+function normalizeField(field) {
+  if (Array.isArray(field)) return { key: field[0], label: field[1], required: true };
+  return { required: true, ...field };
+}
+
+function SimpleCreatePanel({ title, path, fields, columns, notify, empty }) {
+  const fieldSpecs = fields.map(normalizeField);
+  const initial = { id: '', ...Object.fromEntries(fieldSpecs.map(({ key }) => [key, ''])) };
   const [form, set, reset, setForm] = useForm(initial);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
   const state = useRemote(() => apiFetch(`${path}?page=1&limit=200`), [path]);
   async function submit(e) {
     e.preventDefault();
-    const payload = Object.fromEntries(fields.map(([key]) => [key, form[key]]));
-    if (form.id) await apiFetch(`${path}/${form.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-    else await apiFetch(path, { method: 'POST', body: JSON.stringify(payload) });
-    reset(initial);
-    state.refresh();
-    notify(`${title} berhasil disimpan.`);
+    setSubmitting(true);
+    setFormError('');
+    const payload = Object.fromEntries(fieldSpecs.map(({ key }) => [key, form[key]]));
+    try {
+      if (form.id) await apiFetch(`${path}/${form.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      else await apiFetch(path, { method: 'POST', body: JSON.stringify(payload) });
+      reset(initial);
+      state.refresh();
+      notify(`${title} ${payload.name || payload.code || ''} berhasil disimpan.`.replace(/\s+/g, ' ').trim());
+    } catch (error) {
+      const message = error.message || `${title} belum bisa disimpan.`;
+      setFormError(message);
+      notify(message, 'bad');
+    } finally {
+      setSubmitting(false);
+    }
   }
-  return <div className="grid management-grid"><Card title={`${form.id ? 'Edit' : 'Tambah'} ${title}`}><form onSubmit={submit} className="form-grid">{fields.map(([key, label]) => <Field key={key} label={label}><TextInput value={form[key]} placeholder={`Isi ${label.toLowerCase()}`} onChange={(e) => set(key, e.target.value)} required /></Field>)}<Btn variant="primary"><Save size={14} /> Simpan</Btn>{form.id && <Btn type="button" variant="ghost" onClick={() => reset(initial)}>Batal edit</Btn>}</form></Card><Card title={`Daftar ${title}`}><AsyncTable state={state} columns={columns} onRow={(r) => <Btn size="sm" onClick={() => setForm({ ...initial, ...Object.fromEntries(fields.map(([key]) => [key, r[key] || ''])), id: r.id })}>Edit</Btn>} /></Card></div>;
+  function editRow(row) {
+    setForm({ ...initial, ...Object.fromEntries(fieldSpecs.map(({ key }) => [key, row[key] || ''])), id: row.id });
+    setFormError('');
+  }
+  return <div className="master-data-layout"><div className="master-data-form-panel"><Card title={`${form.id ? 'Edit' : 'Tambah'} ${title}`}><form onSubmit={submit} className="form-grid">{fieldSpecs.map((field) => <Field key={field.key} label={field.label} hint={field.hint || (field.required ? 'wajib' : undefined)}>{field.type === 'select' ? <SelectInput value={form[field.key]} onChange={(e) => set(field.key, e.target.value)} required={field.required !== false} disabled={submitting || field.disabled}><option value="">{field.placeholder || `Pilih ${String(field.label).toLowerCase()}`}</option>{(field.options || []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput> : <TextInput type={field.type} value={form[field.key]} placeholder={field.placeholder || `Isi ${String(field.label).toLowerCase()}`} onChange={(e) => set(field.key, e.target.value)} required={field.required !== false} disabled={submitting || field.disabled} />}</Field>)}{formError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {formError}</div>}<Btn variant="primary" loading={submitting}><Save size={14} /> Simpan</Btn>{form.id && <Btn type="button" variant="ghost" disabled={submitting} onClick={() => { reset(initial); setFormError(''); }}>Batal edit</Btn>}</form></Card></div><div className="master-data-list-panel"><Card title={`Daftar ${title}`}><div className="master-data-table-region"><AsyncTable state={state} empty={empty} columns={columns} onRow={(r) => <Btn size="sm" onClick={() => editRow(r)}>Edit</Btn>} /></div></Card></div></div>;
+}
+
+function SemesterPanel({ notify }) {
+  const years = useRemote(() => apiFetch('/academic/years?page=1&limit=100'), []);
+  const yearOptions = itemsOf(years.data).map((year) => ({ value: year.id, label: `${year.name || year.code}${year.code ? ` · ${year.code}` : ''}${year.active ? ' · aktif' : ''}` }));
+  return <SimpleCreatePanel title="Semester" path="/academic/semesters" fields={[{ key: 'academicYearId', label: 'Tahun Ajaran', type: 'select', placeholder: years.loading ? 'Memuat tahun ajaran…' : 'Pilih tahun ajaran', options: yearOptions, disabled: years.loading, hint: 'pilih dari daftar' }, { key: 'code', label: 'Kode Semester', placeholder: 'contoh: GANJIL' }, { key: 'name', label: 'Nama Semester', placeholder: 'contoh: Semester Ganjil' }]} notify={notify} empty={{ title: 'Belum ada semester untuk tahun ajaran yang dipilih.', sub: 'Pilih tahun ajaran lalu tambahkan semester.' }} columns={[{ header: 'Tahun', render: (r) => r.academicYear?.name || r.academicYear?.code || '—' }, { header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }]} />;
 }
 
 function StudentsPanel() {
   const classes = useRemote(() => apiFetch('/academic/classes?page=1&limit=200'), []);
   const [classId, setClassId] = useState('');
   const students = useRemote(() => apiFetch(`/academic/students${qs({ classId, page: 1, limit: 200 })}`), [classId]);
-  return <Card title="Daftar Siswa" sub="Filter berdasarkan kelas"><div className="row" style={{ marginBottom: 12 }}><SelectInput value={classId} onChange={(e) => setClassId(e.target.value)}><option value="">Semua kelas</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</SelectInput></div><AsyncTable state={students} columns={[{ header: 'Nama', render: (r) => r.fullName || r.student?.fullName }, { header: 'Nama akun', render: (r) => r.username || r.student?.username }, { header: 'Kelas', render: (r) => r.classCode || r.schoolClass?.code || '—' }, { header: 'Kartu', render: (r) => <StatusPill status={r.cardStatus || r.student?.cardStatus} /> }]} /></Card>;
+  const empty = classId
+    ? { title: 'Belum ada siswa di kelas yang dipilih.', sub: 'Ubah filter kelas atau daftarkan siswa secara manual.' }
+    : { title: 'Belum ada siswa.', sub: 'Import siswa atau buat akun siswa lalu daftarkan ke kelas.' };
+  return <Card title="Daftar Siswa" sub="Filter dan verifikasi keanggotaan kelas."><div className="master-data-toolbar compact"><Field label="Filter kelas"><SelectInput value={classId} onChange={(e) => setClassId(e.target.value)}><option value="">Semua kelas</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</SelectInput></Field></div><div className="master-data-table-region"><AsyncTable state={students} empty={empty} columns={[{ header: 'Nama', render: (r) => r.fullName || r.student?.fullName }, { header: 'Nama akun', render: (r) => r.username || r.student?.username }, { header: 'Kelas', render: (r) => r.classCode || r.schoolClass?.code || '—' }, { header: 'Kartu', render: (r) => <StatusPill status={r.cardStatus || r.student?.cardStatus} /> }]} /></div></Card>;
 }
 
 function EnrollPanel({ notify }) {
@@ -699,7 +828,7 @@ export function TeacherLeavesPage({ notify }) {
 
 export function NotificationsPage() {
   const notifications = useRemote(() => apiFetch('/notifications?page=1&limit=50'), []);
-  async function read(row) { await apiFetch(`/notifications/${row.id}/read`, { method: 'PATCH', body: JSON.stringify({}) }); notifications.refresh(); }
+  async function read(row) { await apiFetch(`/notifications/${row.id}/read`, { method: 'PATCH', body: JSON.stringify({}) }); notifications.refresh(); window.dispatchEvent(new Event('schoolhub_notifications_refresh')); }
   return <div className="content"><PageHead eyebrow="TUGAS SAYA" title="Tugas / Notifikasi" sub="Lihat pemberitahuan penting. Tandai dibaca jika sudah selesai diperiksa." actions={<Btn onClick={notifications.refresh}><RefreshCw size={14} /> Muat ulang</Btn>} /><SimpleHelpBox title="Cara pakai" items={['Baca notifikasi dari atas.', 'Jika perlu tindakan, buka menu terkait.', 'Klik Tandai dibaca setelah selesai.']} /><Card title={`Belum dibaca: ${notifications.data?.unreadCount ?? 0}`}><AsyncTable state={notifications} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.createdAt) }, { header: 'Judul', key: 'title' }, { header: 'Isi', key: 'body' }, { header: 'Status', render: (r) => r.readAt ? 'Sudah dibaca' : 'Belum dibaca' }]} onRow={(r) => !r.readAt && <Btn size="sm" onClick={() => read(r)}>Tandai dibaca</Btn>} /></Card></div>;
 }
 
