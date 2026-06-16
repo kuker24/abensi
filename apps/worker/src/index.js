@@ -2,6 +2,7 @@ const axios = require('axios');
 const fs = require('node:fs');
 const { createHmac, randomUUID } = require('node:crypto');
 const { Queue, Worker, QueueEvents } = require('bullmq');
+const { repairStaleRepeatables } = require('./repeatable-scheduler');
 
 const baseUrl = process.env.API_BASE_URL || 'http://api:3000/api/v1';
 const reconcileUrl = process.env.API_RECONCILE_URL || `${baseUrl}/internal/reconciliation/run`;
@@ -130,6 +131,10 @@ queueEvents.on('stalled', ({ jobId }) => {
 });
 
 async function scheduleRepeatableJobs() {
+  const repaired = await repairStaleRepeatables(queue, jobDefinitions);
+  if (repaired.length > 0) {
+    console.warn(`[worker] repaired stale repeatable schedules: ${repaired.map((job) => job.name).join(', ')}`);
+  }
   for (const definition of jobDefinitions) {
     await queue.add(definition.name, { scheduledBy: 'schoolhub-worker' }, {
       jobId: `repeat:${definition.name}`,
