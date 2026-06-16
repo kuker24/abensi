@@ -293,6 +293,10 @@ main() {
     BACKUP_RESULT_JSON='{"skipped":true,"reason":"no existing production data detected"}'
   fi
 
+  # Docker Buildx can emit local manifest-list/attestation image IDs that Docker Compose later
+  # cannot inspect after a rebuild on some Docker/Compose versions. Disable default
+  # attestations for VPS-local deployment images; CI still performs separate SBOM/container scans.
+  export BUILDX_NO_DEFAULT_ATTESTATIONS="${BUILDX_NO_DEFAULT_ATTESTATIONS:-1}"
   compose build --pull
   TARGET_IMAGES_JSON="$(compose images --format json | json_lines_or_empty)"
 
