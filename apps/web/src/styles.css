@@ -965,6 +965,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 @media (max-width: 480px) {
   .content { padding: 12px 12px 22px; }
+  .topbar .searchbox { display: none; }
+  .topbar { gap: 6px; padding-inline: 8px; }
   .login-card { padding: 24px; border-radius: 22px; }
   .login-role-tabs { flex-direction: column; }
   .login-role-option { min-height: 44px; }
