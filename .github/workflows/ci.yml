@@ -80,6 +80,7 @@ jobs:
       - run: npm run typecheck:all
       - run: npm run lint:all
       - run: npm run lint --prefix apps/worker
+      - run: npm run test --prefix apps/worker
       - run: npm run test:api
       - run: npm run test:web
       - run: npm run audit:preflight-chain -- --json=artifacts/audit/audit-chain-preflight-after-unit-tests.json
