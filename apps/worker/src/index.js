@@ -42,7 +42,8 @@ if (!redisUrl) {
 
 const connection = { url: redisUrl, maxRetriesPerRequest: null };
 const queue = new Queue(queueName, { connection });
-const dlq = new Queue(`${queueName}:dlq`, { connection });
+const dlqName = process.env.WORKER_DLQ_NAME || `${queueName}-dlq`;
+const dlq = new Queue(dlqName, { connection });
 const queueEvents = new QueueEvents(queueName, { connection });
 
 const jobDefinitions = [
