@@ -15,8 +15,10 @@ const demoUsers = [
   { id: 'guru-1', username: 'guru.matematika', fullName: 'Guru Demo', role: 'GURU_MAPEL', cardStatus: 'ACTIVE', active: true },
   { id: 'siswa-1', username: 'siswa.citra', fullName: 'Citra', role: 'SISWA', cardStatus: 'ACTIVE', active: true }
 ];
-const demoClass = { id: 'class-1', code: 'X-A', name: 'Kelas X A' };
-const demoSubject = { id: 'subject-1', name: 'Matematika' };
+const demoYear = { id: 'year-1', code: '2026/2027', name: 'Tahun Ajaran 2026/2027', active: true };
+const demoClass = { id: 'class-1', code: 'X-A', name: 'Kelas X A', yearLabel: '2026/2027' };
+const demoSubject = { id: 'subject-1', code: 'MTK', name: 'Matematika' };
+const demoSemester = { id: 'semester-1', academicYearId: demoYear.id, academicYear: demoYear, code: 'GANJIL', name: 'Semester Ganjil' };
 const demoSession = {
   id: 'session-1',
   startsAt: '2026-06-14T00:00:00.000Z',
@@ -42,8 +44,11 @@ async function mockApi(page: Page) {
     if (url.includes('/attendance/class-sessions/session-1/roster')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ studentId: 'siswa-1', fullName: 'Citra', username: 'siswa.citra', cardStatus: 'ACTIVE', status: 'HADIR', eligibility: { locked: false, reasons: [] } }]) });
     if (url.includes('/attendance/class-sessions/session-1')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(demoSession) });
     if (url.includes('/attendance/class-sessions')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([demoSession])) });
+    if (url.includes('/academic/years')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([demoYear])) });
+    if (url.includes('/academic/semesters')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([demoSemester])) });
     if (url.includes('/academic/classes')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([demoClass])) });
     if (url.includes('/academic/subjects')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([demoSubject])) });
+    if (url.includes('/academic/rooms')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'room-1', code: 'R-A1', name: 'Ruang A1', active: true }])) });
     if (url.includes('/identity/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated(demoUsers)) });
     if (url.includes('/reconciliation/flags')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'flag-1', type: 'BOLOS_KELAS', status: 'OPEN', priority: 'NORMAL', user: demoUsers[5] }])) });
     if (url.includes('/notifications')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'notif-1', title: 'Cek sesi', body: 'Sesi perlu perhatian.', readAt: null }])) });
@@ -130,6 +135,17 @@ test.describe('major authenticated routes meet WCAG critical/serious zero gate',
       await expect(page.locator('#main-content')).toBeVisible();
       await assertNoSeriousA11y(page);
     });
+  }
+});
+
+test('master data grouped tabs and semester selector have no critical/serious WCAG violations', async ({ page }) => {
+  await mockApi(page);
+  await seedUser(page, demoUsers[0]);
+  for (const path of ['/admin/master-data?tab=users', '/admin/master-data?tab=classes', '/admin/master-data?tab=semesters']) {
+    await page.goto(path);
+    await expect(page.getByRole('tablist', { name: 'Tab Master Data' })).toBeVisible();
+    if (path.includes('semesters')) await expect(page.getByLabel('Tahun Ajaran')).toBeVisible();
+    await assertNoSeriousA11y(page);
   }
 });
 

@@ -298,8 +298,13 @@ export function RoleTaskPanel({ title = 'Apa yang harus saya lakukan sekarang?',
   return <Card title={title} sub="Tombol cepat untuk pekerjaan harian paling penting."><div className="role-task-grid">{tasks.map((task, index) => <QuickActionCard key={index} title={task.title} desc={task.desc} icon={task.icon} actionLabel={task.actionLabel || 'Buka'} onClick={task.onClick} tone={task.tone} />)}</div></Card>;
 }
 
-export function DataTable<T extends Record<string, any>>({ rows, columns, empty = 'Tidak ada data', onRow }: { rows: T[]; columns: Column<T>[]; empty?: string; onRow?: (row: T) => ReactNode }) {
-  if (!rows?.length) return <EmptyState title={empty} />;
+type EmptyStateConfig = string | { title?: string; sub?: string; action?: ReactNode };
+
+export function DataTable<T extends Record<string, any>>({ rows, columns, empty = 'Tidak ada data', onRow }: { rows: T[]; columns: Column<T>[]; empty?: EmptyStateConfig; onRow?: (row: T) => ReactNode }) {
+  if (!rows?.length) {
+    const emptyConfig = typeof empty === 'string' ? { title: empty } : empty;
+    return <EmptyState title={emptyConfig.title || 'Tidak ada data'} sub={emptyConfig.sub || 'Data akan muncul di sini setelah tersedia.'} action={emptyConfig.action} />;
+  }
   const labelFor = (column: Column<T>) => typeof column.header === 'string' ? column.header : String(column.key || '');
   return (
     <div className="table-wrap" tabIndex={0} role="region" aria-label="Tabel data">
@@ -358,7 +363,7 @@ export function SkeletonTable({ rows = 4 }: { rows?: number }) {
   return <div className="card"><div className="table-wrap" tabIndex={0} role="region" aria-label="Tabel sedang dimuat"><table className="data-table"><tbody>{Array.from({ length: rows }).map((_, i) => <tr key={i}><td colSpan={6} style={{ padding: 12 }}><div className="skeleton" style={{ height: 14 }} /></td></tr>)}</tbody></table></div></div>;
 }
 
-export function AsyncTable<T extends Record<string, any>>({ state, columns, empty, onRow }: { state: ApiState<any>; columns: Column<T>[]; empty?: string; onRow?: (row: T) => ReactNode }) {
+export function AsyncTable<T extends Record<string, any>>({ state, columns, empty, onRow }: { state: ApiState<any>; columns: Column<T>[]; empty?: EmptyStateConfig; onRow?: (row: T) => ReactNode }) {
   if (state.loading) return <SkeletonTable />;
   if (state.error) return <ErrorState error={state.error} onRetry={state.refresh} />;
   const rows = Array.isArray(state.data) ? state.data : state.data?.items || state.data?.roster || [];

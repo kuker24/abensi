@@ -101,6 +101,152 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     await expect(page).toHaveURL(/\/admin\/picket$/);
   });
 
+  test('notification bell only shows a real unread badge and updates after read', async ({ page }) => {
+    await seedAuth(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
+    let unreadCount = 0;
+    let failNotifications = false;
+    let notificationItems: any[] = [];
+    await page.route('**/api/v1/**', async (route: Route) => {
+      const url = route.request().url();
+      const method = route.request().method();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
+      if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
+      if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: 'test', shouldShow: false }) });
+      if (url.includes('/notifications') && method === 'GET') {
+        if (failNotifications) return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'notification service unavailable' }) });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...paginated(notificationItems), unreadCount }) });
+      }
+      if (url.includes('/notifications/notif-1/read') && method === 'PATCH') {
+        unreadCount = 0;
+        notificationItems = notificationItems.map((item) => ({ ...item, readAt: new Date().toISOString() }));
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(notificationItems[0]) });
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([])) });
+    });
+
+    await page.goto('/admin/dashboard');
+    await expect(page.locator('.notif-dot')).toHaveCount(0);
+    await expect(page.locator('.notif-badge')).toHaveCount(0);
+    await expect(page.getByLabel('Notifikasi', { exact: true })).toBeVisible();
+
+    unreadCount = 1;
+    notificationItems = [{ id: 'notif-1', title: 'Cek sesi', body: 'Sesi perlu perhatian.', readAt: null, createdAt: new Date().toISOString() }];
+    await page.reload();
+    await expect(page.locator('.notif-badge')).toHaveText('1');
+    await expect(page.getByLabel('Notifikasi, 1 belum dibaca')).toBeVisible();
+
+    unreadCount = 7;
+    await page.reload();
+    await expect(page.locator('.notif-badge')).toHaveText('7');
+    await expect(page.getByLabel('Notifikasi, 7 belum dibaca')).toBeVisible();
+
+    unreadCount = 150;
+    await page.reload();
+    await expect(page.locator('.notif-badge')).toHaveText('99+');
+    await expect(page.getByLabel('Notifikasi, 150 belum dibaca')).toBeVisible();
+
+    failNotifications = true;
+    await page.reload();
+    await expect(page.locator('.notif-badge')).toHaveCount(0);
+    await expect(page.getByLabel('Notifikasi', { exact: true })).toBeVisible();
+
+    failNotifications = false;
+    unreadCount = 1;
+    notificationItems = [{ id: 'notif-1', title: 'Cek sesi', body: 'Sesi perlu perhatian.', readAt: null, createdAt: new Date().toISOString() }];
+    await page.goto('/admin/notifications');
+    await expect(page.locator('.notif-badge')).toHaveText('1');
+    await page.getByRole('button', { name: 'Tandai dibaca' }).click();
+    await expect(page.locator('.notif-badge')).toHaveCount(0);
+    await expect(page.locator('.notif-dot')).toHaveCount(0);
+  });
+
+  test('master data tabs use URL state, keyboard navigation, contextual help, and wide layouts', async ({ page }) => {
+    await seedAuth(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
+    const years = [{ id: 'year-1', code: '2026/2027', name: 'Tahun Ajaran 2026/2027', active: true }];
+    const classes = [{ id: 'class-1', code: 'X-A', name: 'Kelas X A', yearLabel: '2026/2027' }];
+    const users = [{ id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU', active: true, cardStatus: 'ACTIVE' }];
+    await page.route('**/api/v1/**', async (route: Route) => {
+      const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
+      if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
+      if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: 'test', shouldShow: false }) });
+      if (url.includes('/notifications')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...paginated([]), unreadCount: 0 }) });
+      if (url.includes('/identity/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated(users)) });
+      if (url.includes('/academic/years')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated(years)) });
+      if (url.includes('/academic/semesters')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'sem-1', academicYearId: 'year-1', academicYear: years[0], code: 'GANJIL', name: 'Semester Ganjil' }])) });
+      if (url.includes('/academic/classes')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated(classes)) });
+      if (url.includes('/academic/students')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([])) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([])) });
+    });
+
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto('/admin/master-data?tab=users');
+    await expect(page.getByRole('tab', { name: 'Buat/Edit Akun' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Kelola akun aman')).toBeVisible();
+    await expect(page.getByText('Upload CSV siswa di tab Import Siswa.')).toHaveCount(0);
+    const userLayout = await page.locator('.master-data-user-layout').evaluate((node) => {
+      const form = node.querySelector('.master-data-form-panel')?.getBoundingClientRect();
+      const list = node.querySelector('.master-data-list-panel')?.getBoundingClientRect();
+      return { formWidth: Math.round(form?.width || 0), listWidth: Math.round(list?.width || 0), overflow: document.documentElement.scrollWidth > window.innerWidth };
+    });
+    expect(userLayout.overflow).toBe(false);
+    expect(userLayout.formWidth).toBeGreaterThanOrEqual(360);
+    expect(userLayout.listWidth).toBeGreaterThan(540);
+    await expect(page.getByLabel('Status akun')).toBeVisible();
+    await expect(page.getByRole('search', { name: 'Filter daftar pengguna' }).getByLabel('Peran')).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Kelas' }).click();
+    await expect(page).toHaveURL(/tab=classes/);
+    await expect(page.getByText('Data kelas')).toBeVisible();
+    await expect(page.getByLabel('Label Tahun Ajaran')).toBeVisible();
+    const classLayout = await page.locator('.master-data-layout').evaluate((node) => {
+      const form = node.querySelector('.master-data-form-panel')?.getBoundingClientRect();
+      const list = node.querySelector('.master-data-list-panel')?.getBoundingClientRect();
+      return { formWidth: Math.round(form?.width || 0), listWidth: Math.round(list?.width || 0), overflow: document.documentElement.scrollWidth > window.innerWidth };
+    });
+    expect(classLayout.overflow).toBe(false);
+    expect(classLayout.formWidth).toBeGreaterThanOrEqual(300);
+    expect(classLayout.listWidth).toBeGreaterThan(540);
+
+    await page.getByRole('tab', { name: 'Mapel' }).click();
+    await expect(page).toHaveURL(/tab=subjects/);
+    await page.goBack();
+    await expect(page.getByRole('tab', { name: 'Kelas' })).toHaveAttribute('aria-selected', 'true');
+    await page.goForward();
+    await expect(page.getByRole('tab', { name: 'Mapel' })).toHaveAttribute('aria-selected', 'true');
+
+    await page.getByRole('tab', { name: 'Semester' }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Ruang' })).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Home');
+    await expect(page.getByRole('tab', { name: 'Import Siswa' })).toHaveAttribute('aria-selected', 'true');
+
+    await page.goto('/admin/master-data?tab=semesters');
+    await expect(page.getByRole('tab', { name: 'Semester' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel('Tahun Ajaran')).toBeVisible();
+    await expect(page.getByText('ID Tahun Ajaran')).toHaveCount(0);
+    await expect(page.locator('select[aria-label="Tahun Ajaran"] option')).toContainText(['Pilih tahun ajaran', /Tahun Ajaran 2026\/2027/]);
+
+    await page.goto('/admin/master-data?tab=unknown-tab');
+    await expect(page.getByRole('tab', { name: 'Import Siswa' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('master data stacks responsively without page overflow on mobile', async ({ page }) => {
+    await routeCommonApi(page);
+    await seedAuth(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/admin/master-data?tab=users');
+    const layout = await page.locator('.master-data-user-layout').evaluate((node) => {
+      const form = node.querySelector('.master-data-form-panel')?.getBoundingClientRect();
+      const list = node.querySelector('.master-data-list-panel')?.getBoundingClientRect();
+      return { formTop: Math.round(form?.top || 0), listTop: Math.round(list?.top || 0), overflow: document.documentElement.scrollWidth > window.innerWidth };
+    });
+    expect(layout.overflow).toBe(false);
+    expect(layout.listTop).toBeGreaterThan(layout.formTop);
+    await expect(page.getByRole('tab', { name: 'Buat/Edit Akun' })).toBeVisible();
+    await expect(page.locator('.notif-dot')).toHaveCount(0);
+  });
+
   test('semua role melihat menu sesuai tugas dan setiap menu utama bisa dibuka tanpa error tampilan', async ({ page }) => {
     await routeCommonApi(page);
     const uiErrors: string[] = [];
@@ -183,13 +329,13 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     await setStoredAuth(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
     await page.goto('/admin/master-data');
     await expect(page.getByRole('heading', { name: 'Akun & Data Sekolah' })).toBeVisible();
-    await page.getByRole('button', { name: 'Buat/Edit Akun' }).click();
+    await page.getByRole('tab', { name: 'Buat/Edit Akun' }).click();
     await expect(page.getByRole('button', { name: 'Hapus Permanen' })).toHaveCount(0);
     await expect(page.getByText('Bersihkan Data')).toHaveCount(0);
 
     await setStoredAuth(page, { id: 'dev-1', username: 'developer', fullName: 'Developer SchoolHub', role: 'DEVELOPER' });
     await page.goto('/admin/master-data');
-    await page.getByRole('button', { name: 'Buat/Edit Akun' }).click();
+    await page.getByRole('tab', { name: 'Buat/Edit Akun' }).click();
     await expect(page.getByRole('button', { name: 'Hapus Permanen' }).first()).toBeVisible();
     const dialogAnswers = ['siswa.histori', 'Uji hapus permanen akun berhistori.'];
     page.on('dialog', async (dialog) => { await dialog.accept(dialogAnswers.shift() || 'siswa.histori'); });
