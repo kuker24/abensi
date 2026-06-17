@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BookOpen, Check, ChevronRight, PlayCircle, X } from 'lucide-react';
 import { apiFetch, go } from './api';
 import { Btn, IconBtn } from './ui';
+import { BRAND } from './brand';
 import type { User } from './types';
 
 const TUTORIAL_VERSION = '2026.05.03';
@@ -13,7 +14,7 @@ type TutorialStep = {
 };
 
 const COMMON_START: TutorialStep = {
-  title: 'Selamat datang di e-Hadir',
+  title: `Selamat datang di ${BRAND.compactName}`,
   body: 'Tutorial singkat ini membantu Anda mengenali menu penting. Anda bisa menyelesaikannya sekarang atau membukanya lagi dari tombol Panduan di bagian atas.'
 };
 

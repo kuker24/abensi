@@ -78,13 +78,13 @@ fun SplashScreen(onContinue: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "e",
+                    "A",
                     style = MaterialTheme.typography.displayLarge,
                     color = Color(0xFF1C1917)
                 )
             }
             Text(
-                "e-Hadir",
+                "Akademik Berkarakter",
                 style = MaterialTheme.typography.headlineLarge,
                 color = SemanticColors.fg
             )

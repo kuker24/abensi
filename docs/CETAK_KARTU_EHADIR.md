@@ -1,15 +1,15 @@
-# Panduan Cetak Kartu e-Hadir
+# Panduan Cetak Kartu Akademik Berkarakter
 
 ## Target Kartu
 
 - Ukuran: 5,5 × 8,5 cm, portrait/model gantungan ID card.
 - Tanpa foto.
 - Isi kartu: nama, ID/username, program, kelas/jabatan/level, status, QR code.
-- QR produksi wajib berformat resmi `schoolhub:qr:v1:...` dari backend SchoolHub.
+- QR produksi wajib berformat resmi `schoolhub:qr:v1:...` dari backend Akademik Berkarakter.
 
 ## Alur Cepat Admin
 
-1. Login ke web SchoolHub sebagai Admin/TU, Operator IT, atau Developer.
+1. Login ke web Akademik Berkarakter sebagai Admin/TU, Operator IT, atau Developer.
 2. Buka **Admin → Perangkat Absensi → Cetak Kartu**.
 3. Pilih kelas jika ingin cetak per kelas, atau kosongkan untuk semua pengguna aktif.
 4. Klik **Cetak Kartu**.

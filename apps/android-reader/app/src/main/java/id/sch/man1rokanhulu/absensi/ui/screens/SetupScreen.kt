@@ -74,7 +74,7 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
             value = serverUrl,
             onValueChange = { serverUrl = it; testState = TestState.IDLE },
             label = { Text("Alamat Server") },
-            placeholder = { Text("Contoh: https://ehadir.man1rokanhulu.sch.id") },
+            placeholder = { Text("Contoh: https://absensi.man1rokanhulu.cloud") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -183,7 +183,7 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Bantuan", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "• Alamat server contoh: https://ehadir.man1rokanhulu.sch.id\n" +
+                    "• Alamat server contoh: https://absensi.man1rokanhulu.cloud\n" +
                         "• Kode aktivasi adalah teks panjang acak dari admin. Salin dengan teliti.\n" +
                         "• Jika 'Tes Sambungan' gagal, periksa Wi-Fi HP atau hubungi operator IT.",
                     style = MaterialTheme.typography.bodyMedium,

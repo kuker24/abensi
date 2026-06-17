@@ -11,6 +11,8 @@ else
 fi
 if command -v docker >/dev/null 2>&1; then
   docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config >/tmp/schoolhub-compose-config.yml
+  docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config --format json >/tmp/schoolhub-compose-config.json
+  node scripts/validate_compose_resources.mjs /tmp/schoolhub-compose-config.json
 else
   echo "WARNING: docker not installed; skipping local compose config validation" >&2
 fi

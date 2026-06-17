@@ -77,7 +77,7 @@ def help_box(text: str) -> QLabel:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SchoolHub APK Builder — Mode Mudah")
+        self.setWindowTitle("Akademik Berkarakter APK Builder — Mode Mudah")
         self.profile = BuildProfile()
         self.thread: BuildThread | None = None
 
@@ -117,13 +117,13 @@ class MainWindow(QMainWindow):
     def _build_step_connect_web(self):
         page = QWidget(); layout = QVBoxLayout(page)
         layout.addWidget(help_box(
-            "Langkah 2 — Hubungkan APK ke web SchoolHub. Isi alamat web yang biasa dibuka admin/operator, "
+            "Langkah 2 — Hubungkan APK ke web Akademik Berkarakter. Isi alamat web yang biasa dibuka admin/operator, "
             "lalu klik cek. Builder akan menguji health check dan endpoint versi APK."
         ))
         form = QFormLayout()
         self.server = QLineEdit(DEFAULT_SERVER)
-        self.server.setPlaceholderText("Contoh: https://serious-hardware-stock-arrived.trycloudflare.com")
-        form.addRow("Alamat Web SchoolHub", self.server)
+        self.server.setPlaceholderText("Contoh: https://absensi.man1rokanhulu.cloud")
+        form.addRow("Alamat Web Akademik Berkarakter", self.server)
         layout.addLayout(form)
         row = QHBoxLayout()
         check_btn = primary_button("2. CEK KONEKSI KE WEB")
@@ -199,7 +199,7 @@ class MainWindow(QMainWindow):
         ))
         form = QFormLayout()
         self.download_url = QLineEdit(); self.download_url.setPlaceholderText("Opsional: link download APK, harus HTTPS untuk produksi")
-        self.release_notes = QPlainTextEdit("APK Android QR Reader SchoolHub."); self.release_notes.setMaximumHeight(100)
+        self.release_notes = QPlainTextEdit("APK Android QR Reader Akademik Berkarakter."); self.release_notes.setMaximumHeight(100)
         self.min_supported = QSpinBox(); self.min_supported.setMinimum(1); self.min_supported.setMaximum(999999); self.min_supported.setValue(1)
         self.force_update = QCheckBox("Paksa update untuk APK lama")
         self.admin_user = QLineEdit(); self.admin_user.setPlaceholderText("username admin/operator")
@@ -352,7 +352,7 @@ class MainWindow(QMainWindow):
         if result.version_metadata:
             lines.append("Metadata versi: " + str(result.version_metadata))
         self.web_log.setPlainText("\n".join(lines))
-        self.set_status("Web SchoolHub siap dipakai APK." if result.ok else "Web belum siap/URL salah. Cek pesan di Langkah 2.", "ok" if result.ok else "bad")
+        self.set_status("Web Akademik Berkarakter siap dipakai APK." if result.ok else "Web belum siap/URL salah. Cek pesan di Langkah 2.", "ok" if result.ok else "bad")
 
     def fetch_from_web(self):
         try:

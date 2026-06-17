@@ -45,7 +45,7 @@ fun HelpScreen(onBack: () -> Unit) {
             "Jika kamera tidak terbuka",
             listOf(
                 "Tutup aplikasi sepenuhnya, lalu buka kembali.",
-                "Periksa izin kamera di Pengaturan HP > Aplikasi > Absensi MAN 1 Rokan Hulu.",
+                "Periksa izin kamera di Pengaturan HP > Aplikasi > Akademik Berkarakter.",
                 "Pastikan kamera tidak sedang dipakai aplikasi lain.",
                 "Jika tetap gelap, restart HP dan buka aplikasi lagi."
             )

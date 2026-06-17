@@ -43,8 +43,8 @@ def test_increment_version_code():
 
 
 def test_output_apk_naming():
-    core = ApkBuilderCore(BuildProfile(app_display_name='Absensi MAN 1 Rokan Hulu', version_name='1.0.0', version_code=1, build_type='release'))
-    assert core.output_apk_name() == 'Absensi-MAN-1-Rokan-Hulu-v1.0.0-code1-release.apk'
+    core = ApkBuilderCore(BuildProfile(app_display_name='Akademik Berkarakter', version_name='1.0.0', version_code=1, build_type='release'))
+    assert core.output_apk_name() == 'Akademik-Berkarakter-v1.0.0-code1-release.apk'
 
 
 def test_gradle_command(tmp_path):

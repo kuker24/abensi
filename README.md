@@ -1,6 +1,6 @@
-# SchoolHub e-Hadir (Production Stack)
+# Sistem Informasi Akademik Berkarakter (Production Stack)
 
-Implementasi baseline production untuk PRD `prd-ehadir-v2.1.md` dengan stack:
+Implementasi baseline production untuk sistem informasi akademik dan kehadiran MAN 1 Rokan Hulu dengan stack:
 - NestJS API + Prisma + PostgreSQL
 - React (Vite) frontend
 - Worker reconciliation
@@ -10,7 +10,7 @@ Implementasi baseline production untuk PRD `prd-ehadir-v2.1.md` dengan stack:
 
 ## Arsitektur QR Android Reader Resmi
 
-Jalur absensi QR produksi diarahkan ke APK Android resmi **Absensi MAN 1 Rokan Hulu**.
+Jalur QR produksi diarahkan ke APK Android resmi **Akademik Berkarakter**.
 
 ```text
 QR Credential siswa/guru

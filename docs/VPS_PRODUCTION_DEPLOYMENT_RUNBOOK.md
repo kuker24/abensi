@@ -1,4 +1,4 @@
-# SchoolHub e-Hadir VPS Production Deployment Runbook
+# Akademik Berkarakter VPS Production Deployment Runbook
 
 Target: Biznet Gio NEO Lite VPS, Ubuntu Server 24.04 LTS 64-bit, single-node Docker Compose, ~300 school users.
 
@@ -6,7 +6,7 @@ Target: Biznet Gio NEO Lite VPS, Ubuntu Server 24.04 LTS 64-bit, single-node Doc
 
 Prepare these outside Git and never commit them:
 
-- Production domain, e.g. `ehadir.example.sch.id`.
+- Production domain, e.g. `absensi.example.sch.id`.
 - DNS A record to the VPS IPv4 address; optional AAAA record only if IPv6 is configured.
 - Production `.env` with `chmod 600`.
 - Strong `ADMIN_PASSWORD` for first bootstrap.

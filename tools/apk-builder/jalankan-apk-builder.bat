@@ -2,7 +2,7 @@
 setlocal
 cd /d %~dp0
 
-echo Membuka SchoolHub APK Builder...
+echo Membuka Akademik Berkarakter APK Builder...
 
 if exist "%USERPROFILE%\.local\jdks\jdk-17\bin\java.exe" set "JAVA_HOME=%USERPROFILE%\.local\jdks\jdk-17"
 if not defined JAVA_HOME if exist "%USERPROFILE%\.local\jdks\jdk-21\bin\java.exe" set "JAVA_HOME=%USERPROFILE%\.local\jdks\jdk-21"

@@ -1,6 +1,6 @@
-# Cara Build APK Android SchoolHub untuk Operator Awam
+# Cara Build APK Android Akademik Berkarakter untuk Operator Awam
 
-Panduan ini untuk membuat APK **Absensi MAN 1 Rokan Hulu** tanpa perlu paham Gradle/Android teknis.
+Panduan ini untuk membuat APK **Akademik Berkarakter** tanpa perlu paham Gradle/Android teknis.
 
 > Penting: APK dibuat di laptop/komputer operator, **bukan di VPS**. Secret reader tidak masuk APK. Secret dibuat saat provisioning dari web admin.
 
@@ -10,7 +10,7 @@ Panduan ini untuk membuat APK **Absensi MAN 1 Rokan Hulu** tanpa perlu paham Gra
 2. Python 3.11+.
 3. JDK 17 atau 21.
 4. Android Studio / Android SDK.
-5. Source project SchoolHub lengkap di laptop.
+5. Source project aplikasi lengkap di laptop.
 
 Kalau belum yakin laptop sudah siap, tidak apa-apa. Builder punya tombol **CEK KESIAPAN LAPTOP**.
 
@@ -42,7 +42,7 @@ Launcher akan otomatis:
 - memilih JDK 17/21 jika ada di laptop,
 - memilih Android SDK jika ada,
 - membuat environment Python,
-- membuka aplikasi **SchoolHub APK Builder**.
+- membuka aplikasi **Akademik Berkarakter APK Builder**.
 
 Di laptop ini JDK yang dipakai otomatis adalah:
 
@@ -64,12 +64,12 @@ Jika semua penting hijau, lanjut. Jika merah:
 - Android SDK harus terdeteksi. Builder akan mencari otomatis di `~/Android/Sdk`.
 - ADB boleh merah; itu hanya untuk install via kabel USB. APK tetap bisa dicopy manual.
 
-## Langkah 2 — Hubungkan ke Web SchoolHub
+## Langkah 2 — Hubungkan ke Web Akademik Berkarakter
 
-Di tab **2 Hubungkan Web**, isi alamat web aktif, contoh beta:
+Di tab **2 Hubungkan Web**, isi alamat web aktif, contoh:
 
 ```text
-https://serious-hardware-stock-arrived.trycloudflare.com
+https://absensi.man1rokanhulu.cloud
 ```
 
 Klik:
@@ -92,7 +92,7 @@ Di tab **3 Atur APK**:
 
 1. Isi nama aplikasi, contoh:
    ```text
-   Absensi MAN 1 Rokan Hulu
+   Akademik Berkarakter
    ```
 2. Pilih jenis APK:
    - **APK Percobaan**: untuk uji coba internal.

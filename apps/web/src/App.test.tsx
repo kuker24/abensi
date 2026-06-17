@@ -35,12 +35,12 @@ function mockStorage() {
 afterEach(() => cleanup());
 
 describe('PRD v2.2 UI shell', () => {
-  it('renders the e-Hadir login screen without prefilling the password', () => {
+  it('renders the rebranded login screen without prefilling the password', () => {
     mockStorage();
     window.history.replaceState({}, '', '/login');
     render(<App />);
-    expect(screen.getAllByText(/e-Hadir/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/ABSENSI SEKOLAH DIGITAL/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Sistem Informasi Akademik Berkarakter/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/AKADEMIK BERKARAKTER/i).length).toBeGreaterThan(0);
     expect(screen.getByPlaceholderText('Masukkan nama akun')).toHaveValue('');
     expect(screen.getByPlaceholderText('Masukkan kata sandi')).toHaveValue('');
     expect(screen.queryByText(/password admin|password guru|password siswa/i)).not.toBeInTheDocument();

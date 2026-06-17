@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SchoolHub e-Hadir — APK Builder GUI
+Sistem Informasi Akademik Berkarakter — APK Builder GUI
 Web-based build interface for Android Reader APK.
 Zero dependencies — uses Python's built-in http.server.
 
@@ -244,7 +244,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SchoolHub APK Builder</title>
+<title>Akademik Berkarakter APK Builder</title>
 <style>
   :root {
     --bg: #16181C; --bg2: #1E2025; --bg3: #232529;
@@ -326,7 +326,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </head>
 <body>
 <div class="container">
-  <h1>SchoolHub <span>APK Builder</span></h1>
+  <h1>Akademik Berkarakter <span>APK Builder</span></h1>
   <p class="subtitle">Build & manage Android Reader APK &mdash; Dark Nocturne Edition</p>
 
   <!-- Status -->
@@ -407,7 +407,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
   </div>
 
-  <div class="footer">SchoolHub e-Hadir &mdash; APK Builder &mdash; MAN 1 Rokan Hulu</div>
+  <div class="footer">Sistem Informasi Akademik Berkarakter &mdash; APK Builder &mdash; MAN 1 Rokan Hulu</div>
 </div>
 
 <script>
@@ -593,7 +593,7 @@ class BuilderHandler(http.server.BaseHTTPRequestHandler):
         html = html.replace("{{SDK_STATUS}}", "Terinstall" if sdk_ok else "Tidak ditemukan")
         html = html.replace("{{SDK_PATH}}", sdk or "-")
         html = html.replace("{{SDK_PLATFORMS}}", sdk_platforms or "-")
-        html = html.replace("{{APP_NAME}}", props.get("SCHOOLHUB_APP_NAME", "Absensi MAN 1 Rokan Hulu"))
+        html = html.replace("{{APP_NAME}}", props.get("SCHOOLHUB_APP_NAME", "Akademik Berkarakter"))
         html = html.replace("{{VERSION}}", props.get("SCHOOLHUB_VERSION_NAME", "1.1.1"))
         html = html.replace("{{VERSION_CODE}}", props.get("SCHOOLHUB_VERSION_CODE", "3"))
         html = html.replace("{{SERVER_URL}}", props.get("SCHOOLHUB_SERVER_BASE_URL", ""))
@@ -673,7 +673,7 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SchoolHub APK Builder GUI")
+    parser = argparse.ArgumentParser(description="Akademik Berkarakter APK Builder GUI")
     parser.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
     args = parser.parse_args()
 
@@ -687,7 +687,7 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    print(f"\n  SchoolHub APK Builder")
+    print(f"\n  Akademik Berkarakter APK Builder")
     print(f"  http://localhost:{args.port}")
     print(f"  Press Ctrl+C to stop\n")
 
