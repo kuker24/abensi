@@ -2,6 +2,11 @@ const axios = require('axios');
 const fs = require('node:fs');
 const { createHmac, randomUUID } = require('node:crypto');
 const { Queue, Worker, QueueEvents } = require('bullmq');
+const {
+  findMissingExpectedDefinitions,
+  repairStaleRepeatables,
+  withBoundedRetry
+} = require('./repeatable-scheduler');
 
 const baseUrl = process.env.API_BASE_URL || 'http://api:3000/api/v1';
 const reconcileUrl = process.env.API_RECONCILE_URL || `${baseUrl}/internal/reconciliation/run`;
@@ -47,8 +52,22 @@ const dlq = new Queue(dlqName, { connection });
 const queueEvents = new QueueEvents(queueName, { connection });
 
 const jobDefinitions = [
-  { name: 'auto-missed', url: missedUrl, intervalMs: autoMissedIntervalMs },
-  { name: 'reconciliation', url: reconcileUrl, intervalMs: reconcileIntervalMs }
+  {
+    queueName,
+    name: 'auto-missed',
+    jobId: 'repeat:auto-missed',
+    url: missedUrl,
+    intervalMs: autoMissedIntervalMs,
+    maxRepairs: 1
+  },
+  {
+    queueName,
+    name: 'reconciliation',
+    jobId: 'repeat:reconciliation',
+    url: reconcileUrl,
+    intervalMs: reconcileIntervalMs,
+    maxRepairs: 1
+  }
 ];
 
 const health = {
@@ -129,16 +148,46 @@ queueEvents.on('stalled', ({ jobId }) => {
   console.warn(`[worker] job stalled: ${jobId}`);
 });
 
+function schedulerLog(entry) {
+  const schedule = entry.schedule ? ` schedule=${entry.schedule}` : '';
+  const attempt = entry.attempt ? ` attempt=${entry.attempt}` : '';
+  console.warn(`[worker] repeatable-scheduler event=${entry.event}${schedule}${attempt}`);
+}
+
+function repeatOptions(definition) {
+  return { every: definition.intervalMs, immediately: true };
+}
+
 async function scheduleRepeatableJobs() {
-  for (const definition of jobDefinitions) {
-    await queue.add(definition.name, { scheduledBy: 'schoolhub-worker' }, {
-      jobId: `repeat:${definition.name}`,
-      repeat: { every: definition.intervalMs, immediately: true },
-      attempts,
-      backoff: { type: 'exponential', delay: Number(process.env.WORKER_JOB_BACKOFF_MS || '5000') },
-      removeOnComplete: { count: 1000 },
-      removeOnFail: { count: 1000 }
-    });
+  const repair = await repairStaleRepeatables(queue, jobDefinitions, {
+    queueName,
+    maxRepairs: 2,
+    retryAttempts: 3,
+    retryDelayMs: 100,
+    logger: schedulerLog
+  });
+  if (repair.repaired.length > 0) {
+    console.warn(`[worker] repaired stale repeatable schedules: ${repair.repaired.join(', ')}`);
+  }
+
+  const repeatableJobs = await withBoundedRetry(
+    () => queue.getRepeatableJobs(),
+    { attempts: 3, delayMs: 100, logger: schedulerLog }
+  );
+  const missingDefinitions = findMissingExpectedDefinitions(repeatableJobs, jobDefinitions, queueName);
+
+  for (const definition of missingDefinitions) {
+    await withBoundedRetry(
+      () => queue.add(definition.name, { scheduledBy: 'schoolhub-worker' }, {
+        jobId: definition.jobId,
+        repeat: repeatOptions(definition),
+        attempts,
+        backoff: { type: 'exponential', delay: Number(process.env.WORKER_JOB_BACKOFF_MS || '5000') },
+        removeOnComplete: { count: 1000 },
+        removeOnFail: { count: 1000 }
+      }),
+      { attempts: 3, delayMs: 100, logger: schedulerLog, scheduleName: definition.name }
+    );
   }
 }
 
@@ -173,8 +222,7 @@ async function main() {
 process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 process.on('SIGINT', () => { void shutdown('SIGINT'); });
 
-main().catch((error) => {
+main().catch(() => {
   console.error('[worker] fatal startup error');
-  console.error(error);
   process.exit(1);
 });
