@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
+const { Queue } = require('bullmq');
 const {
   findMissingExpectedDefinitions,
   hasExpectedRepeatKeyShape,
@@ -37,6 +39,20 @@ function repeatable(definitionValue, overrides = {}) {
     next: 1_000,
     ...overrides
   };
+}
+
+function isSafeIntegrationRedisUrl(value) {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return ['localhost', '127.0.0.1', '::1', 'redis'].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function countExactRepeatables(repeatables, definitionValue, queueName = definitionValue.queueName) {
+  return repeatables.filter((job) => isExactExpectedRepeatable(job, definitionValue, queueName)).length;
 }
 
 function makeQueue(options = {}) {
@@ -311,4 +327,65 @@ test('missing schedule detection recreates only absent exact definitions and is 
     findMissingExpectedDefinitions([repeatable(auto), repeatable(auto, { key: 'repeat:auto-missed:duplicate' })], [auto], QUEUE_NAME),
     []
   );
+});
+
+test('BullMQ integration removes and recreates exact repeatable schedules without raw-key deletion', { timeout: 15_000 }, async (t) => {
+  const redisUrl = process.env.REDIS_URL;
+  if (!isSafeIntegrationRedisUrl(redisUrl)) {
+    t.skip('safe local/CI REDIS_URL is not configured');
+    return;
+  }
+
+  const queueName = `schoolhub-worker-it-${randomUUID()}`;
+  const target = {
+    queueName,
+    name: 'auto-missed',
+    intervalMs: 15_000,
+    jobId: 'repeat:auto-missed',
+    maxRepairs: 1,
+    repeat: { every: 15_000, immediately: true }
+  };
+  const unrelated = {
+    queueName,
+    name: 'unrelated-schedule',
+    intervalMs: 45_000,
+    jobId: 'repeat:unrelated-schedule',
+    repeat: { every: 45_000, immediately: true }
+  };
+  const queue = new Queue(queueName, {
+    connection: { url: redisUrl, maxRetriesPerRequest: null, connectTimeout: 5_000, retryStrategy: () => null }
+  });
+
+  try {
+    await queue.add(target.name, { scheduledBy: 'integration-test' }, { jobId: target.jobId, repeat: target.repeat });
+    await queue.add(unrelated.name, { scheduledBy: 'integration-test' }, { jobId: unrelated.jobId, repeat: unrelated.repeat });
+
+    const initial = await queue.getRepeatableJobs();
+    assert.equal(countExactRepeatables(initial, target), 1);
+    assert.equal(initial.some((job) => job.name === unrelated.name), true);
+
+    const removed = await queue.removeRepeatable(target.name, target.repeat, target.jobId);
+    assert.equal(removed, true);
+
+    const afterRemoval = await queue.getRepeatableJobs();
+    assert.equal(countExactRepeatables(afterRemoval, target), 0);
+    assert.equal(afterRemoval.some((job) => job.name === unrelated.name), true);
+
+    const missing = findMissingExpectedDefinitions(afterRemoval, [target], queueName);
+    assert.deepEqual(missing.map((item) => item.name), [target.name]);
+    for (const item of missing) {
+      await queue.add(item.name, { scheduledBy: 'integration-test' }, { jobId: item.jobId, repeat: item.repeat });
+    }
+
+    const afterRecreate = await queue.getRepeatableJobs();
+    assert.equal(countExactRepeatables(afterRecreate, target), 1);
+    assert.equal(afterRecreate.some((job) => job.name === unrelated.name), true);
+
+    const missingOnSecondStartup = findMissingExpectedDefinitions(afterRecreate, [target], queueName);
+    assert.deepEqual(missingOnSecondStartup, []);
+    assert.equal(countExactRepeatables(await queue.getRepeatableJobs(), target), 1);
+  } finally {
+    await queue.obliterate({ force: true }).catch(() => null);
+    await queue.close();
+  }
 });
