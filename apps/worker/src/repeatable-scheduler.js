@@ -57,6 +57,7 @@ function hasExpectedRepeatKeyShape(value) {
 function isExactExpectedRepeatable(job, definition, queueName) {
   if (!job || definition.queueName !== queueName) return false;
   if (job.name !== definition.name) return false;
+  if (job.id !== undefined && job.id !== null && job.id !== definition.jobId) return false;
   if (positiveInteger(job.every) !== definition.intervalMs) return false;
   if (job.pattern !== undefined && job.pattern !== null && job.pattern !== '') return false;
   return hasExpectedRepeatKeyShape(job.key);
