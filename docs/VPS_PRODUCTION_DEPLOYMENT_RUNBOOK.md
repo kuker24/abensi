@@ -1,18 +1,18 @@
-# SchoolHub e-Hadir VPS Production Deployment Runbook
+# SIAB2 VPS Production Deployment Runbook
 
-Target: Biznet Gio NEO Lite VPS, Ubuntu Server 24.04 LTS 64-bit, single-node Docker Compose, ~300 school users.
+Target: dedicated VPS for SIAB2, Ubuntu Server 24.04 LTS 64-bit, single-node Docker Compose, ~300 school users.
 
 ## 1. Owner-controlled prerequisites
 
 Prepare these outside Git and never commit them:
 
-- Production domain, e.g. `ehadir.example.sch.id`.
+- Production domain, e.g. `absensi.example.sch.id`.
 - DNS A record to the VPS IPv4 address; optional AAAA record only if IPv6 is configured.
 - Production `.env` with `chmod 600`.
 - Strong `ADMIN_PASSWORD` for first bootstrap.
 - `BACKUP_ENCRYPTION_PASSPHRASE`.
 - Off-VPS backup destination/hook.
-- At least one qualified technical reviewer for PR #2.
+- At least one qualified technical reviewer for the release PR.
 
 Cloudflare note: for first certificate issuance, use DNS-only mode or ensure Caddy can complete HTTP-01/ALPN validation. If Cloudflare proxy is enabled later, keep TLS mode strict/full and re-run HTTPS smoke.
 
@@ -34,7 +34,7 @@ cd /opt/schoolhub
 git clone https://github.com/kuker24/abensi.git current
 cd current
 git fetch --all --prune
-git checkout fix/full-production-readiness
+git checkout <reviewed-release-sha-or-branch>
 git pull --ff-only
 ```
 
@@ -58,6 +58,8 @@ Required production values include:
 - `BACKUP_ENCRYPTION_PASSPHRASE`
 
 Do not run the general development seed in production.
+
+Capacity tuning values are non-secret and may be set in `/opt/schoolhub/.env` from `docs/SIAB2_VPS_PERFORMANCE.md`. Keep `WORKER_CONCURRENCY=1` unless a separate business-level concurrency test approves parallel reconciliation.
 
 ## 5. HTTPS topology with host Caddy
 
@@ -96,7 +98,7 @@ The deploy script validates tools, Docker/Compose versions, env permissions, Com
 ```bash
 cd /opt/schoolhub/current
 git fetch --all --prune
-git checkout fix/full-production-readiness
+git checkout <reviewed-release-sha-or-branch>
 git pull --ff-only
 USE_VPS_TOPOLOGY=true bash scripts/deploy_production.sh /opt/schoolhub/.env
 ```
