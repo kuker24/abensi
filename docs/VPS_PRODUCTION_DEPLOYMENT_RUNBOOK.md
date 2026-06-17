@@ -52,6 +52,7 @@ Required production values include:
 - `PUBLIC_APP_ORIGIN=https://your-domain`
 - `CORS_ORIGIN=https://your-domain`
 - strong `JWT_SECRET`, `WORKER_TOKEN`, `READER_SECRET_ENCRYPTION_KEY`
+- optional strong `READER_API_KEY_HASH_SECRET` for reader API-key/provisioning-token HMAC lookup hashes; if omitted, `READER_SECRET_ENCRYPTION_KEY` is used. Rotate only with a controlled reader credential migration plan.
 - `ADMIN_BOOTSTRAP_ENABLED=true` for first bootstrap
 - `DEVELOPER_BOOTSTRAP_ENABLED=false` unless explicitly required operationally
 - `BACKUP_ENCRYPTION_PASSPHRASE`

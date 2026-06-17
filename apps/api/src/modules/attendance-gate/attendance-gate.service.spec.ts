@@ -311,6 +311,41 @@ describe('AttendanceGateService adaptive QR scan', () => {
 });
 
 describe('DeviceSignatureService signed reader request', () => {
+  it('menolak lookup reader ambigu sebelum memverifikasi signature', async () => {
+    const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
+    const service = new DeviceSignatureService({
+      deviceReader: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null },
+          { id: 'reader-2', deviceId: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }
+        ])
+      }
+    } as any, redis);
+    const rawBody = JSON.stringify({ cardUid: 'CARD1' });
+
+    await expect(service.assertValidSignedReaderRequest({
+      method: 'POST',
+      path: '/api/v1/attendance/reader-scan',
+      rawBody,
+      headers: { deviceId: 'reader-1', timestamp: new Date().toISOString(), nonce: 'nonce-ambiguous', bodyHash: sha256Hex(rawBody), signature: '0'.repeat(64) }
+    })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('menolak reader inactive pada signed request', async () => {
+    const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
+    const service = new DeviceSignatureService({
+      deviceReader: { findMany: jest.fn().mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.INACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }]) }
+    } as any, redis);
+    const rawBody = JSON.stringify({ cardUid: 'CARD1' });
+
+    await expect(service.assertValidSignedReaderRequest({
+      method: 'POST',
+      path: '/api/v1/attendance/reader-scan',
+      rawBody,
+      headers: { deviceId: 'reader-1', timestamp: new Date().toISOString(), nonce: 'nonce-inactive', bodyHash: sha256Hex(rawBody), signature: '0'.repeat(64) }
+    })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('menolak signature salah', async () => {
     const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
     const prisma = { deviceReader: { findMany: jest.fn().mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }]) } } as any;

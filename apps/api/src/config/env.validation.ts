@@ -64,6 +64,7 @@ export function validateEnvironment(config: Env) {
     requireValue(config, 'JWT_AUDIENCE');
     requireSecret(config, 'WORKER_TOKEN', 32);
     requireSecret(config, 'READER_SECRET_ENCRYPTION_KEY', 32);
+    if (config.READER_API_KEY_HASH_SECRET) requireSecret(config, 'READER_API_KEY_HASH_SECRET', 32);
     if ((config.SCHOOL_TIMEZONE || 'Asia/Jakarta') !== 'Asia/Jakarta') {
       throw new Error('SCHOOL_TIMEZONE production harus Asia/Jakarta untuk baseline MAN 1 Rokan Hulu.');
     }

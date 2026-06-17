@@ -4,18 +4,18 @@ import { AndroidReaderMode, DevicePlatform, DeviceReaderStatus, Prisma, ReaderTy
 import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
-import { DeviceSignatureService, hashReaderApiKey, readerCandidateWhere, readerCredentialDigest, readerCredentialDigestCandidates, readerLookupLimit, readerMatchesIdentifier } from '../security/device-signature.service';
+import { DeviceSignatureService, credentialHashMatches, normalizedReaderIdentifier, readerCandidateWhere, readerCredentialDigest, readerCredentialDigestCandidates, readerLookupLimit, uniqueReaderMatch } from '../security/device-signature.service';
 import { StepUpAuthService } from '../security/step-up-auth.service';
 import { AndroidProvisionCompleteDto, AndroidProvisionStartDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
 
-function generateApiKey() {
+function mintReaderCredential() {
   return `shr_${randomBytes(16).toString('hex')}`;
 }
 
-function generateApiKeyMetadata() {
-  const value = generateApiKey();
+function generateReaderCredentialMetadata() {
+  const value = mintReaderCredential();
   return {
-    apiKeyHash: hashReaderApiKey(value),
+    apiKeyHash: readerCredentialDigest(value),
     keyPrefix: value.slice(0, 7),
     keyLast4: value.slice(-4),
     keyRotatedAt: new Date()
@@ -26,8 +26,30 @@ function generateProvisionToken() {
   return `shrp_${randomBytes(24).toString('base64url')}`;
 }
 
+const MAX_PROVISION_TOKEN_LENGTH = 128;
+const PROVISION_TOKEN_PATTERN = /^shrp_[A-Za-z0-9_-]{16,}$/;
+
+function normalizeProvisionToken(token: string | null | undefined) {
+  const normalized = String(token || '').trim();
+  if (!normalized || normalized.length > MAX_PROVISION_TOKEN_LENGTH || !PROVISION_TOKEN_PATTERN.test(normalized)) return '';
+  return normalized;
+}
+
 function provisioningTokenWhere(token: string): Prisma.DeviceReaderWhereInput {
-  return { OR: readerCredentialDigestCandidates(token).map((provisioningTokenHash) => ({ provisioningTokenHash })) };
+  const normalized = normalizeProvisionToken(token);
+  if (!normalized) return { id: '__never_match_reader__' };
+  return { OR: readerCredentialDigestCandidates(normalized).map((provisioningTokenHash) => ({ provisioningTokenHash })) };
+}
+
+function uniqueProvisioningMatch<T extends { id: string; provisioningTokenHash?: string | null }>(candidates: T[], token: string) {
+  if (candidates.length >= readerLookupLimit()) return { status: 'too_many_candidates' as const };
+  const matches = new Map<string, T>();
+  for (const candidate of candidates) {
+    if (credentialHashMatches(token, candidate.provisioningTokenHash)) matches.set(candidate.id, candidate);
+  }
+  if (matches.size === 0) return { status: 'not_found' as const };
+  if (matches.size > 1) return { status: 'ambiguous' as const };
+  return { status: 'matched' as const, reader: [...matches.values()][0] };
 }
 
 function defaultModes(type?: ReaderType) {
@@ -69,10 +91,12 @@ export class DeviceReaderService {
   }
 
   async getStatus(id: string) {
-    const readers = await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(id), take: readerLookupLimit() });
-    const reader = readers.find((candidate) => readerMatchesIdentifier(candidate, id));
-    if (!reader) throw new NotFoundException('Reader tidak ditemukan.');
-    return this.redact(reader);
+    const normalized = normalizedReaderIdentifier(id);
+    if (!normalized) throw new NotFoundException('Reader tidak ditemukan.');
+    const readers = await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(normalized), take: readerLookupLimit() });
+    const match = uniqueReaderMatch(readers, normalized);
+    if (match.status !== 'matched') throw new NotFoundException('Reader tidak ditemukan.');
+    return this.redact(match.reader);
   }
 
   async createReader(payload: CreateReaderDto, actor: Actor) {
@@ -85,7 +109,7 @@ export class DeviceReaderService {
         const created = await tx.deviceReader.create({
           data: {
             name: payload.name,
-            ...generateApiKeyMetadata(),
+            ...generateReaderCredentialMetadata(),
             deviceId: payload.deviceId || null,
             readerSecretCiphertext: encrypted,
             readerSecretRotatedAt: new Date(),
@@ -128,7 +152,7 @@ export class DeviceReaderService {
       const item = await tx.deviceReader.create({
         data: {
           name: payload.name,
-          ...generateApiKeyMetadata(),
+          ...generateReaderCredentialMetadata(),
           status: DeviceReaderStatus.INACTIVE,
           type: ReaderType.QR_ANDROID,
           platform: DevicePlatform.ANDROID,
@@ -161,31 +185,47 @@ export class DeviceReaderService {
   }
 
   async completeAndroidProvision(payload: AndroidProvisionCompleteDto) {
-    const reader = await this.prisma.deviceReader.findFirst({ where: provisioningTokenWhere(payload.provisionToken) });
-    if (!reader) throw new NotFoundException('Token provisioning tidak ditemukan.');
-    if (reader.provisioningExpiresAt && reader.provisioningExpiresAt <= new Date()) throw new ForbiddenException('Token provisioning sudah kedaluwarsa.');
+    const provisionToken = normalizeProvisionToken(payload.provisionToken);
+    if (!provisionToken) throw new NotFoundException('Token provisioning tidak ditemukan.');
+    const deviceId = normalizedReaderIdentifier(payload.deviceId);
+    if (!deviceId) throw new BadRequestException('Device ID tidak valid.');
+    const candidates = await this.prisma.deviceReader.findMany({ where: provisioningTokenWhere(provisionToken), take: readerLookupLimit() });
+    const match = uniqueProvisioningMatch(candidates, provisionToken);
+    if (match.status === 'not_found') throw new NotFoundException('Token provisioning tidak ditemukan.');
+    if (match.status !== 'matched') throw new ForbiddenException('Token provisioning tidak valid.');
+    const reader = match.reader;
+    const now = new Date();
+    if (reader.provisioningExpiresAt && reader.provisioningExpiresAt <= now) throw new ForbiddenException('Token provisioning sudah kedaluwarsa.');
     if (reader.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
     const secret = this.signatures?.generateReaderSecret() ?? `shrsec_${randomBytes(32).toString('base64url')}`;
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
+    const tokenHashes = readerCredentialDigestCandidates(provisionToken);
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
-        const item = await tx.deviceReader.update({
-          where: { id: reader.id },
+        const claimed = await tx.deviceReader.updateMany({
+          where: {
+            id: reader.id,
+            status: { not: DeviceReaderStatus.REVOKED },
+            provisioningTokenHash: { in: tokenHashes },
+            OR: [{ provisioningExpiresAt: null }, { provisioningExpiresAt: { gt: now } }]
+          },
           data: {
-            deviceId: payload.deviceId,
+            deviceId,
             name: payload.deviceName || reader.name,
             status: DeviceReaderStatus.ACTIVE,
             readerSecretCiphertext: encrypted,
             readerSecretKeyVersion: { increment: 1 },
-            readerSecretRotatedAt: new Date(),
+            readerSecretRotatedAt: now,
             appVersion: payload.appVersion,
             appVersionCode: payload.appVersionCode,
-            provisionedAt: new Date(),
+            provisionedAt: now,
             provisioningTokenHash: null,
             provisioningExpiresAt: null,
-            lastSeenAt: new Date()
+            lastSeenAt: now
           }
         });
+        if (claimed.count !== 1) throw new ConflictException('Token provisioning sudah dipakai atau tidak valid.');
+        const item = await tx.deviceReader.findUniqueOrThrow({ where: { id: reader.id } });
         await writeAudit(tx, {
           module: 'device',
           action: 'reader.android.provisioned',
@@ -213,7 +253,7 @@ export class DeviceReaderService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.deviceReader.update({
         where: { id },
-        data: { ...generateApiKeyMetadata(), readerSecretCiphertext: encrypted, readerSecretKeyVersion: { increment: 1 }, readerSecretRotatedAt: new Date(), updatedById: actor.sub }
+        data: { ...generateReaderCredentialMetadata(), readerSecretCiphertext: encrypted, readerSecretKeyVersion: { increment: 1 }, readerSecretRotatedAt: new Date(), updatedById: actor.sub }
       });
 
       await writeAudit(tx, {

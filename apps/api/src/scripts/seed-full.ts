@@ -9,7 +9,7 @@ import {
   TeacherSessionStatus
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { hashReaderApiKey } from '../modules/security/device-signature.service';
+import { readerCredentialDigest } from '../modules/security/device-signature.service';
 
 const prisma = new PrismaClient();
 
@@ -260,7 +260,7 @@ async function main() {
     create: {
       id: 'reader-gerbang-utama',
       name: 'Reader Gerbang Utama',
-      apiKeyHash: hashReaderApiKey('shr_reader_gate_primary_2026'),
+      apiKeyHash: readerCredentialDigest('shr_reader_gate_primary_2026'),
       keyPrefix: 'shr_rea',
       keyLast4: '2026',
       keyRotatedAt: new Date(),
