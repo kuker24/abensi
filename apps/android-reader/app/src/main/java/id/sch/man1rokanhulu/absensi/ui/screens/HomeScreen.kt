@@ -72,7 +72,7 @@ fun HomeScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Absensi MAN 1 Rokan Hulu", style = MaterialTheme.typography.headlineSmall)
+        Text("Akademik Berkarakter", style = MaterialTheme.typography.headlineSmall)
         Text(
             config.deviceName,
             style = MaterialTheme.typography.bodyMedium,

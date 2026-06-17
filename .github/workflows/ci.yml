@@ -228,12 +228,14 @@ jobs:
             scripts/backup_production.sh \
             scripts/verify_backup.sh \
             scripts/restore_backup.sh
-      - name: Compose validation for VPS topology
+      - name: Compose validation for VPS topology and resource budget
         run: |
           docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config > artifacts-vps-compose.yml
+          docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config --format json > artifacts-vps-compose.json
           grep -q '127.0.0.1' artifacts-vps-compose.yml
           grep -Eq '^[[:space:]]*published: "?8080"?[[:space:]]*$' artifacts-vps-compose.yml
           ! grep -Eq '^[[:space:]]*published: "?80"?[[:space:]]*$' artifacts-vps-compose.yml
+          node scripts/validate_compose_resources.mjs artifacts-vps-compose.json
       - name: Deployment dry-run and evidence schema
         run: |
           chmod 600 .env.production.test

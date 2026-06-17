@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BRAND } from './brand';
 import { ROUTES, canAccessRoute, navItemsForUser, routeCrumbs, type AppRoutePath } from './SchoolHubApp';
 import type { User } from './types';
 
@@ -42,7 +43,7 @@ describe('typed route registry', () => {
   });
 
   it('returns a safe crumb fallback for unknown paths', () => {
-    expect(routeCrumbs('/unknown')).toEqual(['e-Hadir']);
+    expect(routeCrumbs('/unknown')).toEqual([BRAND.compactName]);
     expect(canAccessRoute('/unknown', user('DEVELOPER'))).toBe(false);
   });
 });

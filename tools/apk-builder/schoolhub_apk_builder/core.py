@@ -17,9 +17,9 @@ try:
 except Exception:  # pragma: no cover
     Image = None
 
-DEFAULT_APP_NAME = "Absensi MAN 1 Rokan Hulu"
+DEFAULT_APP_NAME = "Akademik Berkarakter"
 DEFAULT_APP_ID = "id.sch.man1rokanhulu.absensi"
-DEFAULT_SERVER = "https://serious-hardware-stock-arrived.trycloudflare.com"
+DEFAULT_SERVER = "https://absensi.man1rokanhulu.cloud"
 
 
 def find_default_project_dir() -> str:
@@ -131,7 +131,7 @@ class BuildProfile:
     key_password: str = ""
     save_passwords: bool = False
     download_url: str = ""
-    release_notes: str = "APK Android QR Reader SchoolHub."
+    release_notes: str = "APK Android QR Reader Akademik Berkarakter."
     min_supported_version_code: int = 1
     force_update: bool = False
 
@@ -175,7 +175,7 @@ class ApkBuilderCore:
     @staticmethod
     def slug(text: str) -> str:
         value = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")
-        return value or "SchoolHub-APK"
+        return value or "AkademikBerkarakter-APK"
 
     @staticmethod
     def normalize_server_url(url: str) -> str:
@@ -210,7 +210,7 @@ class ApkBuilderCore:
         opener: urllib.request.OpenerDirector | None = None,
     ) -> dict[str, Any]:
         data = None
-        headers = {"Accept": "application/json", "User-Agent": "SchoolHub-APK-Builder/1.0"}
+        headers = {"Accept": "application/json", "User-Agent": "AkademikBerkarakter-APK-Builder/1.0"}
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
@@ -406,7 +406,7 @@ class ApkBuilderCore:
             messages.append(f"Endpoint versi APK gagal: {exc}")
         ok = health_ok and version_ok
         if ok:
-            messages.append("Web SchoolHub siap dipakai untuk APK Android.")
+            messages.append("Web Akademik Berkarakter siap dipakai untuk APK Android.")
         return ServerConnectionResult(ok, base, health_ok, version_ok, "\n".join(messages), metadata)
 
     def fetch_web_version(self, server_url: str | None = None, timeout: int = 12) -> dict[str, Any]:
@@ -514,7 +514,7 @@ class ApkBuilderCore:
         return out
 
     def generate_keystore_command(self, keystore: str | Path, alias: str, password: str) -> list[str]:
-        return ["keytool", "-genkeypair", "-v", "-keystore", str(keystore), "-alias", alias, "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000", "-storepass", password, "-keypass", password, "-dname", "CN=SchoolHub APK Builder,O=MAN 1 Rokan Hulu,C=ID"]
+        return ["keytool", "-genkeypair", "-v", "-keystore", str(keystore), "-alias", alias, "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000", "-storepass", password, "-keypass", password, "-dname", "CN=Akademik Berkarakter APK Builder,O=MAN 1 Rokan Hulu,C=ID"]
 
     def create_keystore(self, keystore: str | Path, alias: str, password: str) -> str:
         if not password:

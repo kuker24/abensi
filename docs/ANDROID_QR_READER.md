@@ -1,9 +1,9 @@
-# Android QR Reader — Absensi MAN 1 Rokan Hulu
+# Android QR Reader — Akademik Berkarakter
 
 Nama default APK:
 
 ```text
-Absensi MAN 1 Rokan Hulu
+Akademik Berkarakter
 ```
 
 Project Android:
@@ -14,7 +14,7 @@ apps/android-reader
 
 ## Fungsi
 
-APK Android menjadi **reader resmi** SchoolHub, bukan scanner biasa. Scan QR dikirim sebagai signed request ke server:
+APK Android menjadi **reader resmi** Akademik Berkarakter, bukan scanner biasa. Scan QR dikirim sebagai signed request ke server:
 
 ```http
 POST /api/v1/attendance/qr-reader-scan

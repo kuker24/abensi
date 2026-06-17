@@ -1,4 +1,4 @@
-# SOP Singkat Operator — Akun Siswa & Cetak Kartu e-Hadir
+# SOP Singkat Operator — Akun Siswa & Cetak Kartu Akademik Berkarakter
 
 ## 1. Import Siswa Massal
 

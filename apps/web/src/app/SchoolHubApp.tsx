@@ -38,6 +38,7 @@ import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
 import { WorkOSLoginHandler, WorkOSSSOButton } from './workos-auth';
+import { BRAND } from './brand';
 import { hasCapability, type Capability } from './capabilities';
 
 const SSO_ENABLED = import.meta.env.VITE_SSO_ENABLED === 'true' && Boolean(import.meta.env.VITE_WORKOS_CLIENT_ID);
@@ -216,9 +217,9 @@ export function navItemsForUser(user: User | null): NavItem[] {
   return NAV_ITEMS_BY_ROLE[role].filter(([, url]) => canAccessRoute(url, user));
 }
 
-export function routeCrumbs(path: string): [string, string] | ['e-Hadir'] {
+export function routeCrumbs(path: string): [string, string] | [typeof BRAND.compactName] {
   const route = routeForPath(path);
-  return route ? [route.area, route.title] : ['e-Hadir'];
+  return route ? [route.area, route.title] : [BRAND.compactName];
 }
 
 function roleLabel(role?: string): string {
@@ -252,7 +253,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode; resetKey: string
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('SchoolHub UI error boundary', error, info);
+    console.error('Akademik Berkarakter UI error boundary', error, info);
   }
 
   componentDidUpdate(prevProps: { resetKey: string }) {
@@ -322,22 +323,22 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
     <div className="login login-v2">
       <div className="login-left">
         <div className="login-left-overlay" />
-        <div className="login-left-content" tabIndex={0} aria-label="Informasi e-Hadir MAN 1 Rokan Hulu">
+        <div className="login-left-content" tabIndex={0} aria-label={`Informasi ${BRAND.description}`}>
           <div className="login-topbar">
             <div className="row" style={{ gap: 12 }}>
               <div className="brand-mark login-brand-mark">
                 <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
               </div>
               <div>
-                <div className="login-brand-name">e-Hadir</div>
-                <div className="login-brand-sub">MAN 1 ROKAN HULU</div>
+                <div className="login-brand-name login-brand-name-long">{BRAND.fullName}</div>
+                <div className="login-brand-sub">{BRAND.institution.toUpperCase()}</div>
               </div>
             </div>
           </div>
           <div className="login-hero">
-            <div className="eyebrow"><span className="dot" /> ABSENSI SEKOLAH DIGITAL</div>
-            <h1>Tempel kartu di gerbang.<br />Dicek lagi di kelas.<br /><span className="grad">Lebih rapi dan aman.</span></h1>
-            <p>Sistem ini membantu sekolah mencatat kehadiran siswa dari gerbang dan kelas. Jika ada siswa belum tempel kartu, tidak masuk kelas, atau data tidak sesuai, petugas akan lebih mudah mengetahuinya.</p>
+            <div className="eyebrow"><span className="dot" /> AKADEMIK BERKARAKTER</div>
+            <h1>Satu sistem akademik.<br />Presensi lebih tertib.<br /><span className="grad">Karakter lebih terjaga.</span></h1>
+            <p>{BRAND.description} membantu sekolah mengelola kehadiran siswa dari gerbang dan kelas. Jika ada siswa belum tempel kartu, tidak masuk kelas, atau data tidak sesuai, petugas akan lebih mudah mengetahuinya.</p>
             <div className="row" style={{ gap: 8, marginTop: 22, flexWrap: 'wrap' }}>
               <span className="chip chip-light"><Shield size={12} /> Semua perubahan tercatat</span>
               <span className="chip chip-light"><MapPin size={12} /> Hanya di area sekolah</span>
@@ -420,7 +421,7 @@ function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
       setLoading(false);
     }
   }
-  return <div className="login-page"><div className="login-card"><form onSubmit={submit} className="login-form"><PageHead eyebrow="PASSWORD WAJIB DIGANTI" title="Buat password baru" sub="Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai e-Hadir." />
+  return <div className="login-page"><div className="login-card"><form onSubmit={submit} className="login-form"><PageHead eyebrow="PASSWORD WAJIB DIGANTI" title="Buat password baru" sub={`Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai ${BRAND.compactName}.`} />
     <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
     <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
     {error && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
@@ -442,8 +443,8 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
           <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
         </div>
         <div className="brand-text">
-          <div className="brand-name">e-Hadir</div>
-          <div className="brand-sub">MAN 1 ROHUL</div>
+          <div className="brand-name">{BRAND.fullName}</div>
+          <div className="brand-sub">{BRAND.institution}</div>
         </div>
         <button className="btn icon ghost hamburger" aria-label="Tutup navigasi" onClick={onClose}><X size={16} /></button>
       </div>
@@ -653,7 +654,7 @@ function Unauthorized({ user }: { user: User | null }) {
 }
 
 function NotFound({ user }: { user: User | null }) {
-  return <div className="content"><PageHead eyebrow="HALAMAN TIDAK DITEMUKAN" title="Menu ini belum tersedia" sub="Alamat yang dibuka tidak terdaftar di e-Hadir. Pilih menu yang tersedia untuk peran Anda." actions={<Btn onClick={() => go(defaultPathFor(user))}><Home size={14} /> Kembali ke dasbor</Btn>} /><Card title="Menu yang bisa Anda buka" sub="Gunakan daftar ini bila bingung mencari halaman."><div className="quick-route-list">{navItemsForUser(user).map(([, url, label, Ico]) => <button key={url} type="button" onClick={() => go(url)}><Ico size={15} /><span>{label}</span><ChevronRight size={13} /></button>)}</div></Card></div>;
+  return <div className="content"><PageHead eyebrow="HALAMAN TIDAK DITEMUKAN" title="Menu ini belum tersedia" sub={`Alamat yang dibuka tidak terdaftar di ${BRAND.compactName}. Pilih menu yang tersedia untuk peran Anda.`} actions={<Btn onClick={() => go(defaultPathFor(user))}><Home size={14} /> Kembali ke dasbor</Btn>} /><Card title="Menu yang bisa Anda buka" sub="Gunakan daftar ini bila bingung mencari halaman."><div className="quick-route-list">{navItemsForUser(user).map(([, url, label, Ico]) => <button key={url} type="button" onClick={() => go(url)}><Ico size={15} /><span>{label}</span><ChevronRight size={13} /></button>)}</div></Card></div>;
 }
 
 function App() {

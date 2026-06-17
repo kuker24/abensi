@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SchoolHub APK Builder — Launcher
+# Akademik Berkarakter APK Builder — Launcher
 # Jalankan: bash jalankan-apk-builder.sh
 # Buka di browser: http://localhost:8765
 
@@ -10,7 +10,7 @@ PORT="${1:-8765}"
 
 echo ""
 echo "  ╔══════════════════════════════════════╗"
-echo "  ║   SchoolHub APK Builder              ║"
+echo "  ║   Akademik Berkarakter APK Builder   ║"
 echo "  ║   http://localhost:${PORT}             ║"
 echo "  ╚══════════════════════════════════════╝"
 echo ""

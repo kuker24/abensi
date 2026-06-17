@@ -4,12 +4,53 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+x-ulimits: &default-ulimits
+  nofile:
+    soft: ${SCHOOLHUB_NOFILE_SOFT:-4096}
+    hard: ${SCHOOLHUB_NOFILE_HARD:-8192}
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: schoolhub-postgres
     restart: unless-stopped
     logging: *default-logging
+    command:
+      - postgres
+      - "-c"
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-768MB}
+      - "-c"
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-5GB}
+      - "-c"
+      - work_mem=${POSTGRES_WORK_MEM:-8MB}
+      - "-c"
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-256MB}
+      - "-c"
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-80}
+      - "-c"
+      - checkpoint_completion_target=${POSTGRES_CHECKPOINT_COMPLETION_TARGET:-0.9}
+      - "-c"
+      - max_wal_size=${POSTGRES_MAX_WAL_SIZE:-1GB}
+      - "-c"
+      - min_wal_size=${POSTGRES_MIN_WAL_SIZE:-128MB}
+      - "-c"
+      - wal_compression=${POSTGRES_WAL_COMPRESSION:-on}
+      - "-c"
+      - random_page_cost=${POSTGRES_RANDOM_PAGE_COST:-1.1}
+      - "-c"
+      - effective_io_concurrency=${POSTGRES_EFFECTIVE_IO_CONCURRENCY:-200}
+      - "-c"
+      - fsync=on
+      - "-c"
+      - full_page_writes=on
+      - "-c"
+      - synchronous_commit=on
+    shm_size: ${POSTGRES_SHM_SIZE:-256m}
+    pids_limit: ${POSTGRES_PIDS_LIMIT:-256}
+    mem_limit: ${POSTGRES_MEM_LIMIT:-3072m}
+    cpus: ${POSTGRES_CPUS:-1.0}
+    stop_grace_period: 60s
+    ulimits: *default-ulimits
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -27,7 +68,29 @@ services:
     container_name: schoolhub-redis
     restart: unless-stopped
     logging: *default-logging
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --auto-aof-rewrite-percentage
+      - ${REDIS_AUTO_AOF_REWRITE_PERCENTAGE:-100}
+      - --auto-aof-rewrite-min-size
+      - ${REDIS_AUTO_AOF_REWRITE_MIN_SIZE:-64mb}
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-512mb}
+      - --maxmemory-policy
+      - noeviction
+      - --tcp-keepalive
+      - "60"
+      - --timeout
+      - "0"
+    pids_limit: ${REDIS_PIDS_LIMIT:-128}
+    mem_limit: ${REDIS_MEM_LIMIT:-640m}
+    cpus: ${REDIS_CPUS:-0.25}
+    stop_grace_period: 30s
+    ulimits: *default-ulimits
     volumes:
       - redis_data:/data
     healthcheck:
@@ -48,10 +111,15 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=64m,mode=1777
+    pids_limit: ${MIGRATE_PIDS_LIMIT:-256}
+    mem_limit: ${MIGRATE_MEM_LIMIT:-1024m}
+    cpus: ${MIGRATE_CPUS:-1.0}
+    ulimits: *default-ulimits
     logging: *default-logging
     command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=${MIGRATE_NODE_MAX_OLD_SPACE_MB:-512}
       DATABASE_URL: ${DATABASE_URL}
       DIRECT_URL: ${DIRECT_URL:-${DATABASE_URL}}
     depends_on:
@@ -70,12 +138,15 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=64m,mode=1777
-    pids_limit: 256
-    mem_limit: 768m
-    cpus: 1.0
+    pids_limit: ${API_PIDS_LIMIT:-384}
+    mem_limit: ${API_MEM_LIMIT:-1280m}
+    cpus: ${API_CPUS:-1.0}
+    stop_grace_period: 30s
+    ulimits: *default-ulimits
     logging: *default-logging
     environment:
       NODE_ENV: ${NODE_ENV}
+      NODE_OPTIONS: --max-old-space-size=${API_NODE_MAX_OLD_SPACE_MB:-896}
       DATABASE_URL: ${DATABASE_URL}
       DIRECT_URL: ${DIRECT_URL:-${DATABASE_URL}}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
@@ -111,7 +182,7 @@ services:
       DEVELOPER_BOOTSTRAP_ENABLED: ${DEVELOPER_BOOTSTRAP_ENABLED:-false}
       DEVELOPER_USERNAME: ${DEVELOPER_USERNAME:-developer}
       DEVELOPER_PASSWORD: ${DEVELOPER_PASSWORD:-}
-      DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer SchoolHub}
+      DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer Sistem}
       PORT: 3000
     depends_on:
       migrate:
@@ -139,18 +210,24 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=64m,mode=1777
-    pids_limit: 256
-    mem_limit: 512m
-    cpus: 0.5
+    pids_limit: ${WORKER_PIDS_LIMIT:-256}
+    mem_limit: ${WORKER_MEM_LIMIT:-640m}
+    cpus: ${WORKER_CPUS:-0.4}
+    stop_grace_period: 30s
+    ulimits: *default-ulimits
     logging: *default-logging
     environment:
+      NODE_OPTIONS: --max-old-space-size=${WORKER_NODE_MAX_OLD_SPACE_MB:-384}
       API_RECONCILE_URL: http://api:3000/api/v1/internal/reconciliation/run
       API_MARK_MISSED_URL: http://api:3000/api/v1/internal/sessions/mark-missed
       WORKER_TOKEN: ${WORKER_TOKEN}
       WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS}
       WORKER_RECONCILE_INTERVAL_MS: ${WORKER_RECONCILE_INTERVAL_MS:-30000}
       WORKER_AUTO_MISSED_INTERVAL_MS: ${WORKER_AUTO_MISSED_INTERVAL_MS:-15000}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      WORKER_JOB_ATTEMPTS: ${WORKER_JOB_ATTEMPTS:-5}
       WORKER_MAX_CONSECUTIVE_FAILURES: ${WORKER_MAX_CONSECUTIVE_FAILURES:-5}
+      WORKER_STALE_HEALTH_MS: ${WORKER_HEALTH_STALE_MS:-180000}
       WORKER_HEALTH_STALE_MS: ${WORKER_HEALTH_STALE_MS:-180000}
       WORKER_HEALTH_FILE: /tmp/schoolhub-worker-health.json
     depends_on:
@@ -182,9 +259,11 @@ services:
       - /var/cache/nginx:size=64m
       - /var/run:size=16m
       - /tmp:size=32m,mode=1777
-    pids_limit: 128
-    mem_limit: 256m
-    cpus: 0.5
+    pids_limit: ${WEB_PIDS_LIMIT:-128}
+    mem_limit: ${WEB_MEM_LIMIT:-256m}
+    cpus: ${WEB_CPUS:-0.15}
+    stop_grace_period: 20s
+    ulimits: *default-ulimits
     logging: *default-logging
     expose:
       - "8080"
@@ -206,9 +285,11 @@ services:
       - /var/cache/nginx:size=64m
       - /var/run:size=16m
       - /tmp:size=32m,mode=1777
-    pids_limit: 128
-    mem_limit: 256m
-    cpus: 0.5
+    pids_limit: ${REVERSE_PROXY_PIDS_LIMIT:-128}
+    mem_limit: ${REVERSE_PROXY_MEM_LIMIT:-256m}
+    cpus: ${REVERSE_PROXY_CPUS:-0.2}
+    stop_grace_period: 20s
+    ulimits: *default-ulimits
     logging: *default-logging
     ports:
       - "80:8080"
