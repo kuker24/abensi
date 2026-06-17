@@ -212,4 +212,18 @@ describe('AcademicService', () => {
     expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'student.enrollment_cancelled' }) });
   });
 
+  it('normalizes imported usernames without ambiguous dot-trimming regexes', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.schoolClass.findMany.mockResolvedValue([{ code: 'X-A' }]);
+    const service = new AcademicService(prisma);
+
+    const preview = await service.previewStudentsImport([
+      { fullName: 'Siswa Sanitizer', username: `${'.'.repeat(500)}Siswa@@@Import...`, classCode: 'X-A' }
+    ]);
+
+    expect(preview.summary.invalid).toBe(0);
+    expect(preview.rows[0].username).toBe('siswa.import');
+  });
+
 });

@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { PrismaClient, Role, SessionStatus, StudentAttendanceStatus, AttendanceReviewState, RosterCaptureSource } from '@prisma/client';
 
 function id(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}`;
 }
 
 function dbDate(key: string) {

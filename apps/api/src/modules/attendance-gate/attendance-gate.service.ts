@@ -21,7 +21,7 @@ import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessPolicyService } from '../security/access-policy.service';
 import { canonicalJson } from '../security/canonical-json';
-import { DeviceSignatureService, sha256Hex, type ReaderSignatureHeaders } from '../security/device-signature.service';
+import { DeviceSignatureService, readerCandidateWhere, readerIdentityWhere, readerLookupLimit, readerMatchesIdentifier, sha256Hex, type ReaderSignatureHeaders } from '../security/device-signature.service';
 import { assertReasonQuality, normalizeReason } from '../security/reason-policy';
 import { StepUpAuthService } from '../security/step-up-auth.service';
 import { QrCredentialsService } from '../qr-credentials/qr-credentials.service';
@@ -222,9 +222,10 @@ export class AttendanceGateService {
     const policy = await this.getAttendancePolicy();
     if (!policy.legacyQrScanEnabled) throw new ForbiddenException('Jalur QR manual/legacy sedang dinonaktifkan. Gunakan APK Android reader resmi.');
     const manualReason = assertReasonQuality(payload.manualReason, 'Alasan scan manual');
-    const reader = payload.readerId
-      ? await this.prisma.deviceReader.findFirst({ where: { OR: [{ id: payload.readerId }, { deviceId: payload.readerId }, { apiKeyHash: sha256Hex(payload.readerId) }] } })
-      : null;
+    const readerCandidates = payload.readerId
+      ? await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(payload.readerId), take: readerLookupLimit() })
+      : [];
+    const reader = payload.readerId ? readerCandidates.find((candidate) => readerMatchesIdentifier(candidate, payload.readerId)) : null;
     if (reader && reader.status !== DeviceReaderStatus.ACTIVE) throw new ForbiddenException('Reader tidak aktif.');
     const readerType = reader?.type ?? payload.readerType ?? ReaderType.MANUAL;
     const deviceId = reader?.id ?? payload.deviceId ?? payload.readerId ?? null;
@@ -627,7 +628,7 @@ export class AttendanceGateService {
         if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
         if (options.readerId || options.deviceId) {
           await tx.deviceReader.updateMany({
-            where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
+            where: readerIdentityWhere(options.readerId, options.deviceId),
             data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
           });
         }
@@ -737,7 +738,7 @@ export class AttendanceGateService {
       if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
       if (options.readerId || options.deviceId) {
         await tx.deviceReader.updateMany({
-          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
+          where: readerIdentityWhere(options.readerId, options.deviceId),
           data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
         });
       }

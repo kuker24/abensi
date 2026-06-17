@@ -48,14 +48,28 @@ function currentYearLabel() {
   return `${year}/${year + 1}`;
 }
 
+function normalizeUsernameCandidate(value: string, maxLength = 64) {
+  const normalized = String(value || '').toLowerCase().normalize('NFKD');
+  let candidate = '';
+  let pendingDot = false;
+  for (const char of normalized) {
+    const code = char.charCodeAt(0);
+    if (code >= 0x0300 && code <= 0x036f) continue;
+    const allowedAlphaNumeric = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+    const allowedSymbol = char === '_' || char === '-';
+    if (allowedAlphaNumeric || allowedSymbol) {
+      if (pendingDot && candidate.length > 0 && candidate.length < maxLength) candidate += '.';
+      pendingDot = false;
+      if (candidate.length < maxLength) candidate += char;
+      continue;
+    }
+    pendingDot = true;
+  }
+  return candidate;
+}
+
 function slugUsername(name: string) {
-  const base = name
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 28);
+  const base = normalizeUsernameCandidate(name, 28);
   return base || `siswa.${Date.now()}`;
 }
 
@@ -428,7 +442,7 @@ export class AcademicService {
       if (role && role !== 'SISWA' && role !== 'STUDENT') errors.push('Import ini khusus siswa. Role harus SISWA.');
 
       let username = rawUsername || uniqueUsername(`siswa.${slugUsername(fullName)}`, usedUsernames);
-      username = username.replace(/[^a-z0-9._-]/g, '.').replace(/\.+/g, '.').replace(/^\.+|\.+$/g, '');
+      username = normalizeUsernameCandidate(username, 64);
       const usernameKey = username.toLowerCase();
       const existing = userMap.get(usernameKey);
 
