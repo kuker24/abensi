@@ -2,10 +2,13 @@
   "name": "schoolhub-production",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma && npm run prisma:generate --prefix apps/api",
     "prisma:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
-    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "build:all": "npm run build --prefix apps/api && npm run build --prefix apps/web",
     "lint:all": "npm run lint --prefix apps/api && npm run lint --prefix apps/web",
     "typecheck:all": "npm run typecheck --prefix apps/api && npm run typecheck --prefix apps/web",
@@ -13,10 +16,33 @@
     "uat:smoke": "bash scripts/uat_smoke.sh",
     "test:backend-contract": "node scripts/backend_contract_tests.mjs",
     "test:perf-smoke": "node scripts/perf_smoke.mjs",
+    "test:observability-logs": "node scripts/observability_log_check.mjs",
+    "test:integration": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/postgres_integration_suite.ts",
+    "test:concurrency": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/postgres_concurrency_suite.ts",
+    "test:outbox-sse": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/outbox_sse_distributed_suite.ts",
+    "test:e2e:ui": "npm run test:e2e --prefix apps/web",
+    "test:e2e:full-stack": "bash scripts/full_stack_e2e.sh",
+    "test:a11y": "bash scripts/a11y_smoke.sh",
+    "test:visual": "bash scripts/visual_regression.sh",
+    "test:https-smoke": "bash scripts/https_smoke.sh",
+    "test:https-ci-fixture": "bash scripts/https_ci_fixture.sh",
+    "security:secrets": "bash scripts/secret_scan.sh",
+    "security:container-scan": "bash scripts/container_scan.sh",
+    "security:sbom": "bash scripts/generate_sbom.sh",
+    "security:license": "bash scripts/license_policy_check.sh",
+    "security:risk-acceptance": "node scripts/risk_acceptance_check.mjs",
+    "security:android": "bash scripts/android_release_security.sh",
+    "ops:backup-restore-drill": "bash scripts/backup_restore_drill.sh",
     "test:api": "npm run test --prefix apps/api",
     "test:web": "npm run test --prefix apps/web",
     "test:e2e": "npm run test:e2e --prefix apps/web",
-    "validate:final": "bash scripts/validate_final.sh"
+    "audit:preflight-chain": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/preflight_audit_chain.ts",
+    "audit:verify-chain": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify_audit_chain.ts",
+    "preflight:production": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/preflight_production_readiness.ts",
+    "verify:post-migration": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify_post_migration.ts",
+    "test:upgrade-migrations": "bash scripts/test_upgrade_migrations.sh",
+    "validate:final": "bash scripts/validate_final.sh",
+    "validate:deployment-evidence": "node scripts/validate_deployment_evidence.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -24,6 +50,7 @@
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
+    "@cyclonedx/cyclonedx-npm": "^4.2.1",
     "prisma": "^5.22.0",
     "ts-node": "10.9.2",
     "typescript": "5.7.3"

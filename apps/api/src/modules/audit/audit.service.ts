@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { businessDayBounds } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -31,16 +32,17 @@ export class AuditService {
     if (filters.from || filters.to) {
       const createdAtFilter: Prisma.DateTimeFilter = {};
       if (filters.from) {
-        const start = new Date(filters.from);
-        if (!Number.isNaN(start.getTime())) {
-          createdAtFilter.gte = start;
+        try {
+          createdAtFilter.gte = businessDayBounds(filters.from).start;
+        } catch {
+          // Ignore invalid optional filters to preserve existing API behavior.
         }
       }
       if (filters.to) {
-        const end = new Date(filters.to);
-        if (!Number.isNaN(end.getTime())) {
-          end.setHours(23, 59, 59, 999);
-          createdAtFilter.lte = end;
+        try {
+          createdAtFilter.lte = businessDayBounds(filters.to).end;
+        } catch {
+          // Ignore invalid optional filters to preserve existing API behavior.
         }
       }
       where.createdAt = createdAtFilter;

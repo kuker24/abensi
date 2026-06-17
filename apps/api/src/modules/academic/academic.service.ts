@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { CardStatus, Prisma, Role } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
+import { addCalendarDays, businessDateKey, businessDayBounds } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAcademicYearDto, CreateClassDto, CreateRoomDto, CreateSemesterDto, CreateStudentDto, CreateSubjectDto, ImportAcademicRowDto, ImportStudentRowDto, UpdateAcademicYearDto, UpdateClassDto, UpdateRoomDto, UpdateSemesterDto, UpdateSubjectDto } from './academic.dto';
@@ -47,14 +48,28 @@ function currentYearLabel() {
   return `${year}/${year + 1}`;
 }
 
+function normalizeUsernameCandidate(value: string, maxLength = 64) {
+  const normalized = String(value || '').toLowerCase().normalize('NFKD');
+  let candidate = '';
+  let pendingDot = false;
+  for (const char of normalized) {
+    const code = char.charCodeAt(0);
+    if (code >= 0x0300 && code <= 0x036f) continue;
+    const allowedAlphaNumeric = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+    const allowedSymbol = char === '_' || char === '-';
+    if (allowedAlphaNumeric || allowedSymbol) {
+      if (pendingDot && candidate.length > 0 && candidate.length < maxLength) candidate += '.';
+      pendingDot = false;
+      if (candidate.length < maxLength) candidate += char;
+      continue;
+    }
+    pendingDot = true;
+  }
+  return candidate;
+}
+
 function slugUsername(name: string) {
-  const base = name
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 28);
+  const base = normalizeUsernameCandidate(name, 28);
   return base || `siswa.${Date.now()}`;
 }
 
@@ -73,9 +88,176 @@ function temporaryPassword() {
   return `Ehadir#${randomBytes(5).toString('base64url')}`;
 }
 
+function dbDateFromBusinessKey(key: string) {
+  return businessDayBounds(key).date;
+}
+
+function schoolBusinessDate(value: Date | string = new Date()) {
+  return dbDateFromBusinessKey(typeof value === 'string' ? businessDateKey(new Date(value)) : businessDateKey(value));
+}
+
+function previousBusinessDate(value: Date) {
+  return dbDateFromBusinessKey(addCalendarDays(businessDateKey(value), -1));
+}
+
+const ACTIVE_ENROLLMENT_STATUS = 'ACTIVE';
+const INACTIVE_ENROLLMENT_STATUSES = new Set(['CANCELLED', 'REVOKED']);
+
+type EnrollmentAdministrativeStatus = 'ACTIVE' | 'CANCELLED' | 'REVOKED';
+
+function activeEnrollmentValidityWhere(asOf: Date): Prisma.ClassEnrollmentWhereInput {
+  return {
+    active: true,
+    administrativeStatus: ACTIVE_ENROLLMENT_STATUS,
+    effectiveFrom: { lte: asOf },
+    OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }]
+  };
+}
+
+function normalizeAdministrativeReason(reason: string) {
+  const normalized = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (normalized.length < 10) {
+    throw new BadRequestException({ code: 'ENROLLMENT_ADMIN_REASON_REQUIRED', message: 'Alasan pembatalan/pencabutan minimal 10 karakter.' });
+  }
+  return normalized;
+}
+
+function enrollmentConflictCode(error: unknown) {
+  const text = `${error instanceof Error ? error.message : ''} ${JSON.stringify((error as { meta?: unknown })?.meta ?? {})}`;
+  if (text.includes('ClassEnrollment_student_no_overlap_excl')) return 'ENROLLMENT_PERIOD_OVERLAP';
+  if (text.includes('ClassEnrollment_valid_period_chk')) return 'ENROLLMENT_INVALID_PERIOD';
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') return 'ENROLLMENT_CONCURRENT_TRANSFER';
+  return null;
+}
+
 @Injectable()
 export class AcademicService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async resolveAcademicPeriod(
+    tx: Prisma.TransactionClient,
+    payload: { academicYearId?: string; semesterId?: string }
+  ) {
+    if (payload.semesterId) {
+      const semester = await tx.semester.findUnique({ where: { id: payload.semesterId }, include: { academicYear: true } });
+      if (!semester) throw new BadRequestException('Semester tidak ditemukan.');
+      if (payload.academicYearId && semester.academicYearId !== payload.academicYearId) {
+        throw new BadRequestException({ code: 'SEMESTER_YEAR_MISMATCH', message: 'Semester tidak berada pada tahun ajaran yang dipilih.' });
+      }
+      return { academicYearId: semester.academicYearId, semesterId: semester.id };
+    }
+
+    const academicYearId = payload.academicYearId;
+    const semester = await tx.semester.findFirst({
+      where: {
+        active: true,
+        ...(academicYearId ? { academicYearId } : { academicYear: { active: true } })
+      },
+      orderBy: [{ startsAt: 'desc' }, { createdAt: 'desc' }]
+    });
+    if (semester) return { academicYearId: semester.academicYearId, semesterId: semester.id };
+
+    const activeYear = academicYearId
+      ? await tx.academicYear.findUnique({ where: { id: academicYearId } })
+      : await tx.academicYear.findFirst({ where: { active: true }, orderBy: { createdAt: 'desc' } });
+    if (!activeYear) {
+      throw new BadRequestException({ code: 'ACADEMIC_PERIOD_REQUIRED', message: 'Tahun ajaran dan semester aktif wajib tersedia sebelum mendaftarkan siswa.' });
+    }
+    throw new BadRequestException({ code: 'SEMESTER_REQUIRED', message: 'Semester aktif wajib tersedia sebelum mendaftarkan siswa.' });
+  }
+
+  private async assertEnrollmentWithinAcademicPeriod(
+    tx: Prisma.TransactionClient,
+    period: { academicYearId: string; semesterId: string },
+    effectiveFrom: Date,
+    effectiveTo: Date | null
+  ) {
+    const semester = await tx.semester.findUnique({
+      where: { id: period.semesterId },
+      include: { academicYear: true }
+    });
+    if (!semester) throw new BadRequestException('Semester tidak ditemukan.');
+    if (semester.academicYearId !== period.academicYearId) {
+      throw new BadRequestException({ code: 'SEMESTER_YEAR_MISMATCH', message: 'Semester tidak berada pada tahun ajaran yang dipilih.' });
+    }
+
+    const startsAt = semester.startsAt ?? semester.academicYear?.startsAt ?? null;
+    const endsAt = semester.endsAt ?? semester.academicYear?.endsAt ?? null;
+    if (startsAt && effectiveFrom < schoolBusinessDate(startsAt)) {
+      throw new BadRequestException({ code: 'ENROLLMENT_OUTSIDE_ACADEMIC_PERIOD', message: 'Tanggal mulai pendaftaran berada di luar semester/tahun ajaran.' });
+    }
+    if (effectiveTo && endsAt && effectiveTo > schoolBusinessDate(endsAt)) {
+      throw new BadRequestException({ code: 'ENROLLMENT_OUTSIDE_ACADEMIC_PERIOD', message: 'Tanggal selesai pendaftaran berada di luar semester/tahun ajaran.' });
+    }
+  }
+
+  private async createEnrollmentTransfer(
+    tx: Prisma.TransactionClient,
+    payload: CreateStudentDto,
+    actor: { sub: string; role?: string },
+    reason = 'Pendaftaran/transfer kelas'
+  ) {
+    const [student, schoolClass] = await Promise.all([
+      tx.user.findUnique({ where: { id: payload.userId } }),
+      tx.schoolClass.findUnique({ where: { id: payload.classId } })
+    ]);
+    if (!student || student.role !== Role.SISWA) throw new BadRequestException('Akun siswa tidak ditemukan.');
+    if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan.');
+
+    const period = await this.resolveAcademicPeriod(tx, payload);
+    const effectiveFrom = payload.effectiveFrom ? schoolBusinessDate(payload.effectiveFrom) : schoolBusinessDate();
+    const effectiveTo = payload.effectiveTo ? schoolBusinessDate(payload.effectiveTo) : null;
+    if (effectiveTo && effectiveTo < effectiveFrom) {
+      throw new BadRequestException({ code: 'ENROLLMENT_INVALID_PERIOD', message: 'Tanggal selesai pendaftaran tidak boleh sebelum tanggal mulai.' });
+    }
+    await this.assertEnrollmentWithinAcademicPeriod(tx, period, effectiveFrom, effectiveTo);
+
+    const existingActive = await tx.classEnrollment.findFirst({
+      where: {
+        studentId: payload.userId,
+        ...activeEnrollmentValidityWhere(effectiveFrom)
+      },
+      orderBy: { effectiveFrom: 'desc' }
+    });
+
+    if (existingActive && existingActive.classId === payload.classId && existingActive.academicYearId === period.academicYearId && existingActive.semesterId === period.semesterId) {
+      return { enrollment: existingActive, closedEnrollment: null, reused: true };
+    }
+
+    let closedEnrollment = null;
+    if (existingActive) {
+      const closingDate = previousBusinessDate(effectiveFrom);
+      if (closingDate < existingActive.effectiveFrom) {
+        throw new ConflictException({
+          code: 'ENROLLMENT_SAME_DAY_TRANSFER_REQUIRES_REPAIR',
+          message: 'Transfer pada tanggal mulai pendaftaran yang sama memerlukan perbaikan riwayat eksplisit.'
+        });
+      }
+      closedEnrollment = await tx.classEnrollment.update({
+        where: { id: existingActive.id },
+        data: {
+          effectiveTo: closingDate,
+          endedById: actor.sub,
+          endedReason: reason
+        }
+      });
+    }
+
+    const enrollment = await tx.classEnrollment.create({
+      data: {
+        classId: payload.classId,
+        studentId: payload.userId,
+        academicYearId: period.academicYearId,
+        semesterId: period.semesterId,
+        effectiveFrom,
+        effectiveTo,
+        active: true,
+        administrativeStatus: ACTIVE_ENROLLMENT_STATUS,
+        createdById: actor.sub
+      }
+    });
+    return { enrollment, closedEnrollment, reused: false };
+  }
 
   async listClasses(pagination: PaginationQuery) {
     const [total, items] = await Promise.all([
@@ -112,20 +294,22 @@ export class AcademicService {
   }
 
   async updateClass(id: string, payload: UpdateClassDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.schoolClass.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Kelas tidak ditemukan.');
-    const updated = await this.prisma.schoolClass.update({ where: { id }, data: payload });
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'academic',
-      action: 'class.updated',
-      resource: 'class',
-      resourceId: id,
-      before,
-      after: updated
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.schoolClass.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Kelas tidak ditemukan.');
+      const updated = await tx.schoolClass.update({ where: { id }, data: payload });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'academic',
+        action: 'class.updated',
+        resource: 'class',
+        resourceId: id,
+        before,
+        after: updated
+      });
+      return updated;
     });
-    return updated;
   }
 
   async listSubjects(pagination: PaginationQuery) {
@@ -160,29 +344,33 @@ export class AcademicService {
   }
 
   async updateSubject(id: string, payload: UpdateSubjectDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.subject.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Mapel tidak ditemukan.');
-    const updated = await this.prisma.subject.update({ where: { id }, data: payload });
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'academic',
-      action: 'subject.updated',
-      resource: 'subject',
-      resourceId: id,
-      before,
-      after: updated
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.subject.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Mapel tidak ditemukan.');
+      const updated = await tx.subject.update({ where: { id }, data: payload });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'academic',
+        action: 'subject.updated',
+        resource: 'subject',
+        resourceId: id,
+        before,
+        after: updated
+      });
+      return updated;
     });
-    return updated;
   }
 
   async listStudents(pagination: PaginationQuery, classId?: string) {
-    const where = {
-      role: 'SISWA',
+    const asOf = schoolBusinessDate();
+    const currentEnrollmentWhere = activeEnrollmentValidityWhere(asOf);
+    const where: Prisma.UserWhereInput = {
+      role: Role.SISWA,
       ...(classId
         ? {
             enrollments: {
-              some: { classId }
+              some: { classId, ...currentEnrollmentWhere }
             }
           }
         : {})
@@ -198,10 +386,21 @@ export class AcademicService {
           fullName: true,
           cardStatus: true,
           enrollments: {
+            where: currentEnrollmentWhere,
             select: {
+              id: true,
               classId: true,
-              schoolClass: { select: { code: true, name: true } }
-            }
+              academicYearId: true,
+              semesterId: true,
+              effectiveFrom: true,
+              effectiveTo: true,
+              active: true,
+              administrativeStatus: true,
+              schoolClass: { select: { code: true, name: true } },
+              academicYear: { select: { code: true, name: true } },
+              semester: { select: { code: true, name: true } }
+            },
+            orderBy: { effectiveFrom: 'desc' }
           }
         },
         orderBy: { fullName: 'asc' },
@@ -243,7 +442,7 @@ export class AcademicService {
       if (role && role !== 'SISWA' && role !== 'STUDENT') errors.push('Import ini khusus siswa. Role harus SISWA.');
 
       let username = rawUsername || uniqueUsername(`siswa.${slugUsername(fullName)}`, usedUsernames);
-      username = username.replace(/[^a-z0-9._-]/g, '.').replace(/\.+/g, '.').replace(/^\.+|\.+$/g, '');
+      username = normalizeUsernameCandidate(username, 64);
       const usernameKey = username.toLowerCase();
       const existing = userMap.get(usernameKey);
 
@@ -340,11 +539,7 @@ export class AcademicService {
           credentialRows.push({ fullName: student.fullName, username: student.username, temporaryPassword: '', classCode: row.classCode, note: 'Akun sudah ada; password tidak diubah' });
         }
 
-        await tx.classEnrollment.upsert({
-          where: { classId_studentId: { classId: schoolClass.id, studentId: student.id } },
-          create: { classId: schoolClass.id, studentId: student.id },
-          update: {}
-        });
+        await this.createEnrollmentTransfer(tx, { userId: student.id, classId: schoolClass.id }, actor, 'Import siswa massal');
         result.enrollments += 1;
       }
 
@@ -423,11 +618,7 @@ export class AcademicService {
             tx.user.findUniqueOrThrow({ where: { username: row.username! } }),
             tx.schoolClass.findUniqueOrThrow({ where: { code: row.classCode! } })
           ]);
-          await tx.classEnrollment.upsert({
-            where: { classId_studentId: { classId: schoolClass.id, studentId: student.id } },
-            create: { classId: schoolClass.id, studentId: student.id },
-            update: {}
-          });
+          await this.createEnrollmentTransfer(tx, { userId: student.id, classId: schoolClass.id }, actor, 'Import akademik');
           result.enrollments += 1;
         }
       }
@@ -470,20 +661,22 @@ export class AcademicService {
   }
 
   async updateAcademicYear(id: string, payload: UpdateAcademicYearDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.academicYear.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Tahun ajaran tidak ditemukan.');
-    const updated = await this.prisma.academicYear.update({
-      where: { id },
-      data: {
-        ...(payload.code !== undefined ? { code: payload.code } : {}),
-        ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
-        ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
-        ...(payload.active !== undefined ? { active: payload.active } : {})
-      }
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.academicYear.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Tahun ajaran tidak ditemukan.');
+      const updated = await tx.academicYear.update({
+        where: { id },
+        data: {
+          ...(payload.code !== undefined ? { code: payload.code } : {}),
+          ...(payload.name !== undefined ? { name: payload.name } : {}),
+          ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
+          ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
+          ...(payload.active !== undefined ? { active: payload.active } : {})
+        }
+      });
+      await writeAudit(tx, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'academic_year.updated', resource: 'academicYear', resourceId: id, before, after: updated });
+      return updated;
     });
-    await writeAudit(this.prisma, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'academic_year.updated', resource: 'academicYear', resourceId: id, before, after: updated });
-    return updated;
   }
 
   async listSemesters(pagination: PaginationQuery) {
@@ -512,20 +705,22 @@ export class AcademicService {
   }
 
   async updateSemester(id: string, payload: UpdateSemesterDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.semester.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Semester tidak ditemukan.');
-    const updated = await this.prisma.semester.update({
-      where: { id },
-      data: {
-        ...(payload.code !== undefined ? { code: payload.code } : {}),
-        ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
-        ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
-        ...(payload.active !== undefined ? { active: payload.active } : {})
-      }
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.semester.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Semester tidak ditemukan.');
+      const updated = await tx.semester.update({
+        where: { id },
+        data: {
+          ...(payload.code !== undefined ? { code: payload.code } : {}),
+          ...(payload.name !== undefined ? { name: payload.name } : {}),
+          ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
+          ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
+          ...(payload.active !== undefined ? { active: payload.active } : {})
+        }
+      });
+      await writeAudit(tx, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'semester.updated', resource: 'semester', resourceId: id, before, after: updated });
+      return updated;
     });
-    await writeAudit(this.prisma, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'semester.updated', resource: 'semester', resourceId: id, before, after: updated });
-    return updated;
   }
 
   async listRooms(pagination: PaginationQuery) {
@@ -545,11 +740,13 @@ export class AcademicService {
   }
 
   async updateRoom(id: string, payload: UpdateRoomDto, actor: { sub: string; role: string }) {
-    const before = await this.prisma.room.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Ruang tidak ditemukan.');
-    const updated = await this.prisma.room.update({ where: { id }, data: payload });
-    await writeAudit(this.prisma, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'room.updated', resource: 'room', resourceId: id, before, after: updated });
-    return updated;
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.room.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Ruang tidak ditemukan.');
+      const updated = await tx.room.update({ where: { id }, data: payload });
+      await writeAudit(tx, { actorId: actor.sub, actorRole: actor.role as Role, module: 'academic', action: 'room.updated', resource: 'room', resourceId: id, before, after: updated });
+      return updated;
+    });
   }
 
   importTemplate(target = 'academic') {
@@ -559,32 +756,81 @@ export class AcademicService {
     return 'type,code,name,yearLabel,username,classCode\nclass,X-1,Kelas X-1,2026/2027,,\nsubject,MTK,Matematika,,,\nenrollment,,,,siswa.contoh,X-1\n';
   }
 
-  enrollStudent(payload: CreateStudentDto, actorId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const enrollment = await tx.classEnrollment.upsert({
-        where: {
-          classId_studentId: {
-            classId: payload.classId,
-            studentId: payload.userId
-          }
-        },
-        create: {
-          classId: payload.classId,
-          studentId: payload.userId
-        },
-        update: {}
-      });
-
-      await writeAudit(tx, {
-        actorId,
-        module: 'academic',
-        action: 'student.enrolled',
-        resource: 'classEnrollment',
-        resourceId: enrollment.id,
-        after: enrollment
-      });
-
-      return enrollment;
+  async listEnrollmentHistory(studentId: string) {
+    return this.prisma.classEnrollment.findMany({
+      where: { studentId },
+      include: {
+        schoolClass: { select: { id: true, code: true, name: true } },
+        academicYear: { select: { id: true, code: true, name: true } },
+        semester: { select: { id: true, code: true, name: true } },
+        administrativeStatusChangedBy: { select: { id: true, fullName: true, username: true } },
+        createdBy: { select: { id: true, fullName: true, username: true } },
+        endedBy: { select: { id: true, fullName: true, username: true } }
+      },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }]
     });
+  }
+
+  async setEnrollmentAdministrativeStatus(
+    enrollmentId: string,
+    status: Exclude<EnrollmentAdministrativeStatus, 'ACTIVE'>,
+    reason: string,
+    actor: { sub: string; role: string }
+  ) {
+    if (!INACTIVE_ENROLLMENT_STATUSES.has(status)) {
+      throw new BadRequestException({ code: 'ENROLLMENT_ADMIN_STATUS_INVALID', message: 'Status administrasi pendaftaran tidak valid.' });
+    }
+    const normalizedReason = normalizeAdministrativeReason(reason);
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.classEnrollment.findUnique({ where: { id: enrollmentId } });
+      if (!before) throw new NotFoundException('Pendaftaran kelas tidak ditemukan.');
+      const updated = await tx.classEnrollment.update({
+        where: { id: enrollmentId },
+        data: {
+          active: false,
+          administrativeStatus: status,
+          administrativeStatusChangedAt: new Date(),
+          administrativeStatusChangedById: actor.sub,
+          administrativeStatusReason: normalizedReason
+        }
+      });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'academic',
+        action: status === 'CANCELLED' ? 'student.enrollment_cancelled' : 'student.enrollment_revoked',
+        resource: 'classEnrollment',
+        resourceId: enrollmentId,
+        before,
+        after: updated
+      });
+      return updated;
+    });
+  }
+
+  async enrollStudent(payload: CreateStudentDto, actorId: string) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { enrollment, closedEnrollment, reused } = await this.createEnrollmentTransfer(tx, payload, { sub: actorId }, 'Pendaftaran/transfer kelas manual');
+
+        await writeAudit(tx, {
+          actorId,
+          module: 'academic',
+          action: closedEnrollment ? 'student.transferred' : reused ? 'student.enrollment_reused' : 'student.enrolled',
+          resource: 'classEnrollment',
+          resourceId: enrollment.id,
+          before: closedEnrollment,
+          after: enrollment
+        });
+
+        return enrollment;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      const code = enrollmentConflictCode(error);
+      if (code) {
+        throw new ConflictException({ code, message: 'Pendaftaran siswa berbenturan dengan periode kelas lain. Muat ulang dan coba lagi.' });
+      }
+      throw error;
+    }
   }
 }

@@ -61,28 +61,31 @@ export class AttendanceGateController {
   }
 
   @Post('gate/tap')
-  @Capabilities('gateAttendance.read')
+  @Capabilities('gateAttendance.record')
   tap(@Body() body: TapGateDto, @CurrentUser() user: { sub: string; role: Role }) {
     return this.attendanceGateService.tap(body, user);
   }
 
   @Post('qr-scan')
-  @Capabilities('gateAttendance.read')
+  @Capabilities('gateAttendance.record')
   qrScan(@Body() body: QrScanDto, @CurrentUser() user: { sub: string; role: Role }) {
     return this.attendanceGateService.qrScan(body, user);
   }
 
   @Post('overrides')
+  @Capabilities('attendanceOverrides.create')
   createOverride(@Body() body: CreateAttendanceOverrideDto, @CurrentUser() user: { sub: string; role: Role }, @Req() request: Request) {
     return this.attendanceGateService.createOverride(body, user, extractRequestMeta(request));
   }
 
   @Post('overrides/:id/approve')
+  @Capabilities('attendanceOverrides.approve')
   approveOverride(@Param('id') id: string, @Body() body: ReviewAttendanceOverrideDto, @CurrentUser() user: { sub: string; role: Role }, @Req() request: Request) {
     return this.attendanceGateService.approveOverride(id, body, user, extractRequestMeta(request));
   }
 
   @Post('overrides/:id/revoke')
+  @Capabilities('attendanceOverrides.revoke')
   revokeOverride(@Param('id') id: string, @Body() body: ReviewAttendanceOverrideDto, @CurrentUser() user: { sub: string; role: Role }, @Req() request: Request) {
     return this.attendanceGateService.revokeOverride(id, body, user, extractRequestMeta(request));
   }

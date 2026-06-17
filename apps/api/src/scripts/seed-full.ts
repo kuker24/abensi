@@ -8,19 +8,31 @@ import {
   StudentAttendanceStatus,
   TeacherSessionStatus
 } from '@prisma/client';
-import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { readerCredentialDigest } from '../modules/security/device-signature.service';
 
 const prisma = new PrismaClient();
 
-function withTime(base: Date, hour: number, minute: number) {
-  const date = new Date(base);
-  date.setHours(hour, minute, 0, 0);
-  return date;
+function jakartaDateKey(value: Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
 }
 
-function sha256(input: string) {
-  return createHash('sha256').update(input).digest('hex');
+function jakartaDateTime(dateKey: string, hour: number, minute: number) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0));
+}
+
+function withTime(base: Date, hour: number, minute: number) {
+  return jakartaDateTime(jakartaDateKey(base), hour, minute);
+}
+
+function gateBusinessDate(value: Date) {
+  const [year, month, day] = jakartaDateKey(value).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function gateIn(userId: string, tappedAt: Date) {
+  return { userId, direction: 'IN' as const, businessDate: gateBusinessDate(tappedAt), tappedAt, deviceId: 'reader-gerbang-1' };
 }
 
 function requiredEnv(name: string) {
@@ -101,6 +113,18 @@ async function main() {
     create: { code: 'X-MIA-1', name: 'Kelas X MIA 1', yearLabel: '2025/2026' }
   });
 
+  const academicYear = await prisma.academicYear.upsert({
+    where: { code: '2025/2026' },
+    update: { name: 'Tahun Ajaran 2025/2026', active: true },
+    create: { code: '2025/2026', name: 'Tahun Ajaran 2025/2026', startsAt: jakartaDateTime('2025-07-01', 0, 0), endsAt: jakartaDateTime('2026-06-30', 23, 59), active: true }
+  });
+  const semester = await prisma.semester.upsert({
+    where: { academicYearId_code: { academicYearId: academicYear.id, code: 'GANJIL' } },
+    update: { name: 'Semester Ganjil', active: true },
+    create: { academicYearId: academicYear.id, code: 'GANJIL', name: 'Semester Ganjil', startsAt: jakartaDateTime('2025-07-01', 0, 0), endsAt: jakartaDateTime('2025-12-31', 23, 59), active: true }
+  });
+  const enrollmentStart = jakartaDateTime('2025-07-01', 0, 0);
+
   const subject = await prisma.subject.upsert({
     where: { code: 'MTK-W' },
     update: { name: 'Matematika Wajib' },
@@ -108,19 +132,20 @@ async function main() {
   });
 
   for (const student of students) {
-    await prisma.classEnrollment.upsert({
-      where: {
-        classId_studentId: {
-          classId: schoolClass.id,
-          studentId: student.id
-        }
-      },
-      update: {},
-      create: {
-        classId: schoolClass.id,
-        studentId: student.id
-      }
+    const existingEnrollment = await prisma.classEnrollment.findFirst({
+      where: { classId: schoolClass.id, studentId: student.id, effectiveFrom: enrollmentStart }
     });
+    if (!existingEnrollment) {
+      await prisma.classEnrollment.create({
+        data: {
+          classId: schoolClass.id,
+          studentId: student.id,
+          academicYearId: academicYear.id,
+          semesterId: semester.id,
+          effectiveFrom: enrollmentStart
+        }
+      });
+    }
   }
 
   const today = new Date();
@@ -141,6 +166,7 @@ async function main() {
         where: { id: existingSession.id },
         data: {
           endsAt,
+          businessDate: gateBusinessDate(startsAt),
           status: SessionStatus.CLOSED,
           openedAt: startsAt,
           closedAt: endsAt
@@ -153,6 +179,7 @@ async function main() {
           teacherId: guruMapel.id,
           startsAt,
           endsAt,
+          businessDate: gateBusinessDate(startsAt),
           status: SessionStatus.CLOSED,
           openedAt: startsAt,
           closedAt: endsAt
@@ -233,8 +260,7 @@ async function main() {
     create: {
       id: 'reader-gerbang-utama',
       name: 'Reader Gerbang Utama',
-      apiKey: null,
-      apiKeyHash: sha256('shr_reader_gate_primary_2026'),
+      apiKeyHash: readerCredentialDigest('shr_reader_gate_primary_2026'),
       keyPrefix: 'shr_rea',
       keyLast4: '2026',
       keyRotatedAt: new Date(),
@@ -262,10 +288,10 @@ async function main() {
 
   await prisma.gateLog.createMany({
     data: [
-      { userId: admin.id, direction: 'IN', tappedAt: withTime(today, 6, 55), deviceId: 'reader-gerbang-1' },
-      { userId: guruMapel.id, direction: 'IN', tappedAt: withTime(today, 7, 2), deviceId: 'reader-gerbang-1' },
-      { userId: students[0].id, direction: 'IN', tappedAt: withTime(today, 7, 10), deviceId: 'reader-gerbang-1' },
-      { userId: students[1].id, direction: 'IN', tappedAt: withTime(today, 7, 12), deviceId: 'reader-gerbang-1' }
+      gateIn(admin.id, withTime(today, 6, 55)),
+      gateIn(guruMapel.id, withTime(today, 7, 2)),
+      gateIn(students[0].id, withTime(today, 7, 10)),
+      gateIn(students[1].id, withTime(today, 7, 12))
     ],
     skipDuplicates: true
   });

@@ -1,26 +1,74 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { SessionStatus } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, SessionStatus } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
+import { addCalendarDays, businessDateKey, businessDayBounds, businessWeekday, localDateTimeToUtc } from '../../common/business-time';
 import type { CreateSessionDto, CreateWeeklyScheduleDto, GenerateSessionsDto, UpdateSessionScheduleDto, UpdateWeeklyScheduleDto } from './scheduling.dto';
 
+function businessDateAsDbDate(value: Date) {
+  const { key } = businessDayBounds(value);
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function parseSchoolDateTime(value: string) {
+  const localMatch = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?)?$/.exec(value);
+  if (localMatch) {
+    return localDateTimeToUtc(localMatch[1], localMatch[2] ?? '00:00');
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Tanggal dan jam tidak valid.');
+  return parsed;
+}
+
+function dateOnly(value: string) {
+  try {
+    return businessDayBounds(value).date;
+  } catch {
+    throw new BadRequestException('Tanggal tidak valid.');
+  }
+}
+
 function combineDateTime(day: Date, time: string) {
-  const [hour, minute] = time.split(':').map(Number);
-  const value = new Date(day);
-  value.setHours(hour, minute, 0, 0);
-  return value;
+  return localDateTimeToUtc(businessDayBounds(day).key, time);
 }
 
 function startOfDay(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new BadRequestException('Tanggal tidak valid.');
-  date.setHours(0, 0, 0, 0);
-  return date;
+  try {
+    return businessDayBounds(value).date;
+  } catch {
+    throw new BadRequestException('Tanggal tidak valid.');
+  }
 }
 
 function dayOfWeek(date: Date) {
-  return date.getDay();
+  return businessWeekday(date);
+}
+
+function scheduleConflictCode(error: unknown) {
+  const meta = error && typeof error === 'object' && 'meta' in error ? (error as { meta?: unknown }).meta : undefined;
+  const text = `${error instanceof Error ? error.message : ''} ${JSON.stringify(meta ?? {})}`;
+  if (text.includes('Session_teacher_active_no_overlap_excl')) return 'SESSION_TEACHER_CONFLICT';
+  if (text.includes('Session_class_active_no_overlap_excl')) return 'SESSION_CLASS_CONFLICT';
+  if (text.includes('Session_room_active_no_overlap_excl')) return 'SESSION_ROOM_CONFLICT';
+  if (text.includes('Session_weeklyScheduleId_businessDate_generated_key')) return 'SESSION_GENERATION_DUPLICATE';
+  if (text.includes('Session_valid_time_range_chk')) return 'SESSION_INVALID_RANGE';
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return 'SESSION_GENERATION_DUPLICATE';
+  return null;
+}
+
+function throwInvalidRange(): never {
+  throw new BadRequestException({ code: 'SESSION_INVALID_RANGE', message: 'Rentang jadwal tidak valid.' });
+}
+
+function throwScheduleConflict(error: unknown): never {
+  const code = scheduleConflictCode(error);
+  if (!code) throw error;
+  const message = code === 'SESSION_INVALID_RANGE' ? 'Rentang jadwal tidak valid.' : 'Jadwal bentrok dengan sesi aktif lain.';
+  if (code === 'SESSION_INVALID_RANGE') throw new BadRequestException({ code, message });
+  throw new ConflictException({ code, message });
 }
 
 @Injectable()
@@ -31,12 +79,12 @@ export class SchedulingService {
     const where: Record<string, unknown> = {};
 
     if (date) {
-      const day = new Date(date);
-      const start = new Date(day);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(day);
-      end.setHours(23, 59, 59, 999);
-      where.startsAt = { gte: start, lte: end };
+      try {
+        const { start, end } = businessDayBounds(date);
+        where.startsAt = { gte: start, lte: end };
+      } catch {
+        throw new BadRequestException('Tanggal tidak valid.');
+      }
     }
 
     if (teacherId) where.teacherId = teacherId;
@@ -75,17 +123,22 @@ export class SchedulingService {
   }
 
   createSession(payload: CreateSessionDto, actorId: string) {
+    const startsAt = parseSchoolDateTime(payload.startsAt);
+    const endsAt = parseSchoolDateTime(payload.endsAt);
+    if (endsAt <= startsAt) throwInvalidRange();
+
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.session.create({
         data: {
           classId: payload.classId,
           subjectId: payload.subjectId,
           teacherId: payload.teacherId,
-          startsAt: new Date(payload.startsAt),
-          endsAt: new Date(payload.endsAt),
+          startsAt,
+          endsAt,
+          businessDate: businessDateAsDbDate(startsAt),
           status: SessionStatus.SCHEDULED
         }
-      });
+      }).catch(throwScheduleConflict);
 
       await writeAudit(tx, {
         actorId,
@@ -134,8 +187,8 @@ export class SchedulingService {
           dayOfWeek: payload.dayOfWeek,
           startTime: payload.startTime,
           endTime: payload.endTime,
-          effectiveFrom: new Date(payload.effectiveFrom),
-          effectiveTo: payload.effectiveTo ? new Date(payload.effectiveTo) : null,
+          effectiveFrom: dateOnly(payload.effectiveFrom),
+          effectiveTo: payload.effectiveTo ? dateOnly(payload.effectiveTo) : null,
           active: payload.active ?? true
         }
       });
@@ -145,27 +198,29 @@ export class SchedulingService {
   }
 
   async updateWeeklySchedule(id: string, payload: UpdateWeeklyScheduleDto, actorId: string) {
-    const before = await this.prisma.weeklySchedule.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Jadwal mingguan tidak ditemukan.');
-    const updated = await this.prisma.weeklySchedule.update({
-      where: { id },
-      data: {
-        classId: payload.classId,
-        subjectId: payload.subjectId,
-        teacherId: payload.teacherId,
-        roomId: payload.roomId || null,
-        academicYearId: payload.academicYearId || null,
-        semesterId: payload.semesterId || null,
-        dayOfWeek: payload.dayOfWeek,
-        startTime: payload.startTime,
-        endTime: payload.endTime,
-        effectiveFrom: new Date(payload.effectiveFrom),
-        effectiveTo: payload.effectiveTo ? new Date(payload.effectiveTo) : null,
-        active: payload.active ?? true
-      }
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.weeklySchedule.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Jadwal mingguan tidak ditemukan.');
+      const updated = await tx.weeklySchedule.update({
+        where: { id },
+        data: {
+          classId: payload.classId,
+          subjectId: payload.subjectId,
+          teacherId: payload.teacherId,
+          roomId: payload.roomId || null,
+          academicYearId: payload.academicYearId || null,
+          semesterId: payload.semesterId || null,
+          dayOfWeek: payload.dayOfWeek,
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          effectiveFrom: dateOnly(payload.effectiveFrom),
+          effectiveTo: payload.effectiveTo ? dateOnly(payload.effectiveTo) : null,
+          active: payload.active ?? true
+        }
+      });
+      await writeAudit(tx, { actorId, module: 'scheduling', action: 'weekly_schedule.updated', resource: 'weeklySchedule', resourceId: id, before, after: updated });
+      return updated;
     });
-    await writeAudit(this.prisma, { actorId, module: 'scheduling', action: 'weekly_schedule.updated', resource: 'weeklySchedule', resourceId: id, before, after: updated });
-    return updated;
   }
 
   async generateSessionsFromWeeklySchedule(id: string, payload: GenerateSessionsDto, actorId: string) {
@@ -173,49 +228,100 @@ export class SchedulingService {
     if (!schedule || !schedule.active) throw new NotFoundException('Jadwal mingguan aktif tidak ditemukan.');
     const from = startOfDay(payload.from);
     const to = startOfDay(payload.to);
-    if (to < from) throw new BadRequestException('Tanggal selesai harus setelah tanggal mulai.');
+    if (to < from) throw new BadRequestException({ code: 'SESSION_INVALID_RANGE', message: 'Tanggal selesai harus setelah tanggal mulai.' });
 
-    const generated = [];
-    const skipped = [];
-    for (const day = new Date(from); day <= to; day.setDate(day.getDate() + 1)) {
+    const fromKey = businessDateKey(from);
+    const toKey = businessDateKey(to);
+    const candidates: Array<{ id: string; startsAt: Date; endsAt: Date; businessDate: Date; businessDateKey: string }> = [];
+    for (let dayKey = fromKey; dayKey <= toKey; dayKey = addCalendarDays(dayKey, 1)) {
+      const day = businessDayBounds(dayKey).date;
       if (dayOfWeek(day) !== schedule.dayOfWeek) continue;
       if (day < schedule.effectiveFrom) continue;
       if (schedule.effectiveTo && day > schedule.effectiveTo) continue;
       const startsAt = combineDateTime(day, schedule.startTime);
       const endsAt = combineDateTime(day, schedule.endTime);
-      const existing = await this.prisma.session.findFirst({
-        where: {
-          OR: [
-            { weeklyScheduleId: schedule.id, startsAt },
-            { classId: schedule.classId, startsAt, endsAt }
-          ]
-        }
+      if (endsAt <= startsAt) throwInvalidRange();
+      candidates.push({
+        id: randomUUID(),
+        startsAt,
+        endsAt,
+        businessDate: businessDateAsDbDate(startsAt),
+        businessDateKey: businessDateKey(startsAt)
       });
-      if (existing) { skipped.push(existing.id); continue; }
-      generated.push(await this.prisma.session.create({
-        data: {
-          weeklyScheduleId: schedule.id,
-          classId: schedule.classId,
-          subjectId: schedule.subjectId,
-          teacherId: schedule.teacherId,
-          roomId: schedule.roomId,
-          startsAt,
-          endsAt,
-          status: SessionStatus.SCHEDULED
-        }
-      }));
     }
 
-    await writeAudit(this.prisma, { actorId, module: 'scheduling', action: 'weekly_schedule.sessions_generated', resource: 'weeklySchedule', resourceId: id, after: { generated: generated.length, skipped: skipped.length } });
-    return { generatedCount: generated.length, skippedCount: skipped.length, items: generated };
+    return this.prisma.$transaction(async (tx) => {
+      let inserted: Array<{ id: string }> = [];
+      if (candidates.length > 0) {
+        const now = new Date();
+        const values = Prisma.join(candidates.map((candidate) => Prisma.sql`(
+          ${candidate.id},
+          ${schedule.id},
+          ${schedule.classId},
+          ${schedule.subjectId},
+          ${schedule.teacherId},
+          ${schedule.roomId},
+          ${candidate.startsAt},
+          ${candidate.endsAt},
+          ${candidate.businessDateKey}::date,
+          ${SessionStatus.SCHEDULED}::"SessionStatus",
+          ${now},
+          ${now}
+        )`));
+        inserted = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          INSERT INTO "Session" (
+            "id", "weeklyScheduleId", "classId", "subjectId", "teacherId", "roomId",
+            "startsAt", "endsAt", "businessDate", "status", "createdAt", "updatedAt"
+          )
+          VALUES ${values}
+          ON CONFLICT ("weeklyScheduleId", "businessDate") WHERE "weeklyScheduleId" IS NOT NULL DO NOTHING
+          RETURNING "id"
+        `);
+      }
+
+      const canonical = candidates.length === 0
+        ? []
+        : await tx.session.findMany({
+          where: { weeklyScheduleId: schedule.id, businessDate: { in: candidates.map((candidate) => candidate.businessDate) } },
+          orderBy: { startsAt: 'asc' }
+        });
+      const insertedIds = new Set(inserted.map((row) => row.id));
+      const generated = canonical.filter((session) => insertedIds.has(session.id));
+      const skipped = canonical.filter((session) => !insertedIds.has(session.id));
+
+      await writeAudit(tx, {
+        actorId,
+        module: 'scheduling',
+        action: 'weekly_schedule.sessions_generated',
+        resource: 'weeklySchedule',
+        resourceId: id,
+        after: {
+          generatedCount: generated.length,
+          skippedCount: skipped.length,
+          generatedIds: generated.map((session) => session.id),
+          skippedIds: skipped.map((session) => session.id),
+          requestedRange: { from: payload.from, to: payload.to },
+          scheduleId: id
+        }
+      });
+      return {
+        generatedCount: generated.length,
+        skippedCount: skipped.length,
+        generatedIds: generated.map((session) => session.id),
+        skippedIds: skipped.map((session) => session.id),
+        requestedRange: { from: payload.from, to: payload.to },
+        scheduleId: id,
+        items: generated
+      };
+    }).catch(throwScheduleConflict);
   }
 
   updateSessionSchedule(sessionId: string, payload: UpdateSessionScheduleDto, actorId: string) {
-    const startsAt = new Date(payload.startsAt);
-    const endsAt = new Date(payload.endsAt);
+    const startsAt = parseSchoolDateTime(payload.startsAt);
+    const endsAt = parseSchoolDateTime(payload.endsAt);
 
-    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
-      throw new BadRequestException('Rentang jadwal tidak valid.');
+    if (endsAt <= startsAt) {
+      throwInvalidRange();
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -239,14 +345,15 @@ export class SchedulingService {
         where: { id: sessionId },
         data: {
           startsAt,
-          endsAt
+          endsAt,
+          businessDate: businessDateAsDbDate(startsAt)
         },
         include: {
           schoolClass: true,
           subject: true,
           teacher: { select: { id: true, fullName: true, username: true } }
         }
-      });
+      }).catch(throwScheduleConflict);
 
       await writeAudit(tx, {
         actorId,

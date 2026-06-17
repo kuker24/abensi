@@ -2,7 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { PicketBookService } from './picket-book.service';
 
 function makePrisma() {
-  return {
+  const prisma = {
     picketNote: {
       count: jest.fn(),
       findMany: jest.fn(),
@@ -14,6 +14,8 @@ function makePrisma() {
       create: jest.fn()
     }
   } as any;
+  prisma.$transaction = jest.fn(async (callback: any) => callback(prisma));
+  return prisma;
 }
 
 describe('PicketBookService', () => {

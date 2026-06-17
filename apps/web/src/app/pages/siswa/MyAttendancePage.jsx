@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CalendarCheck, HelpCircle, ShieldCheck } from 'lucide-react';
-import { apiFetch, formatDateTime, go, itemsOf } from '../../api';
+import { apiFetch, formatDateTime, go, itemsOf, today } from '../../api';
 import { useRemote } from '../../hooks';
 import { Btn, Card, DataTable, EmptyState, ErrorState, Field, LoadingState, PageHead, RoleTaskPanel, SelectInput, SimpleHelpBox, StatusDonut, StatusPill } from '../../ui';
 
@@ -92,7 +92,7 @@ export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) 
   const data = useRemote(() => apiFetch(`/reports/my-attendance?days=${days}`), [days]);
   const rows = itemsOf(data.data).filter((row) => !status || row.status === status || row.attendanceStatus === status || row.presenceStatus === status);
   const counts = countByStatus({ items: rows });
-  const todayRows = rows.filter((row) => String(row.date || row.startsAt || row.createdAt || '').slice(0, 10) === new Date().toISOString().slice(0, 10));
+  const todayRows = rows.filter((row) => String(row.date || row.startsAt || row.createdAt || '').slice(0, 10) === today());
   const presentRate = rows.length ? Math.round(((counts.HADIR || 0) / rows.length) * 100) : 0;
 
   return (

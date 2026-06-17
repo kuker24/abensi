@@ -33,6 +33,26 @@ enum StudentAttendanceStatus {
   ALPA
 }
 
+enum AttendanceReviewState {
+  DEFAULTED
+  CONFIRMED
+  CORRECTED
+}
+
+enum AttendanceConfirmationSource {
+  MANUAL_SINGLE
+  MANUAL_BULK
+  FINALIZED_DEFAULT
+  CORRECTION
+  SYSTEM_BACKFILL
+}
+
+enum RosterCaptureSource {
+  GENERATED
+  OPENED
+  BACKFILL
+}
+
 enum TeacherSessionStatus {
   HADIR
   TELAT
@@ -181,54 +201,61 @@ enum OverrideApprovalStatus {
 }
 
 model User {
-  id                String     @id @default(cuid())
-  username          String     @unique
-  fullName          String
-  passwordHash      String
-  role              Role
-  active            Boolean    @default(true)
-  cardStatus        CardStatus @default(ACTIVE)
-  sessionVersion    Int        @default(1)
-  passwordChangedAt DateTime?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  id                 String     @id @default(cuid())
+  username           String     @unique
+  fullName           String
+  passwordHash       String
+  role               Role
+  active             Boolean    @default(true)
+  cardStatus         CardStatus @default(ACTIVE)
+  sessionVersion     Int        @default(1)
+  passwordChangedAt  DateTime?
+  mustChangePassword Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
-  taughtSessions              Session[]                   @relation("TeacherSessions")
-  enrollments                 ClassEnrollment[]
-  gateLogs                    GateLog[]
-  studentAttendances          StudentAttendance[]         @relation("StudentAttendanceUser")
-  teacherPresences            TeacherSessionPresence[]
-  reconciliationFlags         ReconciliationFlag[]        @relation("FlaggedUser")
-  resolvedFlags               ReconciliationFlag[]        @relation("ResolvedByUser")
-  createdEscalations          ReconciliationEscalation[]  @relation("EscalationCreatedByUser")
-  closedEscalations           ReconciliationEscalation[]  @relation("EscalationClosedByUser")
-  createdPicketNotes          PicketNote[]                @relation("PicketNoteCreatedBy")
-  updatedPicketNotes          PicketNote[]                @relation("PicketNoteUpdatedBy")
-  audits                      AuditEntry[]                @relation("AuditActor")
-  smartCard                   SmartCard?
-  qrCredentials               QrCredential[]              @relation("QrCredentialUser")
-  createdQrCredentials        QrCredential[]              @relation("QrCredentialCreatedBy")
-  revokedQrCredentials        QrCredential[]              @relation("QrCredentialRevokedBy")
-  createdDeviceReaders        DeviceReader[]              @relation("DeviceReaderCreatedBy")
-  updatedDeviceReaders        DeviceReader[]              @relation("DeviceReaderUpdatedBy")
-  revokedDeviceReaders        DeviceReader[]              @relation("DeviceReaderRevokedBy")
-  assignedFlags               ReconciliationFlag[]        @relation("FlagAssignedToUser")
-  teacherLeaves               TeacherLeave[]              @relation("TeacherLeaveTeacher")
-  reviewedTeacherLeaves       TeacherLeave[]              @relation("TeacherLeaveReviewedBy")
-  substituteSessions          TeacherLeave[]              @relation("TeacherLeaveSubstitute")
-  weeklySchedules             WeeklySchedule[]
-  notifications               Notification[]
-  prayerAttendances           PrayerAttendanceLog[]       @relation("PrayerAttendanceStudent")
-  createdPrayerLogs           PrayerAttendanceLog[]       @relation("PrayerAttendanceCreatedBy")
-  attendanceOverrides         AttendanceOverride[]        @relation("AttendanceOverrideStudent")
-  createdAttendanceOverrides  AttendanceOverride[]        @relation("AttendanceOverrideCreatedBy")
-  approvedAttendanceOverrides AttendanceOverride[]        @relation("AttendanceOverrideApprovedBy")
-  revokedAttendanceOverrides  AttendanceOverride[]        @relation("AttendanceOverrideRevokedBy")
-  correctionEventsAsStudent   AttendanceCorrectionEvent[] @relation("CorrectionStudent")
-  correctionEventsAsActor     AttendanceCorrectionEvent[] @relation("CorrectionActor")
-  authSessions                AuthSession[]
-  tutorialState               UserTutorialState?          @relation("TutorialStateUser")
-  forcedTutorials             UserTutorialState[]         @relation("TutorialForcedBy")
+  taughtSessions                        Session[]                   @relation("TeacherSessions")
+  enrollments                           ClassEnrollment[]
+  createdClassEnrollments               ClassEnrollment[]           @relation("ClassEnrollmentCreatedBy")
+  endedClassEnrollments                 ClassEnrollment[]           @relation("ClassEnrollmentEndedBy")
+  administrativeChangedClassEnrollments ClassEnrollment[]           @relation("ClassEnrollmentAdministrativeStatusChangedBy")
+  sessionRosters                        SessionRoster[]             @relation("SessionRosterStudent")
+  gateLogs                              GateLog[]
+  studentAttendances                    StudentAttendance[]         @relation("StudentAttendanceUser")
+  correctedStudentAttendances           StudentAttendance[]         @relation("StudentAttendanceCorrectedBy")
+  confirmedStudentAttendances           StudentAttendance[]         @relation("StudentAttendanceConfirmedBy")
+  teacherPresences                      TeacherSessionPresence[]
+  reconciliationFlags                   ReconciliationFlag[]        @relation("FlaggedUser")
+  resolvedFlags                         ReconciliationFlag[]        @relation("ResolvedByUser")
+  createdEscalations                    ReconciliationEscalation[]  @relation("EscalationCreatedByUser")
+  closedEscalations                     ReconciliationEscalation[]  @relation("EscalationClosedByUser")
+  createdPicketNotes                    PicketNote[]                @relation("PicketNoteCreatedBy")
+  updatedPicketNotes                    PicketNote[]                @relation("PicketNoteUpdatedBy")
+  audits                                AuditEntry[]                @relation("AuditActor")
+  smartCard                             SmartCard?
+  qrCredentials                         QrCredential[]              @relation("QrCredentialUser")
+  createdQrCredentials                  QrCredential[]              @relation("QrCredentialCreatedBy")
+  revokedQrCredentials                  QrCredential[]              @relation("QrCredentialRevokedBy")
+  createdDeviceReaders                  DeviceReader[]              @relation("DeviceReaderCreatedBy")
+  updatedDeviceReaders                  DeviceReader[]              @relation("DeviceReaderUpdatedBy")
+  revokedDeviceReaders                  DeviceReader[]              @relation("DeviceReaderRevokedBy")
+  assignedFlags                         ReconciliationFlag[]        @relation("FlagAssignedToUser")
+  teacherLeaves                         TeacherLeave[]              @relation("TeacherLeaveTeacher")
+  reviewedTeacherLeaves                 TeacherLeave[]              @relation("TeacherLeaveReviewedBy")
+  substituteSessions                    TeacherLeave[]              @relation("TeacherLeaveSubstitute")
+  weeklySchedules                       WeeklySchedule[]
+  notifications                         Notification[]
+  prayerAttendances                     PrayerAttendanceLog[]       @relation("PrayerAttendanceStudent")
+  createdPrayerLogs                     PrayerAttendanceLog[]       @relation("PrayerAttendanceCreatedBy")
+  attendanceOverrides                   AttendanceOverride[]        @relation("AttendanceOverrideStudent")
+  createdAttendanceOverrides            AttendanceOverride[]        @relation("AttendanceOverrideCreatedBy")
+  approvedAttendanceOverrides           AttendanceOverride[]        @relation("AttendanceOverrideApprovedBy")
+  revokedAttendanceOverrides            AttendanceOverride[]        @relation("AttendanceOverrideRevokedBy")
+  correctionEventsAsStudent             AttendanceCorrectionEvent[] @relation("CorrectionStudent")
+  correctionEventsAsActor               AttendanceCorrectionEvent[] @relation("CorrectionActor")
+  authSessions                          AuthSession[]
+  tutorialState                         UserTutorialState?          @relation("TutorialStateUser")
+  forcedTutorials                       UserTutorialState[]         @relation("TutorialForcedBy")
 
   @@index([role, active])
   @@index([active, createdAt])
@@ -269,8 +296,9 @@ model AcademicYear {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  semesters       Semester[]
-  weeklySchedules WeeklySchedule[]
+  semesters        Semester[]
+  weeklySchedules  WeeklySchedule[]
+  classEnrollments ClassEnrollment[]
 }
 
 model Semester {
@@ -284,8 +312,9 @@ model Semester {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
-  weeklySchedules WeeklySchedule[]
+  academicYear     AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  weeklySchedules  WeeklySchedule[]
+  classEnrollments ClassEnrollment[]
 
   @@unique([academicYearId, code])
   @@index([active])
@@ -304,15 +333,37 @@ model Room {
 }
 
 model ClassEnrollment {
-  id        String   @id @default(cuid())
-  classId   String
-  studentId String
-  createdAt DateTime @default(now())
+  id                              String    @id @default(cuid())
+  classId                         String
+  studentId                       String
+  academicYearId                  String?
+  semesterId                      String?
+  effectiveFrom                   DateTime  @db.Date
+  effectiveTo                     DateTime? @db.Date
+  active                          Boolean   @default(true)
+  administrativeStatus            String    @default("ACTIVE")
+  administrativeStatusChangedAt   DateTime?
+  administrativeStatusChangedById String?
+  administrativeStatusReason      String?
+  createdById                     String?
+  endedById                       String?
+  endedReason                     String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
 
-  schoolClass SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolClass                   SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student                       User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear                  AcademicYear?   @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  semester                      Semester?       @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  administrativeStatusChangedBy User?           @relation("ClassEnrollmentAdministrativeStatusChangedBy", fields: [administrativeStatusChangedById], references: [id], onDelete: SetNull)
+  createdBy                     User?           @relation("ClassEnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  endedBy                       User?           @relation("ClassEnrollmentEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
+  rosters                       SessionRoster[]
 
-  @@unique([classId, studentId])
+  @@index([studentId, administrativeStatus, effectiveFrom, effectiveTo])
+  @@index([classId, administrativeStatus, effectiveFrom, effectiveTo])
+  @@index([academicYearId])
+  @@index([semesterId])
 }
 
 model Session {
@@ -322,6 +373,7 @@ model Session {
   teacherId        String
   startsAt         DateTime
   endsAt           DateTime
+  businessDate     DateTime      @db.Date
   status           SessionStatus @default(SCHEDULED)
   openedAt         DateTime?
   closedAt         DateTime?
@@ -340,8 +392,10 @@ model Session {
   teacherPresence  TeacherSessionPresence[]
   flags            ReconciliationFlag[]
   correctionEvents AttendanceCorrectionEvent[]
+  rosters          SessionRoster[]
 
   @@index([startsAt])
+  @@index([businessDate])
   @@index([status])
   @@index([status, startsAt])
   @@index([classId, startsAt])
@@ -351,22 +405,29 @@ model Session {
 }
 
 model StudentAttendance {
-  id              String                  @id @default(cuid())
-  sessionId       String
-  studentId       String
-  status          StudentAttendanceStatus
-  note            String?
-  evidenceLabel   String                  @default("normal")
-  usedOverrideId  String?
-  correctionCount Int                     @default(0)
-  correctedAt     DateTime?
-  correctedById   String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  id                 String                        @id @default(cuid())
+  sessionId          String
+  studentId          String
+  status             StudentAttendanceStatus
+  note               String?
+  evidenceLabel      String                        @default("normal")
+  usedOverrideId     String?
+  correctionCount    Int                           @default(0)
+  correctedAt        DateTime?
+  correctedById      String?
+  reviewState        AttendanceReviewState         @default(DEFAULTED)
+  confirmedAt        DateTime?
+  confirmedById      String?
+  confirmationSource AttendanceConfirmationSource?
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
 
   session          Session                     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   student          User                        @relation("StudentAttendanceUser", fields: [studentId], references: [id], onDelete: Cascade)
+  roster           SessionRoster               @relation("AttendanceRosterMembership", fields: [sessionId, studentId], references: [sessionId, studentId], onDelete: Cascade)
   usedOverride     AttendanceOverride?         @relation("AttendanceUsedOverride", fields: [usedOverrideId], references: [id], onDelete: SetNull)
+  correctedBy      User?                       @relation("StudentAttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  confirmedBy      User?                       @relation("StudentAttendanceConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
   correctionEvents AttendanceCorrectionEvent[]
 
   @@unique([sessionId, studentId])
@@ -375,6 +436,39 @@ model StudentAttendance {
   @@index([studentId, updatedAt])
   @@index([usedOverrideId])
   @@index([evidenceLabel])
+  @@index([reviewState])
+  @@index([confirmedById])
+}
+
+model SessionRoster {
+  id                       String              @id @default(cuid())
+  sessionId                String
+  studentId                String
+  enrollmentId             String?
+  studentNameSnapshot      String
+  studentUsernameSnapshot  String
+  classIdSnapshot          String
+  classCodeSnapshot        String
+  classNameSnapshot        String
+  academicYearIdSnapshot   String?
+  academicYearNameSnapshot String?
+  semesterIdSnapshot       String?
+  semesterNameSnapshot     String?
+  capturedAt               DateTime            @default(now())
+  captureSource            RosterCaptureSource
+  activeAtCapture          Boolean             @default(true)
+  metadata                 Json?
+
+  session    Session            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student    User               @relation("SessionRosterStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  enrollment ClassEnrollment?   @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  attendance StudentAttendance? @relation("AttendanceRosterMembership")
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([classIdSnapshot])
+  @@index([captureSource])
 }
 
 model TeacherSessionPresence {
@@ -407,6 +501,7 @@ model GateLog {
   id                String             @id @default(cuid())
   userId            String
   direction         GateDirection
+  businessDate      DateTime           @db.Date
   tappedAt          DateTime           @default(now())
   deviceId          String?
   readerId          String?
@@ -427,7 +522,9 @@ model GateLog {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   qrCredential QrCredential? @relation(fields: [qrCredentialId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, businessDate, direction], map: "GateLog_userId_businessDate_direction_key")
   @@index([tappedAt])
+  @@index([businessDate])
   @@index([userId, tappedAt])
   @@index([userId, direction, tappedAt])
   @@index([deviceId, tappedAt])
@@ -436,6 +533,72 @@ model GateLog {
   @@index([scanMode, tappedAt])
   @@index([signatureVerified, tappedAt])
   @@index([deviceEventId])
+}
+
+model GateLogDeduplication {
+  id                 String        @id
+  duplicateGateLogId String
+  canonicalGateLogId String
+  userId             String
+  businessDate       DateTime      @db.Date
+  direction          GateDirection
+  decision           String
+  createdAt          DateTime      @default(now())
+
+  @@index([userId, businessDate, direction])
+  @@index([canonicalGateLogId])
+}
+
+model GateLogArchive {
+  id                    String             @id @default(cuid())
+  originalGateLogId     String             @unique
+  canonicalGateLogId    String
+  userId                String
+  direction             GateDirection
+  originalBusinessDate  DateTime?          @db.Date
+  correctedBusinessDate DateTime           @db.Date
+  tappedAt              DateTime
+  serverReceivedAt      DateTime?
+  deviceId              String?
+  readerId              String?
+  cardId                String?
+  qrCredentialId        String?
+  scanMode              AndroidReaderMode?
+  appVersion            String?
+  signatureVerified     Boolean?
+  deviceEventId         String?
+  deviceTimestamp       DateTime?
+  nonceHash             String?
+  bodyHash              String?
+  manualReason          String?
+  createdById           String?
+  usedOverrideId        String?
+  completeOriginalRow   Json
+  dedupeReason          String
+  migrationVersion      String
+  archivedAt            DateTime           @default(now())
+
+  @@index([userId, correctedBusinessDate, direction])
+  @@index([canonicalGateLogId])
+  @@index([archivedAt])
+}
+
+model BusinessDateBackfillReport {
+  id                    String    @id
+  migrationVersion      String
+  sourceTable           String
+  rowId                 String
+  observedTimestamp     DateTime
+  currentBusinessDate   DateTime? @db.Date
+  correctedBusinessDate DateTime  @db.Date
+  dateChanged           Boolean
+  duplicateGroupBefore  Json
+  duplicateGroupAfter   Json
+  createdAt             DateTime  @default(now())
+
+  @@unique([migrationVersion, sourceTable, rowId])
+  @@index([sourceTable, dateChanged])
+  @@index([migrationVersion])
 }
 
 model RejectedDeviceScan {
@@ -526,6 +689,7 @@ model AuthSession {
   userId           String
   sessionVersion   Int       @default(1)
   refreshTokenHash String?
+  tokenFamilyId    String?
   userAgent        String?
   requestIp        String?
   createdIp        String?
@@ -546,6 +710,7 @@ model AuthSession {
 
   @@index([userId, revokedAt, expiresAt])
   @@index([refreshTokenHash])
+  @@index([tokenFamilyId, revokedAt])
   @@index([createdAt])
 }
 
@@ -571,6 +736,7 @@ model UserTutorialState {
 
 model AuditEntry {
   id               String   @id @default(cuid())
+  sequence         BigInt   @unique
   actorId          String?
   actorRole        Role?
   action           String
@@ -600,11 +766,37 @@ model AuditEntry {
   @@index([entryHash])
 }
 
+model OutboxEvent {
+  id                String    @id @default(cuid())
+  topic             String
+  eventType         String
+  aggregateType     String?
+  aggregateId       String?
+  logicalKey        String?   @unique
+  payload           Json
+  status            String    @default("PENDING")
+  attempts          Int       @default(0)
+  lockedAt          DateTime?
+  lockedBy          String?
+  lastError         String?
+  publishedStreamId String?
+  publishedAt       DateTime?
+  dlqAt             DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([topic, createdAt])
+  @@index([status, lockedAt, createdAt])
+  @@index([publishedAt])
+  @@index([dlqAt])
+  @@index([aggregateType, aggregateId, createdAt])
+}
+
 model AuditChainState {
-  id          Int      @id
-  lastHash    String?
-  lastEntryId String?
-  updatedAt   DateTime @updatedAt
+  id           Int      @id
+  lastSequence BigInt   @default(0)
+  lastHash     String?
+  lastEntryId  String?
+  updatedAt    DateTime @updatedAt
 }
 
 model TeacherLeave {
@@ -698,7 +890,6 @@ model DeviceReader {
   id                     String              @id @default(cuid())
   deviceId               String?             @unique
   name                   String
-  apiKey                 String?             @unique
   apiKeyHash             String?             @unique
   keyPrefix              String?
   keyLast4               String?

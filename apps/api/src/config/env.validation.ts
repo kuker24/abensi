@@ -8,6 +8,10 @@ const PLACEHOLDER_VALUES = new Set([
   'secret',
   'password',
   'admin',
+  'admin123',
+  'example',
+  'default',
+  'dosen324',
   'Admin#12345',
   'Beta@2026!'
 ]);
@@ -60,10 +64,25 @@ export function validateEnvironment(config: Env) {
     requireValue(config, 'JWT_AUDIENCE');
     requireSecret(config, 'WORKER_TOKEN', 32);
     requireSecret(config, 'READER_SECRET_ENCRYPTION_KEY', 32);
+    if (config.READER_API_KEY_HASH_SECRET) requireSecret(config, 'READER_API_KEY_HASH_SECRET', 32);
+    if ((config.SCHOOL_TIMEZONE || 'Asia/Jakarta') !== 'Asia/Jakarta') {
+      throw new Error('SCHOOL_TIMEZONE production harus Asia/Jakarta untuk baseline MAN 1 Rokan Hulu.');
+    }
+
+    const publicOrigin = requireValue(config, 'PUBLIC_APP_ORIGIN');
+    validateUrl(publicOrigin, 'PUBLIC_APP_ORIGIN', ['https:']);
 
     const cors = requireValue(config, 'CORS_ORIGIN');
     for (const origin of cors.split(',').map((item) => item.trim()).filter(Boolean)) {
       validateUrl(origin, 'CORS_ORIGIN', ['https:']);
+    }
+
+    if (config.SSO_ENABLED === 'true') {
+      requireValue(config, 'WORKOS_CLIENT_ID');
+      requireSecret(config, 'WORKOS_CLIENT_SECRET', 32);
+      requireValue(config, 'WORKOS_ISSUER');
+      requireValue(config, 'WORKOS_AUDIENCE');
+      validateUrl(requireValue(config, 'WORKOS_REDIRECT_URI'), 'WORKOS_REDIRECT_URI', ['https:']);
     }
 
     for (const passwordName of ['ADMIN_PASSWORD', 'DEFAULT_USER_PASSWORD', 'DEVELOPER_PASSWORD']) {

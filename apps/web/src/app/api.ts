@@ -115,6 +115,11 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
   let authExpiredNotified = false;
   if (response.status === 401 && canRefresh) {
     if (await refreshAuth()) {
+      if (isUnsafeMethod(options.method)) {
+        delete headers['x-csrf-token'];
+        const csrfToken = await ensureCsrfToken();
+        if (csrfToken) headers['x-csrf-token'] = csrfToken;
+      }
       response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
     } else {
       notifyAuthExpired();
@@ -158,21 +163,24 @@ export function metaOf(payload: any): PaginationMeta {
   return payload?.meta || { page: 1, total: itemsOf(payload).length, totalPages: 1 };
 }
 
+const SCHOOL_TIMEZONE = 'Asia/Jakarta';
+
 export function formatDateTime(value?: string | null): string {
   if (!value) return '—';
   try {
-    return new Date(value).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(value).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: SCHOOL_TIMEZONE });
   } catch {
     return String(value);
   }
 }
 
+
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: SCHOOL_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
 export function monthNow(): string {
-  return new Date().toISOString().slice(0, 7);
+  return today().slice(0, 7);
 }
 
 export function initials(name = 'User'): string {

@@ -16,50 +16,65 @@ import {
 import type { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
-import { from, interval, map, Observable, startWith, switchMap } from 'rxjs';
+import { Observable } from 'rxjs';
 import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OutboxService, type LiveMonitorEvent } from '../outbox/outbox.service';
 import { ReportingService } from './reporting.service';
 
 type StreamJwtPayload = { sub: string; role: string; sid?: string; ver?: number };
+
+function sanitizeStreamPayload(value: unknown) {
+  return JSON.parse(JSON.stringify(value, (key, item) => {
+    if (/password|token|secret|hash|signature/i.test(key)) return '[REDACTED]';
+    return item;
+  }));
+}
 
 @Controller('reports')
 export class ReportingController {
   constructor(
     private readonly reportingService: ReportingService,
     private readonly jwtService: JwtService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly outbox: OutboxService
   ) {}
 
   @Get('dashboard')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.operational.read')
   dashboard(@Query('date') date?: string) {
     return this.reportingService.dashboard(date);
   }
 
   @Get('class/:classId/monthly')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   classMonthly(@Param('classId') classId: string, @Query('month') month?: string) {
     return this.reportingService.classMonthly(classId, month);
   }
 
   @Get('trend')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.operational.read')
   trend(@Query('days') days?: string) {
     const parsedDays = Number(days ?? '7');
     return this.reportingService.trend(Number.isNaN(parsedDays) ? 7 : parsedDays);
   }
 
   @Get('live-monitor')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.operational.read')
   liveMonitor(@Query('page') page?: string, @Query('limit') limit?: string) {
     const pagination = parsePagination({
       page,
@@ -71,39 +86,72 @@ export class ReportingController {
   }
 
   @Sse('live-monitor/stream')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Capabilities('reports.operational.read')
   streamLiveMonitor(
     @Query('limit') limit?: string,
     @Req() request?: Request
   ): Observable<MessageEvent> {
-    return from(this.verifyStreamCookie(request)).pipe(
-      switchMap((payload) => {
+    return new Observable<MessageEvent>((subscriber) => {
+      let heartbeat: NodeJS.Timeout | null = null;
+      let cleanupStarted = false;
+      let releaseConnection: (() => Promise<void>) | null = null;
+      let unsubscribe: (() => Promise<void>) | null = null;
+      const delivered = new Set<string>();
+
+      const emitEvent = (event: LiveMonitorEvent) => {
+        if (subscriber.closed || delivered.has(event.id)) return;
+        delivered.add(event.id);
+        subscriber.next({ id: event.id, type: event.eventType, data: sanitizeStreamPayload(event.payload) });
+      };
+
+      const cleanup = () => {
+        if (cleanupStarted) return;
+        cleanupStarted = true;
+        if (heartbeat) clearInterval(heartbeat);
+        void unsubscribe?.().catch(() => undefined);
+        void releaseConnection?.().catch(() => undefined);
+      };
+
+      void (async () => {
+        const payload = await this.verifyStreamCookie(request);
         const allowedRoles = new Set<string>([Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
-        if (!allowedRoles.has(payload.role)) {
-          throw new ForbiddenException('Akses live monitor ditolak.');
-        }
+        if (!allowedRoles.has(payload.role)) throw new ForbiddenException('Akses live monitor ditolak.');
 
-        const pagination = parsePagination({
-          page: '1',
-          limit,
-          defaultLimit: 120,
-          maxLimit: 400
-        });
+        const perUserLimit = Number(process.env.SSE_MAX_CONNECTIONS_PER_USER ?? '3');
+        const globalLimit = Number(process.env.SSE_MAX_CONNECTIONS_GLOBAL ?? '100');
+        const connection = await this.outbox.acquireSseConnection(payload.sub, perUserLimit, globalLimit);
+        if (!connection.ok) throw new ForbiddenException('Batas koneksi live monitor terlampaui.');
+        releaseConnection = connection.release ?? null;
 
-        return interval(5000).pipe(
-          startWith(0),
-          switchMap(() => from(this.reportingService.liveMonitor(pagination))),
-          map((snapshot) => ({
-            type: 'snapshot',
-            data: snapshot
-          }))
-        );
-      })
-    );
+        const subscription = await this.outbox.subscribeLiveMonitor(emitEvent);
+        unsubscribe = subscription ?? null;
+
+        const pagination = parsePagination({ page: '1', limit, defaultLimit: 120, maxLimit: 400 });
+        const snapshot = await this.reportingService.liveMonitor(pagination);
+        subscriber.next({ id: `snapshot-${Date.now()}`, type: 'snapshot', data: sanitizeStreamPayload(snapshot) });
+
+        const lastEventId = typeof request?.headers['last-event-id'] === 'string' ? request.headers['last-event-id'] : null;
+        const replay = await this.outbox.replayLiveMonitor(lastEventId, 100);
+        for (const event of replay) emitEvent(event);
+
+        heartbeat = setInterval(() => {
+          if (!subscriber.closed) subscriber.next({ id: `heartbeat-${Date.now()}`, type: 'heartbeat', data: { at: new Date().toISOString() } });
+        }, Number(process.env.SSE_HEARTBEAT_MS ?? '25000'));
+      })().catch((error) => {
+        cleanup();
+        subscriber.error(error);
+      });
+
+      return cleanup;
+    });
   }
 
   @Get('my-attendance')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Capabilities('reports.self.read')
   myAttendance(
     @CurrentUser() user: { sub: string; role: string },
     @Query('days') days?: string
@@ -113,8 +161,9 @@ export class ReportingController {
   }
 
   @Get('recap/classes')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapClasses(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -135,8 +184,9 @@ export class ReportingController {
   }
 
   @Get('recap/students')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapStudents(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -165,8 +215,9 @@ export class ReportingController {
   }
 
   @Get('recap/subjects')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapSubjects(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -187,8 +238,9 @@ export class ReportingController {
   }
 
   @Get('recap/teachers')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   recapTeachers(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -209,8 +261,9 @@ export class ReportingController {
   }
 
   @Get('teacher-monthly')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   teacherMonthly(
     @Query('month') month?: string,
     @Query('teacherId') teacherId?: string,
@@ -228,8 +281,9 @@ export class ReportingController {
   }
 
   @Get('audit-coverage')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
   auditCoverage(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -250,8 +304,9 @@ export class ReportingController {
   }
 
   @Get('export')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.export')
   async exportReport(
     @Query('reportType') reportType?: string,
     @Query('format') format?: string,

@@ -4,16 +4,19 @@ import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
 @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
+  @Capabilities('profile.self.read')
   list(
     @CurrentUser() user: { sub: string; role: Role },
     @Query('unreadOnly') unreadOnly?: string,
@@ -25,6 +28,7 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
+  @Capabilities('profile.self.update')
   markRead(@Param('id') id: string, @CurrentUser() user: { sub: string; role: Role }) {
     return this.notificationsService.markRead(id, user);
   }

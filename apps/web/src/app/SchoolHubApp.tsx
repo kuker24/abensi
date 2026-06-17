@@ -37,16 +37,19 @@ import { API_BASE, AUTH_EXPIRED_EVENT, apiFetch, defaultPathFor, go, normalizeRo
 import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
-import { WorkOSSSOButton, WorkOSLoginHandler, useWorkOSAuth } from './workos-auth';
+import { WorkOSLoginHandler, WorkOSSSOButton } from './workos-auth';
 import { hasCapability, type Capability } from './capabilities';
+
+const SSO_ENABLED = import.meta.env.VITE_SSO_ENABLED === 'true' && Boolean(import.meta.env.VITE_WORKOS_CLIENT_ID);
 
 
 type Notify = (message: string, type?: string) => void;
 type LoginRole = 'guru' | 'admin' | 'siswa';
 type NavIcon = typeof Home;
-type NavItem = readonly [section: string, url: string, label: string, icon: NavIcon];
+type NavItem = readonly [section: string, url: AppRoutePath, label: string, icon: NavIcon];
 type NavKey = 'admin' | 'operator' | 'picket' | 'guru' | 'siswa' | 'developer';
 type ConnectionStatus = 'checking' | 'online' | 'offline';
+export const NOTIFICATION_REFRESH_EVENT = 'schoolhub_notifications_refresh';
 
 function lazyPage(loader: () => Promise<any>, exportName: string) {
   return lazy(async () => {
@@ -95,10 +98,10 @@ const LiveClock = memo(function LiveClock() {
     return () => clearInterval(t);
   }, []);
   return (
-    <span className="chip" aria-live="off" aria-label={now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}>
+    <span className="chip" aria-live="off" aria-label={now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' })}>
       <Clock size={12} />
-      <span className="hide-sm">{now.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })} · </span>
-      <b>{now.toLocaleTimeString('id-ID', { hour12: false })}</b>
+      <span className="hide-sm">{now.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })} · </span>
+      <b>{now.toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Jakarta' })}</b>
     </span>
   );
 });
@@ -118,57 +121,80 @@ const ROLE_LABEL: Record<Role, string> = {
   DEVELOPER: 'Developer'
 };
 
-const ROUTE_TITLE: Record<string, string[]> = {
-  '/admin/dashboard': ['Admin/TU', 'Mulai Hari Ini'],
-  '/admin/it-dashboard': ['Operator IT', 'Cek Sistem'],
-  '/admin/picket-dashboard': ['Guru Piket', 'Tugas Piket Hari Ini'],
-  '/admin/sessions': ['Admin/TU', 'Sesi Hari Ini'],
-  '/admin/history': ['Admin/TU', 'Riwayat Scan'],
-  '/admin/anomaly': ['Admin/TU', 'Masalah yang Perlu Dicek'],
-  '/admin/picket': ['Admin/TU', 'Catatan Piket'],
-  '/admin/master-data': ['Admin/TU', 'Akun & Data Sekolah'],
-  '/admin/schedule': ['Admin/TU', 'Jadwal Kelas'],
-  '/admin/devices': ['Admin/TU', 'HP Scanner & Kartu'],
-  '/admin/reports': ['Admin/TU', 'Laporan Sekolah'],
-  '/admin/live-monitor': ['Admin/TU', 'Aktivitas Sekarang'],
-  '/admin/settings': ['Admin/TU', 'Aturan Absensi'],
-  '/admin/audit': ['Admin/TU', 'Riwayat Perubahan'],
-  '/admin/teacher-leaves': ['Admin/TU', 'Pengajuan Guru'],
-  '/admin/notifications': ['Sistem', 'Tugas / Notifikasi'],
-  '/admin/developer-control': ['Developer', 'Pusat Kontrol'],
-  '/admin/help': ['Bantuan', 'Panduan'],
-  '/guru/izin': ['Guru', 'Izin / Sakit / Dinas'],
-  '/guru/notifikasi': ['Guru', 'Tugas / Notifikasi'],
-  '/guru/panduan': ['Guru', 'Panduan'],
-  '/siswa/notifikasi': ['Siswa', 'Tugas / Notifikasi'],
-  '/siswa/panduan': ['Siswa', 'Panduan'],
-  '/guru/dashboard': ['Guru', 'Mulai Mengajar'],
-  '/guru/presensi': ['Guru', 'Isi Presensi Kelas'],
-  '/guru/koreksi': ['Guru', 'Perbaiki Presensi'],
-  '/guru/rekap': ['Guru', 'Laporan Kelas Saya'],
-  '/guru/kehadiran-saya': ['Guru', 'Kehadiran Saya'],
-  '/siswa/dashboard': ['Siswa', 'Kehadiran Saya']
+type RouteRenderContext = { user: User; notify: Notify };
+
+type AppRouteDefinition = {
+  path: string;
+  area: string;
+  title: string;
+  roles: readonly Role[];
+  capabilities: readonly Capability[];
+  render: (context: RouteRenderContext) => ReactNode;
 };
+
+export const ROUTES = [
+  { path: '/admin/dashboard', area: 'Admin/TU', title: 'Mulai Hari Ini', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <AdminDashboard /> },
+  { path: '/admin/it-dashboard', area: 'Operator IT', title: 'Cek Sistem', roles: ['OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: () => <ItDashboardPage /> },
+  { path: '/admin/picket-dashboard', area: 'Guru Piket', title: 'Tugas Piket Hari Ini', roles: ['GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: () => <PicketDashboardPage /> },
+  { path: '/admin/sessions', area: 'Admin/TU', title: 'Sesi Hari Ini', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['classAttendance.read'], render: () => <SessionsPage admin /> },
+  { path: '/admin/history', area: 'Admin/TU', title: 'Riwayat Scan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['gateAttendance.read'], render: () => <HistoryPage /> },
+  { path: '/admin/anomaly', area: 'Admin/TU', title: 'Masalah yang Perlu Dicek', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <AnomalyPage notify={notify} /> },
+  { path: '/admin/picket', area: 'Admin/TU', title: 'Catatan Piket', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <PicketBookPage notify={notify} /> },
+  { path: '/admin/master-data', area: 'Admin/TU', title: 'Akun & Data Sekolah', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['users.read', 'academic.read'], render: ({ notify }) => <MasterDataPage notify={notify} /> },
+  { path: '/admin/schedule', area: 'Admin/TU', title: 'Jadwal Kelas', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <SchedulePage notify={notify} /> },
+  { path: '/admin/devices', area: 'Admin/TU', title: 'HP Scanner & Kartu', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: ({ notify }) => <DevicesPage notify={notify} /> },
+  { path: '/admin/reports', area: 'Admin/TU', title: 'Laporan Sekolah', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <ReportsPage notify={notify} /> },
+  { path: '/admin/live-monitor', area: 'Admin/TU', title: 'Aktivitas Sekarang', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <LiveMonitorPage /> },
+  { path: '/admin/settings', area: 'Admin/TU', title: 'Aturan Absensi', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['settings.read'], render: ({ notify }) => <SettingsPage notify={notify} /> },
+  { path: '/admin/audit', area: 'Admin/TU', title: 'Riwayat Perubahan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['audit.read'], render: () => <AuditPage /> },
+  { path: '/admin/teacher-leaves', area: 'Admin/TU', title: 'Pengajuan Guru', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <TeacherLeavesPage notify={notify} /> },
+  { path: '/admin/notifications', area: 'Sistem', title: 'Tugas / Notifikasi', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
+  { path: '/admin/developer-control', area: 'Developer', title: 'Pusat Kontrol', roles: ['DEVELOPER'], capabilities: ['settings.manage'], render: ({ notify }) => <DeveloperControlPage notify={notify} /> },
+  { path: '/admin/help', area: 'Bantuan', title: 'Panduan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> },
+  { path: '/guru/dashboard', area: 'Guru', title: 'Mulai Mengajar', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.read'], render: () => <TeacherDashboard /> },
+  { path: '/guru/presensi', area: 'Guru', title: 'Isi Presensi Kelas', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.record'], render: ({ notify }) => <ClassInputPage notify={notify} /> },
+  { path: '/guru/koreksi', area: 'Guru', title: 'Perbaiki Presensi', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.correct'], render: ({ notify }) => <CorrectionPage notify={notify} /> },
+  { path: '/guru/rekap', area: 'Guru', title: 'Laporan Kelas Saya', roles: ['GURU_MAPEL'], capabilities: ['reports.self.read'], render: () => <TeacherRecapPage /> },
+  { path: '/guru/izin', area: 'Guru', title: 'Izin / Sakit / Dinas', roles: ['GURU_MAPEL'], capabilities: ['profile.self.update'], render: ({ notify }) => <TeacherLeavePage notify={notify} /> },
+  { path: '/guru/kehadiran-saya', area: 'Guru', title: 'Kehadiran Saya', roles: ['GURU_MAPEL'], capabilities: ['reports.self.read'], render: () => <MyAttendancePage /> },
+  { path: '/guru/notifikasi', area: 'Guru', title: 'Tugas / Notifikasi', roles: ['GURU_MAPEL'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
+  { path: '/guru/panduan', area: 'Guru', title: 'Panduan', roles: ['GURU_MAPEL'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> },
+  { path: '/siswa/dashboard', area: 'Siswa', title: 'Kehadiran Saya', roles: ['SISWA'], capabilities: ['reports.self.read'], render: () => <MyAttendancePage student title="Kehadiran Saya" /> },
+  { path: '/siswa/notifikasi', area: 'Siswa', title: 'Tugas / Notifikasi', roles: ['SISWA'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
+  { path: '/siswa/panduan', area: 'Siswa', title: 'Panduan', roles: ['SISWA'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> }
+] as const satisfies readonly AppRouteDefinition[];
+
+export type AppRoutePath = typeof ROUTES[number]['path'];
+
+const ROUTE_BY_PATH = Object.fromEntries(ROUTES.map((route) => [route.path, route])) as unknown as Record<AppRoutePath, AppRouteDefinition>;
+
+function routeForPath(path: string): AppRouteDefinition | undefined {
+  return ROUTE_BY_PATH[path as AppRoutePath];
+}
+
+function navItem(section: string, path: AppRoutePath, icon: NavIcon, label = ROUTE_BY_PATH[path].title): NavItem {
+  return [section, path, label, icon];
+}
 
 const NAV_ITEMS_BY_ROLE: Record<NavKey, NavItem[]> = {
   admin: [
-    ['MULAI HARI INI', '/admin/dashboard', 'Ringkasan Hari Ini', LayoutDashboard], ['MULAI HARI INI', '/admin/sessions', 'Cek Sesi Kelas', Radar], ['MULAI HARI INI', '/admin/anomaly', 'Cek Masalah', Flag], ['MULAI HARI INI', '/admin/live-monitor', 'Aktivitas Sekarang', Activity],
-    ['KERJA HARIAN', '/admin/history', 'Riwayat Scan', BookOpen], ['KERJA HARIAN', '/admin/picket', 'Catatan Piket', ListChecks], ['KERJA HARIAN', '/admin/teacher-leaves', 'Izin Guru', CheckSquare], ['DATA SEKOLAH', '/admin/master-data', 'Akun & Data Sekolah', Users], ['DATA SEKOLAH', '/admin/schedule', 'Jadwal Kelas', Calendar],
-    ['PERANGKAT', '/admin/devices', 'HP Scanner & Kartu', CreditCard], ['LAPORAN', '/admin/reports', 'Laporan Sekolah', FileText], ['BANTUAN & SISTEM', '/admin/notifications', 'Tugas / Notifikasi', Bell], ['BANTUAN & SISTEM', '/admin/help', 'Panduan', BookOpen], ['BANTUAN & SISTEM', '/admin/settings', 'Aturan Absensi', Settings], ['BANTUAN & SISTEM', '/admin/audit', 'Riwayat Perubahan', Database]
+    navItem('MULAI HARI INI', '/admin/dashboard', LayoutDashboard, 'Ringkasan Hari Ini'), navItem('MULAI HARI INI', '/admin/sessions', Radar, 'Cek Sesi Kelas'), navItem('MULAI HARI INI', '/admin/anomaly', Flag, 'Cek Masalah'), navItem('MULAI HARI INI', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
+    navItem('KERJA HARIAN', '/admin/history', BookOpen, 'Riwayat Scan'), navItem('KERJA HARIAN', '/admin/picket', ListChecks, 'Catatan Piket'), navItem('KERJA HARIAN', '/admin/teacher-leaves', CheckSquare, 'Izin Guru'), navItem('DATA SEKOLAH', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA SEKOLAH', '/admin/schedule', Calendar, 'Jadwal Kelas'),
+    navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN & SISTEM', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN & SISTEM', '/admin/help', BookOpen, 'Panduan'), navItem('BANTUAN & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('BANTUAN & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan')
   ],
   operator: [
-    ['MULAI HARI INI', '/admin/it-dashboard', 'Cek Sistem', LayoutDashboard], ['PERANGKAT', '/admin/devices', 'HP Scanner & Kartu', CreditCard], ['PERANGKAT', '/admin/live-monitor', 'Aktivitas Sekarang', Activity], ['CEK KEAMANAN', '/admin/audit', 'Riwayat Perubahan', Database], ['BANTUAN', '/admin/notifications', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/admin/help', 'Panduan Operator', BookOpen]
+    navItem('MULAI HARI INI', '/admin/it-dashboard', LayoutDashboard, 'Cek Sistem'), navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('CEK KEAMANAN', '/admin/audit', Database, 'Riwayat Perubahan'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Operator')
   ],
   developer: [
-    ['KONTROL', '/admin/developer-control', 'Pusat Kontrol', Shield], ['KONTROL', '/admin/dashboard', 'Ringkasan Admin', LayoutDashboard], ['KONTROL', '/admin/it-dashboard', 'Cek Sistem', Radar], ['KONTROL', '/admin/live-monitor', 'Aktivitas Sekarang', Activity],
-    ['DATA & SISTEM', '/admin/master-data', 'Akun & Data Sekolah', Users], ['DATA & SISTEM', '/admin/devices', 'HP Scanner & Kartu', CreditCard], ['DATA & SISTEM', '/admin/settings', 'Aturan Absensi', Settings], ['DATA & SISTEM', '/admin/audit', 'Riwayat Perubahan', Database],
-    ['BANTUAN', '/admin/help', 'Panduan Developer', BookOpen]
+    navItem('KONTROL', '/admin/developer-control', Shield, 'Pusat Kontrol'), navItem('KONTROL', '/admin/dashboard', LayoutDashboard, 'Ringkasan Admin'), navItem('KONTROL', '/admin/it-dashboard', Radar, 'Cek Sistem'), navItem('KONTROL', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
+    navItem('DATA & SISTEM', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA & SISTEM', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('DATA & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('DATA & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan'),
+    navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Developer')
   ],
   picket: [
-    ['MULAI HARI INI', '/admin/picket-dashboard', 'Tugas Piket Hari Ini', LayoutDashboard], ['KERJA PIKET', '/admin/picket', 'Catatan Piket', ListChecks], ['KERJA PIKET', '/admin/sessions', 'Cek Sesi Kelas', Radar], ['KERJA PIKET', '/admin/anomaly', 'Cek Masalah', Flag], ['KERJA PIKET', '/admin/history', 'Riwayat Scan', BookOpen], ['KERJA PIKET', '/admin/live-monitor', 'Aktivitas Sekarang', Activity], ['BANTUAN', '/admin/notifications', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/admin/help', 'Panduan Piket', BookOpen]
+    navItem('MULAI HARI INI', '/admin/picket-dashboard', LayoutDashboard, 'Tugas Piket Hari Ini'), navItem('KERJA PIKET', '/admin/picket', ListChecks, 'Catatan Piket'), navItem('KERJA PIKET', '/admin/sessions', Radar, 'Cek Sesi Kelas'), navItem('KERJA PIKET', '/admin/anomaly', Flag, 'Cek Masalah'), navItem('KERJA PIKET', '/admin/history', BookOpen, 'Riwayat Scan'), navItem('KERJA PIKET', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Piket')
   ],
-  guru: [['MULAI MENGAJAR', '/guru/dashboard', 'Ringkasan Mengajar', Home], ['MULAI MENGAJAR', '/guru/presensi', 'Isi Presensi Kelas', CheckSquare], ['MULAI MENGAJAR', '/guru/koreksi', 'Perbaiki Presensi', Edit3], ['LAPORAN', '/guru/rekap', 'Laporan Kelas Saya', FileText], ['PRIBADI', '/guru/izin', 'Izin / Sakit / Dinas', Calendar], ['PRIBADI', '/guru/kehadiran-saya', 'Kehadiran Saya', UserIcon], ['BANTUAN', '/guru/notifikasi', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/guru/panduan', 'Panduan', BookOpen]],
-  siswa: [['UTAMA', '/siswa/dashboard', 'Kehadiran Saya', Home], ['BANTUAN', '/siswa/notifikasi', 'Tugas / Notifikasi', Bell], ['BANTUAN', '/siswa/panduan', 'Panduan', BookOpen]]
+  guru: [navItem('MULAI MENGAJAR', '/guru/dashboard', Home, 'Ringkasan Mengajar'), navItem('MULAI MENGAJAR', '/guru/presensi', CheckSquare, 'Isi Presensi Kelas'), navItem('MULAI MENGAJAR', '/guru/koreksi', Edit3, 'Perbaiki Presensi'), navItem('LAPORAN', '/guru/rekap', FileText, 'Laporan Kelas Saya'), navItem('PRIBADI', '/guru/izin', Calendar, 'Izin / Sakit / Dinas'), navItem('PRIBADI', '/guru/kehadiran-saya', UserIcon, 'Kehadiran Saya'), navItem('BANTUAN', '/guru/notifikasi', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/guru/panduan', BookOpen, 'Panduan')],
+  siswa: [navItem('UTAMA', '/siswa/dashboard', Home, 'Kehadiran Saya'), navItem('BANTUAN', '/siswa/notifikasi', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/siswa/panduan', BookOpen, 'Panduan')]
 };
 
 function navKeyForRole(role?: string): NavKey {
@@ -180,83 +206,19 @@ function navKeyForRole(role?: string): NavKey {
   return 'admin';
 }
 
-const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
-  '/admin/dashboard': ['reports.read'],
-  '/admin/it-dashboard': ['devices.read'],
-  '/admin/picket-dashboard': ['reconciliation.read'],
-  '/admin/sessions': ['classAttendance.read'],
-  '/admin/history': ['gateAttendance.read'],
-  '/admin/anomaly': ['reconciliation.read'],
-  '/admin/picket': ['reconciliation.read'],
-  '/admin/master-data': ['users.read', 'academic.read'],
-  '/admin/schedule': ['schedules.read'],
-  '/admin/devices': ['devices.read'],
-  '/admin/reports': ['reports.read'],
-  '/admin/live-monitor': ['gateAttendance.read'],
-  '/admin/settings': ['settings.read'],
-  '/admin/audit': ['audit.read'],
-  '/admin/teacher-leaves': ['schedules.read'],
-  '/admin/notifications': ['profile.self.read'],
-  '/admin/developer-control': ['settings.manage'],
-  '/admin/help': ['profile.self.read'],
-  '/guru/dashboard': ['classAttendance.read'],
-  '/guru/presensi': ['classAttendance.record'],
-  '/guru/koreksi': ['classAttendance.correct'],
-  '/guru/rekap': ['reports.read'],
-  '/guru/izin': ['profile.self.update'],
-  '/guru/kehadiran-saya': ['profile.self.read'],
-  '/guru/notifikasi': ['profile.self.read'],
-  '/guru/panduan': ['profile.self.read'],
-  '/siswa/dashboard': ['profile.self.read'],
-  '/siswa/notifikasi': ['profile.self.read'],
-  '/siswa/panduan': ['profile.self.read']
-};
-
-const ROUTE_ACCESS: Record<string, string[]> = {
-  '/admin/dashboard': ['ADMIN_TU', 'DEVELOPER'],
-  '/admin/it-dashboard': ['OPERATOR_IT', 'DEVELOPER'],
-  '/admin/picket-dashboard': ['GURU_PIKET', 'DEVELOPER'],
-  '/admin/sessions': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/history': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/anomaly': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/picket': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/master-data': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/schedule': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/devices': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/reports': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/live-monitor': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/settings': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/audit': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/teacher-leaves': ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'],
-  '/admin/notifications': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/admin/developer-control': ['DEVELOPER'],
-  '/admin/help': ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'],
-  '/guru/dashboard': ['GURU_MAPEL'],
-  '/guru/presensi': ['GURU_MAPEL'],
-  '/guru/koreksi': ['GURU_MAPEL'],
-  '/guru/rekap': ['GURU_MAPEL'],
-  '/guru/izin': ['GURU_MAPEL'],
-  '/guru/kehadiran-saya': ['GURU_MAPEL'],
-  '/guru/notifikasi': ['GURU_MAPEL'],
-  '/guru/panduan': ['GURU_MAPEL'],
-  '/siswa/dashboard': ['SISWA'],
-  '/siswa/notifikasi': ['SISWA'],
-  '/siswa/panduan': ['SISWA']
-};
-
-function canAccessRoute(path: string, user: User | null) {
-  const allowed = ROUTE_ACCESS[path];
-  const requiredCapabilities = ROUTE_CAPABILITIES[path] || [];
-  return Boolean(user?.role && allowed?.includes(String(user.role)) && requiredCapabilities.every((capability) => hasCapability(String(user.role), capability)));
+export function canAccessRoute(path: string, user: User | null) {
+  const route = routeForPath(path);
+  return Boolean(user?.role && route?.roles.includes(user.role as Role) && route.capabilities.every((capability) => hasCapability(String(user.role), capability)));
 }
 
-function navItemsForUser(user: User | null): NavItem[] {
+export function navItemsForUser(user: User | null): NavItem[] {
   const role = navKeyForRole(user?.role);
   return NAV_ITEMS_BY_ROLE[role].filter(([, url]) => canAccessRoute(url, user));
 }
 
-function routeExists(path: string) {
-  return Boolean(ROUTE_ACCESS[path]);
+export function routeCrumbs(path: string): [string, string] | ['e-Hadir'] {
+  const route = routeForPath(path);
+  return route ? [route.area, route.title] : ['e-Hadir'];
 }
 
 function roleLabel(role?: string): string {
@@ -330,7 +292,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode; resetKey: string
   }
 }
 
-function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username: string, password: string) => Promise<void> }) {
+function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: LoginRole, username: string, password: string) => Promise<void>; showSso?: boolean }) {
   const [role, setRoleState] = useState<LoginRole>('guru');
   const [id, setId] = useState(ROLE_PRESETS.guru.id);
   const [pw, setPw] = useState('');
@@ -360,7 +322,7 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
     <div className="login login-v2">
       <div className="login-left">
         <div className="login-left-overlay" />
-        <div className="login-left-content">
+        <div className="login-left-content" tabIndex={0} aria-label="Informasi e-Hadir MAN 1 Rokan Hulu">
           <div className="login-topbar">
             <div className="row" style={{ gap: 12 }}>
               <div className="brand-mark login-brand-mark">
@@ -404,7 +366,7 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
           <div className="login-role-label">MASUK SEBAGAI</div>
           <div className="row login-role-tabs" style={{ gap: 6, margin: '10px 0 22px' }} role="tablist" aria-label="Pilih jenis akun">
             {(['guru', 'admin', 'siswa'] as LoginRole[]).map((v) => (
-              <button type="button" key={v} className={`btn sm login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} style={{ flex: 1 }} role="tab" aria-selected={role === v} aria-pressed={role === v}>
+              <button type="button" key={v} className={`btn sm login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} style={{ flex: 1 }} role="tab" aria-selected={role === v}>
                 {v === 'guru' ? 'Guru' : v === 'admin' ? 'Admin/TU' : 'Siswa'}
               </button>
             ))}
@@ -420,9 +382,11 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
           </Field>
           {err && <div className="inline-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
           <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Masuk <ArrowRight size={14} /></Btn>
-          <div className="hline" style={{ margin: '20px 0 16px' }} />
-          <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
-          <WorkOSSSOButton returnTo={defaultPathFor(null)} />
+          {showSso && <>
+            <div className="hline" style={{ margin: '20px 0 16px' }} />
+            <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
+            <WorkOSSSOButton returnTo={defaultPathFor(null)} />
+          </>}
           <div className="hline" style={{ margin: '20px 0 16px' }} />
           <div className="login-footer">
             <div className="login-footer-line" />
@@ -436,6 +400,32 @@ function LoginScreen({ onLogin }: { onLogin: (selectedRole: LoginRole, username:
       </div>
     </div>
   );
+}
+
+function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await apiFetch('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal mengganti password.');
+    } finally {
+      setLoading(false);
+    }
+  }
+  return <div className="login-page"><div className="login-card"><form onSubmit={submit} className="login-form"><PageHead eyebrow="PASSWORD WAJIB DIGANTI" title="Buat password baru" sub="Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai e-Hadir." />
+    <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
+    <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
+    {error && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
+    <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Simpan password baru</Btn>
+  </form></div></div>;
 }
 
 function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: string; onLogout: () => void; isOpen?: boolean; onClose?: () => void }) {
@@ -490,6 +480,7 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
 
 function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: { crumbs: string[]; user: User; onOpenTutorial: () => void; onToggleSidebar: () => void; connection: ConnectionStatus }) {
   const [query, setQuery] = useState('');
+  const [unreadCount, setUnreadCount] = useState<number | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const menuItems = useMemo(
     () => navItemsForUser(user).map(([section, url, label]) => ({ section, url, label })),
@@ -506,6 +497,31 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
     setQuery('');
     go(first.url);
   }, [results]);
+  const refreshUnreadCount = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadCount(null);
+      return;
+    }
+    try {
+      const data = await apiFetch<{ unreadCount?: number }>('/notifications?unreadOnly=true&page=1&limit=1');
+      const nextCount = Number(data?.unreadCount ?? 0);
+      setUnreadCount(Number.isFinite(nextCount) ? Math.max(0, nextCount) : 0);
+    } catch {
+      // Fail closed visually: the bell stays usable, but we do not show a fake warning badge.
+      setUnreadCount(null);
+    }
+  }, [user?.id]);
+  useEffect(() => { void refreshUnreadCount(); }, [refreshUnreadCount]);
+  useEffect(() => {
+    const refresh = () => { void refreshUnreadCount(); };
+    const onVisibility = () => { if (document.visibilityState === 'visible') void refreshUnreadCount(); };
+    window.addEventListener(NOTIFICATION_REFRESH_EVENT, refresh);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener(NOTIFICATION_REFRESH_EVENT, refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshUnreadCount]);
   // Ctrl+K to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -519,6 +535,9 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
     return () => window.removeEventListener('keydown', handler);
   }, []);
   const roleStatus = connection === 'online' ? 'Sedang Aktif' : connection === 'checking' ? 'Memeriksa Koneksi' : 'Tidak Terhubung';
+  const safeUnreadCount = unreadCount ?? 0;
+  const notificationLabel = safeUnreadCount > 0 ? `Notifikasi, ${safeUnreadCount} belum dibaca` : 'Notifikasi';
+  const notificationBadge = safeUnreadCount > 99 ? '99+' : String(safeUnreadCount);
   return (
     <div className="topbar">
       <button className="btn icon ghost hamburger" style={{ minWidth: 40, minHeight: 40 }} aria-label="Buka menu navigasi" onClick={onToggleSidebar}>
@@ -560,15 +579,16 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
         <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{roleLabel(user?.role)} {roleStatus}</span>
       </div>
       <IconBtn label="Lihat tutorial" onClick={onOpenTutorial}><BookOpen size={16} /></IconBtn>
-      <span className="notif-wrapper"><IconBtn label="Notifikasi" onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
+      <span className="notif-wrapper"><IconBtn label={notificationLabel} onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
         <Bell size={16} />
-      </IconBtn><span className="notif-dot" aria-label="Ada notifikasi baru" /></span>
+        {safeUnreadCount > 0 && <span className="notif-badge" aria-hidden="true">{notificationBadge}</span>}
+      </IconBtn></span>
     </div>
   );
 }
 
 function AppLayout({ user, path, onLogout, children }: { user: User; path: string; onLogout: () => void; children: ReactNode }) {
-  const crumbs = ROUTE_TITLE[path] || ['e-Hadir'];
+  const crumbs = routeCrumbs(path);
   const [connection, setConnection] = useState<ConnectionStatus>(() => navigator.onLine ? 'checking' : 'offline');
   const [tutorialOpenKey, setTutorialOpenKey] = useState(0);
   const [tutorialEnabled, setTutorialEnabled] = useState(false);
@@ -624,8 +644,8 @@ function AppLayout({ user, path, onLogout, children }: { user: User; path: strin
     };
   }, []);
 
-  const showTutorial = tutorialEnabled || tutorialOpenKey > 0;
-  return <div className="app"><a href="#main-content" className="skip-link">Lompat ke konten</a><div className={`side-backdrop${sidebarOpen ? ' side-open' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" /><Sidebar user={user} path={path} onLogout={onLogout} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} /><main className="main" id="main-content"><TopBar crumbs={crumbs} user={user} connection={connection} onOpenTutorial={() => { setTutorialEnabled(true); setTutorialOpenKey((value) => value + 1); }} onToggleSidebar={() => setSidebarOpen((v) => !v)} /><AppErrorBoundary resetKey={path}><Suspense fallback={<PageLoading />}>{children}</Suspense></AppErrorBoundary></main>{showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} /></Suspense>}</div>;
+  const showTutorial = Boolean(user) || tutorialEnabled || tutorialOpenKey > 0;
+  return <div className="app"><a href="#main-content" className="skip-link">Lompat ke konten</a><div className={`side-backdrop${sidebarOpen ? ' side-open' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" /><Sidebar user={user} path={path} onLogout={onLogout} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} /><main className="main" id="main-content" tabIndex={-1}><TopBar crumbs={crumbs} user={user} connection={connection} onOpenTutorial={() => { setTutorialEnabled(true); setTutorialOpenKey((value) => value + 1); }} onToggleSidebar={() => setSidebarOpen((v) => !v)} /><AppErrorBoundary resetKey={path}><Suspense fallback={<PageLoading />}>{children}</Suspense></AppErrorBoundary></main>{showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} /></Suspense>}</div>;
 }
 
 function Unauthorized({ user }: { user: User | null }) {
@@ -642,40 +662,11 @@ function App() {
   const [sessionChecked, setSessionChecked] = useState(() => !readStoredUser());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
-  const toastIdRef = { current: 0 };
+  const [backendSsoEnabled, setBackendSsoEnabled] = useState(false);
+  const toastIdRef = useRef(0);
 
-  // WorkOS AuthKit integration
-  const { workosUser, isLoading: workosLoading, getAccessToken, signOut: workosSignOut } = useWorkOSAuth();
-
-  // Sync WorkOS user with app state
-  useEffect(() => {
-    if (workosLoading) return;
-
-    if (workosUser && !user) {
-      // WorkOS user is authenticated but app user is not set
-      // In a real integration, you would call your backend to:
-      // 1. Verify the WorkOS token
-      // 2. Find or create the user in your database
-      // 3. Return the app user object
-
-      // For now, create a minimal user object from WorkOS data
-      const workosAppUser: User = {
-        id: workosUser.id,
-        username: workosUser.email,
-        fullName: [workosUser.firstName, workosUser.lastName].filter(Boolean).join(' ') || workosUser.email,
-        role: 'GURU_MAPEL' as const, // Default role - should be fetched from backend
-      };
-
-      localStorage.setItem(USER_KEY, JSON.stringify(workosAppUser));
-      setUser(workosAppUser);
-      setSessionChecked(true);
-
-      // Redirect to dashboard after WorkOS login
-      if (path === '/login' || path === '/') {
-        go(defaultPathFor(workosAppUser));
-      }
-    }
-  }, [workosUser, workosLoading, user, path]);
+  // WorkOS SSO intentionally does not create local users in the browser.
+  // SSO must complete via backend token exchange/callback and /auth/me.
   const notify: Notify = (message, type = 'ok') => {
     const id = ++toastIdRef.current;
     const duration = type === 'bad' ? 8000 : type === 'warn' ? 6000 : 3600;
@@ -685,17 +676,18 @@ function App() {
   const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
   useEffect(() => { const onPop = () => setPath(window.location.pathname === '/' ? '' : window.location.pathname); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark'); }, []);
-  // Unsaved changes warning — warn on page close/refresh when on a non-login page
   useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (user && window.location.pathname !== '/login') {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [user]);
+    if (!SSO_ENABLED) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/auth/sso/config`, { headers: { accept: 'application/json' }, credentials: 'include' })
+      .then((response) => response.ok ? response.json() : { enabled: false })
+      .then((data) => { if (!cancelled) setBackendSsoEnabled(data?.enabled === true); })
+      .catch(() => { if (!cancelled) setBackendSsoEnabled(false); });
+    return () => { cancelled = true; };
+  }, []);
+  // Unsaved changes warning — DISABLED: warn only when form state is dirty, not on every page.
+  // Individual pages should set dirty state before enabling beforeunload.
+  // To re-enable: add formDirty state and check it in the handler.
   useEffect(() => { setRiskConfirmHandler(({ title, message }) => new Promise((resolve) => setConfirmDialog({ title, message, resolve }))); return () => setRiskConfirmHandler(null); }, []);
   useEffect(() => {
     const onExpired = () => {
@@ -721,7 +713,7 @@ function App() {
         if (cancelled) return;
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         setUser(response.user);
-        if (window.location.pathname === '/login') go(defaultPathFor(response.user));
+        // Keep /login stable for explicit re-authentication and E2E/visual checks.
       })
       .catch(() => {
         if (cancelled) return;
@@ -735,6 +727,12 @@ function App() {
 
     return () => { cancelled = true; };
   }, []);
+  useEffect(() => {
+    if (!user) {
+      const stored = readStoredUser();
+      if (stored) setUser(stored);
+    }
+  }, [path, user]);
   useEffect(() => { if (sessionChecked && !readStoredUser() && path !== '/login') go('/login'); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     try {
@@ -768,58 +766,19 @@ function App() {
     setSessionChecked(true);
     setUser(null);
 
-    // Also sign out from WorkOS if user was authenticated via SSO
-    if (workosUser) {
-      workosSignOut({ returnTo: window.location.origin + '/login' });
-    } else {
-      go('/login');
-    }
+    go('/login');
   }
   const confirmLayer = <ConfirmDialog dialog={confirmDialog} onCancel={() => { confirmDialog?.resolve(false); setConfirmDialog(null); }} onConfirm={() => { confirmDialog?.resolve(true); setConfirmDialog(null); }} />;
 
-  // Show loading state while WorkOS is checking auth
-  if (workosLoading) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-
   if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : '/login'), 0); return null; }
   if (!sessionChecked && path !== '/login') return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (path === '/login') return <><WorkOSLoginHandler /><LoginScreen onLogin={handleLogin} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (!user) return <LoginScreen onLogin={handleLogin} />;
-  const exists = routeExists(path);
+  if (path === '/login') return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (!user) return <LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} />;
+  if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { localStorage.removeItem(USER_KEY); setSessionChecked(true); setUser(null); notify('Password berhasil diganti. Silakan masuk kembali.', 'ok'); go('/login'); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  const route = routeForPath(path);
+  const exists = Boolean(route);
   const allowed = exists && canAccessRoute(path, user);
-  const screen = (() => {
-    if (!exists) return <NotFound user={user} />;
-    if (!allowed) return <Unauthorized user={user} />;
-    if (path === '/admin/dashboard') return <AdminDashboard />;
-    if (path === '/admin/it-dashboard') return <ItDashboardPage />;
-    if (path === '/admin/picket-dashboard') return <PicketDashboardPage />;
-    if (path === '/admin/sessions') return <SessionsPage admin />;
-    if (path === '/admin/history') return <HistoryPage />;
-    if (path === '/admin/anomaly') return <AnomalyPage notify={notify} />;
-    if (path === '/admin/picket') return <PicketBookPage notify={notify} />;
-    if (path === '/admin/master-data') return <MasterDataPage notify={notify} />;
-    if (path === '/admin/schedule') return <SchedulePage notify={notify} />;
-    if (path === '/admin/devices') return <DevicesPage notify={notify} />;
-    if (path === '/admin/reports') return <ReportsPage notify={notify} />;
-    if (path === '/admin/live-monitor') return <LiveMonitorPage />;
-    if (path === '/admin/settings') return <SettingsPage notify={notify} />;
-    if (path === '/admin/audit') return <AuditPage />;
-    if (path === '/admin/teacher-leaves') return <TeacherLeavesPage notify={notify} />;
-    if (path === '/admin/notifications') return <NotificationsPage />;
-    if (path === '/admin/developer-control') return <DeveloperControlPage notify={notify} />;
-    if (path === '/admin/help') return <HelpPage role={String(user.role)} />;
-    if (path === '/guru/dashboard') return <TeacherDashboard />;
-    if (path === '/guru/presensi') return <ClassInputPage notify={notify} />;
-    if (path === '/guru/koreksi') return <CorrectionPage notify={notify} />;
-    if (path === '/guru/rekap') return <TeacherRecapPage />;
-    if (path === '/guru/izin') return <TeacherLeavePage notify={notify} />;
-    if (path === '/guru/kehadiran-saya') return <MyAttendancePage />;
-    if (path === '/guru/notifikasi') return <NotificationsPage />;
-    if (path === '/guru/panduan') return <HelpPage role={String(user.role)} />;
-    if (path === '/siswa/dashboard') return <MyAttendancePage student title="Kehadiran Saya" />;
-    if (path === '/siswa/notifikasi') return <NotificationsPage />;
-    if (path === '/siswa/panduan') return <HelpPage role={String(user.role)} />;
-    return <Unauthorized user={user} />;
-  })();
+  const screen = !route ? <NotFound user={user} /> : !allowed ? <Unauthorized user={user} /> : route.render({ user, notify });
   return <><AppLayout user={user} path={path} onLogout={logout}>{screen}</AppLayout><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
 }
 

@@ -8,7 +8,7 @@ import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AttendanceClassService } from './attendance-class.service';
-import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDto } from './attendance-class.dto';
+import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, RepairSessionRosterDto, SessionGeoDto } from './attendance-class.dto';
 
 @Controller('attendance/class-sessions')
 @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
@@ -56,6 +56,26 @@ export class AttendanceClassController {
     return this.attendanceClassService.recordAttendance(sessionId, user, body);
   }
 
+  @Post(':id/attendance/bulk-present')
+  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.DEVELOPER)
+  @Capabilities('classAttendance.record')
+  bulkConfirmPresent(
+    @Param('id') sessionId: string,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.attendanceClassService.bulkConfirmPresent(sessionId, user);
+  }
+
+  @Post(':id/attendance/bulk-alpa')
+  @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.DEVELOPER)
+  @Capabilities('classAttendance.record')
+  bulkConfirmAlpa(
+    @Param('id') sessionId: string,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.attendanceClassService.bulkConfirmAlpa(sessionId, user);
+  }
+
   @Post(':id/close')
   @Roles(Role.ADMIN_TU, Role.GURU_MAPEL, Role.GURU_PIKET, Role.DEVELOPER)
   @Capabilities('session.close')
@@ -79,6 +99,17 @@ export class AttendanceClassController {
   @Capabilities('classAttendance.read')
   roster(@Param('id') sessionId: string, @CurrentUser() user: { sub: string; role: string }) {
     return this.attendanceClassService.roster(sessionId, user);
+  }
+
+  @Post(':id/roster/repair')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('classAttendance.correct')
+  repairRoster(
+    @Param('id') sessionId: string,
+    @Body() body: RepairSessionRosterDto,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.attendanceClassService.repairSessionRoster(sessionId, user, body.reason);
   }
 
   @Patch(':id/attendance/:studentId')

@@ -1,7 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
+  AttendanceConfirmationSource,
+  AttendanceReviewState,
   Prisma,
   Role,
+  RosterCaptureSource,
   SessionStatus,
   StudentAttendanceStatus,
   TeacherSessionStatus,
@@ -15,7 +18,9 @@ import type { AuthenticatedUser } from '../../common/current-user.decorator';
 import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDto } from './attendance-class.dto';
 import { AccessPolicyService } from '../security/access-policy.service';
 import { writeAudit } from '../../common/audit-log';
+import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { assertReasonQuality } from '../security/reason-policy';
+import { businessDateKey, jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
 
 function teacherStatusForCheckIn(startsAt: Date, policyGraceMinutes?: number) {
   const graceMinutes = policyGraceMinutes ?? 15;
@@ -40,18 +45,88 @@ function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   return earthRadius * c;
 }
 
-function dayBounds(value: Date) {
-  const start = new Date(value);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(value);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+type GeofencePolicyForValidation = {
+  centerLat: number;
+  centerLng: number;
+  radiusMeter: number;
+};
+
+type NormalizedSessionGeo = {
+  latitude: number;
+  longitude: number;
+  accuracyMeter: number;
+  capturedAt: Date;
+  source: 'browser_geolocation';
+  distanceMeter: number | null;
+  insideGeofence: boolean | null;
+};
+
+function numberFromEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  const parsed = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function hasAnyGeo(payload?: SessionGeoDto) {
+  return payload?.latitude !== undefined || payload?.longitude !== undefined || payload?.accuracyMeter !== undefined || payload?.capturedAt !== undefined || payload?.source !== undefined;
+}
+
+function normalizeSessionGeo(payload: SessionGeoDto | undefined, required: boolean, policy?: GeofencePolicyForValidation | null): NormalizedSessionGeo | null {
+  if (!hasAnyGeo(payload)) {
+    if (required) throw new BadRequestException('Koordinat wajib saat geofence aktif.');
+    return null;
+  }
+
+  if (
+    payload?.latitude === undefined ||
+    payload.longitude === undefined ||
+    payload.accuracyMeter === undefined ||
+    !payload.capturedAt ||
+    payload.source !== 'browser_geolocation'
+  ) {
+    throw new BadRequestException('Data lokasi browser tidak lengkap.');
+  }
+
+  if (payload.latitude < -90 || payload.latitude > 90 || payload.longitude < -180 || payload.longitude > 180) {
+    throw new BadRequestException('Koordinat lokasi tidak valid.');
+  }
+
+  const capturedAt = new Date(payload.capturedAt);
+  if (Number.isNaN(capturedAt.getTime())) {
+    throw new BadRequestException('Waktu pengambilan lokasi tidak valid.');
+  }
+
+  const maxAgeSeconds = numberFromEnv('SESSION_GEO_MAX_AGE_SECONDS', 120);
+  const ageMs = Math.abs(Date.now() - capturedAt.getTime());
+  if (ageMs > maxAgeSeconds * 1000) {
+    throw new BadRequestException('Lokasi sudah kedaluwarsa. Ambil ulang lokasi.');
+  }
+
+  const maxAccuracyMeter = numberFromEnv('SESSION_GEO_MAX_ACCURACY_METER', 100);
+  if (payload.accuracyMeter > maxAccuracyMeter) {
+    throw new BadRequestException('Akurasi lokasi terlalu rendah. Coba lagi di area terbuka.');
+  }
+
+  const distanceMeter = policy ? haversineDistanceMeters(policy.centerLat, policy.centerLng, payload.latitude, payload.longitude) : null;
+  const insideGeofence = policy ? distanceMeter !== null && distanceMeter <= policy.radiusMeter : null;
+
+  return {
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    accuracyMeter: payload.accuracyMeter,
+    capturedAt,
+    source: payload.source,
+    distanceMeter,
+    insideGeofence
+  };
+}
+
+function dayBounds(value: Date | string) {
+  return jakartaBusinessDayBounds(value);
 }
 
 function dateOnly(value: Date) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return jakartaBusinessDayBounds(value).date;
 }
 
 function minutesOf(time: string | null | undefined, fallback: number) {
@@ -64,8 +139,14 @@ function minutesOf(time: string | null | undefined, fallback: number) {
 }
 
 function sessionAtOrAfter(sessionTime: Date, time: string | null | undefined, fallback: number) {
-  const minute = sessionTime.getHours() * 60 + sessionTime.getMinutes();
-  return minute >= minutesOf(time, fallback);
+  return localMinutesOfDay(sessionTime) >= minutesOf(time, fallback);
+}
+
+function sessionRosterMissingException() {
+  return new ConflictException({
+    code: 'SESSION_ROSTER_MISSING',
+    message: 'Roster snapshot sesi tidak ditemukan. Jalankan perbaikan roster ter-audit.'
+  });
 }
 
 @Injectable()
@@ -79,6 +160,81 @@ export class AttendanceClassService {
     const existing = await this.prisma.attendancePolicy.findUnique({ where: { id: 1 } });
     if (existing) return existing;
     return this.prisma.attendancePolicy.create({ data: { id: 1 } });
+  }
+
+  private async captureSessionRoster(
+    tx: Prisma.TransactionClient,
+    session: { id: string; classId: string; businessDate: Date; startsAt: Date },
+    source: RosterCaptureSource,
+    metadata: Prisma.InputJsonObject = {}
+  ) {
+    const existing = await tx.sessionRoster.count({ where: { sessionId: session.id } });
+    if (existing > 0) return existing;
+
+    const effectiveDate = session.businessDate ?? dateOnly(session.startsAt);
+    const enrollments = await tx.classEnrollment.findMany({
+      where: {
+        classId: session.classId,
+        active: true,
+        administrativeStatus: 'ACTIVE',
+        effectiveFrom: { lte: effectiveDate },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveDate } }],
+        student: { active: true, role: Role.SISWA }
+      },
+      include: {
+        student: { select: { id: true, fullName: true, username: true } },
+        schoolClass: { select: { id: true, code: true, name: true } },
+        academicYear: { select: { id: true, name: true } },
+        semester: { select: { id: true, name: true } }
+      },
+      orderBy: { student: { fullName: 'asc' } }
+    });
+
+    if (!enrollments.length) return 0;
+
+    await tx.sessionRoster.createMany({
+      data: enrollments.map((enrollment) => ({
+        sessionId: session.id,
+        studentId: enrollment.studentId,
+        enrollmentId: enrollment.id,
+        studentNameSnapshot: enrollment.student.fullName,
+        studentUsernameSnapshot: enrollment.student.username,
+        classIdSnapshot: enrollment.schoolClass.id,
+        classCodeSnapshot: enrollment.schoolClass.code,
+        classNameSnapshot: enrollment.schoolClass.name,
+        academicYearIdSnapshot: enrollment.academicYearId,
+        academicYearNameSnapshot: enrollment.academicYear?.name ?? null,
+        semesterIdSnapshot: enrollment.semesterId,
+        semesterNameSnapshot: enrollment.semester?.name ?? null,
+        captureSource: source,
+        activeAtCapture: enrollment.active && (enrollment.administrativeStatus ?? 'ACTIVE') === 'ACTIVE',
+        metadata: {
+          businessDate: businessDateKey(effectiveDate),
+          administrativeStatus: enrollment.administrativeStatus ?? 'ACTIVE',
+          ...metadata
+        }
+      })),
+      skipDuplicates: true
+    });
+
+    return enrollments.length;
+  }
+
+  private async ensureDefaultAttendances(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    rosterRows: Array<{ studentId: string }>
+  ) {
+    if (!rosterRows.length) return;
+    await tx.studentAttendance.createMany({
+      data: rosterRows.map((item) => ({
+        sessionId,
+        studentId: item.studentId,
+        status: StudentAttendanceStatus.ALPA,
+        reviewState: AttendanceReviewState.DEFAULTED
+      })),
+      skipDuplicates: true
+    });
   }
 
   private async eligibilityForStudents(studentIds: string[], sessionStartsAt: Date) {
@@ -158,11 +314,7 @@ export class AttendanceClassService {
     const where: Prisma.SessionWhereInput = {};
 
     if (date) {
-      const d = new Date(date);
-      const start = new Date(d);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(d);
-      end.setHours(23, 59, 59, 999);
+      const { start, end } = dayBounds(date);
       where.startsAt = { gte: start, lte: end };
     }
 
@@ -218,21 +370,14 @@ export class AttendanceClassService {
       throw new ForbiddenException('Override guru piket sedang dinonaktifkan.');
     }
 
-    if (policy && policy.enforceSessionOpen) {
-      if (geo?.lat === undefined || geo?.lng === undefined) {
-        throw new BadRequestException('Koordinat wajib saat geofence aktif.');
-      }
-      const distance = haversineDistanceMeters(policy.centerLat, policy.centerLng, geo.lat, geo.lng);
-      if (distance > policy.radiusMeter) {
-        throw new ForbiddenException('Di luar area sekolah.');
-      }
+    const validatedGeo = normalizeSessionGeo(geo, Boolean(policy?.enforceSessionOpen), policy);
+    if (policy?.enforceSessionOpen && validatedGeo?.insideGeofence === false) {
+      throw new ForbiddenException('Di luar area sekolah.');
     }
 
+    let gateTapSatisfied: boolean | null = policy?.requireGateTapForOpen ? false : null;
     if (policy?.requireGateTapForOpen) {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date();
-      dayEnd.setHours(23, 59, 59, 999);
+      const { start: dayStart, end: dayEnd } = dayBounds(new Date());
 
       const gateTap = await this.prisma.gateLog.findFirst({
         where: {
@@ -248,6 +393,7 @@ export class AttendanceClassService {
       if (!gateTap) {
         throw new ForbiddenException('Guru belum tap gerbang hari ini.');
       }
+      gateTapSatisfied = true;
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -256,13 +402,19 @@ export class AttendanceClassService {
         ? teacherStatusForCheckIn(session.startsAt, policy?.arrivalGraceMinutes)
         : TeacherSessionStatus.EXCUSED_ABSENCE;
 
-      const updated = await tx.session.update({
-        where: { id: sessionId },
+      const opened = await tx.session.updateMany({
+        where: { id: sessionId, status: SessionStatus.SCHEDULED },
         data: {
           status: SessionStatus.OPEN,
           openedAt: checkInAt
         }
       });
+      if (opened.count !== 1) throw new ConflictException('Sesi hanya dapat dibuka dari status SCHEDULED.');
+      const updated = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
+
+      await this.captureSessionRoster(tx, session, RosterCaptureSource.OPENED);
+      const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      await this.ensureDefaultAttendances(tx, sessionId, roster);
 
       const teacherPresence = await tx.teacherSessionPresence.upsert({
         where: {
@@ -274,8 +426,8 @@ export class AttendanceClassService {
         update: {
           status: teacherStatus,
           checkInAt,
-          checkInLat: geo?.lat ?? null,
-          checkInLng: geo?.lng ?? null,
+          checkInLat: validatedGeo?.latitude ?? null,
+          checkInLng: validatedGeo?.longitude ?? null,
           checkInById: actor.sub,
           checkOutAt: null,
           checkOutLat: null,
@@ -288,8 +440,8 @@ export class AttendanceClassService {
           teacherId: session.teacherId,
           status: teacherStatus,
           checkInAt,
-          checkInLat: geo?.lat ?? null,
-          checkInLng: geo?.lng ?? null,
+          checkInLat: validatedGeo?.latitude ?? null,
+          checkInLng: validatedGeo?.longitude ?? null,
           checkInById: actor.sub
         }
       });
@@ -301,7 +453,22 @@ export class AttendanceClassService {
         action: 'teacher.session.checkin',
         resource: 'teacherSessionPresence',
         resourceId: teacherPresence.id,
-        after: { sessionId, teacherId: session.teacherId, checkInAt, status: teacherStatus, lat: geo?.lat ?? null, lng: geo?.lng ?? null }
+        after: {
+          sessionId,
+          teacherId: session.teacherId,
+          checkInAt,
+          status: teacherStatus,
+          latitude: validatedGeo?.latitude ?? null,
+          longitude: validatedGeo?.longitude ?? null,
+          accuracyMeter: validatedGeo?.accuracyMeter ?? null,
+          capturedAt: validatedGeo?.capturedAt.toISOString() ?? null,
+          source: validatedGeo?.source ?? null,
+          distanceMeter: validatedGeo?.distanceMeter ?? null,
+          insideGeofence: validatedGeo?.insideGeofence ?? null,
+          geofenceEnforced: Boolean(policy?.enforceSessionOpen),
+          gateTapRequired: Boolean(policy?.requireGateTapForOpen),
+          gateTapSatisfied
+        }
       });
       await writeAudit(tx, {
         actorId: actor.sub,
@@ -312,12 +479,40 @@ export class AttendanceClassService {
         resourceId: sessionId,
         after: updated as unknown as Prisma.InputJsonValue
       });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'session.opened',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `session:${sessionId}:opened:${checkInAt.toISOString()}`,
+        payload: { sessionId, status: updated.status, openedAt: updated.openedAt?.toISOString() ?? checkInAt.toISOString(), teacherId: session.teacherId }
+      });
 
       return {
         ...updated,
         teacherPresence
       };
     });
+  }
+
+  private parseExpectedAttendanceUpdatedAt(value: string | undefined, studentId: string): Date | null {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException({
+        code: 'ATTENDANCE_INVALID_VERSION',
+        message: `Versi presensi siswa ${studentId} tidak valid.`
+      });
+    }
+    return parsed;
+  }
+
+  private async ensureRosterRowsForSession(session: { id: string }) {
+    const rosterRows = await this.prisma.sessionRoster.findMany({
+      where: { sessionId: session.id },
+      select: { studentId: true }
+    });
+    if (!rosterRows.length) throw sessionRosterMissingException();
+    return rosterRows;
   }
 
   async recordAttendance(sessionId: string, actor: AuthenticatedUser, payload: BatchAttendanceDto) {
@@ -337,27 +532,50 @@ export class AttendanceClassService {
       throw new BadRequestException('Sesi belum OPEN.');
     }
 
-    const enrolled = await this.prisma.classEnrollment.findMany({
-      where: { classId: session.classId, student: { active: true, role: Role.SISWA } },
-      select: { studentId: true }
-    });
-    const rosterSet = new Set(enrolled.map((item) => item.studentId));
-    const outOfRoster = payload.items.filter((item) => !rosterSet.has(item.studentId)).map((item) => item.studentId);
+    const rosterRows = await this.ensureRosterRowsForSession(session);
+    const explicitItems = (payload.items ?? []).filter((item) => item.confirm === true);
+    const ignoredCount = (payload.items ?? []).length - explicitItems.length;
+
+    if (!explicitItems.length) {
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'class.attendance.noop_save',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { updated: 0, ignoredCount, reason: 'no_explicit_confirmation' }
+        });
+      });
+      return {
+        updated: 0,
+        rejected: [],
+        rejectedCount: 0,
+        ignoredCount,
+        message: 'Tidak ada baris presensi yang dikonfirmasi.'
+      };
+    }
+
+    const rosterSet = new Set(rosterRows.map((item) => item.studentId));
+    const outOfRoster = explicitItems.filter((item) => !rosterSet.has(item.studentId)).map((item) => item.studentId);
     if (outOfRoster.length) {
-      await writeAudit(this.prisma, {
-        actorId: actor.sub,
-        actorRole: actor.role as Role,
-        module: 'attendance',
-        action: 'attendance.class.rejected_out_of_roster',
-        resource: 'session',
-        resourceId: sessionId,
-        after: { outOfRoster }
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'attendance.class.rejected_out_of_roster',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { outOfRoster }
+        });
       });
       throw new BadRequestException('Ada siswa yang bukan roster kelas sesi ini.');
     }
 
-    const eligibilityMap = await this.eligibilityForStudents(payload.items.map((item) => item.studentId), session.startsAt);
-    const rejected = payload.items
+    const eligibilityMap = await this.eligibilityForStudents(explicitItems.map((item) => item.studentId), session.startsAt);
+    const rejected = explicitItems
       .filter((item) => (item.status === StudentAttendanceStatus.HADIR || item.status === StudentAttendanceStatus.TELAT) && eligibilityMap.get(item.studentId)?.locked)
       .map((item) => ({
         studentId: item.studentId,
@@ -365,29 +583,80 @@ export class AttendanceClassService {
         reasons: eligibilityMap.get(item.studentId)?.reasons ?? ['Syarat presensi belum lengkap']
       }));
     const rejectedIds = new Set(rejected.map((item) => item.studentId));
-    const allowedItems = payload.items.filter((item) => !rejectedIds.has(item.studentId));
+    const allowedItems = explicitItems.filter((item) => !rejectedIds.has(item.studentId));
 
     return this.prisma.$transaction(async (tx) => {
+      const stillOpen = await tx.session.updateMany({ where: { id: sessionId, status: SessionStatus.OPEN }, data: { updatedAt: new Date() } });
+      if (stillOpen.count !== 1) throw new ConflictException('Sesi sudah tidak OPEN. Presensi baru ditolak.');
+
       const result = [];
+      const confirmationSource = allowedItems.length === 1 ? AttendanceConfirmationSource.MANUAL_SINGLE : AttendanceConfirmationSource.MANUAL_BULK;
       for (const item of allowedItems) {
-        const attendance = await tx.studentAttendance.upsert({
-          where: {
-            sessionId_studentId: {
-              sessionId,
-              studentId: item.studentId
-            }
-          },
-          create: {
-            sessionId,
-            studentId: item.studentId,
-            status: item.status,
-            note: item.note
-          },
-          update: {
-            status: item.status,
-            note: item.note
-          }
+        const before = await tx.studentAttendance.findUnique({
+          where: { sessionId_studentId: { sessionId, studentId: item.studentId } }
         });
+        const expectedUpdatedAt = this.parseExpectedAttendanceUpdatedAt(item.updatedAt, item.studentId);
+
+        if (before && !expectedUpdatedAt) {
+          throw new ConflictException({
+            code: 'ATTENDANCE_VERSION_REQUIRED',
+            message: 'Data presensi berubah atau belum memiliki versi. Muat ulang daftar siswa sebelum menyimpan.',
+            studentId: item.studentId
+          });
+        }
+        if (!before && expectedUpdatedAt) {
+          throw new ConflictException({
+            code: 'ATTENDANCE_STALE_VERSION',
+            message: 'Baris presensi sudah berubah. Muat ulang daftar siswa sebelum menyimpan.',
+            studentId: item.studentId
+          });
+        }
+        if (before && expectedUpdatedAt && before.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+          throw new ConflictException({
+            code: 'ATTENDANCE_STALE_VERSION',
+            message: 'Baris presensi sudah berubah. Muat ulang daftar siswa sebelum menyimpan.',
+            studentId: item.studentId,
+            expectedUpdatedAt: expectedUpdatedAt.toISOString(),
+            currentUpdatedAt: before.updatedAt.toISOString()
+          });
+        }
+
+        const now = new Date();
+        let attendance;
+        if (before) {
+          const updated = await tx.studentAttendance.updateMany({
+            where: { id: before.id, updatedAt: expectedUpdatedAt ?? undefined },
+            data: {
+              status: item.status,
+              note: item.note,
+              reviewState: AttendanceReviewState.CONFIRMED,
+              confirmedAt: now,
+              confirmedById: actor.sub,
+              confirmationSource
+            }
+          });
+          if (updated.count !== 1) {
+            throw new ConflictException({
+              code: 'ATTENDANCE_STALE_VERSION',
+              message: 'Baris presensi sudah berubah. Muat ulang daftar siswa sebelum menyimpan.',
+              studentId: item.studentId
+            });
+          }
+          attendance = await tx.studentAttendance.findUniqueOrThrow({ where: { id: before.id } });
+        } else {
+          attendance = await tx.studentAttendance.create({
+            data: {
+              sessionId,
+              studentId: item.studentId,
+              status: item.status,
+              note: item.note,
+              reviewState: AttendanceReviewState.CONFIRMED,
+              confirmedAt: now,
+              confirmedById: actor.sub,
+              confirmationSource
+            }
+          });
+        }
         result.push(attendance);
       }
 
@@ -395,10 +664,17 @@ export class AttendanceClassService {
         actorId: actor.sub,
         actorRole: actor.role as Role,
         module: 'attendance',
-        action: 'class.attendance.recorded',
+        action: confirmationSource === AttendanceConfirmationSource.MANUAL_SINGLE ? 'class.attendance.confirmed_single' : 'class.attendance.confirmed_bulk',
         resource: 'session',
         resourceId: sessionId,
-        after: { count: result.length, rejectedCount: rejected.length }
+        after: { count: result.length, rejectedCount: rejected.length, ignoredCount, source: confirmationSource }
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'attendance.changed',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `attendance:${sessionId}:record:${Date.now()}:${actor.sub}`,
+        payload: { sessionId, updated: result.length, rejectedCount: rejected.length, ignoredCount, source: confirmationSource }
       });
 
       if (rejected.length) {
@@ -417,7 +693,103 @@ export class AttendanceClassService {
         updated: result.length,
         rejected,
         rejectedCount: rejected.length,
+        ignoredCount,
         message: rejected.length ? 'Sebagian siswa belum memenuhi syarat scan wajib sehingga tidak disimpan sebagai hadir/telat.' : 'Presensi siswa tersimpan.'
+      };
+    });
+  }
+
+  async bulkConfirmPresent(sessionId: string, actor: AuthenticatedUser) {
+    return this.bulkConfirmDefaults(sessionId, actor, StudentAttendanceStatus.HADIR);
+  }
+
+  async bulkConfirmAlpa(sessionId: string, actor: AuthenticatedUser) {
+    return this.bulkConfirmDefaults(sessionId, actor, StudentAttendanceStatus.ALPA);
+  }
+
+  private async bulkConfirmDefaults(sessionId: string, actor: AuthenticatedUser, targetStatus: StudentAttendanceStatus) {
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+    if (this.accessPolicy && !await this.accessPolicy.canWriteClassAttendance(actor, sessionId)) {
+      throw new ForbiddenException('Bukan sesi Anda.');
+    }
+    if (!this.accessPolicy && actor.role === Role.GURU_MAPEL && session.teacherId !== actor.sub) {
+      throw new ForbiddenException('Bukan sesi Anda.');
+    }
+    if (session.status !== SessionStatus.OPEN) throw new BadRequestException('Sesi belum OPEN.');
+
+    const rosterRows = await this.ensureRosterRowsForSession(session);
+    const rosterStudentIds = rosterRows.map((row) => row.studentId);
+    if (!rosterStudentIds.length) {
+      throw new ConflictException({ code: 'SESSION_ROSTER_EMPTY', message: 'Roster sesi kosong sehingga tidak dapat dikonfirmasi massal.' });
+    }
+
+    let rejected: Array<{ studentId: string; status: StudentAttendanceStatus; reasons: string[] }> = [];
+    let allowedIds = rosterStudentIds;
+    if (targetStatus === StudentAttendanceStatus.HADIR) {
+      const eligibilityMap = await this.eligibilityForStudents(rosterStudentIds, session.startsAt);
+      rejected = rosterStudentIds
+        .filter((studentId) => eligibilityMap.get(studentId)?.locked)
+        .map((studentId) => ({
+          studentId,
+          status: targetStatus,
+          reasons: eligibilityMap.get(studentId)?.reasons ?? ['Syarat presensi belum lengkap']
+        }));
+      const rejectedIds = new Set(rejected.map((item) => item.studentId));
+      allowedIds = rosterStudentIds.filter((studentId) => !rejectedIds.has(studentId));
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await this.ensureDefaultAttendances(tx, sessionId, rosterRows);
+      const updated = allowedIds.length
+        ? await tx.studentAttendance.updateMany({
+          where: { sessionId, studentId: { in: allowedIds }, reviewState: AttendanceReviewState.DEFAULTED },
+          data: {
+            status: targetStatus,
+            reviewState: AttendanceReviewState.CONFIRMED,
+            confirmedAt: now,
+            confirmedById: actor.sub,
+            confirmationSource: AttendanceConfirmationSource.MANUAL_BULK
+          }
+        })
+        : { count: 0 };
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: targetStatus === StudentAttendanceStatus.HADIR ? 'class.attendance.bulk_confirm_present' : 'class.attendance.bulk_confirm_alpa',
+        resource: 'session',
+        resourceId: sessionId,
+        after: { count: updated.count, rejectedCount: rejected.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'attendance.bulk_changed',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `attendance:${sessionId}:bulk:${targetStatus}:${Date.now()}:${actor.sub}`,
+        payload: { sessionId, updated: updated.count, rejectedCount: rejected.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
+      });
+      if (rejected.length) {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'attendance.class.blocked_by_policy',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { rejected }
+        });
+      }
+
+      return {
+        updated: updated.count,
+        rejected,
+        rejectedCount: rejected.length,
+        message: targetStatus === StudentAttendanceStatus.HADIR
+          ? `${updated.count} siswa default dikonfirmasi hadir.`
+          : `${updated.count} siswa default dikonfirmasi ALPA.`
       };
     });
   }
@@ -439,6 +811,7 @@ export class AttendanceClassService {
       throw new BadRequestException('Sesi tidak dalam status OPEN.');
     }
 
+    const closeGeo = normalizeSessionGeo(payload, false, null);
     const now = new Date();
     const isEarlyCheckout = now.getTime() < session.endsAt.getTime();
     const earlyCheckoutReason = payload.earlyCheckoutReason?.trim();
@@ -447,14 +820,41 @@ export class AttendanceClassService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.session.update({
-        where: { id: sessionId },
+      const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      if (!roster.length) throw sessionRosterMissingException();
+      await this.ensureDefaultAttendances(tx, sessionId, roster);
+
+      const unreviewedCount = await tx.studentAttendance.count({ where: { sessionId, reviewState: AttendanceReviewState.DEFAULTED } });
+      if (unreviewedCount > 0 && !payload.finalizeDefaultAlpa) {
+        throw new ConflictException({
+          code: 'ATTENDANCE_UNREVIEWED_DEFAULTS',
+          message: 'Masih ada presensi default ALPA yang belum dikonfirmasi.',
+          unreviewedCount
+        });
+      }
+      if (unreviewedCount > 0) {
+        await tx.studentAttendance.updateMany({
+          where: { sessionId, reviewState: AttendanceReviewState.DEFAULTED },
+          data: {
+            status: StudentAttendanceStatus.ALPA,
+            reviewState: AttendanceReviewState.CONFIRMED,
+            confirmedAt: now,
+            confirmedById: actor.sub,
+            confirmationSource: AttendanceConfirmationSource.FINALIZED_DEFAULT
+          }
+        });
+      }
+
+      const closed = await tx.session.updateMany({
+        where: { id: sessionId, status: SessionStatus.OPEN },
         data: {
           status: SessionStatus.CLOSED,
           closedAt: now,
           reconciledAt: null
         }
       });
+      if (closed.count !== 1) throw new ConflictException('Sesi sudah tidak OPEN.');
+      const updated = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
 
       const existingPresence = await tx.teacherSessionPresence.findUnique({
         where: {
@@ -476,8 +876,8 @@ export class AttendanceClassService {
         update: {
           status: teacherStatus,
           checkOutAt: now,
-          checkOutLat: payload.lat ?? null,
-          checkOutLng: payload.lng ?? null,
+          checkOutLat: closeGeo?.latitude ?? null,
+          checkOutLng: closeGeo?.longitude ?? null,
           checkOutById: actor.sub,
           earlyCheckoutReason: isEarlyCheckout ? earlyCheckoutReason : null
         },
@@ -486,12 +886,24 @@ export class AttendanceClassService {
           teacherId: session.teacherId,
           status: teacherStatus,
           checkOutAt: now,
-          checkOutLat: payload.lat ?? null,
-          checkOutLng: payload.lng ?? null,
+          checkOutLat: closeGeo?.latitude ?? null,
+          checkOutLng: closeGeo?.longitude ?? null,
           checkOutById: actor.sub,
           earlyCheckoutReason: isEarlyCheckout ? earlyCheckoutReason : null
         }
       });
+
+      if (unreviewedCount > 0) {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'class.attendance.finalized_default_alpa',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { finalizedCount: unreviewedCount, source: AttendanceConfirmationSource.FINALIZED_DEFAULT }
+        });
+      }
 
       await writeAudit(tx, {
         actorId: actor.sub,
@@ -507,8 +919,14 @@ export class AttendanceClassService {
           checkOutAt: now,
           durationMinutes: durationMinutes(teacherPresence.checkInAt, teacherPresence.checkOutAt),
           earlyCheckout: isEarlyCheckout,
-          lat: payload.lat ?? null,
-          lng: payload.lng ?? null
+          latitude: closeGeo?.latitude ?? null,
+          longitude: closeGeo?.longitude ?? null,
+          accuracyMeter: closeGeo?.accuracyMeter ?? null,
+          capturedAt: closeGeo?.capturedAt.toISOString() ?? null,
+          source: closeGeo?.source ?? null,
+          distanceMeter: closeGeo?.distanceMeter ?? null,
+          insideGeofence: closeGeo?.insideGeofence ?? null,
+          geofenceEnforced: false
         }
       });
       await writeAudit(tx, {
@@ -520,6 +938,13 @@ export class AttendanceClassService {
         resourceId: sessionId,
         reason: isEarlyCheckout ? earlyCheckoutReason : null,
         after: updated as unknown as Prisma.InputJsonValue
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'session.closed',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `session:${sessionId}:closed:${now.toISOString()}`,
+        payload: { sessionId, status: updated.status, closedAt: updated.closedAt?.toISOString() ?? now.toISOString(), finalizedDefaultCount: unreviewedCount }
       });
 
       return {
@@ -534,18 +959,8 @@ export class AttendanceClassService {
       where: { id: sessionId },
       include: {
         attendances: true,
-        teacherPresence: true,
-        schoolClass: {
-          include: {
-            enrollments: {
-              where: {
-                student: {
-                  active: true
-                }
-              }
-            }
-          }
-        }
+        rosters: true,
+        teacherPresence: true
       }
     });
 
@@ -568,7 +983,14 @@ export class AttendanceClassService {
       counters[item.status] += 1;
     }
 
+    if (!session.rosters.length && session.status !== SessionStatus.SCHEDULED) {
+      throw sessionRosterMissingException();
+    }
+
     const teacherPresence = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
+    const confirmedCount = session.attendances.filter((item) => item.reviewState !== AttendanceReviewState.DEFAULTED).length;
+    const defaultedCount = session.attendances.filter((item) => item.reviewState === AttendanceReviewState.DEFAULTED).length;
+    const rosterTotal = session.rosters.length;
 
     return {
       sessionId,
@@ -577,8 +999,12 @@ export class AttendanceClassService {
       closedAt: session.closedAt,
       teacherPresence,
       teacherDurationMinutes: durationMinutes(teacherPresence?.checkInAt, teacherPresence?.checkOutAt),
-      enrolledCount: session.schoolClass.enrollments.length,
+      enrolledCount: rosterTotal,
+      rosterCount: rosterTotal,
       recordedCount: session.attendances.length,
+      confirmedCount,
+      defaultedCount,
+      progress: rosterTotal > 0 ? confirmedCount / rosterTotal : 0,
       counters
     };
   }
@@ -587,31 +1013,9 @@ export class AttendanceClassService {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: {
-        schoolClass: {
-          include: {
-            enrollments: {
-              where: {
-                student: {
-                  active: true
-                }
-              },
-              include: {
-                student: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    username: true,
-                    cardStatus: true
-                  }
-                }
-              },
-              orderBy: {
-                student: {
-                  fullName: 'asc'
-                }
-              }
-            }
-          }
+        rosters: {
+          include: { student: { select: { cardStatus: true } } },
+          orderBy: { studentNameSnapshot: 'asc' }
         },
         attendances: true,
         teacherPresence: true
@@ -626,17 +1030,68 @@ export class AttendanceClassService {
       throw new ForbiddenException('Bukan sesi Anda.');
     }
 
+    if (!session.rosters.length) {
+      if (session.status === SessionStatus.SCHEDULED) {
+        return {
+          session: {
+            id: session.id,
+            status: session.status,
+            startsAt: session.startsAt,
+            endsAt: session.endsAt,
+            openedAt: session.openedAt,
+            closedAt: session.closedAt,
+            teacherPresence: session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null
+          },
+          roster: []
+        };
+      }
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'session_roster.missing_detected',
+          resource: 'session',
+          resourceId: sessionId,
+          after: { status: session.status }
+        });
+      });
+      throw sessionRosterMissingException();
+    }
+
     const attendanceMap = new Map(session.attendances.map((item) => [item.studentId, item]));
-    const eligibilityMap = await this.eligibilityForStudents(session.schoolClass.enrollments.map((item) => item.studentId), session.startsAt);
-    const roster = session.schoolClass.enrollments.map((enrollment) => {
-      const existing = attendanceMap.get(enrollment.studentId);
-      const eligibility = eligibilityMap.get(enrollment.studentId) ?? { allowed: true, locked: false, reasons: [], requirements: { gateIn: true, dhuha: true, dzuhur: true, override: false } };
+    const snapshotRows = session.rosters.map((row) => ({
+      studentId: row.studentId,
+      fullName: row.studentNameSnapshot,
+      username: row.studentUsernameSnapshot,
+      cardStatus: row.student.cardStatus,
+      rosterId: row.id,
+      classCodeSnapshot: row.classCodeSnapshot,
+      classNameSnapshot: row.classNameSnapshot,
+      academicYearIdSnapshot: row.academicYearIdSnapshot,
+      academicYearNameSnapshot: row.academicYearNameSnapshot,
+      semesterIdSnapshot: row.semesterIdSnapshot,
+      semesterNameSnapshot: row.semesterNameSnapshot
+    }));
+    const eligibilityMap = await this.eligibilityForStudents(snapshotRows.map((item) => item.studentId), session.startsAt);
+    const roster = snapshotRows.map((row) => {
+      const existing = attendanceMap.get(row.studentId);
+      const eligibility = eligibilityMap.get(row.studentId) ?? { allowed: true, locked: false, reasons: [], requirements: { gateIn: true, dhuha: true, dzuhur: true, override: false } };
       return {
-        studentId: enrollment.studentId,
-        fullName: enrollment.student.fullName,
-        username: enrollment.student.username,
-        cardStatus: enrollment.student.cardStatus,
+        studentId: row.studentId,
+        rosterId: row.rosterId,
+        fullName: row.fullName,
+        username: row.username,
+        cardStatus: row.cardStatus,
+        classCodeSnapshot: row.classCodeSnapshot,
+        classNameSnapshot: row.classNameSnapshot,
+        academicYearIdSnapshot: row.academicYearIdSnapshot,
+        academicYearNameSnapshot: row.academicYearNameSnapshot,
+        semesterIdSnapshot: row.semesterIdSnapshot,
+        semesterNameSnapshot: row.semesterNameSnapshot,
         status: existing?.status ?? StudentAttendanceStatus.ALPA,
+        reviewState: existing?.reviewState ?? AttendanceReviewState.DEFAULTED,
+        confirmedAt: existing?.confirmedAt ?? null,
         note: existing?.note ?? null,
         updatedAt: existing?.updatedAt ?? null,
         eligibility
@@ -655,6 +1110,87 @@ export class AttendanceClassService {
       },
       roster
     };
+  }
+
+  async repairSessionRoster(sessionId: string, actor: AuthenticatedUser, reasonInput: string) {
+    const reason = assertReasonQuality(reasonInput, 'Alasan perbaikan roster');
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { schoolClass: { select: { id: true, code: true, name: true } } }
+    });
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+
+    if (!(actor.role === Role.ADMIN_TU || actor.role === Role.DEVELOPER)) {
+      throw new ForbiddenException('Perbaikan roster hanya boleh dilakukan admin/developer.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const beforeCount = await tx.sessionRoster.count({ where: { sessionId } });
+      await this.captureSessionRoster(tx, session, RosterCaptureSource.BACKFILL, {
+        source: 'audited_repair',
+        repairReason: reason,
+        repairedBy: actor.sub,
+        evidence: 'effective_dated_enrollment_range',
+        unverifiable: false
+      });
+      const existing = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      const existingIds = new Set(existing.map((item) => item.studentId));
+      const missingAttendances = await tx.studentAttendance.findMany({
+        where: { sessionId, ...(existingIds.size ? { studentId: { notIn: Array.from(existingIds) } } : {}) },
+        include: { student: { select: { id: true, fullName: true, username: true } } }
+      });
+
+      if (missingAttendances.length) {
+        await tx.sessionRoster.createMany({
+          data: missingAttendances.map((attendance) => ({
+            sessionId,
+            studentId: attendance.studentId,
+            enrollmentId: null,
+            studentNameSnapshot: attendance.student.fullName,
+            studentUsernameSnapshot: attendance.student.username,
+            classIdSnapshot: session.schoolClass.id,
+            classCodeSnapshot: session.schoolClass.code,
+            classNameSnapshot: session.schoolClass.name,
+            academicYearIdSnapshot: null,
+            academicYearNameSnapshot: null,
+            semesterIdSnapshot: null,
+            semesterNameSnapshot: null,
+            captureSource: RosterCaptureSource.BACKFILL,
+            activeAtCapture: false,
+            metadata: {
+              source: 'audited_repair',
+              repairReason: reason,
+              repairedBy: actor.sub,
+              evidence: 'orphan_attendance_row',
+              unverifiable: true
+            }
+          })),
+          skipDuplicates: true
+        });
+      }
+      const afterCount = await tx.sessionRoster.count({ where: { sessionId } });
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: 'session_roster.repaired',
+        resource: 'session',
+        resourceId: sessionId,
+        reason,
+        before: { rosterCount: beforeCount },
+        after: { rosterCount: afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'session.roster_repaired',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `session:${sessionId}:roster-repaired:${Date.now()}:${actor.sub}`,
+        payload: { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
+      });
+
+      return { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' };
+    });
   }
 
   async correctAttendance(
@@ -680,8 +1216,10 @@ export class AttendanceClassService {
     }
 
     const reason = assertReasonQuality(payload.reason, 'Alasan koreksi');
-    const enrollment = await this.prisma.classEnrollment.findUnique({ where: { classId_studentId: { classId: session.classId, studentId } } });
-    if (!enrollment) throw new BadRequestException('Siswa bukan roster kelas sesi ini.');
+    const rosterCount = await this.prisma.sessionRoster.count({ where: { sessionId } });
+    if (!rosterCount) throw sessionRosterMissingException();
+    const rosterEntry = await this.prisma.sessionRoster.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
+    if (!rosterEntry) throw new BadRequestException('Siswa bukan roster kelas sesi ini.');
 
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.studentAttendance.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
@@ -695,7 +1233,11 @@ export class AttendanceClassService {
           evidenceLabel: 'corrected',
           correctionCount: 1,
           correctedAt: new Date(),
-          correctedById: actor.sub
+          correctedById: actor.sub,
+          reviewState: AttendanceReviewState.CORRECTED,
+          confirmedAt: new Date(),
+          confirmedById: actor.sub,
+          confirmationSource: AttendanceConfirmationSource.CORRECTION
         },
         update: {
           status: payload.status,
@@ -703,7 +1245,11 @@ export class AttendanceClassService {
           evidenceLabel: 'corrected',
           correctionCount: { increment: 1 },
           correctedAt: new Date(),
-          correctedById: actor.sub
+          correctedById: actor.sub,
+          reviewState: AttendanceReviewState.CORRECTED,
+          confirmedAt: new Date(),
+          confirmedById: actor.sub,
+          confirmationSource: AttendanceConfirmationSource.CORRECTION
         }
       });
 
@@ -733,6 +1279,13 @@ export class AttendanceClassService {
         reason,
         before: before ? { status: before.status, note: before.note } : null,
         after: { status: attendance.status, note: attendance.note, correctionCount: attendance.correctionCount }
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'attendance.corrected',
+        aggregateType: 'studentAttendance',
+        aggregateId: attendance.id,
+        logicalKey: `attendance:${sessionId}:${studentId}:corrected:${attendance.correctionCount}:${Date.now()}`,
+        payload: { sessionId, studentId, status: attendance.status, correctionCount: attendance.correctionCount }
       });
 
       return attendance;

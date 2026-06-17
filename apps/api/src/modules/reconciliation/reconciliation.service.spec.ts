@@ -1,10 +1,9 @@
 import { PrayerType, ReconciliationFlagType, Role, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
+import { localDateTimeToUtc } from '../../common/business-time';
 import { ReconciliationService } from './reconciliation.service';
 
 function atLocal(hour: number, minute = 0) {
-  const date = new Date('2026-04-26T00:00:00');
-  date.setHours(hour, minute, 0, 0);
-  return date;
+  return localDateTimeToUtc('2026-04-26', `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
 }
 
 describe('ReconciliationService Ashar policy', () => {
@@ -72,4 +71,39 @@ describe('ReconciliationService Ashar policy', () => {
       create: expect.objectContaining({ type: ReconciliationFlagType.BELUM_SCAN_ASHAR })
     }));
   });
+  it('skips auto-missed side effects when session state changed concurrently', async () => {
+    const session = {
+      id: 'session-race',
+      teacherId: 'guru-1',
+      startsAt: atLocal(7),
+      status: SessionStatus.SCHEDULED,
+      teacher: { id: 'guru-1', fullName: 'Guru Mapel' },
+      schoolClass: { code: 'X-1', name: 'X 1' },
+      subject: { name: 'Matematika' }
+    };
+    const tx = {
+      session: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      teacherSessionPresence: { upsert: jest.fn() },
+      notification: { createMany: jest.fn() },
+      auditEntry: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      geofencePolicy: { findUnique: jest.fn().mockResolvedValue({ autoMissedGraceMinutes: 15 }) },
+      session: { findMany: jest.fn().mockResolvedValue([session]) },
+      teacherLeave: { findFirst: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn(async (fn) => fn(tx))
+    } as any;
+    const service = new ReconciliationService(prisma);
+
+    const result = await service.runAutoMissedSessions('worker:test');
+
+    expect(result.processed).toEqual([{ sessionId: 'session-race', skipped: true, reason: 'SESSION_STATE_CONFLICT' }]);
+    expect(tx.session.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'session-race', status: SessionStatus.SCHEDULED }
+    }));
+    expect(tx.teacherSessionPresence.upsert).not.toHaveBeenCalled();
+    expect(tx.notification.createMany).not.toHaveBeenCalled();
+    expect(tx.auditEntry.create).not.toHaveBeenCalled();
+  });
+
 });

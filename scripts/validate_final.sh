@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-bash -n scripts/uat_smoke.sh
-bash -n scripts/deploy_production.sh
+for file in scripts/*.sh; do
+  bash -n "$file"
+done
+if command -v shellcheck >/dev/null 2>&1; then
+  shellcheck scripts/*.sh
+else
+  echo "WARNING: shellcheck not installed; install it and run: shellcheck scripts/*.sh" >&2
+fi
+if command -v docker >/dev/null 2>&1; then
+  docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config >/tmp/schoolhub-compose-config.yml
+else
+  echo "WARNING: docker not installed; skipping local compose config validation" >&2
+fi
 npm run prisma:generate
 npx prisma validate --schema prisma/schema.prisma
 npm run lint:all

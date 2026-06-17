@@ -99,10 +99,8 @@ export class AccessPolicyService {
 
   async canCorrectAttendance(actor: PolicyActor, sessionId: string, studentId: string) {
     if (!await this.canOpenSession(actor, sessionId)) return false;
-    const session = await this.prisma.session.findUnique({ where: { id: sessionId }, select: { classId: true } });
-    if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
-    const enrollment = await this.prisma.classEnrollment.findUnique({ where: { classId_studentId: { classId: session.classId, studentId } } });
-    return Boolean(enrollment);
+    const rosterEntry = await this.prisma.sessionRoster.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
+    return Boolean(rosterEntry);
   }
 
   async canScanManual(actor: PolicyActor, targetUserId: string, _scope?: string) {

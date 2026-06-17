@@ -27,6 +27,10 @@ function shouldShowTutorial(state: any | null, version = ACTIVE_TUTORIAL_VERSION
 export class TutorialsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private audit(payload: Parameters<typeof writeAudit>[1]) {
+    return this.prisma.$transaction(async (tx) => writeAudit(tx, payload));
+  }
+
   async getMyTutorial(actor: Actor) {
     const state = await this.prisma.userTutorialState.findUnique({
       where: { userId: actor.sub },
@@ -52,7 +56,7 @@ export class TutorialsService {
     });
 
     if (shouldShow && (!state || !state.lastSeenAt || (state.forceShowAt && (!state.completedAt || state.forceShowAt > state.completedAt)))) {
-      await writeAudit(this.prisma, {
+      await this.audit({
         actorId: actor.sub,
         actorRole: actor.role as Role,
         module: 'tutorial',
@@ -79,7 +83,7 @@ export class TutorialsService {
       create: { userId: actor.sub, tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, completedAt: now, lastSeenAt: now }
     });
 
-    await writeAudit(this.prisma, {
+    await this.audit({
       actorId: actor.sub,
       actorRole: actor.role as Role,
       module: 'tutorial',
@@ -100,7 +104,7 @@ export class TutorialsService {
       create: { userId: actor.sub, tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, dismissedAt: now, lastSeenAt: now }
     });
 
-    await writeAudit(this.prisma, {
+    await this.audit({
       actorId: actor.sub,
       actorRole: actor.role as Role,
       module: 'tutorial',
@@ -175,7 +179,7 @@ export class TutorialsService {
       create: { userId, tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, forceShowAt: now, forceShowById: actor.sub }
     });
 
-    await writeAudit(this.prisma, {
+    await this.audit({
       actorId: actor.sub,
       actorRole: actor.role as Role,
       module: 'tutorial',
@@ -201,7 +205,7 @@ export class TutorialsService {
       });
     }
 
-    await writeAudit(this.prisma, {
+    await this.audit({
       actorId: actor.sub,
       actorRole: actor.role as Role,
       module: 'tutorial',

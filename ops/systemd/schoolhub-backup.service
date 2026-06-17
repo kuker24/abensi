@@ -1,0 +1,14 @@
+[Unit]
+Description=SchoolHub encrypted PostgreSQL backup
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/schoolhub/current
+Environment=BACKUP_DIR=/opt/schoolhub/backups
+EnvironmentFile=/opt/schoolhub/.env
+ExecStart=/usr/bin/bash /opt/schoolhub/current/scripts/backup_production.sh /opt/schoolhub/.env --reason scheduled
+User=schoolhub
+Group=schoolhub
+UMask=0077

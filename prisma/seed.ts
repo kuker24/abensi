@@ -8,22 +8,50 @@ import {
   StudentAttendanceStatus,
   TeacherSessionStatus,
   ReaderType,
-  PrayerType
+  PrayerType,
+  RosterCaptureSource
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { createHash } from 'node:crypto';
+import { auditedTransaction } from '../apps/api/src/common/audit-log';
 
 const prisma = new PrismaClient();
 
+function jakartaDateKey(value: Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+}
+
+function jakartaDateTime(dateKey: string, hour: number, minute: number) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0));
+}
+
 function withTime(base: Date, hour: number, minute: number) {
-  const value = new Date(base);
-  value.setHours(hour, minute, 0, 0);
-  return value;
+  return jakartaDateTime(jakartaDateKey(base), hour, minute);
 }
 
 function dateOnly(base: Date) {
-  const value = new Date(base);
-  value.setHours(0, 0, 0, 0);
-  return value;
+  return jakartaDateTime(jakartaDateKey(base), 0, 0);
+}
+
+function dayBounds(base: Date) {
+  const key = jakartaDateKey(base);
+  const start = jakartaDateTime(key, 0, 0);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1) };
+}
+
+function sha256Hex(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function readerSeed(key: string) {
+  return {
+    deviceId: key,
+    apiKeyHash: sha256Hex(key),
+    keyPrefix: key.slice(0, 10),
+    keyLast4: key.slice(-4),
+    keyRotatedAt: new Date()
+  };
 }
 
 function requiredEnv(name: string) {
@@ -84,6 +112,7 @@ async function ensureSession(params: {
       where: { id: existing.id },
       data: {
         endsAt: params.endsAt,
+        businessDate: gateBusinessDate(params.startsAt),
         status: params.status,
         openedAt: params.status === SessionStatus.SCHEDULED ? null : params.startsAt,
         closedAt: params.status === SessionStatus.CLOSED ? params.endsAt : null
@@ -98,6 +127,7 @@ async function ensureSession(params: {
       teacherId: params.teacherId,
       startsAt: params.startsAt,
       endsAt: params.endsAt,
+      businessDate: gateBusinessDate(params.startsAt),
       status: params.status,
       openedAt: params.status === SessionStatus.SCHEDULED ? null : params.startsAt,
       closedAt: params.status === SessionStatus.CLOSED ? params.endsAt : null
@@ -105,11 +135,14 @@ async function ensureSession(params: {
   });
 }
 
+function gateBusinessDate(value: Date) {
+  const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
 async function ensureGateLog(userId: string, tappedAt: Date) {
-  const dayStart = new Date(tappedAt);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(tappedAt);
-  dayEnd.setHours(23, 59, 59, 999);
+  const { start: dayStart, end: dayEnd } = dayBounds(tappedAt);
 
   const exists = await prisma.gateLog.findFirst({
     where: {
@@ -128,6 +161,7 @@ async function ensureGateLog(userId: string, tappedAt: Date) {
     data: {
       userId,
       direction: 'IN',
+      businessDate: gateBusinessDate(tappedAt),
       tappedAt,
       deviceId: 'reader-gerbang-1'
     }
@@ -256,6 +290,18 @@ async function main() {
     }
   });
 
+  const academicYear = await prisma.academicYear.upsert({
+    where: { code: '2025/2026' },
+    update: { name: 'Tahun Ajaran 2025/2026', active: true },
+    create: { code: '2025/2026', name: 'Tahun Ajaran 2025/2026', startsAt: jakartaDateTime('2025-07-01', 0, 0), endsAt: jakartaDateTime('2026-06-30', 23, 59), active: true }
+  });
+  const semester = await prisma.semester.upsert({
+    where: { academicYearId_code: { academicYearId: academicYear.id, code: 'GANJIL' } },
+    update: { name: 'Semester Ganjil', active: true },
+    create: { academicYearId: academicYear.id, code: 'GANJIL', name: 'Semester Ganjil', startsAt: jakartaDateTime('2025-07-01', 0, 0), endsAt: jakartaDateTime('2025-12-31', 23, 59), active: true }
+  });
+  const enrollmentStart = jakartaDateTime('2025-07-01', 0, 0);
+
   const [matematika, fisika, bahasaArab] = await Promise.all([
     prisma.subject.upsert({
       where: { code: 'MTK-W' },
@@ -276,19 +322,20 @@ async function main() {
 
   for (const [index, student] of students.entries()) {
     const classId = index < 4 ? classXmia1.id : classXmia2.id;
-    await prisma.classEnrollment.upsert({
-      where: {
-        classId_studentId: {
-          classId,
-          studentId: student.id
-        }
-      },
-      update: {},
-      create: {
-        classId,
-        studentId: student.id
-      }
+    const existingEnrollment = await prisma.classEnrollment.findFirst({
+      where: { classId, studentId: student.id, effectiveFrom: enrollmentStart }
     });
+    if (!existingEnrollment) {
+      await prisma.classEnrollment.create({
+        data: {
+          classId,
+          studentId: student.id,
+          academicYearId: academicYear.id,
+          semesterId: semester.id,
+          effectiveFrom: enrollmentStart
+        }
+      });
+    }
   }
 
   const today = new Date();
@@ -334,7 +381,35 @@ async function main() {
     StudentAttendanceStatus.SAKIT
   ];
 
-  for (const [index, student] of students.slice(0, 4).entries()) {
+  const rosterStudents = students.slice(0, 4);
+  for (const session of [sessionA, sessionB]) {
+    await prisma.sessionRoster.createMany({
+      data: await Promise.all(rosterStudents.map(async (student) => {
+        const enrollment = await prisma.classEnrollment.findFirst({
+          where: { classId: classXmia1.id, studentId: student.id, effectiveFrom: enrollmentStart }
+        });
+        return {
+          sessionId: session.id,
+          studentId: student.id,
+          enrollmentId: enrollment?.id ?? null,
+          studentNameSnapshot: student.fullName,
+          studentUsernameSnapshot: student.username,
+          classIdSnapshot: classXmia1.id,
+          classCodeSnapshot: classXmia1.code,
+          classNameSnapshot: classXmia1.name,
+          academicYearIdSnapshot: academicYear.id,
+          academicYearNameSnapshot: academicYear.name,
+          semesterIdSnapshot: semester.id,
+          semesterNameSnapshot: semester.name,
+          captureSource: RosterCaptureSource.BACKFILL,
+          activeAtCapture: true
+        };
+      })),
+      skipDuplicates: true
+    });
+  }
+
+  for (const [index, student] of rosterStudents.entries()) {
     await prisma.studentAttendance.upsert({
       where: {
         sessionId_studentId: {
@@ -447,9 +522,11 @@ async function main() {
     });
   }
 
+  const gateReader = readerSeed('shr_reader_gate_primary_2026');
   await prisma.deviceReader.upsert({
-    where: { apiKey: 'shr_reader_gate_primary_2026' },
+    where: { apiKeyHash: gateReader.apiKeyHash },
     update: {
+      ...gateReader,
       name: 'Reader Gerbang Utama',
       status: 'ACTIVE',
       type: ReaderType.GATE,
@@ -458,8 +535,8 @@ async function main() {
       locationLng: 0
     },
     create: {
+      ...gateReader,
       name: 'Reader Gerbang Utama',
-      apiKey: 'shr_reader_gate_primary_2026',
       status: 'ACTIVE',
       type: ReaderType.GATE,
       locationLabel: 'Gerbang utama',
@@ -468,17 +545,19 @@ async function main() {
     }
   });
 
+  const musholaReader = readerSeed('shr_reader_mushola_2026');
   await prisma.deviceReader.upsert({
-    where: { apiKey: 'shr_reader_mushola_2026' },
+    where: { apiKeyHash: musholaReader.apiKeyHash },
     update: {
+      ...musholaReader,
       name: 'Reader Mushola',
       status: 'ACTIVE',
       type: ReaderType.MUSHOLA,
       locationLabel: 'Mushola'
     },
     create: {
+      ...musholaReader,
       name: 'Reader Mushola',
-      apiKey: 'shr_reader_mushola_2026',
       status: 'ACTIVE',
       type: ReaderType.MUSHOLA,
       locationLabel: 'Mushola'
@@ -635,9 +714,10 @@ async function main() {
     }
   });
 
-  await prisma.auditEntry.create({
-    data: {
+  await auditedTransaction(prisma as any, async ({ audit }) => {
+    await audit.write({
       actorId: admin.id,
+      actorRole: Role.ADMIN_TU,
       action: 'seed.full.completed',
       resource: 'system',
       resourceId: 'seed',
@@ -647,7 +727,7 @@ async function main() {
         sessions: [sessionA.id, sessionB.id, sessionC.id],
         users: 11
       }
-    }
+    });
   });
 
   console.log('Seed full production demo completed.');

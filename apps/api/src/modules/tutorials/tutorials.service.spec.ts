@@ -3,7 +3,7 @@ import { Role } from '@prisma/client';
 import { TutorialsService } from './tutorials.service';
 
 function makePrisma() {
-  return {
+  const prisma = {
     userTutorialState: {
       findUnique: jest.fn(),
       upsert: jest.fn()
@@ -17,6 +17,8 @@ function makePrisma() {
       create: jest.fn().mockResolvedValue({ id: 'audit-1' })
     }
   } as any;
+  prisma.$transaction = jest.fn(async (callback: any) => callback(prisma));
+  return prisma;
 }
 
 describe('TutorialsService', () => {

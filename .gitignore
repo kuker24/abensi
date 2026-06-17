@@ -4,6 +4,7 @@ dist/
 .env.*
 !.env.production.example
 !.env.production.supabase.example
+!.env.production.test
 !apps/web/.env.example
 npm-debug.log*
 coverage/
@@ -11,14 +12,37 @@ coverage/
 .DS_Store
 *.log
 apps/android-reader/.gradle/
+apps/android-reader/local.properties
 apps/android-reader/**/build/
 apps/android-reader/**/*.apk
+apps/android-reader/**/*.aab
+apps/android-reader/output/
 tools/apk-builder/.venv/
 tools/apk-builder/**/__pycache__/
 tools/apk-builder/.pytest_cache/
 postgres_data/
 redis_data/
+backups/
 akun_beta.txt
 .last_hardening_backup_path
 .last_deploy_artifact_path
 .env.local
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.dump
+*.dump.enc
+*.sql.gz
+*.backup
+*credentials*.json
+
+# Local/CI generated artifacts
+artifacts/
+apps/api/.prisma-generate/
+
+# Local Playwright artifacts
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/playwright-report-*/

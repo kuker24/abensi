@@ -13,6 +13,8 @@ import {
   TeacherSessionStatus
 } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
+import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
+import { businessDayBounds, localMinutesOfDay } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { RequestMeta } from '../../common/request-meta';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -27,8 +29,7 @@ function minutesOf(time: string | null | undefined, fallback: number) {
 }
 
 function sessionEndsAtOrAfter(sessionEndsAt: Date, time: string | null | undefined, fallback: number) {
-  const minute = sessionEndsAt.getHours() * 60 + sessionEndsAt.getMinutes();
-  return minute >= minutesOf(time, fallback);
+  return localMinutesOfDay(sessionEndsAt) >= minutesOf(time, fallback);
 }
 
 @Injectable()
@@ -52,20 +53,18 @@ export class ReconciliationService {
     if (filters?.from || filters?.to) {
       const createdAtFilter: Prisma.DateTimeFilter = {};
       if (filters.from) {
-        const start = new Date(filters.from);
-        if (Number.isNaN(start.getTime())) {
+        try {
+          createdAtFilter.gte = businessDayBounds(filters.from).start;
+        } catch {
           throw new BadRequestException('Parameter from tidak valid.');
         }
-        start.setHours(0, 0, 0, 0);
-        createdAtFilter.gte = start;
       }
       if (filters.to) {
-        const end = new Date(filters.to);
-        if (Number.isNaN(end.getTime())) {
+        try {
+          createdAtFilter.lte = businessDayBounds(filters.to).end;
+        } catch {
           throw new BadRequestException('Parameter to tidak valid.');
         }
-        end.setHours(23, 59, 59, 999);
-        createdAtFilter.lte = end;
       }
       where.createdAt = createdAtFilter;
     }
@@ -319,10 +318,7 @@ export class ReconciliationService {
 
     const processed = [];
     for (const session of sessions) {
-      const dayStart = new Date(session.startsAt);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(session.startsAt);
-      dayEnd.setHours(23, 59, 59, 999);
+      const { start: dayStart, end: dayEnd } = businessDayBounds(session.startsAt);
 
       const approvedLeave = await this.prisma.teacherLeave.findFirst({
         where: {
@@ -332,15 +328,17 @@ export class ReconciliationService {
         }
       });
 
-      await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.session.update({
-          where: { id: session.id },
+      const markedMissed = await this.prisma.$transaction(async (tx) => {
+        const updateResult = await tx.session.updateMany({
+          where: { id: session.id, status: SessionStatus.SCHEDULED },
           data: {
             status: SessionStatus.MISSED,
             closedAt: new Date(),
             reconciledAt: null
           }
         });
+
+        if (updateResult.count !== 1) return false;
 
         await tx.teacherSessionPresence.upsert({
           where: { sessionId_teacherId: { sessionId: session.id, teacherId: session.teacherId } },
@@ -359,12 +357,19 @@ export class ReconciliationService {
           resource: 'session',
           resourceId: session.id,
           after: {
-            status: updated.status,
+            status: SessionStatus.MISSED,
             teacherId: session.teacherId,
             classCode: session.schoolClass.code,
             subjectName: session.subject.name,
             approvedLeaveId: approvedLeave?.id ?? null
           }
+        });
+        await writeLiveMonitorOutboxEvent(tx, {
+          eventType: 'session.missed',
+          aggregateType: 'session',
+          aggregateId: session.id,
+          logicalKey: `session:${session.id}:missed:${Date.now()}`,
+          payload: { sessionId: session.id, status: SessionStatus.MISSED, teacherId: session.teacherId, classCode: session.schoolClass.code, subjectName: session.subject.name, approvedLeaveId: approvedLeave?.id ?? null }
         });
 
         await tx.notification.createMany({
@@ -376,7 +381,13 @@ export class ReconciliationService {
             href: '/admin/sessions'
           }))
         });
+        return true;
       });
+
+      if (!markedMissed) {
+        processed.push({ sessionId: session.id, skipped: true, reason: 'SESSION_STATE_CONFLICT' });
+        continue;
+      }
 
       const reconciliation = await this.reconcileSession(session.id, actorId);
       processed.push({ sessionId: session.id, approvedLeave: Boolean(approvedLeave), reconciliation });
@@ -425,10 +436,7 @@ export class ReconciliationService {
       return { sessionId, createdFlags: 0, message: 'session-not-found' };
     }
 
-    const dayStart = new Date(session.startsAt);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(session.startsAt);
-    dayEnd.setHours(23, 59, 59, 999);
+    const { start: dayStart, end: dayEnd } = businessDayBounds(session.startsAt);
 
     const involvedUserIds = new Set<string>([
       session.teacherId,

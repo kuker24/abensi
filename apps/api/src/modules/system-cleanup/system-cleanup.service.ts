@@ -28,9 +28,7 @@ export class SystemCleanupService {
   }
 
   private cutoff(days = 30) {
-    const date = new Date();
-    date.setDate(date.getDate() - Math.max(1, Number(days) || 30));
-    return date;
+    return new Date(Date.now() - Math.max(1, Number(days) || 30) * 24 * 60 * 60 * 1000);
   }
 
   private async protectedHistoryCount(userId: string) {
@@ -131,14 +129,16 @@ export class SystemCleanupService {
       protectedData: PROTECTED_DATA
     };
 
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role as Role,
-      module: 'system_cleanup',
-      action: 'system_cleanup.previewed',
-      resource: 'systemCleanup',
-      resourceId: 'preview',
-      after: { counts: Object.fromEntries(Object.entries(result.categories).map(([key, value]) => [key, value.count])), protectedData: PROTECTED_DATA }
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'system_cleanup',
+        action: 'system_cleanup.previewed',
+        resource: 'systemCleanup',
+        resourceId: 'preview',
+        after: { counts: Object.fromEntries(Object.entries(result.categories).map(([key, value]) => [key, value.count])), protectedData: PROTECTED_DATA }
+      });
     });
 
     return result;

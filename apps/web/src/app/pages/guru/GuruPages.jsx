@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, Wifi, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
 import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, today } from '../../api';
 import { riskConfirm } from '../../confirm';
+import { BrowserGeoError, captureBrowserGeolocation } from '../../geolocation';
 import { useRemote } from '../../hooks';
 import { Avatar, Btn, Card, DataTable, EmptyState, ErrorState, Field, HorizontalBarList, LoadingState, PageHead, RosterProgress, RoleTaskPanel, SelectInput, SimpleHelpBox, StackedBar, StatCardPremium, StatusDonut, StatusPill, StepGuide, TextInput, statusLabel } from '../../ui';
 import { MyAttendancePage } from '../siswa/MyAttendancePage.jsx';
@@ -95,6 +96,7 @@ export function ClassInputPage({ notify }) {
   const [earlyReason, setEarlyReason] = useState('Kelas diakhiri lebih awal atas kondisi yang sudah dicatat.');
   const [nowTick, setNowTick] = useState(Date.now());
   const [actionLoading, setActionLoading] = useState('');
+  const [geoStatus, setGeoStatus] = useState({ tone: 'info', message: 'Lokasi browser akan diminta saat absen masuk dan keluar.' });
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
     return () => clearInterval(timer);
@@ -105,7 +107,11 @@ export function ClassInputPage({ notify }) {
   }, [sessions.data]);
   const rosterState = useRemote(() => sessionId ? apiFetch(`/attendance/class-sessions/${sessionId}/roster`) : Promise.resolve({ roster: [] }), [sessionId]);
   const [roster, setRoster] = useState([]);
-  useEffect(() => { if (rosterState.data?.roster) setRoster(rosterState.data.roster); }, [rosterState.data]);
+  useEffect(() => {
+    if (rosterState.data?.roster) {
+      setRoster(rosterState.data.roster.map((row) => ({ ...row, dirty: false, explicitlyConfirmed: false })));
+    }
+  }, [rosterState.data]);
   const current = itemsOf(sessions.data).find((s) => s.id === sessionId);
   const sessionDetail = rosterState.data?.session || current;
   const teacherPresence = sessionDetail?.teacherPresence || current?.teacherPresence?.find?.((item) => item.teacherId === current?.teacher?.id) || null;
@@ -114,47 +120,88 @@ export function ClassInputPage({ notify }) {
   const isEarlyCheckout = Boolean(endsAt && nowTick < endsAt.getTime());
   const isOpen = current?.status === 'OPEN' || sessionDetail?.status === 'OPEN';
   const counts = STATUS.reduce((acc, st) => ({ ...acc, [st]: roster.filter((r) => r.status === st).length }), {});
-  const completedCount = counts.HADIR + counts.TELAT + counts.IZIN + counts.SAKIT + counts.ALPA;
+  const completedCount = roster.filter((r) => (r.reviewState && r.reviewState !== 'DEFAULTED') || r.explicitlyConfirmed).length;
+  const defaultedCount = Math.max(0, roster.length - completedCount);
   const presentLikeCount = counts.HADIR + counts.TELAT + counts.IZIN + counts.SAKIT;
   const progressPercent = roster.length ? Math.round((completedCount / roster.length) * 100) : 0;
   const setStatus = (studentId, status) => setRoster((prev) => prev.map((r) => {
     if (r.studentId !== studentId) return r;
     if (r.eligibility?.locked && ['HADIR', 'TELAT'].includes(status)) return r;
-    return { ...r, status };
+    return { ...r, status, dirty: true, explicitlyConfirmed: true };
   }));
   async function openSession() {
     if (!sessionId) { notify('Pilih sesi terlebih dahulu.', 'warn'); return; }
     setActionLoading('open');
+    setGeoStatus({ tone: 'info', message: 'Meminta izin lokasi akurat dari browser...' });
     try {
-      await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify({ lat: 0.923, lng: 100.31 }) });
+      const location = await captureBrowserGeolocation();
+      setGeoStatus({ tone: 'ok', message: `Lokasi diterima (akurasi ±${Math.round(location.accuracyMeter)} m).` });
+      await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify(location) });
       sessions.refresh(); rosterState.refresh(); notify('Absen masuk guru tercatat. Silakan isi presensi siswa awal pembelajaran.');
-    } catch (error) { notify(error.message || 'Gagal membuka sesi.', 'bad'); } finally { setActionLoading(''); }
+    } catch (error) {
+      const message = error instanceof BrowserGeoError ? error.message : (error.message || 'Gagal membuka sesi.');
+      setGeoStatus({ tone: 'bad', message });
+      notify(message, 'bad');
+    } finally { setActionLoading(''); }
   }
   async function saveBatch() {
     if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
     setActionLoading('save');
     try {
-      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance`, { method: 'PUT', body: JSON.stringify({ items: roster.map((r) => ({ studentId: r.studentId, status: r.status, note: r.note || undefined })) }) });
+      const items = roster
+        .filter((r) => r.dirty || r.explicitlyConfirmed)
+        .map((r) => ({ studentId: r.studentId, status: r.status, note: r.note || undefined, updatedAt: r.updatedAt || undefined, confirm: true }));
+      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance`, { method: 'PUT', body: JSON.stringify({ items }) });
       rosterState.refresh();
       notify(result.message || 'Presensi siswa awal pembelajaran tersimpan.');
     } catch (error) { notify(error.message || 'Gagal menyimpan presensi.', 'bad'); } finally { setActionLoading(''); }
   }
+  async function bulkPresent() {
+    if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
+    setActionLoading('bulk-present');
+    try {
+      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance/bulk-present`, { method: 'POST' });
+      rosterState.refresh();
+      notify(result.message || 'Semua siswa yang memenuhi syarat dikonfirmasi hadir.');
+    } catch (error) { notify(error.message || 'Gagal konfirmasi hadir massal.', 'bad'); } finally { setActionLoading(''); }
+  }
+  async function bulkAlpa() {
+    if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
+    if (!await riskConfirm('Semua siswa yang masih ALPA default akan dikonfirmasi ALPA. Status yang sudah dikonfirmasi tidak diubah.', 'Konfirmasi Alpa')) return;
+    setActionLoading('bulk-alpa');
+    try {
+      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance/bulk-alpa`, { method: 'POST' });
+      rosterState.refresh();
+      notify(result.message || 'ALPA default dikonfirmasi.');
+    } catch (error) { notify(error.message || 'Gagal konfirmasi ALPA.', 'bad'); } finally { setActionLoading(''); }
+  }
   async function closeSession() {
     if (!sessionId || !roster.length) { notify('Pilih sesi dan isi presensi terlebih dahulu.', 'warn'); return; }
     if (isEarlyCheckout && earlyReason.trim().length < 10) { notify('Isi alasan keluar lebih awal minimal 10 karakter.', 'warn'); return; }
-    if (progressPercent < 100 && !await riskConfirm('Masih ada siswa yang belum dicek penuh. Tetap absen keluar dan akhiri kelas?')) return;
-    if (!await riskConfirm('Absen keluar dan akhiri kelas? Pastikan presensi siswa awal pembelajaran sudah disimpan.')) return;
+    let finalizeDefaultAlpa = false;
+    if (progressPercent < 100) {
+      if (!await riskConfirm(`Masih ada ${defaultedCount} siswa ALPA default yang belum dikonfirmasi. Finalisasi sebagai ALPA dan akhiri kelas?`)) return;
+      finalizeDefaultAlpa = true;
+    } else if (!await riskConfirm('Absen keluar dan akhiri kelas? Pastikan presensi siswa awal pembelajaran sudah disimpan.')) return;
     setActionLoading('close');
+    setGeoStatus({ tone: 'info', message: 'Mengambil lokasi keluar kelas dari browser...' });
     try {
-      await apiFetch(`/attendance/class-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ lat: 0.923, lng: 100.31, ...(isEarlyCheckout ? { earlyCheckoutReason: earlyReason } : {}) }) });
+      const location = await captureBrowserGeolocation();
+      setGeoStatus({ tone: 'ok', message: `Lokasi keluar diterima (akurasi ±${Math.round(location.accuracyMeter)} m).` });
+      await apiFetch(`/attendance/class-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ ...location, finalizeDefaultAlpa, ...(isEarlyCheckout ? { earlyCheckoutReason: earlyReason } : {}) }) });
       sessions.refresh(); rosterState.refresh(); notify('Absen keluar guru tercatat. Rekonsiliasi akan berjalan otomatis.');
-    } catch (error) { notify(error.message || 'Gagal menutup sesi.', 'bad'); } finally { setActionLoading(''); }
+    } catch (error) {
+      const message = error instanceof BrowserGeoError ? error.message : (error.message || 'Gagal menutup sesi.');
+      setGeoStatus({ tone: 'bad', message });
+      notify(message, 'bad');
+    } finally { setActionLoading(''); }
   }
   return <div className="content teacher-attendance-flow"><PageHead eyebrow="ISI PRESENSI KELAS" title={current ? `${current.subject?.name} · ${current.schoolClass?.code}` : 'Pilih sesi'} sub="Ikuti langkah dari kiri ke kanan agar tidak terlewat." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{s.schoolClass?.code} · {s.subject?.name} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
     <StepGuide title="Urutan kerja guru" steps={['Pilih sesi yang benar.', 'Klik Absen Masuk / Mulai Kelas.', 'Tandai siswa hadir/izin/sakit/telat/alpa.', 'Klik Simpan Presensi Awal.', 'Saat selesai, klik Absen Keluar / Akhiri Kelas.']} />
-    <div className="attendance-checkpoint"><div><span className="eyebrow"><span className="dot" /> CHECKPOINT PRESENSI</span><b>{progressPercent}% selesai</b><small>{completedCount}/{roster.length || 0} siswa sudah memiliki status. {isOpen ? 'Sesi sedang bisa diisi.' : 'Buka sesi terlebih dahulu untuk mengubah status.'}</small></div><RosterProgress current={completedCount} total={roster.length} /></div>
-    <div className="grid g-4"><StatCardPremium icon={<Clock size={18} />} label="Jam Mulai" value={startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'} sub={teacherPresence?.checkInAt ? `Masuk ${formatDateTime(teacherPresence.checkInAt)}` : 'Guru belum absen masuk'} /><StatCardPremium icon={<DoorOpen size={18} />} label="Jam Selesai" value={endsAt ? endsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'} sub={teacherPresence?.checkOutAt ? `Keluar ${formatDateTime(teacherPresence.checkOutAt)}` : isEarlyCheckout ? 'Belum waktunya keluar' : 'Sudah boleh absen keluar'} tone={isEarlyCheckout ? 'warn' : 'ok'} /><StatCardPremium icon={<Activity size={18} />} label="Status Guru" value={teacherPresence?.status ? statusLabel(teacherPresence.status) : statusLabel(current?.status)} sub="Masuk/keluar kelas" /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Siswa Tercatat" value={roster.length} sub={`${counts.HADIR || 0} hadir · ${counts.ALPA || 0} alpa`} /></div>
+    <div className="attendance-checkpoint"><div><span className="eyebrow"><span className="dot" /> CHECKPOINT PRESENSI</span><b>{progressPercent}% selesai</b><small>{completedCount}/{roster.length || 0} siswa sudah dikonfirmasi. {defaultedCount ? `${defaultedCount} masih ALPA default.` : ''} {isOpen ? 'Sesi sedang bisa diisi.' : 'Buka sesi terlebih dahulu untuk mengubah status.'}</small></div><RosterProgress current={completedCount} total={roster.length} /></div>
+    <div className="grid g-4"><StatCardPremium icon={<Clock size={18} />} label="Jam Mulai" value={startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkInAt ? `Masuk ${formatDateTime(teacherPresence.checkInAt)}` : 'Guru belum absen masuk'} /><StatCardPremium icon={<DoorOpen size={18} />} label="Jam Selesai" value={endsAt ? endsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkOutAt ? `Keluar ${formatDateTime(teacherPresence.checkOutAt)}` : isEarlyCheckout ? 'Belum waktunya keluar' : 'Sudah boleh absen keluar'} tone={isEarlyCheckout ? 'warn' : 'ok'} /><StatCardPremium icon={<Activity size={18} />} label="Status Guru" value={teacherPresence?.status ? statusLabel(teacherPresence.status) : statusLabel(current?.status)} sub="Masuk/keluar kelas" /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Siswa Tercatat" value={roster.length} sub={`${counts.HADIR || 0} hadir · ${counts.ALPA || 0} alpa`} /></div>
     <Card title="Aksi guru" sub="Aksi presensi siswa dipisah dari absen keluar guru agar data awal pembelajaran tidak berubah tanpa sengaja.">
+      <div className={`inline-note ${geoStatus.tone}`} style={{ marginBottom: 12 }}><MapPin size={14} /> {geoStatus.message}</div>
       {isOpen && roster.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
@@ -165,7 +212,7 @@ export function ClassInputPage({ notify }) {
           </div>
           <RosterProgress current={presentLikeCount} total={roster.length} />
         </div>
-      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Absen Masuk / Mulai Kelas</Btn><Btn onClick={async () => { if (await riskConfirm('Semua siswa yang tidak terkunci akan ditandai HADIR. Lanjutkan?', 'Tandai Semua Hadir')) setRoster((prev) => prev.map((r) => r.eligibility?.locked ? r : ({ ...r, status: 'HADIR' }))); }} disabled={!isOpen || Boolean(actionLoading)}><Users size={14} /> Tandai semua Hadir</Btn><Btn variant="danger" onClick={async () => { if (await riskConfirm('SEMUA siswa akan dikembalikan ke ALPA, termasuk yang sudah ditandai. Ini akan menghapus semua pilihan status. Lanjutkan?', 'Kembalikan ke Alpa')) setRoster((prev) => prev.map((r) => ({ ...r, status: 'ALPA' }))); }} disabled={!isOpen || Boolean(actionLoading)}><X size={14} /> Kembalikan ke Alpa</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan Presensi Awal</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !isOpen || Boolean(actionLoading)}>Absen Keluar / Akhiri Kelas <ArrowRight size={14} /></Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
+      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Absen Masuk / Mulai Kelas</Btn><Btn loading={actionLoading === 'bulk-present'} onClick={bulkPresent} disabled={!isOpen || Boolean(actionLoading)}><Users size={14} /> Konfirmasi semua Hadir</Btn><Btn variant="danger" loading={actionLoading === 'bulk-alpa'} onClick={bulkAlpa} disabled={!isOpen || Boolean(actionLoading)}><X size={14} /> Konfirmasi ALPA Default</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan Presensi Awal</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !isOpen || Boolean(actionLoading)}>Absen Keluar / Akhiri Kelas <ArrowRight size={14} /></Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
     <div className="grid g-2 chart-summary"><Card title="Presensi siswa awal pembelajaran" sub="Cukup isi di awal kelas. Tandai semua Hadir, lalu ubah siswa yang Telat/Izin/Sakit/Alpa."><StatusDonut counts={counts} title="Status siswa" /></Card><Card title="Ringkasan sebelum absen keluar" sub="Periksa ulang sebelum mengakhiri kelas."><StackedBar segments={STATUS.map((st) => ({ label: statusLabel(st), value: counts[st] || 0, tone: st === 'HADIR' ? 'ok' : st === 'ALPA' ? 'bad' : st === 'TELAT' ? 'warn' : 'info' }))} /></Card></div><div className="dock dock-sticky" aria-label="Ringkasan status presensi"><div className="dock-stats">{STATUS.map((st) => <span className="s" key={st}><span className="k">{statusLabel(st)}</span><span className="v">{counts[st] || 0}</span></span>)}</div>{isOpen && <Btn size="sm" variant="primary" loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || Boolean(actionLoading)}><Save size={13} /> Simpan</Btn>}</div>{rosterState.loading ? <LoadingState /> : rosterState.error ? <ErrorState error={rosterState.error} /> : <div className="roster">{roster.map((s, i) => <div key={s.studentId} className="roster-row"><div className="roster-idx">{String(i + 1).padStart(2, '0')}</div><Avatar name={s.fullName} /><div className="roster-student"><div className="roster-name">{s.fullName}</div><div className="roster-meta">{s.username} · kartu {statusLabel(s.cardStatus)} · {s.eligibility?.locked ? `Terkunci: ${s.eligibility.reasons?.join(', ')}` : 'Syarat scan lengkap/diizinkan'}</div></div><div className="statuspick">{STATUS.map((st) => <button key={st} className={`${s.status === st ? 'on ' : ''}${st.toLowerCase()}`} disabled={!isOpen || Boolean(actionLoading) || (s.eligibility?.locked && ['HADIR', 'TELAT'].includes(st))} title={s.eligibility?.locked && ['HADIR', 'TELAT'].includes(st) ? s.eligibility.reasons?.join(', ') : ''} onClick={() => setStatus(s.studentId, st)}>{statusLabel(st)}</button>)}</div></div>)}</div>}</div>;
 }
 

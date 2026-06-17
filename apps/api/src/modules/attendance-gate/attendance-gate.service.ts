@@ -15,40 +15,40 @@ import {
 } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { RequestMeta } from '../../common/request-meta';
+import { API_ERROR_CODES } from '@schoolhub/shared';
 import { writeAudit } from '../../common/audit-log';
+import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessPolicyService } from '../security/access-policy.service';
 import { canonicalJson } from '../security/canonical-json';
-import { DeviceSignatureService, sha256Hex, type ReaderSignatureHeaders } from '../security/device-signature.service';
+import { DeviceSignatureService, readerCandidateWhere, readerLookupLimit, sha256Hex, uniqueReaderMatch, type ReaderSignatureHeaders } from '../security/device-signature.service';
 import { assertReasonQuality, normalizeReason } from '../security/reason-policy';
 import { StepUpAuthService } from '../security/step-up-auth.service';
 import { QrCredentialsService } from '../qr-credentials/qr-credentials.service';
 import { redactQr } from '../qr-credentials/qr-code.util';
 import { MobileAndroidService } from '../mobile/mobile-android.service';
+import { businessDateKey, businessWeekday, jakartaBusinessDayBounds, localDateTimeToUtc, localMinutesOfDay } from '../../common/business-time';
 import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
 const MIN_GATE_STAY_MINUTES = Number(process.env.MIN_GATE_STAY_MINUTES ?? '10');
 const STEP_UP_FOR_POLICY = process.env.STEP_UP_FOR_POLICY === 'true';
 
-function dayBounds(value = new Date()) {
-  const start = new Date(value);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(value);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+function dayBounds(value: Date | string = new Date()) {
+  return jakartaBusinessDayBounds(value);
 }
 
-function dateOnly(value = new Date()) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
+function dateOnly(value: Date | string = new Date()) {
+  return jakartaBusinessDayBounds(value).date;
 }
 
-function endOfDay(value = new Date()) {
-  const date = new Date(value);
-  date.setHours(23, 59, 59, 999);
-  return date;
+function gateBusinessDate(value: Date) {
+  const [year, month, day] = businessDateKey(value).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function endOfDay(value: Date | string = new Date()) {
+  return jakartaBusinessDayBounds(value).end;
 }
 
 function minutesOf(time: string | null | undefined, fallback: number) {
@@ -60,19 +60,26 @@ function minutesOf(time: string | null | undefined, fallback: number) {
   return hour * 60 + minute;
 }
 
-function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dhuhaEndTime: string; dzuhurStartTime: string; dzuhurEndTime: string; asharStartTime?: string; asharEndTime?: string }) {
-  const minute = scannedAt.getHours() * 60 + scannedAt.getMinutes();
-  const dhuhaStart = minutesOf(policy.dhuhaStartTime, 7 * 60);
-  const dhuhaEnd = minutesOf(policy.dhuhaEndTime, 10 * 60 + 30);
-  const dzuhurStart = minutesOf(policy.dzuhurStartTime, 11 * 60 + 45);
-  const dzuhurEnd = minutesOf(policy.dzuhurEndTime, 13 * 60 + 30);
-  const asharStart = minutesOf(policy.asharStartTime || '15:00', 15 * 60);
-  const asharEnd = minutesOf(policy.asharEndTime || '16:30', 16 * 60 + 30);
-  if (minute >= asharStart && minute <= asharEnd) return PrayerType.ASHAR;
-  if (minute >= dzuhurStart && minute <= dzuhurEnd) return PrayerType.DZUHUR;
-  if (minute >= dhuhaStart && minute <= dhuhaEnd) return PrayerType.DHUHA;
-  if (minute >= asharStart) return PrayerType.ASHAR;
-  return minute < dzuhurStart ? PrayerType.DHUHA : PrayerType.DZUHUR;
+type PrayerClassification = {
+  prayerType: PrayerType | 'OUTSIDE_WINDOW';
+  currentWindow: { prayerType: PrayerType; startMinute: number; endMinute: number } | null;
+  nextWindow: { prayerType: PrayerType; startMinute: number; endMinute: number } | null;
+};
+
+function formatMinute(minute: number) {
+  return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+}
+
+function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dhuhaEndTime: string; dzuhurStartTime: string; dzuhurEndTime: string; asharStartTime?: string; asharEndTime?: string }): PrayerClassification {
+  const minute = localMinutesOfDay(scannedAt);
+  const windows = [
+    { prayerType: PrayerType.DHUHA, startMinute: minutesOf(policy.dhuhaStartTime, 7 * 60), endMinute: minutesOf(policy.dhuhaEndTime, 10 * 60 + 30) },
+    { prayerType: PrayerType.DZUHUR, startMinute: minutesOf(policy.dzuhurStartTime, 11 * 60 + 45), endMinute: minutesOf(policy.dzuhurEndTime, 13 * 60 + 30) },
+    { prayerType: PrayerType.ASHAR, startMinute: minutesOf(policy.asharStartTime || '15:00', 15 * 60), endMinute: minutesOf(policy.asharEndTime || '16:30', 16 * 60 + 30) }
+  ];
+  const currentWindow = windows.find((window) => minute >= window.startMinute && minute <= window.endMinute) ?? null;
+  const nextWindow = windows.find((window) => minute < window.startMinute) ?? null;
+  return { prayerType: currentWindow?.prayerType ?? 'OUTSIDE_WINDOW', currentWindow, nextWindow };
 }
 
 function isStaffRole(role: Role) {
@@ -155,7 +162,7 @@ export class AttendanceGateService {
     const where: Prisma.GateLogWhereInput = {};
 
     if (date) {
-      const { start, end } = dayBounds(new Date(date));
+      const { start, end } = dayBounds(date);
       where.tappedAt = { gte: start, lte: end };
     }
 
@@ -179,7 +186,7 @@ export class AttendanceGateService {
 
   async listPrayerLogs(pagination: PaginationQuery, date?: string, studentId?: string) {
     const where: Prisma.PrayerAttendanceLogWhereInput = {};
-    if (date) where.attendanceDate = dateOnly(new Date(date));
+    if (date) where.attendanceDate = dateOnly(date);
     if (studentId) where.studentId = studentId;
     const [total, items] = await Promise.all([
       this.prisma.prayerAttendanceLog.count({ where }),
@@ -215,9 +222,12 @@ export class AttendanceGateService {
     const policy = await this.getAttendancePolicy();
     if (!policy.legacyQrScanEnabled) throw new ForbiddenException('Jalur QR manual/legacy sedang dinonaktifkan. Gunakan APK Android reader resmi.');
     const manualReason = assertReasonQuality(payload.manualReason, 'Alasan scan manual');
-    const reader = payload.readerId
-      ? await this.prisma.deviceReader.findFirst({ where: { OR: [{ id: payload.readerId }, { apiKey: payload.readerId }] } })
-      : null;
+    const readerCandidates = payload.readerId
+      ? await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(payload.readerId), take: readerLookupLimit() })
+      : [];
+    const readerMatch = payload.readerId ? uniqueReaderMatch(readerCandidates, payload.readerId) : { status: 'not_found' as const };
+    if (payload.readerId && readerMatch.status !== 'matched') throw new ForbiddenException('Reader tidak aktif, dicabut, atau tidak ditemukan.');
+    const reader = readerMatch.status === 'matched' ? readerMatch.reader : null;
     if (reader && reader.status !== DeviceReaderStatus.ACTIVE) throw new ForbiddenException('Reader tidak aktif.');
     const readerType = reader?.type ?? payload.readerType ?? ReaderType.MANUAL;
     const deviceId = reader?.id ?? payload.deviceId ?? payload.readerId ?? null;
@@ -354,8 +364,11 @@ export class AttendanceGateService {
     if (verification.reader.type === ReaderType.MUSHOLA) {
       if (card.user.role !== Role.SISWA) throw new ForbiddenException('Scan mushola hanya untuk siswa.');
       const policy = await this.getAttendancePolicy();
-      const prayerType = scannedPrayerType(scannedAt, policy);
-      return this.recordPrayerScan(card.user.id, prayerType, scannedAt, ReaderType.MUSHOLA, actor, commonOptions);
+      const classification = scannedPrayerType(scannedAt, policy);
+      if (classification.prayerType === 'OUTSIDE_WINDOW') {
+        return this.rejectPrayerOutsideWindow(card.user.id, scannedAt, ReaderType.MUSHOLA, actor, commonOptions, classification);
+      }
+      return this.recordPrayerScan(card.user.id, classification.prayerType, scannedAt, ReaderType.MUSHOLA, actor, commonOptions);
     }
 
     throw new ForbiddenException('Tipe reader belum didukung untuk scan resmi.');
@@ -424,9 +437,12 @@ export class AttendanceGateService {
         throw new ForbiddenException('Scan mushola hanya untuk siswa.');
       }
       const policy = await this.getAttendancePolicy();
-      const prayerType = scannedPrayerType(scannedAt, policy);
-      const result = await this.recordPrayerScan(user.id, prayerType, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions);
-      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, prayerType, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
+      const classification = scannedPrayerType(scannedAt, policy);
+      if (classification.prayerType === 'OUTSIDE_WINDOW') {
+        return this.rejectPrayerOutsideWindow(user.id, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions, classification);
+      }
+      const result = await this.recordPrayerScan(user.id, classification.prayerType, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions);
+      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, prayerType: classification.prayerType, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
       return { ...result, ok: true, user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
     }
 
@@ -439,10 +455,9 @@ export class AttendanceGateService {
   }
 
   private cutoffDateFor(value: Date, time: string | null | undefined) {
-    const date = dateOnly(value);
+    const dateKey = jakartaBusinessDayBounds(value).key;
     const cutoff = minutesOf(time || '15:00', 15 * 60);
-    date.setHours(Math.floor(cutoff / 60), cutoff % 60, 0, 0);
-    return date;
+    return localDateTimeToUtc(dateKey, `${String(Math.floor(cutoff / 60)).padStart(2, '0')}:${String(cutoff % 60).padStart(2, '0')}`);
   }
 
   private async studentHasAfternoonSchedule(studentId: string, scannedAt: Date, requiredEndTime: string) {
@@ -460,7 +475,7 @@ export class AttendanceGateService {
     const weeklyCount = await this.prisma.weeklySchedule.count({
       where: {
         active: true,
-        dayOfWeek: scannedAt.getDay(),
+        dayOfWeek: businessWeekday(scannedAt),
         endTime: { gte: requiredEndTime || '15:00' },
         effectiveFrom: { lte: end },
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: start } }],
@@ -501,14 +516,16 @@ export class AttendanceGateService {
     if (asharLog) return null;
     if (override) return override.id;
 
-    await writeAudit(this.prisma, {
-      actorId: actor.sub,
-      actorRole: actor.role,
-      module: 'attendance',
-      action: 'attendance.student.checkout.blocked_missing_ashar',
-      resource: 'user',
-      resourceId: studentId,
-      after: { studentId, attendanceDate, requiredEndTime, message: 'Siswa masih punya jadwal sampai sore dan belum scan Ashar.' }
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'attendance',
+        action: 'attendance.student.checkout.blocked_missing_ashar',
+        resource: 'user',
+        resourceId: studentId,
+        after: { studentId, attendanceDate, requiredEndTime, message: 'Siswa masih punya jadwal sampai sore dan belum scan Ashar.' }
+      });
     });
     throw new ForbiddenException('Siswa ini masih punya jadwal sampai sore. Scan Ashar dulu sebelum pulang.');
   }
@@ -584,47 +601,108 @@ export class AttendanceGateService {
   }
 
   private async recordGateScanWithoutPolicy(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, options: RecordOptions) {
-    return this.prisma.$transaction(async (tx) => {
-      const log = await tx.gateLog.create({
-        data: {
-          userId,
-          direction,
-          tappedAt: scannedAt,
-          deviceId: options.deviceId ?? null,
-          readerId: options.readerId ?? null,
-          cardId: options.cardId ?? null,
-          qrCredentialId: options.qrCredentialId ?? null,
-          scanMode: options.scanMode ?? null,
-          appVersion: options.appVersion ?? null,
-          signatureVerified: Boolean(options.signatureVerified),
-          deviceEventId: options.deviceEventId ?? null,
-          deviceTimestamp: options.deviceTimestamp ?? null,
-          nonceHash: options.nonceHash ?? null,
-          bodyHash: options.bodyHash ?? null,
-          manualReason: options.manualReason ?? null,
-          createdById: actor.sub,
-          usedOverrideId: options.usedOverrideId ?? null
-        }
-      });
-      if (options.cardId) await tx.smartCard.update({ where: { id: options.cardId }, data: { lastTappedAt: scannedAt } });
-      if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
-      if (options.readerId || options.deviceId) {
-        await tx.deviceReader.updateMany({
-          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
-          data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+    const businessDate = gateBusinessDate(scannedAt);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const log = await tx.gateLog.create({
+          data: {
+            userId,
+            direction,
+            businessDate,
+            tappedAt: scannedAt,
+            deviceId: options.deviceId ?? null,
+            readerId: options.readerId ?? null,
+            cardId: options.cardId ?? null,
+            qrCredentialId: options.qrCredentialId ?? null,
+            scanMode: options.scanMode ?? null,
+            appVersion: options.appVersion ?? null,
+            signatureVerified: Boolean(options.signatureVerified),
+            deviceEventId: options.deviceEventId ?? null,
+            deviceTimestamp: options.deviceTimestamp ?? null,
+            nonceHash: options.nonceHash ?? null,
+            bodyHash: options.bodyHash ?? null,
+            manualReason: options.manualReason ?? null,
+            createdById: actor.sub,
+            usedOverrideId: options.usedOverrideId ?? null
+          }
         });
-      }
-      await writeAudit(tx, {
-        actorId: actor.sub,
-        actorRole: actor.role,
-        module: 'attendance',
-        action: options.qrCredentialId ? 'attendance.qr.reader.scan.accepted' : options.manualReason ? 'attendance.manual.scan.recorded' : 'attendance.reader.gate.scan.accepted',
-        resource: 'gateLog',
-        resourceId: log.id,
-        reason: options.manualReason,
-        after: { ...log, kind: 'GATE', usedOverrideId: options.usedOverrideId ?? null }
+        if (options.cardId) await tx.smartCard.update({ where: { id: options.cardId }, data: { lastTappedAt: scannedAt } });
+        if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
+        if (options.readerId || options.deviceId) {
+          await tx.deviceReader.updateMany({
+            where: options.readerId ? { id: options.readerId } : { deviceId: options.deviceId ?? '' },
+            data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+          });
+        }
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role,
+          module: 'attendance',
+          action: options.qrCredentialId ? 'attendance.qr.reader.scan.accepted' : options.manualReason ? 'attendance.manual.scan.recorded' : 'attendance.reader.gate.scan.accepted',
+          resource: 'gateLog',
+          resourceId: log.id,
+          reason: options.manualReason,
+          after: { ...log, kind: 'GATE', usedOverrideId: options.usedOverrideId ?? null }
+        });
+        await writeLiveMonitorOutboxEvent(tx, {
+          eventType: 'gate.scan_recorded',
+          aggregateType: 'gateLog',
+          aggregateId: log.id,
+          logicalKey: `gate:${log.id}`,
+          payload: { gateLogId: log.id, userId, direction, businessDate: businessDate.toISOString(), tappedAt: scannedAt.toISOString(), source: options.qrCredentialId ? 'qr_reader' : options.manualReason ? 'manual' : 'reader' }
+        });
+        return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk tercatat.' : 'Scan gerbang keluar tercatat.', item: log };
       });
-      return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk tercatat.' : 'Scan gerbang keluar tercatat.', item: log };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const target = Array.isArray(error.meta?.target) ? error.meta.target.map(String) : [];
+        if (options.deviceEventId && target.includes('deviceEventId')) {
+          const canonical = await this.prisma.gateLog.findUnique({ where: { deviceEventId: options.deviceEventId } });
+          if (canonical) {
+            return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk sudah tercatat.' : 'Scan gerbang keluar sudah tercatat.', item: canonical, idempotent: true };
+          }
+        }
+        if (target.includes('userId') && target.includes('businessDate') && target.includes('direction')) {
+          const canonical = await this.prisma.gateLog.findFirst({ where: { userId, businessDate, direction }, orderBy: { tappedAt: 'asc' } });
+          throw new ConflictException({
+            code: API_ERROR_CODES.GATE_DIRECTION_ALREADY_RECORDED,
+            message: direction === GateDirection.IN ? 'Scan masuk hari ini sudah tercatat.' : 'Scan keluar hari ini sudah tercatat.',
+            canonicalGateLogId: canonical?.id ?? null
+          });
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async rejectPrayerOutsideWindow(studentId: string, scannedAt: Date, source: ReaderType, actor: ScanActor, options: RecordOptions, classification: PrayerClassification): Promise<never> {
+    const nextWindow = classification.nextWindow
+      ? {
+          prayerType: classification.nextWindow.prayerType,
+          startTime: formatMinute(classification.nextWindow.startMinute),
+          endTime: formatMinute(classification.nextWindow.endMinute)
+        }
+      : null;
+    await this.prisma.rejectedDeviceScan.create({
+      data: {
+        readerId: options.readerId ?? null,
+        deviceId: options.deviceId ?? null,
+        nonceHash: options.nonceHash ?? null,
+        bodyHash: options.bodyHash ?? null,
+        reason: API_ERROR_CODES.PRAYER_OUTSIDE_WINDOW
+      }
+    }).catch(() => null);
+    await this.securityAudit('attendance.prayer.scan.rejected_outside_window', studentId, {
+      source,
+      actorId: actor.sub,
+      scannedAt: scannedAt.toISOString(),
+      nextWindow
+    });
+    throw new ForbiddenException({
+      code: API_ERROR_CODES.PRAYER_OUTSIDE_WINDOW,
+      message: 'Scan ibadah di luar jadwal yang diizinkan.',
+      currentWindow: null,
+      nextWindow
     });
   }
 
@@ -662,7 +740,7 @@ export class AttendanceGateService {
       if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
       if (options.readerId || options.deviceId) {
         await tx.deviceReader.updateMany({
-          where: { OR: [{ id: options.readerId ?? '' }, { id: options.deviceId ?? '' }, { apiKeyHash: options.deviceId ? sha256Hex(options.deviceId) : '' }, { deviceId: options.deviceId ?? '' }] },
+          where: options.readerId ? { id: options.readerId } : { deviceId: options.deviceId ?? '' },
           data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
         });
       }
@@ -676,6 +754,13 @@ export class AttendanceGateService {
         reason: options.manualReason,
         after: log as unknown as Prisma.InputJsonValue
       });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'prayer.scan_recorded',
+        aggregateType: 'prayerAttendanceLog',
+        aggregateId: log.id,
+        logicalKey: `prayer:${log.id}`,
+        payload: { prayerAttendanceLogId: log.id, studentId, prayerType, attendanceDate: attendanceDate.toISOString(), scannedAt: scannedAt.toISOString(), source }
+      });
       const label = prayerType === PrayerType.DHUHA ? 'Dhuha' : prayerType === PrayerType.DZUHUR ? 'Dzuhur' : 'Ashar';
       return { kind: 'PRAYER', message: `Scan ${label} tercatat.`, item: log };
     });
@@ -684,7 +769,7 @@ export class AttendanceGateService {
   async createOverride(payload: CreateAttendanceOverrideDto, actor: ScanActor, meta: RequestMeta = {}) {
     const policy = await this.getAttendancePolicy();
     if (!policy.allowManualOverride) throw new ForbiddenException('Override manual sedang dinonaktifkan.');
-    const date = dateOnly(payload.date ? new Date(payload.date) : new Date());
+    const date = dateOnly(payload.date || new Date());
     const scope = parseScope(payload.scope);
     const reason = assertReasonQuality(payload.reason, 'Alasan override');
     const student = await this.prisma.user.findUnique({ where: { id: payload.studentId } });
@@ -802,6 +887,8 @@ export class AttendanceGateService {
   }
 
   private async securityAudit(action: string, resourceId: string, after: Prisma.InputJsonValue) {
-    await writeAudit(this.prisma, { module: 'attendance_security', action, resource: 'attendanceSecurityEvent', resourceId, after });
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, { module: 'attendance_security', action, resource: 'attendanceSecurityEvent', resourceId, after });
+    });
   }
 }

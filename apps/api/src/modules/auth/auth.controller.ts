@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { extractRequestMeta } from '../../common/request-meta';
 import { AuthService } from './auth.service';
-import { LoginDto } from './dto.login';
+import { ChangePasswordDto, LoginDto } from './dto.login';
 import { csrfCookieOptions, CSRF_COOKIE, generateCsrfToken } from '../../common/csrf';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -58,6 +58,16 @@ export class AuthController {
     return loginResponse(result);
   }
 
+  @Get('sso/config')
+  ssoConfig() {
+    return { enabled: false, provider: null, code: 'SSO_NOT_IMPLEMENTED' };
+  }
+
+  @Post('sso/workos/callback')
+  async workosCallback() {
+    throw new HttpException({ code: 'SSO_NOT_IMPLEMENTED', message: 'SSO WorkOS belum tersedia.' }, HttpStatus.NOT_IMPLEMENTED);
+  }
+
   @Get('csrf')
   csrf(@Res({ passthrough: true }) response: Response) {
     const csrfToken = generateCsrfToken();
@@ -76,6 +86,19 @@ export class AuthController {
     const result = await this.authService.refresh(readCookie(request, REFRESH_COOKIE), extractRequestMeta(request));
     setAuthCookies(response, result);
     return { ok: true };
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @CurrentUser() user: { sub: string; role: Role },
+    @Body() body: ChangePasswordDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const result = await this.authService.changePassword(user.sub, user.role, body.currentPassword, body.newPassword, extractRequestMeta(request));
+    clearAuthCookies(response);
+    return result;
   }
 
   @Post('logout')

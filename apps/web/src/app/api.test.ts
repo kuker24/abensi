@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_EXPIRED_EVENT, USER_KEY, apiFetch } from './api';
+import { AUTH_EXPIRED_EVENT, USER_KEY, apiFetch, formatDateTime, today } from './api';
 
 function mockStorage() {
   const map = new Map<string, string>();
@@ -16,6 +16,17 @@ function mockStorage() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe('Jakarta date helpers', () => {
+  it('formats dates with school timezone independent of browser timezone', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-12-31T17:30:00.000Z'));
+
+    expect(today()).toBe('2027-01-01');
+    expect(formatDateTime('2026-06-14T00:15:00.000Z')).toContain('07.15');
+  });
 });
 
 describe('apiFetch auth handling', () => {

@@ -3,17 +3,20 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
+import { Capabilities } from '../../common/capabilities.decorator';
+import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SystemCleanupRunDto } from './system-cleanup.dto';
 import { SystemCleanupService } from './system-cleanup.service';
 
 @Controller('system-cleanup')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
 @Roles(Role.DEVELOPER)
 export class SystemCleanupController {
   constructor(private readonly service: SystemCleanupService) {}
 
   @Get('preview')
+  @Capabilities('settings.manage')
   preview(
     @CurrentUser() user: { sub: string; role: string },
     @Query('inactiveTestUsers') inactiveTestUsers?: string,
@@ -33,6 +36,7 @@ export class SystemCleanupController {
   }
 
   @Post('run')
+  @Capabilities('settings.manage')
   run(@CurrentUser() user: { sub: string; role: string }, @Body() body: SystemCleanupRunDto) {
     return this.service.run(user, body);
   }

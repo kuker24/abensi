@@ -1,11 +1,16 @@
 import { StudentAttendanceStatus } from '@prisma/client';
 import {
-  ArrayMinSize,
   IsArray,
   IsEnum,
+  IsBoolean,
+  IsISO8601,
+  IsIn,
+  IsLatitude,
+  IsLongitude,
   IsNumber,
   IsOptional,
   IsString,
+  Min,
   MinLength,
   ValidateNested
 } from 'class-validator';
@@ -13,12 +18,28 @@ import { Type } from 'class-transformer';
 
 export class SessionGeoDto {
   @IsOptional()
-  @IsNumber()
-  lat?: number;
+  @Type(() => Number)
+  @IsLatitude()
+  latitude?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsLongitude()
+  longitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
-  lng?: number;
+  @Min(0)
+  accuracyMeter?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  capturedAt?: string;
+
+  @IsOptional()
+  @IsIn(['browser_geolocation'])
+  source?: 'browser_geolocation';
 }
 
 export class CloseSessionDto extends SessionGeoDto {
@@ -26,6 +47,10 @@ export class CloseSessionDto extends SessionGeoDto {
   @IsString()
   @MinLength(10)
   earlyCheckoutReason?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  finalizeDefaultAlpa?: boolean;
 }
 
 export class AttendanceItemDto {
@@ -38,14 +63,27 @@ export class AttendanceItemDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  updatedAt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  confirm?: boolean;
 }
 
 export class BatchAttendanceDto {
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => AttendanceItemDto)
   items!: AttendanceItemDto[];
+}
+
+export class RepairSessionRosterDto {
+  @IsString()
+  @MinLength(10)
+  reason!: string;
 }
 
 export class CorrectAttendanceDto {

@@ -101,7 +101,8 @@ export class AuthService {
         id: user.id,
         username: user.username,
         fullName: user.fullName,
-        role: user.role
+        role: user.role,
+        mustChangePassword: user.mustChangePassword ?? false
       }
     };
   }
@@ -109,44 +110,67 @@ export class AuthService {
   async currentUser(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, username: true, fullName: true, role: true, active: true }
+      select: { id: true, username: true, fullName: true, role: true, active: true, mustChangePassword: true }
     });
     if (!user || !user.active) throw new UnauthorizedException('Sesi tidak aktif. Silakan masuk ulang.');
-    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role };
+    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role, mustChangePassword: user.mustChangePassword };
   }
 
   async refresh(refreshToken: string | undefined, meta: RequestMeta = {}) {
     if (!refreshToken) throw new UnauthorizedException('Refresh token tidak tersedia.');
     const now = new Date();
+    const presentedHash = tokenHash(refreshToken);
     const current = await this.prisma.authSession.findFirst({
-      where: { refreshTokenHash: tokenHash(refreshToken), revokedAt: null, expiresAt: { gt: now } },
+      where: { refreshTokenHash: presentedHash },
       include: { user: true }
     });
     if (!current || !current.user.active) throw new UnauthorizedException('Sesi tidak aktif. Silakan masuk ulang.');
 
-    return this.prisma.$transaction(async (tx) => {
-      const revoked = await tx.authSession.updateMany({
-        where: { id: current.id, revokedAt: null, expiresAt: { gt: now } },
-        data: { revokedAt: new Date(), revokedReason: 'refresh-rotated', lastUsedAt: new Date() }
+    const familyId = current.tokenFamilyId || current.id;
+    if (current.revokedAt || current.expiresAt <= now) {
+      await this.prisma.$transaction(async (tx) => {
+        const revoked = await tx.authSession.updateMany({
+          where: { userId: current.userId, tokenFamilyId: familyId, revokedAt: null },
+          data: { revokedAt: new Date(), revokedReason: 'refresh-token-reuse' }
+        });
+        await writeAudit(tx, {
+          actorId: current.userId,
+          actorRole: current.user.role,
+          module: 'auth',
+          action: 'auth.refresh.reuse_detected',
+          resource: 'authSession',
+          resourceId: current.id,
+          requestIp: meta.requestIp ?? null,
+          requestDevice: meta.requestDevice ?? null,
+          after: { tokenFamilyId: familyId, revoked: revoked.count }
+        });
       });
-      if (revoked.count !== 1) {
-        throw new UnauthorizedException('Sesi sudah dipakai untuk refresh. Silakan masuk ulang.');
-      }
+      throw new UnauthorizedException('Refresh token sudah tidak valid. Seluruh sesi terkait dicabut.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
       const refreshValue = this.generateRefreshToken();
       const session = await tx.authSession.create({
         data: {
           userId: current.userId,
           sessionVersion: current.user.sessionVersion,
           refreshTokenHash: tokenHash(refreshValue),
+          tokenFamilyId: familyId,
           userAgent: meta.requestDevice ?? null,
           requestIp: meta.requestIp ?? null,
           createdIp: current.createdIp ?? current.requestIp ?? meta.requestIp ?? null,
           lastIp: meta.requestIp ?? current.lastIp ?? current.requestIp ?? null,
           lastUsedAt: new Date(),
-          expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
-          replacedById: current.id
+          expiresAt: new Date(Date.now() + REFRESH_TTL_MS)
         }
       });
+      const revoked = await tx.authSession.updateMany({
+        where: { id: current.id, revokedAt: null, expiresAt: { gt: now } },
+        data: { revokedAt: new Date(), revokedReason: 'refresh-rotated', lastUsedAt: new Date(), replacedById: session.id }
+      });
+      if (revoked.count !== 1) {
+        throw new UnauthorizedException('Sesi sudah dipakai untuk refresh. Silakan masuk ulang.');
+      }
       const accessToken = await this.signAccessToken(current.user, session.id);
       await writeAudit(tx, {
         actorId: current.userId,
@@ -157,7 +181,7 @@ export class AuthService {
         resourceId: session.id,
         requestIp: meta.requestIp ?? null,
         requestDevice: meta.requestDevice ?? null,
-        after: { previousSessionId: current.id, sessionId: session.id }
+        after: { previousSessionId: current.id, sessionId: session.id, tokenFamilyId: familyId }
       });
       return { accessToken, refreshToken: refreshValue, sessionId: session.id, expiresInMs: SESSION_TTL_MS };
     });
@@ -183,9 +207,41 @@ export class AuthService {
   }
 
   async revokeUserSessions(userId: string, actorId: string | null, reason: string) {
-    const revoked = await this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
-    await writeAudit(this.prisma, { actorId, module: 'auth', action: 'auth.user_sessions.revoked', resource: 'user', resourceId: userId, reason, after: { count: revoked.count } });
-    return revoked.count;
+    return this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
+      await writeAudit(tx, { actorId, module: 'auth', action: 'auth.user_sessions.revoked', resource: 'user', resourceId: userId, reason, after: { count: revoked.count } });
+      return revoked.count;
+    });
+  }
+
+  async changePassword(userId: string, actorRole: Role, currentPassword: string, newPassword: string, meta: RequestMeta = {}) {
+    if (currentPassword === newPassword) throw new HttpException('Password baru harus berbeda.', HttpStatus.BAD_REQUEST);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.active) throw new UnauthorizedException('Sesi tidak aktif. Silakan masuk ulang.');
+    if (!await bcrypt.compare(currentPassword, user.passwordHash)) throw publicLoginError();
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false, sessionVersion: { increment: 1 } }
+      });
+      const revoked = await tx.authSession.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'password-change' }
+      });
+      await writeAudit(tx, {
+        actorId: userId,
+        actorRole,
+        module: 'auth',
+        action: 'auth.password.changed',
+        resource: 'user',
+        resourceId: userId,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: { passwordChanged: true, sessionsRevoked: revoked.count }
+      });
+    });
+    return { ok: true };
   }
 
   private async issueSessionTokens(user: { id: string; username: string; role: Role; sessionVersion: number }, meta: RequestMeta) {
@@ -195,6 +251,7 @@ export class AuthService {
         userId: user.id,
         sessionVersion: user.sessionVersion,
         refreshTokenHash: tokenHash(refreshToken),
+        tokenFamilyId: randomUUID(),
         userAgent: meta.requestDevice ?? null,
         requestIp: meta.requestIp ?? null,
         createdIp: meta.requestIp ?? null,
@@ -265,16 +322,18 @@ export class AuthService {
   }
 
   private async writeLoginAudit(action: string, actorId: string | null, username: string, meta: RequestMeta, details: Record<string, unknown>) {
-    await writeAudit(this.prisma, {
-      actorId,
-      actorRole: details.role && typeof details.role === 'string' ? details.role as Role : null,
-      module: 'auth',
-      action,
-      resource: 'authSession',
-      resourceId: username,
-      requestIp: meta.requestIp ?? null,
-      requestDevice: meta.requestDevice ?? null,
-      after: details as Prisma.InputJsonValue
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId,
+        actorRole: details.role && typeof details.role === 'string' ? details.role as Role : null,
+        module: 'auth',
+        action,
+        resource: 'authSession',
+        resourceId: username,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: details as Prisma.InputJsonValue
+      });
     });
   }
 }
