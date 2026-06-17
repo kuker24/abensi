@@ -1,6 +1,6 @@
-# Absensi MAN 1 Rokan Hulu — Android QR Reader
+# SIAB2 Reader — Android QR Reader
 
-Aplikasi resmi sekolah berbasis Kotlin/Jetpack Compose untuk SchoolHub e-Hadir.
+Aplikasi resmi sekolah berbasis Kotlin/Jetpack Compose untuk Sistem Informasi Akademik Berkarakter.
 Dipakai operator gerbang/mushola/kelas untuk scan QR siswa/guru.
 
 ## Fitur Operator
@@ -32,7 +32,7 @@ Dipakai operator gerbang/mushola/kelas untuk scan QR siswa/guru.
 
 1. **Pertama kali**: buka aplikasi — splash muncul singkat, lalu layar **Aktivasi HP Scanner** terbuka.
 2. Isi:
-   - **Alamat Server** (contoh: `https://ehadir.man1rokanhulu.sch.id`)
+   - **Alamat Server** (contoh: `https://absensi.man1rokanhulu.cloud`)
    - **Nama HP Scanner** (contoh: `HP Gerbang Utama`)
    - **Lokasi** (opsional, contoh: `Gerbang depan`)
    - **Kode Aktivasi Rahasia** dari admin sekolah. Kode ini disembunyikan otomatis di layar.

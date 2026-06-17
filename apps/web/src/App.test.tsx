@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import indexHtml from '../index.html?raw';
+import manifestRaw from '../public/site.webmanifest?raw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@workos-inc/authkit-react', () => ({
@@ -35,12 +37,22 @@ function mockStorage() {
 afterEach(() => cleanup());
 
 describe('PRD v2.2 UI shell', () => {
-  it('renders the e-Hadir login screen without prefilling the password', () => {
+  it('keeps static PWA branding on the approved SIAB2 identity', () => {
+    const manifest = JSON.parse(manifestRaw) as { name: string; short_name: string; description: string };
+
+    expect(indexHtml).toContain('<title>SIAB2 · Sistem Informasi Akademik Berkarakter</title>');
+    expect(manifest.name).toBe('SIAB2');
+    expect(manifest.short_name).toBe('SIAB2');
+    expect(manifest.description).toContain('Sistem Informasi Akademik Berkarakter');
+  });
+
+  it('renders the SIAB2 login screen without prefilling the password', () => {
     mockStorage();
     window.history.replaceState({}, '', '/login');
     render(<App />);
-    expect(screen.getAllByText(/e-Hadir/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/ABSENSI SEKOLAH DIGITAL/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/SIAB2/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Sistem Informasi Akademik Berkarakter/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/SchoolHub|e-Hadir|School Hub/i)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Masukkan nama akun')).toHaveValue('');
     expect(screen.getByPlaceholderText('Masukkan kata sandi')).toHaveValue('');
     expect(screen.queryByText(/password admin|password guru|password siswa/i)).not.toBeInTheDocument();

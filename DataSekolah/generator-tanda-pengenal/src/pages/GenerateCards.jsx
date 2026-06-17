@@ -30,7 +30,7 @@ const GenerateCards = () => {
 
   const [settings, setSettings] = useState({
     schoolName: 'MAN 1 Rokan Hulu',
-    programName: 'e-Hadir Absensi',
+    programName: 'SIAB2',
     showSettings: false,
   });
 
@@ -42,7 +42,7 @@ const GenerateCards = () => {
   const updateSettings = (key, value) => setSettings((prev) => ({ ...prev, [key]: value }));
 
   return (
-    <Layout title="Buat Kartu e-Hadir" subtitle="Preview kartu identitas absensi tanpa foto">
+    <Layout title="Buat Kartu SIAB2" subtitle="Preview kartu identitas absensi tanpa foto">
       <div className="space-y-6">
         {users.length === 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
@@ -248,7 +248,7 @@ const GenerateCards = () => {
                   <p className="mt-1">
                     {stats.fallbackQrCount
                       ? `${stats.fallbackQrCount} kartu masih memakai QR fallback. Import JSON backend resmi atau klik Ambil QR Resmi sebelum cetak produksi.`
-                      : 'Semua kartu sudah memakai QR resmi SchoolHub dan siap dicetak untuk absensi.'}
+                      : 'Semua kartu sudah memakai QR resmi SIAB2 dan siap dicetak untuk absensi.'}
                   </p>
                 </div>
               </div>

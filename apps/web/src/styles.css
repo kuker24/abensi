@@ -1,5 +1,5 @@
 /* ================================================================
-   SCHOOLHUB E-HADIR v4 — Dark Nocturne
+   AKADEMIK BERKARAKTER v4 — Dark Nocturne
    Single dark theme with amber/gold accents,
    CSP-safe system font stacks, glassmorphism,
    Islamic boarding school identity.
@@ -190,9 +190,9 @@ body {
 .side .brand { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border); position: relative; z-index: 1; }
 .brand-mark { width: 44px; height: 44px; border-radius: var(--radius); overflow: hidden; flex-shrink: 0; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 0 12px rgba(245,158,11,0.1); }
 .brand-logo { width: 100%; height: 100%; object-fit: cover; display: block; }
-.brand-text { display: flex; flex-direction: column; line-height: 1.2; }
-.brand-name { font-family: var(--font-serif); font-weight: var(--font-bold); font-size: 18px; letter-spacing: var(--tracking-tight); background: linear-gradient(135deg, var(--primary), var(--primary-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.brand-sub { font-size: 10px; color: var(--fg-dim); font-family: var(--font-mono); letter-spacing: var(--tracking-wider); text-transform: uppercase; margin-top: 2px; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.18; min-width: 0; }
+.brand-name { font-family: var(--font-serif); font-weight: var(--font-bold); font-size: 14px; letter-spacing: var(--tracking-tight); background: linear-gradient(135deg, var(--primary), var(--primary-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; max-width: 178px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.brand-sub { font-size: 10px; color: var(--fg-dim); font-family: var(--font-mono); letter-spacing: var(--tracking-wider); text-transform: uppercase; margin-top: 3px; white-space: normal; overflow-wrap: anywhere; }
 
 .nav-body { padding: 14px 12px; flex: 1; position: relative; z-index: 1; }
 .nav-block { margin-bottom: 8px; }
@@ -282,7 +282,7 @@ body {
   .login-hero h1 { font-size: clamp(26px, 8vw, 38px); }
   .login-hero p { display: none; }
   .login-right { padding: 20px; min-height: auto; display: grid; place-items: center; }
-  .login-card::after { content: 'e-Hadir · MAN 1 Rokan Hulu'; display: block; text-align: center; margin-top: 20px; font-size: var(--text-2xs); color: var(--fg-dim); letter-spacing: var(--tracking-wide); font-family: var(--font-mono); }
+  .login-card::after { content: 'SIAB2 · MAN 1 Rokan Hulu'; display: block; text-align: center; margin-top: 20px; font-size: var(--text-2xs); color: var(--fg-dim); letter-spacing: var(--tracking-wide); font-family: var(--font-mono); }
 }
 
 /* Left side - photo background with elegant overlay */
@@ -359,6 +359,7 @@ body {
 
 /* Right side - login form */
 .login-brand-name { font-weight: var(--font-bold); font-size: 15px; color: var(--fg); }
+.login-brand-name-long { max-width: min(64vw, 360px); line-height: 1.18; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .login-brand-sub { font-family: var(--font-mono); font-size: 11px; color: var(--fg-dim); letter-spacing: var(--tracking-wide); }
 .login-role-label { font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-wider); color: var(--fg); opacity: 0.9; }
 .login-right { background: radial-gradient(circle at 85% 16%, rgba(245,158,11,0.10), transparent 26%), radial-gradient(circle at 12% 82%, rgba(14,165,233,0.08), transparent 30%), var(--bg); padding: 32px 36px; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; overflow: hidden; }

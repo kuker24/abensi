@@ -137,7 +137,7 @@ const ImportData = () => {
           method: 'POST',
           headers: { accept: 'application/json', 'content-type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ label: 'QR Absensi SchoolHub', onlyMissing: true }),
+          body: JSON.stringify({ label: 'QR Absensi SIAB2', onlyMissing: true }),
         });
         if (!response.ok) throw new Error(`Gagal membuat QR yang belum ada (HTTP ${response.status})`);
       }
@@ -171,7 +171,7 @@ const ImportData = () => {
   };
 
   return (
-    <Layout title="Import Data" subtitle="Upload CSV utama atau JSON QR resmi dari backend SchoolHub">
+    <Layout title="Import Data" subtitle="Upload CSV utama atau JSON QR resmi dari backend SIAB2">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Upload Area */}
         <div

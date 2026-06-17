@@ -111,7 +111,7 @@ const Users = () => {
     }
     setIsBulkGenerating(true);
     try {
-      const blob = await generatePDF(selected, { schoolName: 'MAN 1 Rokan Hulu', programName: 'e-Hadir Absensi' });
+      const blob = await generatePDF(selected, { schoolName: 'MAN 1 Rokan Hulu', programName: 'SIAB2' });
       downloadPDF(blob, `kartu-ehadir-bulk-${selected.length}-${new Date().toISOString().split('T')[0]}.pdf`);
       setBulkSuccess(`${selected.length} kartu berhasil diekspor!`);
       setTimeout(() => setBulkSuccess(null), 6000);
@@ -544,7 +544,7 @@ const Users = () => {
                     <IDCard
                       user={previewUser}
                       schoolName="MAN 1 Rokan Hulu"
-                      programName="e-Hadir Absensi"
+                      programName="SIAB2"
                       scale={1.1}
                     />
                   </div>
@@ -582,7 +582,7 @@ const Users = () => {
                     </div>
                     <p className="text-xs text-gray-500">
                       {getQrStatus(previewUser).official
-                        ? 'Kartu ini menggunakan QR resmi dari backend SchoolHub.'
+                        ? 'Kartu ini menggunakan QR resmi dari backend SIAB2.'
                         : 'Kartu ini masih menggunakan QR fallback. Ambil QR resmi untuk cetak produksi.'}
                     </p>
                   </div>

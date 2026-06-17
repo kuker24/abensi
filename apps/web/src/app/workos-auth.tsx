@@ -1,5 +1,5 @@
 /**
- * WorkOS AuthKit Integration for SchoolHub e-Hadir
+ * WorkOS AuthKit Integration for Sistem Informasi Akademik Berkarakter
  *
  * This module provides WorkOS SSO authentication as an alternative
  * login method alongside the existing username/password authentication.
