@@ -29,7 +29,8 @@ function parseMemory(value, field) {
   const match = raw.match(/^(\d+(?:\.\d+)?)(b|kb|k|mb|m|gb|g|mib|gib)?$/);
   if (!match) fail(`${field} has unsupported memory value: ${value}`);
   const amount = Number(match[1]);
-  const unit = match[2] || 'm';
+  const unit = match[2];
+  if (!unit) return amount > 1024 * 1024 ? amount / 1024 / 1024 : amount;
   if (unit === 'b') return amount / 1024 / 1024;
   if (unit === 'kb' || unit === 'k') return amount / 1024;
   if (unit === 'gb' || unit === 'g' || unit === 'gib') return amount * 1024;
