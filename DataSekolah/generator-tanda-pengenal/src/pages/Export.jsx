@@ -34,7 +34,7 @@ const Export = () => {
   const [success, setSuccess] = useState(false);
   const [settings, setSettings] = useState({
     schoolName: 'MAN 1 Rokan Hulu',
-    programName: 'e-Hadir Absensi',
+    programName: 'SIAB2',
   });
 
   const printRef = useRef(null);
@@ -67,7 +67,7 @@ const Export = () => {
       downloadPDF(blob, filename);
 
       setSuccess(true);
-      addActivityLog(`Exported ${targetUsers.length} e-Hadir ID cards to PDF`);
+      addActivityLog(`Exported ${targetUsers.length} SIAB2 ID cards to PDF`);
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       setError(err.message || 'Gagal membuat PDF');
@@ -116,14 +116,14 @@ const Export = () => {
   const handlePrint = () => window.print();
 
   return (
-    <Layout title="Export PDF" subtitle="Download dan cetak kartu e-Hadir ukuran 5,5 × 8,5 cm">
+    <Layout title="Export PDF" subtitle="Download dan cetak kartu SIAB2 ukuran 5,5 × 8,5 cm">
       <div className="space-y-6">
         {isAutoLoading && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
             <Loader2 className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5 animate-spin" />
             <div>
               <p className="font-medium text-blue-800">Mengambil data kartu resmi...</p>
-              <p className="text-sm text-primary-600 mt-1">Mohon tunggu, generator sedang memuat data dari backend SchoolHub.</p>
+              <p className="text-sm text-primary-600 mt-1">Mohon tunggu, generator sedang memuat data dari backend SIAB2.</p>
             </div>
           </div>
         )}
@@ -134,7 +134,7 @@ const Export = () => {
             <div>
               <p className="font-medium text-yellow-800">Belum ada data pengguna</p>
               <p className="text-sm text-yellow-600 mt-1">
-                Import data CSV terlebih dahulu untuk membuat kartu tanda pengenal e-Hadir.
+                Import data CSV terlebih dahulu untuk membuat kartu tanda pengenal SIAB2.
               </p>
               <Link
                 to="/import"
@@ -272,7 +272,7 @@ const Export = () => {
                 <div className="bg-gray-100 rounded-lg p-4 overflow-auto">
                   <div ref={printRef} className="bg-white rounded shadow mx-auto p-4" style={{ width: '595px', minHeight: '842px' }}>
                     <div className="bg-gradient-to-r from-primary-700 to-ink-800 text-white text-center py-3 rounded-lg mb-4">
-                      <div className="text-sm font-bold tracking-wide uppercase">Kartu Identitas e-Hadir</div>
+                      <div className="text-sm font-bold tracking-wide uppercase">Kartu Identitas SIAB2</div>
                       <div className="text-xs text-primary-100 mt-1">{settings.schoolName} | {settings.programName}</div>
                     </div>
 
@@ -319,7 +319,7 @@ const Export = () => {
                         <li>• Ukuran kartu: 55mm × 85mm atau 5,5 × 8,5 cm</li>
                         <li>• PDF menampilkan tanda potong di tiap kartu agar hasil gunting presisi</li>
                         <li>• QR dibuat hitam-putih dengan error correction tinggi agar mudah discan</li>
-                        {fallbackQrCount ? <li>• PERINGATAN: {fallbackQrCount} kartu belum memakai QR resmi. Tombol PDF produksi dikunci sampai data resmi diambil.</li> : <li>• Semua kartu memakai QR resmi SchoolHub.</li>}
+                        {fallbackQrCount ? <li>• PERINGATAN: {fallbackQrCount} kartu belum memakai QR resmi. Tombol PDF produksi dikunci sampai data resmi diambil.</li> : <li>• Semua kartu memakai QR resmi SIAB2.</li>}
                       </ul>
                     </div>
                   </div>

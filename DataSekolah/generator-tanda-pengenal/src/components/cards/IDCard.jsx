@@ -54,7 +54,7 @@ const roleMeta = (user) => {
 };
 
 const getProgram = (user, programName) =>
-  safeText(user?.program || user?.raw?.Program || user?.label || programName, 'e-Hadir Absensi');
+  safeText(user?.program || user?.raw?.Program || user?.label || programName, 'SIAB2');
 
 const getLevel = (user) =>
   safeText(
@@ -73,7 +73,7 @@ const nameSizeClass = (name) => {
 const IDCard = ({
   user,
   schoolName = 'MAN 1 Rokan Hulu',
-  programName = 'e-Hadir Absensi',
+  programName = 'SIAB2',
   examPeriod,
   scale = 1,
   darkMode = false,
@@ -123,7 +123,7 @@ const IDCard = ({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[6.3px] font-black uppercase leading-none tracking-[0.16em] text-emerald-100">Kartu Identitas</p>
-            <h1 className="mt-0.5 text-[13px] font-black uppercase leading-none tracking-tight">e-Hadir</h1>
+            <h1 className="mt-0.5 text-[13px] font-black uppercase leading-none tracking-tight">SIAB2</h1>
             <p className="mt-0.5 truncate text-[6.5px] font-bold uppercase tracking-[0.07em] text-white/80">{schoolName}</p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
@@ -172,7 +172,7 @@ const IDCard = ({
                 {isOfficialQr ? 'Absensi' : 'Fallback'}
               </div>
               <p className="text-[6.8px] font-semibold leading-[1.18] text-slate-600">
-                {isOfficialQr ? 'Scan dengan aplikasi resmi e-Hadir.' : 'Jangan cetak produksi sebelum QR resmi.'}
+                {isOfficialQr ? 'Scan dengan aplikasi resmi SIAB2 Reader.' : 'Jangan cetak produksi sebelum QR resmi.'}
               </p>
               <p className="mt-1 text-[6.5px] font-black uppercase leading-tight tracking-[0.12em] text-emerald-800">
                 MAN 1 Rokan Hulu

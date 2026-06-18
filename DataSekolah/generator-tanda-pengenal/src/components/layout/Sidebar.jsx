@@ -27,7 +27,7 @@ const Sidebar = () => {
             <GraduationCap className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="font-serif text-sm font-bold text-white tracking-tight">Kartu e-Hadir</h1>
+            <h1 className="font-serif text-sm font-bold text-white tracking-tight">Kartu SIAB2</h1>
             <p className="text-xs text-primary-200/70">MAN 1 Rokan Hulu</p>
           </div>
         </div>
@@ -58,7 +58,7 @@ const Sidebar = () => {
         <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5">
           <Settings className="w-4 h-4 text-warm-400/60" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-warm-200/80 truncate">SchoolHub Generator</p>
+            <p className="text-xs text-warm-200/80 truncate">SIAB2 Generator</p>
             <p className="text-[10px] text-warm-400/40">v4.0</p>
           </div>
         </div>

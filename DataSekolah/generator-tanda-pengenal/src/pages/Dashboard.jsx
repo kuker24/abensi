@@ -61,8 +61,8 @@ const Dashboard = () => {
       color: 'bg-primary-500 hover:bg-primary-600',
     },
     {
-      title: 'Buat Kartu e-Hadir',
-      description: 'Generate kartu identitas e-Hadir tanpa foto dan dengan QR jelas',
+      title: 'Buat Kartu SIAB2',
+      description: 'Generate kartu identitas SIAB2 tanpa foto dan dengan QR jelas',
       icon: CreditCard,
       href: '/generate',
       color: 'bg-primary-600 hover:bg-primary-700',
@@ -201,7 +201,7 @@ const Dashboard = () => {
         {/* Getting Started Guide */}
         {users.length === 0 && (
           <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-xl p-6 text-white">
-            <h2 className="text-xl font-semibold mb-2">Memulai Generator Kartu e-Hadir</h2>
+            <h2 className="text-xl font-semibold mb-2">Memulai Generator Kartu SIAB2</h2>
             <p className="text-primary-100 mb-4">
               Ikuti langkah-langkah berikut untuk membuat kartu identitas absensi ukuran 5,5 × 8,5 cm:
             </p>

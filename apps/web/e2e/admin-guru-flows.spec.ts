@@ -50,7 +50,7 @@ async function routeCommonApi(page: Page) {
   });
 }
 
-test.describe('SchoolHub PRD v2.2 flows', () => {
+test.describe('SIAB2 PRD v2.2 flows', () => {
   test('form login memberi jarak lega antara kata sandi dan tombol masuk', async ({ page }) => {
     await page.setViewportSize({ width: 377, height: 457 });
     await page.goto('/login');
@@ -258,7 +258,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
       { user: { id: 'picket-1', username: 'guru.piket', fullName: 'Guru Piket', role: 'GURU_PIKET' }, start: '/admin/picket-dashboard', menus: ['Tugas Piket Hari Ini', 'Catatan Piket', 'Cek Sesi Kelas', 'Cek Masalah', 'Panduan Piket'] },
       { user: { id: 'guru-1', username: 'guru.matematika', fullName: 'Guru Mapel', role: 'GURU_MAPEL' }, start: '/guru/dashboard', menus: ['Ringkasan Mengajar', 'Isi Presensi Kelas', 'Perbaiki Presensi', 'Laporan Kelas Saya', 'Panduan'] },
       { user: { id: 'siswa-1', username: 'siswa.citra', fullName: 'Siswa Citra', role: 'SISWA' }, start: '/siswa/dashboard', menus: ['Kehadiran Saya', 'Tugas / Notifikasi', 'Panduan'] },
-      { user: { id: 'dev-1', username: 'developer', fullName: 'Developer SchoolHub', role: 'DEVELOPER' }, start: '/admin/developer-control', menus: ['Pusat Kontrol', 'Ringkasan Admin', 'Cek Sistem', 'Akun & Data Sekolah', 'Panduan Developer'] }
+      { user: { id: 'dev-1', username: 'developer', fullName: 'Developer Sistem', role: 'DEVELOPER' }, start: '/admin/developer-control', menus: ['Pusat Kontrol', 'Ringkasan Admin', 'Cek Sistem', 'Akun & Data Sekolah', 'Panduan Developer'] }
     ];
 
     for (const item of cases) {
@@ -333,7 +333,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
     await expect(page.getByRole('button', { name: 'Hapus Permanen' })).toHaveCount(0);
     await expect(page.getByText('Bersihkan Data')).toHaveCount(0);
 
-    await setStoredAuth(page, { id: 'dev-1', username: 'developer', fullName: 'Developer SchoolHub', role: 'DEVELOPER' });
+    await setStoredAuth(page, { id: 'dev-1', username: 'developer', fullName: 'Developer Sistem', role: 'DEVELOPER' });
     await page.goto('/admin/master-data');
     await page.getByRole('tab', { name: 'Buat/Edit Akun' }).click();
     await expect(page.getByRole('button', { name: 'Hapus Permanen' }).first()).toBeVisible();
@@ -354,7 +354,7 @@ test.describe('SchoolHub PRD v2.2 flows', () => {
   });
 
   test('developer bisa mengaktifkan tutorial ulang untuk akun target', async ({ page }) => {
-    await seedAuth(page, { id: 'dev-1', username: 'developer', fullName: 'Developer SchoolHub', role: 'DEVELOPER' });
+    await seedAuth(page, { id: 'dev-1', username: 'developer', fullName: 'Developer Sistem', role: 'DEVELOPER' });
     let activated = false;
     await page.route('**/api/v1/**', async (route: Route) => {
       const url = route.request().url();
