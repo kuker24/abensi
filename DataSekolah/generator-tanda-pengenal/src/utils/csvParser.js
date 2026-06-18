@@ -49,7 +49,7 @@ export const parseBackendQrExportText = (text) => {
   try {
     payload = JSON.parse(text);
   } catch {
-    throw new Error('File JSON backend tidak valid. Pastikan file berasal dari export QR SchoolHub.');
+    throw new Error('File JSON backend tidak valid. Pastikan file berasal dari export QR SIAB2.');
   }
 
   const cards = Array.isArray(payload)
@@ -82,13 +82,13 @@ const mapBackendCard = (card) => {
     displayRole: formatDisplayRole(rawRole),
     kelas: className || 'MAN 1 Rokan Hulu',
     level: className || 'MAN 1 Rokan Hulu',
-    program: 'e-Hadir Absensi',
+    program: 'SIAB2',
     status: 'Aktif',
     qrCode,
     qrMasked: card.qrMasked || '',
     shortCode: card.shortCode || '',
-    label: card.label || 'QR Absensi SchoolHub',
-    note: card.note || 'Kartu hanya untuk absensi SchoolHub MAN 1 Rokan Hulu.',
+    label: card.label || 'QR Absensi SIAB2',
+    note: card.note || 'Kartu hanya untuk absensi SIAB2 MAN 1 Rokan Hulu.',
     source: 'backend-qr-export',
     raw: card,
   };
@@ -100,7 +100,7 @@ const processCSVData = (data) => {
     const username = (row['Username'] || row['username'] || row['ID'] || row['Id'] || row['id'] || '').trim();
     const kelas = (row['Kelas/Jabatan'] || row['Kelas'] || row['kelas'] || row['Jabatan'] || row['Level'] || row['level'] || '').trim();
     const rawRole = (row['Role'] || row['role'] || '').trim();
-    const program = (row['Program'] || row['program'] || row['Label'] || row['label'] || 'e-Hadir Absensi').trim();
+    const program = (row['Program'] || row['program'] || row['Label'] || row['label'] || 'SIAB2').trim();
     const qrCode = (row['QR Code'] || row['QRCode'] || row['qrCode'] || row['qr_code'] || row['Kode QR'] || row['KodeQR'] || '').trim();
 
     return {

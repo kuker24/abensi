@@ -441,7 +441,7 @@ else
 fi
 
 code="$(api_get_root / "$TMP_DIR/root")"
-if [[ "$code" == "200" ]] && grep -qi "schoolhub\|e-Hadir\|MAN 1" "$TMP_DIR/root.body"; then
+if [[ "$code" == "200" ]] && grep -qi "SIAB2\|Sistem Informasi Akademik Berkarakter\|MAN 1" "$TMP_DIR/root.body"; then
   mark_pass "Root HTML online" "$code"
 else
   mark_fail "Root HTML online" "HTTP $code or expected app marker missing" "$code"

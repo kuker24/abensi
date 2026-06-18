@@ -1,4 +1,4 @@
-# SchoolHub APK Builder
+# SIAB2 APK Builder
 
 Aplikasi desktop builder berada di:
 
@@ -9,7 +9,7 @@ tools/apk-builder
 Nama aplikasi:
 
 ```text
-SchoolHub APK Builder — Mode Mudah
+SIAB2 APK Builder — Mode Mudah
 ```
 
 Builder dirancang agar operator awam cukup mengikuti tab **1 sampai 4**:
@@ -57,7 +57,7 @@ Launcher otomatis memilih JDK 17/21 dan Android SDK jika sudah ada di laptop, me
 
 - Tombol besar **CEK KESIAPAN LAPTOP**.
 - Cek dan cari otomatis JDK 17/21, Android SDK, Gradle launcher, project Android, icon, dan ADB opsional.
-- Layar **Hubungkan Web SchoolHub**.
+- Layar **Hubungkan Web SIAB2**.
 - Test otomatis:
   - `/health/live`
   - `/api/v1/mobile/android-reader/version`
@@ -123,9 +123,9 @@ cd apps/android-reader
 Custom via `gradle.properties`:
 
 ```properties
-SCHOOLHUB_APP_NAME=Absensi MAN 1 Rokan Hulu
+SCHOOLHUB_APP_NAME=SIAB2 Reader
 SCHOOLHUB_APPLICATION_ID=id.sch.man1rokanhulu.absensi
-SCHOOLHUB_SERVER_BASE_URL=https://ehadir.man1rokanhulu.sch.id
+SCHOOLHUB_SERVER_BASE_URL=https://absensi.man1rokanhulu.cloud
 SCHOOLHUB_VERSION_NAME=1.1.1
 SCHOOLHUB_VERSION_CODE=3
 ```

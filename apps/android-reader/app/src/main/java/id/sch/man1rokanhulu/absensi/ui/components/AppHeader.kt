@@ -47,11 +47,11 @@ fun AppHeader(
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer)
-                    .semantics { contentDescription = "Logo e-Hadir" },
+                    .semantics { contentDescription = "Logo SIAB2 Reader" },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "e",
+                    text = "S",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
