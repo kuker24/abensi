@@ -6,8 +6,9 @@ import {
   TeacherSessionStatus,
   type Prisma
 } from '@prisma/client';
-import ExcelJS from 'exceljs';
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { businessDateKey, businessDayBounds, businessMonthBounds, businessMonthKey } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { AuthenticatedUser } from '../../common/current-user.decorator';
@@ -15,6 +16,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { writeAudit } from '../../common/audit-log';
 import type { RequestMeta } from '../../common/request-meta';
+import {
+  columnsFromRows,
+  renderReportDocument,
+  REPORT_TYPE_TITLES,
+  type ExportFormat,
+  type ReportDocumentModel
+} from './report-document-exporter';
 
 const ATTENDANCE_STATUSES: StudentAttendanceStatus[] = [
   StudentAttendanceStatus.HADIR,
@@ -1326,9 +1334,26 @@ export class ReportingService {
     };
   }
 
+  private loadReportLogo(): Buffer | null {
+    const candidates = [
+      join(process.cwd(), 'assets', 'logoman1.jpeg'),
+      join(process.cwd(), 'apps', 'api', 'assets', 'logoman1.jpeg')
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) return readFileSync(candidate);
+    }
+    return null;
+  }
+
+  private normalizeExportFormat(format: string): ExportFormat {
+    const normalized = format.trim().toLowerCase();
+    if (normalized === 'csv' || normalized === 'xlsx' || normalized === 'pdf' || normalized === 'docx') return normalized;
+    throw new BadRequestException('format harus csv, xlsx, pdf, atau docx.');
+  }
+
   async exportReport(reportType: string, format: string, filters: RecapFilters, actor?: { sub: string; role: Role }, requestMeta?: RequestMeta): Promise<ExportResult> {
     const normalizedType = reportType.trim().toLowerCase();
-    const normalizedFormat = format.trim().toLowerCase();
+    const normalizedFormat = this.normalizeExportFormat(format);
 
     const supportedTypes = new Set([
       'recap_classes',
@@ -1341,10 +1366,6 @@ export class ReportingService {
 
     if (!supportedTypes.has(normalizedType)) {
       throw new BadRequestException('reportType tidak didukung.');
-    }
-
-    if (normalizedFormat !== 'csv' && normalizedFormat !== 'xlsx') {
-      throw new BadRequestException('format harus csv atau xlsx.');
     }
 
     const exportPagination: PaginationQuery = {
@@ -1474,74 +1495,44 @@ export class ReportingService {
       this.prisma.attendanceOverride.count({ where: { date: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
       this.prisma.attendanceCorrectionEvent.count({ where: { createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } })
     ]);
+
+    const title = REPORT_TYPE_TITLES[normalizedType] ?? 'Laporan Sekolah';
+    const generatedAt = new Date().toISOString();
+    const rangeLabel = filters.month && 'monthLabel' in rangeForMeta
+      ? `Bulan ${rangeForMeta.monthLabel}`
+      : `${rangeForMeta.from.toISOString().slice(0, 10)} sampai ${rangeForMeta.to.toISOString().slice(0, 10)}`;
     const metadata = {
-      generatedAt: new Date().toISOString(),
-      generatedBy: actor?.sub ?? 'unknown',
+      generatedAt,
+      generatedBy: actor?.role ?? 'unknown',
       reportType: normalizedType,
       format: normalizedFormat,
-      filters,
+      filters: { ...filters } as Record<string, unknown>,
       warning: openAnomalyCount > 0 ? 'Periode ini masih memiliki anomali OPEN. Laporan belum final tanpa verifikasi.' : null,
-      counts: { overrideCount, openAnomalyCount, resolvedAnomalyCount, correctionCount }
+      counts: { overrideCount, openAnomalyCount, resolvedAnomalyCount, correctionCount },
+      range: {
+        from: rangeForMeta.from.toISOString(),
+        to: rangeForMeta.to.toISOString(),
+        label: rangeLabel
+      }
     };
-    rows = [{ report_metadata: JSON.stringify(metadata) }, ...rows.map((row) => ({ evidence_label: 'normal', ...row }))];
 
-    const timestamp = new Date().toISOString().replaceAll(':', '-').replace('T', '_').slice(0, 19);
-    const filename = `${normalizedType}_${timestamp}.${normalizedFormat}`;
+    const document: ReportDocumentModel = {
+      title,
+      subtitle: 'Dokumen resmi rekapitulasi presensi SIAB2',
+      institution: 'MAN 1 Rokan Hulu',
+      applicationName: 'SIAB2 - Sistem Informasi Akademik Berkarakter',
+      addressLine: 'Dokumen resmi internal madrasah - e-Hadir MAN 1 Rokan Hulu',
+      metadata,
+      columns: columnsFromRows(rows),
+      rows,
+      logo: this.loadReportLogo()
+    };
 
-    if (normalizedFormat === 'csv') {
-      const csvText = this.toCsv(rows);
-      const buffer = Buffer.from(csvText, 'utf-8');
-      const checksum = createHash('sha256').update(buffer).digest('hex');
-      if (actor) await this.prisma.$transaction(async (tx) => {
-        await writeAudit(tx, {
-          actorId: actor.sub,
-          actorRole: actor.role,
-          module: 'reporting',
-          action: 'report.exported',
-          resource: 'report',
-          resourceId: normalizedType,
-          requestIp: requestMeta?.requestIp ?? null,
-          requestDevice: requestMeta?.requestDevice ?? null,
-          after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
-        });
-      });
-      return { buffer, contentType: 'text/csv; charset=utf-8', filename, checksum };
-    }
+    const rendered = await renderReportDocument(document, normalizedFormat);
+    const checksum = createHash('sha256').update(rendered.buffer).digest('hex');
+    const timestamp = generatedAt.replaceAll(':', '-').replace('T', '_').slice(0, 19);
+    const filename = `${normalizedType}_${timestamp}.${rendered.extension}`;
 
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'SchoolHub e-Hadir';
-    workbook.created = new Date();
-
-    const worksheet = workbook.addWorksheet('report');
-    const exportRows = rows.length > 0 ? rows : [{ message: 'Tidak ada data' }];
-    const columns = Array.from(new Set(exportRows.flatMap((row) => Object.keys(row))));
-
-    worksheet.columns = columns.map((key) => ({
-      header: key,
-      key,
-      width: Math.min(Math.max(key.length + 4, 14), 40)
-    }));
-
-    for (const row of exportRows) {
-      worksheet.addRow(
-        Object.fromEntries(
-          columns.map((key) => {
-            const value = row[key];
-            if (value === null || value === undefined) return [key, ''];
-            if (value instanceof Date) return [key, value.toISOString()];
-            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return [key, value];
-            return [key, JSON.stringify(value)];
-          })
-        )
-      );
-    }
-
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-
-    const raw = await workbook.xlsx.writeBuffer();
-    const buffer = Buffer.from(raw);
-    const checksum = createHash('sha256').update(buffer).digest('hex');
     if (actor) await this.prisma.$transaction(async (tx) => {
       await writeAudit(tx, {
         actorId: actor.sub,
@@ -1557,10 +1548,11 @@ export class ReportingService {
     });
 
     return {
-      buffer,
-      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: rendered.buffer,
+      contentType: rendered.contentType,
       filename,
       checksum
     };
   }
+
 }
