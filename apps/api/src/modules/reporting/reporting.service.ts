@@ -19,6 +19,7 @@ import type { RequestMeta } from '../../common/request-meta';
 import {
   columnsFromRows,
   renderReportDocument,
+  printDocumentRowLimitViolation,
   REPORT_TYPE_TITLES,
   type ExportFormat,
   type ReportDocumentModel
@@ -1496,6 +1497,9 @@ export class ReportingService {
       this.prisma.attendanceCorrectionEvent.count({ where: { createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } })
     ]);
 
+    const limitViolation = printDocumentRowLimitViolation(normalizedFormat, rows.length);
+    if (limitViolation) throw new BadRequestException(limitViolation);
+
     const title = REPORT_TYPE_TITLES[normalizedType] ?? 'Laporan Sekolah';
     const generatedAt = new Date().toISOString();
     const rangeLabel = filters.month && 'monthLabel' in rangeForMeta
@@ -1521,7 +1525,7 @@ export class ReportingService {
       subtitle: 'Dokumen resmi rekapitulasi presensi SIAB2',
       institution: 'MAN 1 Rokan Hulu',
       applicationName: 'SIAB2 - Sistem Informasi Akademik Berkarakter',
-      addressLine: 'Dokumen resmi internal madrasah - e-Hadir MAN 1 Rokan Hulu',
+      addressLine: 'Dokumen resmi internal madrasah - MAN 1 Rokan Hulu',
       metadata,
       columns: columnsFromRows(rows),
       rows,

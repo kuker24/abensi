@@ -66,6 +66,14 @@ const A4_LANDSCAPE_WIDTH_DXA = 16838;
 const A4_LANDSCAPE_HEIGHT_DXA = 11906;
 const A4_MARGIN_DXA = 720;
 const DOCX_CONTENT_WIDTH = A4_LANDSCAPE_WIDTH_DXA - A4_MARGIN_DXA * 2;
+export const MAX_PRINT_DOCUMENT_ROWS = 1000;
+
+export function printDocumentRowLimitViolation(format: ExportFormat, rowCount: number): string | null {
+  if ((format === 'pdf' || format === 'docx') && rowCount > MAX_PRINT_DOCUMENT_ROWS) {
+    return `Export ${format.toUpperCase()} dibatasi maksimal ${MAX_PRINT_DOCUMENT_ROWS} baris. Persempit tanggal/filter atau gunakan CSV/XLSX untuk data besar.`;
+  }
+  return null;
+}
 
 export const REPORT_TYPE_TITLES: Record<string, string> = {
   recap_classes: 'Rekap Kehadiran per Kelas',
@@ -132,7 +140,19 @@ export function columnsFromRows(rows: Array<Record<string, unknown>>): ExportCol
   return keys.map((key) => ({ key, label: labelForKey(key) }));
 }
 
-function normalizeCellValue(value: unknown): string | number | boolean {
+export function sanitizeSpreadsheetText(value: string): string {
+  return /^\s*[=+\-@]/.test(value) ? `'${value}` : value;
+}
+
+function normalizeSpreadsheetCellValue(value: unknown): string | number | boolean {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return sanitizeSpreadsheetText(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  return sanitizeSpreadsheetText(JSON.stringify(value));
+}
+
+function normalizeDisplayCellValue(value: unknown): string | number | boolean {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
@@ -140,7 +160,7 @@ function normalizeCellValue(value: unknown): string | number | boolean {
 }
 
 function valueAsText(value: unknown): string {
-  const normalized = normalizeCellValue(value);
+  const normalized = normalizeDisplayCellValue(value);
   return typeof normalized === 'string' ? normalized : String(normalized);
 }
 
@@ -161,7 +181,7 @@ function metadataRows(model: ReportDocumentModel): Array<[string, string]> {
 
 function escapeCsvValue(value: unknown) {
   if (value === null || value === undefined) return '';
-  const raw = typeof value === 'string' ? value : JSON.stringify(value);
+  const raw = typeof value === 'string' ? sanitizeSpreadsheetText(value) : sanitizeSpreadsheetText(JSON.stringify(value));
   const normalized = raw.replaceAll('"', '""');
   return /[",\n]/.test(normalized) ? `"${normalized}"` : normalized;
 }
@@ -265,7 +285,7 @@ async function buildXlsx(model: ReportDocumentModel): Promise<Buffer> {
     const excelRow = worksheet.getRow(startRow + 1 + rowIndex);
     columns.forEach((column, columnIndex) => {
       const cell = excelRow.getCell(columnIndex + 1);
-      cell.value = normalizeCellValue(row[column.key]);
+      cell.value = normalizeSpreadsheetCellValue(row[column.key]);
       cell.alignment = { vertical: 'top', wrapText: true };
       cell.border = { bottom: { style: 'hair', color: { argb: `FF${BORDER}` } } };
       if (rowIndex % 2 === 0) {
