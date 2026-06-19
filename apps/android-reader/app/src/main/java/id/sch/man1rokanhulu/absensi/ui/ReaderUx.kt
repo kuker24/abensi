@@ -62,19 +62,66 @@ fun friendlyScanTitle(ok: Boolean, message: String): String {
     }
 }
 
+private const val SERVER_PROBLEM_MESSAGE = "Server sedang bermasalah. Coba lagi sebentar atau hubungi operator IT."
+private const val NETWORK_PROBLEM_MESSAGE = "Server belum bisa dihubungi. Periksa Wi-Fi atau internet HP."
+private const val READER_REVOKED_MESSAGE = "HP scanner ini sudah dicabut atau dinonaktifkan. Minta admin aktivasi ulang."
+private const val ACTIVATION_TOKEN_MESSAGE = "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru."
+private const val WRONG_MODE_MESSAGE = "HP ini tidak cocok untuk scan ini. Gunakan HP scanner yang sesuai."
+private const val QR_REVOKED_MESSAGE = "QR tidak dikenal atau sudah dicabut."
+
+private fun httpStatusCode(text: String): Int? = Regex("\\bHTTP\\s+(\\d{3})\\b", RegexOption.IGNORE_CASE).find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
+private fun isServerProblem(text: String): Boolean = httpStatusCode(text)?.let { it >= 500 } == true || text.contains("server error", ignoreCase = true)
+private fun isAuthProblem(text: String): Boolean = httpStatusCode(text) == 401 || httpStatusCode(text) == 403
+private fun isNetworkProblem(text: String): Boolean = listOf("network", "unable to resolve", "unknownhost", "timeout", "failed to connect", "connection refused", "okhttp", "retrofit").any { text.contains(it, ignoreCase = true) }
+private fun isProvisionTokenProblem(text: String): Boolean =
+    text.contains("token provisioning", ignoreCase = true) ||
+        text.contains("provisioning token", ignoreCase = true) ||
+        text.contains("invalid token", ignoreCase = true) ||
+        text.contains("expired", ignoreCase = true) ||
+        text.contains("kedaluwarsa", ignoreCase = true)
+
+fun friendlyActivationMessage(raw: String?): String {
+    val text = raw?.trim().orEmpty()
+    if (text.isBlank()) return "Aktivasi gagal. Coba lagi atau hubungi operator IT."
+    val status = httpStatusCode(text)
+    return when {
+        isServerProblem(text) -> SERVER_PROBLEM_MESSAGE
+        status == 401 || status == 403 -> READER_REVOKED_MESSAGE
+        status == 404 -> "Kode aktivasi tidak ditemukan. Minta admin membuat kode baru."
+        isProvisionTokenProblem(text) -> ACTIVATION_TOKEN_MESSAGE
+        text.contains("Batas HP scanner aktif", ignoreCase = true) -> "Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat."
+        isNetworkProblem(text) -> NETWORK_PROBLEM_MESSAGE
+        text.contains("Format", ignoreCase = true) || text.contains("Alamat server", ignoreCase = true) -> "Alamat server belum sesuai. Periksa Pengaturan Lanjutan."
+        else -> "Aktivasi gagal. Coba lagi atau minta admin membuat kode baru."
+    }
+}
+
 fun friendlyScanMessage(raw: String?): String {
     val text = raw?.trim().orEmpty()
     if (text.isBlank()) return "Scan belum bisa diproses. Coba lagi."
+    val status = httpStatusCode(text)
     return when {
-        text.contains("Reader tidak aktif", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) -> "HP scanner belum aktif. Minta admin aktivasi ulang."
-        text.contains("Mode scan", ignoreCase = true) || text.contains("Mode HP", ignoreCase = true) || text.contains("Tipe reader", ignoreCase = true) -> "Mode HP ini tidak cocok untuk scan ini."
-        text.contains("QR", ignoreCase = true) && (text.contains("tidak", ignoreCase = true) || text.contains("dicabut", ignoreCase = true)) -> "QR tidak dikenal atau sudah dicabut."
-        text.contains("Unable to resolve", ignoreCase = true) || text.contains("timeout", ignoreCase = true) || text.contains("failed to connect", ignoreCase = true) -> "Server belum bisa dihubungi. Periksa Wi-Fi."
-        else -> text
+        text.contains("sudah tercatat", ignoreCase = true) || text.contains("sudah ada", ignoreCase = true) -> "Sudah tercatat."
+        isServerProblem(text) -> SERVER_PROBLEM_MESSAGE
+        isAuthProblem(text) -> READER_REVOKED_MESSAGE
+        status == 404 -> QR_REVOKED_MESSAGE
+        text.contains("QR", ignoreCase = true) && (text.contains("tidak", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) || text.contains("invalid", ignoreCase = true)) -> QR_REVOKED_MESSAGE
+        text.contains("Reader tidak aktif", ignoreCase = true) || text.contains("dinonaktif", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) -> READER_REVOKED_MESSAGE
+        text.contains("Mode scan", ignoreCase = true) || text.contains("Mode HP", ignoreCase = true) || text.contains("Tipe reader", ignoreCase = true) -> WRONG_MODE_MESSAGE
+        text.contains("mushola", ignoreCase = true) && text.contains("siswa", ignoreCase = true) -> "HP Mushola hanya untuk scan siswa."
+        text.contains("luar", ignoreCase = true) && text.contains("jadwal", ignoreCase = true) -> "Di luar jadwal scan. Coba lagi pada jadwal yang benar."
+        isNetworkProblem(text) -> NETWORK_PROBLEM_MESSAGE
+        text.contains("Berhasil tercatat", ignoreCase = true) -> text
+        else -> "Scan belum bisa diproses. Coba lagi atau hubungi operator IT."
     }
 }
 
 fun shouldResetProvisioning(raw: String?): Boolean {
     val text = raw?.lowercase().orEmpty()
-    return text.contains("reader tidak aktif") || text.contains("sudah dicabut") || text.contains("hp scanner belum aktif")
+    return text.contains("reader tidak aktif") ||
+        text.contains("sudah dicabut") ||
+        text.contains("dinonaktif") ||
+        text.contains("hp scanner belum aktif") ||
+        text.contains("http 401") ||
+        text.contains("http 403")
 }

@@ -1,12 +1,43 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ReportsPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
+import { DevicesPage, ReportsPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe('HP Scanner Android operator UI', () => {
+  it('shows safe secret copy and does not offer Aktifkan lagi for pending unprovisioned readers', async () => {
+    const notify = vi.fn();
+    const readers = [
+      { id: 'pending-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: null, name: 'HP Gerbang Pending', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'] },
+      { id: 'active-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-active', name: 'HP Gerbang Aktif', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'] },
+      { id: 'inactive-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'android-inactive', name: 'HP Mushola Nonaktif', locationName: 'Mushola', allowedModes: ['MUSHOLA'] }
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/device-readers')) return new Response(JSON.stringify({ items: readers, meta: { page: 1, limit: 200, total: readers.length, totalPages: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<DevicesPage notify={notify} />);
+
+    expect(await screen.findByText('Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.')).toBeInTheDocument();
+    const pendingRow = screen.getByText('HP Gerbang Pending').closest('tr');
+    const activeRow = screen.getByText('HP Gerbang Aktif').closest('tr');
+    const inactiveRow = screen.getByText('HP Mushola Nonaktif').closest('tr');
+
+    expect(within(pendingRow).getByText('Menunggu aktivasi HP')).toBeInTheDocument();
+    expect(within(pendingRow).queryByRole('button', { name: 'Aktifkan lagi' })).not.toBeInTheDocument();
+    expect(within(pendingRow).getByRole('button', { name: 'Buat kode baru' })).toBeInTheDocument();
+    expect(within(pendingRow).getByRole('button', { name: 'Cabut' })).toBeInTheDocument();
+    expect(within(activeRow).getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
+    expect(within(inactiveRow).getByRole('button', { name: 'Aktifkan lagi' })).toBeInTheDocument();
+  });
 });
 
 describe('official report download UI', () => {

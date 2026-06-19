@@ -35,6 +35,7 @@ import id.sch.man1rokanhulu.absensi.data.LocalConfig
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
 import id.sch.man1rokanhulu.absensi.ui.components.PrimaryActionButton
 import id.sch.man1rokanhulu.absensi.ui.components.SecondaryActionButton
+import id.sch.man1rokanhulu.absensi.ui.friendlyActivationMessage
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
 import kotlinx.coroutines.launch
@@ -101,7 +102,7 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
                         status = "$title berhasil diaktifkan. ${readerModeSummary(data.allowedModes)}. Siap dipakai scan."
                         onDone()
                     } catch (e: Exception) {
-                        status = friendlyMessage(e.message)
+                        status = friendlyActivationMessage(e.message)
                     } finally {
                         saving = false
                     }
@@ -206,14 +207,3 @@ private fun StepRow(number: Int, label: String) {
     }
 }
 
-private fun friendlyMessage(raw: String?): String {
-    val text = raw?.trim().orEmpty()
-    if (text.isBlank()) return "Aktivasi gagal. Coba lagi atau hubungi operator IT."
-    return when {
-        text.contains("Batas HP scanner aktif", ignoreCase = true) -> "Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat."
-        text.contains("Format", ignoreCase = true) -> text
-        text.contains("network", ignoreCase = true) || text.contains("Unable to resolve", ignoreCase = true) || text.contains("timeout", ignoreCase = true) -> "Server belum bisa dihubungi. Periksa Wi-Fi."
-        text.contains("invalid", ignoreCase = true) || text.contains("expired", ignoreCase = true) || text.contains("kedaluwarsa", ignoreCase = true) -> "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru."
-        else -> text
-    }
-}
