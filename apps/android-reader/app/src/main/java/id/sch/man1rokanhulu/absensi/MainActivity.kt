@@ -28,6 +28,7 @@ import id.sch.man1rokanhulu.absensi.ui.components.FeedbackData
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
 import id.sch.man1rokanhulu.absensi.ui.screens.ScannerCallbacks
 import id.sch.man1rokanhulu.absensi.ui.components.playFeedbackSound
+import id.sch.man1rokanhulu.absensi.ui.effectiveScanMode
 import id.sch.man1rokanhulu.absensi.ui.screens.HelpScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HistoryScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HomeScreen
@@ -98,13 +99,14 @@ fun ReaderApp(
 
     val initialMode = remember {
         val allowed = config.allowedModes()
-        allowed.firstOrNull { it == config.lastScanMode } ?: allowed.firstOrNull() ?: "CHECK_ONLY"
+        effectiveScanMode(allowed, config.lastScanMode)
     }
     var mode by remember { mutableStateOf(initialMode) }
 
     fun chooseMode(newMode: String) {
-        mode = newMode
-        config.lastScanMode = newMode
+        val effective = effectiveScanMode(config.allowedModes(), newMode)
+        mode = effective
+        config.lastScanMode = effective
     }
 
     suspend fun refreshQueueCount() {
@@ -199,7 +201,7 @@ fun ReaderApp(
                 else Route.HOME
             }
             Route.SETUP -> SetupScreen(config, api) {
-                chooseMode(config.allowedModes().firstOrNull() ?: "CHECK_ONLY")
+                chooseMode(effectiveScanMode(config.allowedModes(), config.allowedModes().firstOrNull() ?: "CHECK_ONLY"))
                 route = Route.HOME
             }
             Route.HOME -> HomeScreen(
@@ -208,7 +210,7 @@ fun ReaderApp(
                 currentMode = mode,
                 connection = connection,
                 queueCount = queueCount,
-                lastEntry = historyStore.list().firstOrNull(),
+                recentEntries = historyStore.list().take(5),
                 onMode = ::chooseMode,
                 onStart = { route = Route.SCANNER },
                 onSettings = { route = Route.SETTINGS },
@@ -251,6 +253,10 @@ fun ReaderApp(
                     onHelp = { route = Route.HELP },
                     onRetryQueue = {
                         scope.launch { retryQueue() }
+                    },
+                    onProvisioningLost = {
+                        config.clearDevice()
+                        route = Route.SETUP
                     }
                 )
             )

@@ -33,6 +33,7 @@ import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrSca
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
 const MIN_GATE_STAY_MINUTES = Number(process.env.MIN_GATE_STAY_MINUTES ?? '10');
 const STEP_UP_FOR_POLICY = process.env.STEP_UP_FOR_POLICY === 'true';
+const GATE_STAFF_ONLY_MESSAGE = 'Mode HP Gerbang hanya untuk Kepala, Staf, Karyawan, dan TU. Guru masuk kelas lewat web, siswa scan sholat di HP Mushola.';
 
 function dayBounds(value: Date | string = new Date()) {
   return jakartaBusinessDayBounds(value);
@@ -84,6 +85,14 @@ function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dh
 
 function isStaffRole(role: Role) {
   return role === Role.ADMIN_TU || role === Role.OPERATOR_IT || role === Role.GURU_PIKET || role === Role.DEVELOPER;
+}
+
+function gateDirectionLabel(direction: GateDirection) {
+  return direction === GateDirection.IN ? 'Datang' : 'Pulang';
+}
+
+function prayerLabel(prayerType: PrayerType) {
+  return prayerType === PrayerType.DHUHA ? 'Dhuha' : prayerType === PrayerType.DZUHUR ? 'Dzuhur' : 'Ashar';
 }
 
 function canReviewOverride(role: Role) {
@@ -383,11 +392,14 @@ export class AttendanceGateService {
       path: signed.path,
       rawBody: bodyForHash,
       expectedType: ReaderType.QR_ANDROID,
-      expectedMode: payload.mode,
       minSupportedVersionCode: version.minSupportedVersionCode,
       appVersionCode: payload.appVersionCode,
       headers: signed
     });
+    if (verification.reader.allowedModes?.length && !verification.reader.allowedModes.includes(payload.mode)) {
+      await this.securityAudit('attendance.qr.reader.scan.denied_wrong_mode', verification.reader.id, { mode: payload.mode, allowedModes: verification.reader.allowedModes });
+      throw new ForbiddenException('Mode HP ini tidak cocok untuk scan ini.');
+    }
     const scannedAt = new Date();
     const credential = await this.qrCredentials.findActiveByQrCode(payload.qrCode).catch(async (error) => {
       await this.securityAudit('attendance.qr.reader.scan.rejected', verification.reader.id, { reason: error.message, qrMasked: redactQr(payload.qrCode), mode: payload.mode });
@@ -425,9 +437,8 @@ export class AttendanceGateService {
     }
 
     if (payload.mode === AndroidReaderMode.GATE_IN || payload.mode === AndroidReaderMode.GATE_OUT) {
-      const direction = payload.mode === AndroidReaderMode.GATE_OUT ? GateDirection.OUT : GateDirection.IN;
-      const result = await this.recordGateScan(user.id, direction, scannedAt, actor, commonOptions, user.role);
-      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
+      const result = await this.recordQrAndroidGateScan(user.id, user.role, scannedAt, actor, commonOptions, verification.reader.allowedModes ?? [], payload.mode);
+      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, action: result.action, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id, idempotent: Boolean((result as { idempotent?: boolean }).idempotent) });
       return { ...result, ok: true, user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
     }
 
@@ -447,6 +458,61 @@ export class AttendanceGateService {
     }
 
     throw new BadRequestException('Mode scan QR tidak didukung.');
+  }
+
+  private async touchSuccessfulReaderScan(scannedAt: Date, options: RecordOptions) {
+    await this.prisma.$transaction(async (tx) => {
+      if (options.qrCredentialId) await tx.qrCredential.update({ where: { id: options.qrCredentialId }, data: { lastUsedAt: scannedAt } });
+      if (options.readerId || options.deviceId) {
+        await tx.deviceReader.updateMany({
+          where: options.readerId ? { id: options.readerId } : { deviceId: options.deviceId ?? '' },
+          data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+        });
+      }
+    });
+  }
+
+  private async recordQrAndroidGateScan(userId: string, role: Role, scannedAt: Date, actor: ScanActor, options: RecordOptions, allowedModes: AndroidReaderMode[], requestedMode: AndroidReaderMode) {
+    if (!isStaffRole(role)) {
+      await this.securityAudit('attendance.qr.reader.scan.denied_wrong_gate_role', options.readerId ?? userId, { userId, role, requestedMode });
+      throw new ForbiddenException(GATE_STAFF_ONLY_MESSAGE);
+    }
+
+    const canAutoDirection = allowedModes.includes(AndroidReaderMode.GATE_IN) && allowedModes.includes(AndroidReaderMode.GATE_OUT);
+    if (!canAutoDirection) {
+      const direction = requestedMode === AndroidReaderMode.GATE_OUT ? GateDirection.OUT : GateDirection.IN;
+      const result = await this.recordGateScan(userId, direction, scannedAt, actor, options, role);
+      return { ...result, action: gateDirectionLabel(direction) };
+    }
+
+    const businessDate = gateBusinessDate(scannedAt);
+    const logs = await this.prisma.gateLog.findMany({
+      where: { userId, businessDate },
+      orderBy: { tappedAt: 'asc' }
+    });
+    const firstIn = logs.find((item) => item.direction === GateDirection.IN) ?? null;
+    const firstOut = logs.find((item) => item.direction === GateDirection.OUT) ?? null;
+
+    if (!firstIn) {
+      const result = await this.recordGateScan(userId, GateDirection.IN, scannedAt, actor, { ...options, scanMode: AndroidReaderMode.GATE_IN }, role);
+      return { ...result, message: `Berhasil tercatat. Datang ${formatMinute(localMinutesOfDay(scannedAt))}.`, action: 'Datang' };
+    }
+
+    if (firstOut) {
+      await this.touchSuccessfulReaderScan(scannedAt, options);
+      await this.securityAudit('attendance.qr.reader.scan.idempotent_gate_out', firstOut.id, { userId, businessDate: businessDate.toISOString() });
+      return { kind: 'GATE', message: 'Sudah tercatat. Scan pulang hari ini sudah ada.', item: firstOut, idempotent: true, action: 'Pulang' };
+    }
+
+    const minutesSinceIn = Math.floor((scannedAt.getTime() - firstIn.tappedAt.getTime()) / 60000);
+    if (minutesSinceIn < MIN_GATE_STAY_MINUTES) {
+      await this.touchSuccessfulReaderScan(scannedAt, options);
+      await this.securityAudit('attendance.qr.reader.scan.idempotent_gate_in', firstIn.id, { userId, minutesSinceIn, minimumMinutes: MIN_GATE_STAY_MINUTES });
+      return { kind: 'GATE', message: `Sudah tercatat. Scan masuk hari ini sudah ada. Pulang bisa dicatat setelah ${MIN_GATE_STAY_MINUTES} menit.`, item: firstIn, idempotent: true, action: 'Datang' };
+    }
+
+    const result = await this.recordGateScan(userId, GateDirection.OUT, scannedAt, actor, { ...options, scanMode: AndroidReaderMode.GATE_OUT }, role);
+    return { ...result, message: `Berhasil tercatat. Pulang ${formatMinute(localMinutesOfDay(scannedAt))}.`, action: 'Pulang' };
   }
 
   private scanUserPayload(user: { id: string; fullName: string; username: string; role: Role; enrollments?: Array<{ schoolClass?: { code?: string; name?: string } | null }> }) {
@@ -710,8 +776,9 @@ export class AttendanceGateService {
     const attendanceDate = dateOnly(scannedAt);
     const existing = await this.prisma.prayerAttendanceLog.findUnique({ where: { studentId_prayerType_attendanceDate: { studentId, prayerType, attendanceDate } } });
     if (existing) {
-      await this.securityAudit('attendance.prayer.scan.rejected_duplicate', studentId, { prayerType, existingLogId: existing.id });
-      throw new ConflictException('Scan ibadah ini sudah tercatat hari ini.');
+      await this.touchSuccessfulReaderScan(scannedAt, options);
+      await this.securityAudit('attendance.prayer.scan.idempotent_duplicate', studentId, { prayerType, existingLogId: existing.id });
+      return { kind: 'PRAYER', message: `${prayerLabel(prayerType)} hari ini sudah tercatat.`, item: existing, idempotent: true };
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -761,8 +828,8 @@ export class AttendanceGateService {
         logicalKey: `prayer:${log.id}`,
         payload: { prayerAttendanceLogId: log.id, studentId, prayerType, attendanceDate: attendanceDate.toISOString(), scannedAt: scannedAt.toISOString(), source }
       });
-      const label = prayerType === PrayerType.DHUHA ? 'Dhuha' : prayerType === PrayerType.DZUHUR ? 'Dzuhur' : 'Ashar';
-      return { kind: 'PRAYER', message: `Scan ${label} tercatat.`, item: log };
+      const label = prayerLabel(prayerType);
+      return { kind: 'PRAYER', message: `Sholat ${label} tercatat.`, item: log };
     });
   }
 

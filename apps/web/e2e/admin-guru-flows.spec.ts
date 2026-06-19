@@ -556,12 +556,12 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     expect(selectTheme.optionBg).not.toBe('rgb(255, 255, 255)');
     expect(selectTheme.optionColor).not.toBe('rgb(0, 0, 0)');
     expect(selectTheme.overflow).toBe(false);
-    await page.getByRole('button', { name: /Absen Masuk/ }).click();
+    await page.getByRole('button', { name: /Masuk Kelas/ }).click();
     await expect(page.getByText('Absen masuk guru tercatat.')).toBeVisible();
-    await page.getByRole('button', { name: /Konfirmasi semua Hadir/ }).click();
-    await page.getByRole('button', { name: /Simpan Presensi Awal/ }).click();
+    await page.getByRole('button', { name: /Semua Hadir/ }).click();
+    await page.getByRole('button', { name: /^Simpan$/ }).first().click();
     await expect(page.getByText('Presensi siswa awal pembelajaran tersimpan.')).toBeVisible();
-    await page.getByRole('button', { name: /Absen Keluar/ }).click();
+    await page.getByRole('button', { name: /Tutup Sesi/ }).click();
     await page.getByRole('button', { name: 'Lanjutkan' }).click();
     await expect(page.getByText('Absen keluar guru tercatat.')).toBeVisible();
   });

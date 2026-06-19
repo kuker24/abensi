@@ -3,6 +3,8 @@ export function PicketDashboardPage(): JSX.Element;
 export function ItDashboardPage(): JSX.Element;
 export function SessionsPage(props: { admin?: boolean }): JSX.Element;
 export function HistoryPage(): JSX.Element;
+export function StaffAttendancePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function PrayerAttendancePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function AnomalyPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function MasterDataPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function SchedulePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;

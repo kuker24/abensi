@@ -30,13 +30,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import id.sch.man1rokanhulu.absensi.data.LocalConfig
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
 import id.sch.man1rokanhulu.absensi.ui.components.PrimaryActionButton
 import id.sch.man1rokanhulu.absensi.ui.components.SecondaryActionButton
+import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
+import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
 import kotlinx.coroutines.launch
 
 private enum class TestState { IDLE, RUNNING, OK, FAIL }
@@ -44,16 +44,16 @@ private enum class TestState { IDLE, RUNNING, OK, FAIL }
 @Composable
 fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var serverUrl by remember { mutableStateOf(config.serverUrl) }
+    var serverUrl by remember { mutableStateOf(config.serverUrl.ifBlank { "https://absensi.man1rokanhulu.cloud" }) }
     var activationCode by remember { mutableStateOf("") }
-    var deviceName by remember { mutableStateOf(config.deviceName) }
+    var deviceName by remember { mutableStateOf(config.deviceName.ifBlank { "HP Scanner" }) }
     var locationLabel by remember { mutableStateOf(config.locationLabel) }
-    var status by remember { mutableStateOf("Isi data dari admin sekolah, lalu tes sambungan sebelum simpan.") }
+    var status by remember { mutableStateOf("Masukkan kode aktivasi dari admin sekolah.") }
     var testState by remember { mutableStateOf(TestState.IDLE) }
     var saving by remember { mutableStateOf(false) }
-    var showActivationCode by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
 
-    val canSave = serverUrl.trim().isNotEmpty() && activationCode.trim().isNotEmpty() && deviceName.trim().isNotEmpty()
+    val canSave = activationCode.trim().isNotEmpty()
 
     Column(
         Modifier
@@ -64,82 +64,23 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
     ) {
         Text("Aktivasi SIAB2 Reader", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Sistem Informasi Akademik Berkarakter. Cukup sekali: minta admin sekolah membuat kode aktivasi di menu HP Scanner & Kartu, lalu masukkan di sini.",
-            style = MaterialTheme.typography.bodyMedium,
+            "Masukkan kode dari admin. Setelah aktif, HP ini langsung menjadi scanner khusus Gerbang atau Mushola sesuai aktivasi server.",
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        StepRow(1, "Alamat Server")
-        OutlinedTextField(
-            value = serverUrl,
-            onValueChange = { serverUrl = it; testState = TestState.IDLE },
-            label = { Text("Alamat Server") },
-            placeholder = { Text("Contoh: https://absensi.man1rokanhulu.cloud") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        StepRow(2, "Nama HP Scanner")
-        OutlinedTextField(
-            value = deviceName,
-            onValueChange = { deviceName = it },
-            label = { Text("Nama HP Scanner") },
-            placeholder = { Text("Contoh: HP Gerbang Utama") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = locationLabel,
-            onValueChange = { locationLabel = it },
-            label = { Text("Lokasi (opsional)") },
-            placeholder = { Text("Contoh: Gerbang depan, Mushola, dll") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        StepRow(3, "Kode Aktivasi Rahasia")
+        StepRow(1, "Kode Aktivasi")
         OutlinedTextField(
             value = activationCode,
             onValueChange = { activationCode = it },
-            label = { Text("Kode Aktivasi Rahasia") },
-            placeholder = { Text("Tempel kode dari admin di sini") },
-            visualTransformation = if (showActivationCode) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                TextButton(onClick = { showActivationCode = !showActivationCode }) {
-                    Text(if (showActivationCode) "Sembunyi" else "Lihat")
-                }
-            },
+            label = { Text("Kode Aktivasi") },
+            placeholder = { Text("Tempel kode dari admin") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(4.dp))
-
-        SecondaryActionButton(
-            text = when (testState) {
-                TestState.RUNNING -> "Mengetes…"
-                TestState.OK -> "Sambungan Server OK"
-                TestState.FAIL -> "Coba Lagi Tes Sambungan"
-                else -> "Tes Sambungan"
-            },
-            loading = testState == TestState.RUNNING,
-            enabled = serverUrl.isNotBlank() && testState != TestState.RUNNING,
-            onClick = {
-                scope.launch {
-                    testState = TestState.RUNNING
-                    val ok = runCatching {
-                        if (!api.validateServerUrl(serverUrl)) error("Format alamat server salah.")
-                        config.serverUrl = serverUrl
-                        api.health()
-                    }.getOrDefault(false)
-                    testState = if (ok) TestState.OK else TestState.FAIL
-                    status = if (ok) "Server bisa dihubungi. Silakan simpan dan mulai scan." else "Server belum bisa dihubungi. Periksa alamat atau internet HP."
-                }
-            }
-        )
-
         PrimaryActionButton(
-            text = if (saving) "Menyimpan & mengaktifkan…" else "Simpan & Mulai Scan",
+            text = if (saving) "Mengaktifkan…" else "Aktifkan HP Ini",
             loading = saving,
             enabled = canSave,
             onClick = {
@@ -156,7 +97,8 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
                         config.readerSecret = data.readerSecret
                         config.allowedModesCsv = data.allowedModes.joinToString(",")
                         config.lastScanMode = data.allowedModes.firstOrNull() ?: "CHECK_ONLY"
-                        status = "HP berhasil diaktifkan. Siap dipakai scan."
+                        val title = readerDeviceTitle(data.allowedModes)
+                        status = "$title berhasil diaktifkan. ${readerModeSummary(data.allowedModes)}. Siap dipakai scan."
                         onDone()
                     } catch (e: Exception) {
                         status = friendlyMessage(e.message)
@@ -171,21 +113,75 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
             Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
-            Text(
-                status,
-                Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(status, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
+        TextButton(onClick = { showAdvanced = !showAdvanced }) {
+            Text(if (showAdvanced) "Sembunyikan Pengaturan Lanjutan" else "Pengaturan Lanjutan")
+        }
+
+        if (showAdvanced) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Pengaturan Lanjutan", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = serverUrl,
+                        onValueChange = { serverUrl = it; testState = TestState.IDLE },
+                        label = { Text("Alamat Server") },
+                        placeholder = { Text("https://absensi.man1rokanhulu.cloud") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = deviceName,
+                        onValueChange = { deviceName = it },
+                        label = { Text("Nama HP") },
+                        placeholder = { Text("HP Gerbang / HP Mushola") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = locationLabel,
+                        onValueChange = { locationLabel = it },
+                        label = { Text("Lokasi") },
+                        placeholder = { Text("Gerbang depan / Mushola") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    SecondaryActionButton(
+                        text = when (testState) {
+                            TestState.RUNNING -> "Mengetes…"
+                            TestState.OK -> "Sambungan Server OK"
+                            TestState.FAIL -> "Coba Lagi Tes Sambungan"
+                            else -> "Tes Sambungan"
+                        },
+                        loading = testState == TestState.RUNNING,
+                        enabled = serverUrl.isNotBlank() && testState != TestState.RUNNING,
+                        onClick = {
+                            scope.launch {
+                                testState = TestState.RUNNING
+                                val ok = runCatching {
+                                    if (!api.validateServerUrl(serverUrl)) error("Format alamat server salah.")
+                                    config.serverUrl = serverUrl
+                                    api.health()
+                                }.getOrDefault(false)
+                                testState = if (ok) TestState.OK else TestState.FAIL
+                                status = if (ok) "Server bisa dihubungi." else "Server belum bisa dihubungi. Periksa Wi-Fi."
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Bantuan", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "• Alamat server contoh: https://absensi.man1rokanhulu.cloud\n" +
-                        "• Kode aktivasi adalah teks panjang acak dari admin. Salin dengan teliti.\n" +
-                        "• Jika 'Tes Sambungan' gagal, periksa Wi-Fi HP atau hubungi operator IT.",
+                    "• Minta admin membuat kode di menu HP Scanner.\n" +
+                        "• Kode hanya sekali pakai dan cepat kedaluwarsa.\n" +
+                        "• Jika gagal, periksa Wi-Fi atau minta kode baru.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -214,9 +210,10 @@ private fun friendlyMessage(raw: String?): String {
     val text = raw?.trim().orEmpty()
     if (text.isBlank()) return "Aktivasi gagal. Coba lagi atau hubungi operator IT."
     return when {
+        text.contains("Batas HP scanner aktif", ignoreCase = true) -> "Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat."
         text.contains("Format", ignoreCase = true) -> text
-        text.contains("network", ignoreCase = true) || text.contains("Unable to resolve", ignoreCase = true) -> "Alamat server belum bisa dihubungi. Periksa internet atau alamatnya."
-        text.contains("invalid", ignoreCase = true) || text.contains("expired", ignoreCase = true) -> "Kode aktivasi salah atau sudah kadaluarsa. Minta admin membuat kode baru."
+        text.contains("network", ignoreCase = true) || text.contains("Unable to resolve", ignoreCase = true) || text.contains("timeout", ignoreCase = true) -> "Server belum bisa dihubungi. Periksa Wi-Fi."
+        text.contains("invalid", ignoreCase = true) || text.contains("expired", ignoreCase = true) || text.contains("kedaluwarsa", ignoreCase = true) -> "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru."
         else -> text
     }
 }

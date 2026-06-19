@@ -15,7 +15,10 @@ data class ScanHistoryEntry(
     val mode: String,
     val status: ScanHistoryStatus,
     val maskedCode: String,
-    val message: String
+    val message: String,
+    val displayName: String? = null,
+    val displayMeta: String? = null,
+    val actionLabel: String? = null
 )
 
 /**
@@ -43,7 +46,10 @@ class ScanHistoryStore(context: Context) {
                     mode = obj.optString("mode"),
                     status = runCatching { ScanHistoryStatus.valueOf(obj.optString("status", "QUEUED")) }.getOrDefault(ScanHistoryStatus.QUEUED),
                     maskedCode = obj.optString("masked"),
-                    message = obj.optString("message")
+                    message = obj.optString("message"),
+                    displayName = obj.optString("displayName").ifBlank { null },
+                    displayMeta = obj.optString("displayMeta").ifBlank { null },
+                    actionLabel = obj.optString("actionLabel").ifBlank { null }
                 )
             }
         }.getOrDefault(emptyList())
@@ -69,6 +75,9 @@ class ScanHistoryStore(context: Context) {
             obj.put("status", entry.status.name)
             obj.put("masked", entry.maskedCode)
             obj.put("message", entry.message)
+            obj.put("displayName", entry.displayName ?: "")
+            obj.put("displayMeta", entry.displayMeta ?: "")
+            obj.put("actionLabel", entry.actionLabel ?: "")
             array.put(obj)
         }
         prefs.edit().putString(KEY, array.toString()).apply()

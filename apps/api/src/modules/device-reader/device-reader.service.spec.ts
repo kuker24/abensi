@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { DeviceReaderStatus, ReaderType, Role } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { readerCredentialDigest } from '../security/device-signature.service';
-import { DeviceReaderService } from './device-reader.service';
+import { ANDROID_READER_LIMIT_MESSAGE, DeviceReaderService, MAX_ACTIVE_ANDROID_READERS } from './device-reader.service';
 
 function makeAuditClient() {
   return {
@@ -22,6 +22,7 @@ function makePrisma() {
   const tx = {
     ...makeAuditClient(),
     deviceReader: {
+      count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }) => ({ id: data.id ?? 'reader-1', status: data.status ?? DeviceReaderStatus.ACTIVE, type: data.type ?? ReaderType.GATE, allowedModes: data.allowedModes ?? [], ...data })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'reader-1', deviceId: 'android-1', name: 'Android', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [], provisioningTokenHash: null, readerSecretCiphertext: 'enc-secret' }),
@@ -160,6 +161,50 @@ describe('DeviceReaderService credential security', () => {
     raced.deviceReader.findMany.mockResolvedValue([{ id: 'reader-raced', name: 'Raced', provisioningTokenHash: readerCredentialDigest(token), status: DeviceReaderStatus.INACTIVE, provisioningExpiresAt: new Date(Date.now() + 60_000) }]);
     raced.__tx.deviceReader.updateMany.mockResolvedValue({ count: 0 });
     await expect(new DeviceReaderService(raced, makeSignatures()).completeAndroidProvision({ provisionToken: token, deviceId: 'android-1' })).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects Android provision start when active Android reader limit is full', async () => {
+    const prisma = makePrisma();
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await expect(service.startAndroidProvision({ name: 'HP Ketiga' }, actor)).rejects.toMatchObject({ message: ANDROID_READER_LIMIT_MESSAGE });
+    expect(prisma.__tx.deviceReader.create).not.toHaveBeenCalled();
+  });
+
+  it('allows Android provision start after active reader slot is available and caps expiry at 60 minutes', async () => {
+    const prisma = makePrisma();
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+    const before = Date.now();
+
+    const result = await service.startAndroidProvision({ name: 'HP Pengganti', expiresInMinutes: 120 }, actor);
+    const expiresInMs = new Date(result.expiresAt).getTime() - before;
+
+    expect(prisma.__tx.deviceReader.create).toHaveBeenCalled();
+    expect(expiresInMs).toBeGreaterThan(59 * 60_000);
+    expect(expiresInMs).toBeLessThanOrEqual(60 * 60_000 + 5000);
+  });
+
+  it('rejects Android provision completion when another active reader filled the last slot', async () => {
+    const prisma = makePrisma();
+    const token = 'shrp_limitProvisionToken_12345';
+    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-pending', name: 'Pending', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [], provisioningTokenHash: readerCredentialDigest(token), provisioningExpiresAt: new Date(Date.now() + 60_000) }]);
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await expect(service.completeAndroidProvision({ provisionToken: token, deviceId: 'android-new' })).rejects.toMatchObject({ message: ANDROID_READER_LIMIT_MESSAGE });
+    expect(prisma.__tx.deviceReader.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects reactivating Android reader when active reader limit is full', async () => {
+    const prisma = makePrisma();
+    prisma.deviceReader.findUnique.mockResolvedValue({ id: 'reader-inactive', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID });
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await expect(service.updateStatus('reader-inactive', { status: DeviceReaderStatus.ACTIVE }, actor)).rejects.toMatchObject({ message: ANDROID_READER_LIMIT_MESSAGE });
+    expect(prisma.__tx.deviceReader.update).not.toHaveBeenCalled();
   });
 
   it('fails closed for ambiguous getStatus matches instead of returning the first candidate', async () => {
