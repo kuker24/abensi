@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ExcelJS from 'exceljs';
-import { MAX_PRINT_DOCUMENT_ROWS, printDocumentRowLimitViolation, renderReportDocument, type ExportFormat, type ReportDocumentModel } from './report-document-exporter';
+import { EMPTY_REPORT_MESSAGE, MAX_PRINT_DOCUMENT_ROWS, printDocumentRowLimitViolation, renderReportDocument, type ExportFormat, type ReportDocumentModel } from './report-document-exporter';
 
 function fixtureModel(): ReportDocumentModel {
   return {
@@ -33,6 +33,18 @@ function fixtureModel(): ReportDocumentModel {
   };
 }
 
+function rowNumberContaining(worksheet: ExcelJS.Worksheet, expected: string): number {
+  for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    let found = false;
+    row.eachCell((cell) => {
+      if (cell.value === expected) found = true;
+    });
+    if (found) return rowNumber;
+  }
+  throw new Error(`Expected worksheet row containing ${expected}`);
+}
+
 function formulaInjectionModel(): ReportDocumentModel {
   const model = fixtureModel();
   model.columns = [
@@ -54,7 +66,7 @@ function formulaInjectionModel(): ReportDocumentModel {
 
 describe('report document exporter', () => {
   it.each([
-    ['csv', 'text/csv; charset=utf-8', 'report_metadata'],
+    ['csv', 'text/csv; charset=utf-8', '# Metadata Laporan Resmi SIAB2'],
     ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'PK'],
     ['pdf', 'application/pdf', '%PDF'],
     ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'PK']
@@ -68,6 +80,47 @@ describe('report document exporter', () => {
     expect(rendered.extension).toBe(format);
     expect(rendered.buffer.length).toBeGreaterThan(100);
     expect(rendered.buffer.toString('utf8', 0, Math.min(rendered.buffer.length, 32))).toContain(magic);
+  });
+
+  it('renders a professional XLSX workbook with official sheets, letterhead, and no raw metadata-only sheet', async () => {
+    const model = fixtureModel();
+    model.metadata.format = 'xlsx';
+
+    const rendered = await renderReportDocument(model, 'xlsx');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(rendered.buffer);
+    const mainSheet = workbook.getWorksheet('Laporan Resmi');
+    const metadataSheet = workbook.getWorksheet('Metadata');
+
+    expect(mainSheet).toBeDefined();
+    expect(metadataSheet).toBeDefined();
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(expect.arrayContaining(['Laporan Resmi', 'Metadata']));
+    expect(mainSheet!.getCell('A1').value).not.toBe('report_metadata');
+    expect(String(mainSheet!.getCell('A2').value ?? '')).not.toMatch(/^\s*\{/);
+    expect(String(mainSheet!.getCell('B1').value)).toContain('MAN 1 ROKAN HULU');
+    expect(String(mainSheet!.getCell('B2').value)).toContain('SIAB2');
+    expect(String(mainSheet!.getCell('A5').value)).toContain('Rekap Kehadiran per Kelas');
+    expect(String(mainSheet!.getCell('B16').value ?? '')).not.toMatch(/^\s*\{/);
+    expect(metadataSheet!.getCell('A1').value).toBe('Field');
+    expect(metadataSheet!.getColumn(2).values.map(String).join('\n')).not.toContain('{"from"');
+  });
+
+  it('renders empty XLSX reports with the official layout and an empty-state data row', async () => {
+    const model = fixtureModel();
+    model.metadata.format = 'xlsx';
+    model.rows = [];
+    model.columns = [];
+
+    const rendered = await renderReportDocument(model, 'xlsx');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(rendered.buffer);
+    const worksheet = workbook.getWorksheet('Laporan Resmi');
+
+    expect(worksheet).toBeDefined();
+    expect(String(worksheet!.getCell('B1').value)).toContain('MAN 1 ROKAN HULU');
+    const headerRow = rowNumberContaining(worksheet!, 'Pesan');
+    expect(worksheet!.getCell(`A${headerRow + 1}`).value).toBe(EMPTY_REPORT_MESSAGE);
+    expect(worksheet!.getCell('A1').value).not.toBe('report_metadata');
   });
 
   it('does not contain old e-Hadir branding in the official report fixture', () => {
@@ -85,6 +138,9 @@ describe('report document exporter', () => {
     const rendered = await renderReportDocument(model, 'csv');
     const csv = rendered.buffer.toString('utf8');
 
+    expect(csv).toContain('# Metadata Laporan Resmi SIAB2');
+    expect(csv).not.toContain('report_metadata');
+    expect(csv).not.toContain('{"from"');
     expect(csv).toContain('"\'=HYPERLINK(""https://example.invalid"",""x"")"');
     expect(csv).toContain('"\'+SUM(1,2)"');
     expect(csv).toContain("'-10+20");
@@ -111,7 +167,8 @@ describe('report document exporter', () => {
     const worksheet = workbook.getWorksheet('Laporan Resmi');
     expect(worksheet).toBeDefined();
 
-    const values = [19, 20, 21, 22, 23, 24, 25].map((row) => worksheet!.getCell(`A${row}`).value);
+    const headerRow = rowNumberContaining(worksheet!, 'Nilai');
+    const values = Array.from({ length: 7 }, (_, index) => worksheet!.getCell(`A${headerRow + 1 + index}`).value);
     expect(values.slice(0, 5)).toEqual([
       '\'=HYPERLINK("https://example.invalid","x")',
       "'+SUM(1,2)",

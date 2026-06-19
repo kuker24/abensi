@@ -67,6 +67,7 @@ const A4_LANDSCAPE_HEIGHT_DXA = 11906;
 const A4_MARGIN_DXA = 720;
 const DOCX_CONTENT_WIDTH = A4_LANDSCAPE_WIDTH_DXA - A4_MARGIN_DXA * 2;
 export const MAX_PRINT_DOCUMENT_ROWS = 1000;
+export const EMPTY_REPORT_MESSAGE = 'Tidak ada data pada periode ini.';
 
 export function printDocumentRowLimitViolation(format: ExportFormat, rowCount: number): string | null {
   if ((format === 'pdf' || format === 'docx') && rowCount > MAX_PRINT_DOCUMENT_ROWS) {
@@ -164,6 +165,23 @@ function valueAsText(value: unknown): string {
   return typeof normalized === 'string' ? normalized : String(normalized);
 }
 
+function formatMetadataValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.length ? value.map(formatMetadataValue).join(' | ') : '-';
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    return entries.length ? entries.map(([key, item]) => `${labelForKey(key)}: ${formatMetadataValue(item)}`).join(' · ') : '-';
+  }
+  return String(value);
+}
+
+function objectMetadataRows(prefix: string, values: Record<string, unknown>): Array<[string, string]> {
+  const entries = Object.entries(values || {}).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (entries.length === 0) return [[prefix, '-']];
+  return entries.map(([key, value]) => [`${prefix} - ${labelForKey(key)}`, formatMetadataValue(value)]);
+}
+
 function metadataRows(model: ReportDocumentModel): Array<[string, string]> {
   return [
     ['Nama dokumen', model.title],
@@ -174,8 +192,8 @@ function metadataRows(model: ReportDocumentModel): Array<[string, string]> {
     ['Dibuat oleh', model.metadata.generatedBy],
     ['Jenis laporan', model.metadata.reportType],
     ['Peringatan', model.metadata.warning || '-'],
-    ['Filter', JSON.stringify(model.metadata.filters)],
-    ['Ringkasan audit', JSON.stringify(model.metadata.counts)]
+    ...objectMetadataRows('Filter', model.metadata.filters),
+    ...objectMetadataRows('Ringkasan audit', model.metadata.counts)
   ];
 }
 
@@ -187,17 +205,15 @@ function escapeCsvValue(value: unknown) {
 }
 
 function buildCsv(model: ReportDocumentModel): Buffer {
-  const exportRows = model.rows.length > 0 ? model.rows : [{ message: 'Tidak ada data' }];
-  const metadata = {
-    report_metadata: JSON.stringify({
-      ...model.metadata,
-      title: model.title,
-      institution: model.institution
-    })
-  };
-  const rows: Array<Record<string, unknown>> = [metadata, ...exportRows.map((row) => ({ evidence_label: 'normal', ...row }))];
+  const exportRows = model.rows.length > 0 ? model.rows : [{ message: EMPTY_REPORT_MESSAGE }];
+  const rows: Array<Record<string, unknown>> = exportRows.map((row) => ({ evidence_label: 'normal', ...row }));
   const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
-  const lines = [headers.join(',')];
+  const lines = [
+    [escapeCsvValue('# Metadata Laporan Resmi SIAB2'), ''].join(','),
+    ...metadataRows(model).map(([label, value]) => [escapeCsvValue(`# ${label}`), escapeCsvValue(value)].join(',')),
+    '',
+    headers.join(',')
+  ];
   for (const row of rows) {
     lines.push(headers.map((header) => escapeCsvValue(row[header])).join(','));
   }
@@ -230,7 +246,7 @@ function addXlsxLetterhead(workbook: ExcelJS.Workbook, worksheet: ExcelJS.Worksh
   worksheet.getCell('A4').border = { bottom: { style: 'medium', color: { argb: `FF${BRAND_GOLD}` } } };
 }
 
-function addXlsxMetadata(worksheet: ExcelJS.Worksheet, model: ReportDocumentModel) {
+function addXlsxMetadata(worksheet: ExcelJS.Worksheet, model: ReportDocumentModel): number {
   let rowNumber = 8;
   for (const [label, value] of metadataRows(model)) {
     const row = worksheet.getRow(rowNumber);
@@ -238,6 +254,7 @@ function addXlsxMetadata(worksheet: ExcelJS.Worksheet, model: ReportDocumentMode
     row.getCell(2).value = value;
     row.getCell(1).font = { bold: true, color: { argb: `FF${TEXT}` } };
     row.getCell(2).font = { color: { argb: `FF${MUTED}` } };
+    row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
     rowNumber += 1;
   }
   if (model.metadata.warning) {
@@ -246,7 +263,9 @@ function addXlsxMetadata(worksheet: ExcelJS.Worksheet, model: ReportDocumentMode
     warningCell.value = `PERINGATAN: ${model.metadata.warning}`;
     warningCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${LIGHT_GOLD}` } };
     warningCell.font = { bold: true, color: { argb: 'FF92400E' } };
+    rowNumber += 1;
   }
+  return rowNumber + 2;
 }
 
 async function buildXlsx(model: ReportDocumentModel): Promise<Buffer> {
@@ -260,16 +279,18 @@ async function buildXlsx(model: ReportDocumentModel): Promise<Buffer> {
     pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
   });
   addXlsxLetterhead(workbook, worksheet, model);
-  addXlsxMetadata(worksheet, model);
-
-  const startRow = 18;
-  const rows = model.rows.length > 0 ? model.rows : [{ message: 'Tidak ada data' }];
+  const startRow = Math.max(18, addXlsxMetadata(worksheet, model));
+  worksheet.views = [{ state: 'frozen', ySplit: startRow }];
+  const rows = model.rows.length > 0 ? model.rows : [{ message: EMPTY_REPORT_MESSAGE }];
   const columns = model.rows.length > 0 ? model.columns : [{ key: 'message', label: 'Pesan' }];
 
-  worksheet.columns = columns.map((column) => ({
-    key: column.key,
-    width: Math.min(Math.max(column.label.length + 6, 14), 36)
-  }));
+  columns.forEach((column, index) => {
+    worksheet.getColumn(index + 1).key = column.key;
+    worksheet.getColumn(index + 1).width = Math.min(Math.max(column.label.length + 8, 16), 42);
+  });
+  for (let index = columns.length + 1; index <= 8; index += 1) {
+    worksheet.getColumn(index).width = 16;
+  }
 
   const headerRow = worksheet.getRow(startRow);
   columns.forEach((column, index) => {
@@ -313,6 +334,14 @@ async function buildXlsx(model: ReportDocumentModel): Promise<Buffer> {
   metadataRows(model).forEach(([field, value]) => metadataSheet.addRow({ field, value }));
   metadataSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   metadataSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${BRAND_GREEN}` } };
+  metadataSheet.views = [{ state: 'frozen', ySplit: 1 }];
+  metadataSheet.autoFilter = { from: 'A1', to: 'B1' };
+  metadataSheet.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: 'top', wrapText: true };
+      cell.border = { bottom: { style: 'hair', color: { argb: `FF${BORDER}` } } };
+    });
+  });
 
   const raw = await workbook.xlsx.writeBuffer();
   return Buffer.from(raw);
@@ -377,7 +406,7 @@ async function buildPdf(model: ReportDocumentModel): Promise<Buffer> {
     addPdfHeader(doc, model);
     addPdfMetadata(doc, model);
 
-    const rows = model.rows.length > 0 ? model.rows : [{ message: 'Tidak ada data' }];
+    const rows = model.rows.length > 0 ? model.rows : [{ message: EMPTY_REPORT_MESSAGE }];
     const columns = model.rows.length > 0 ? model.columns : [{ key: 'message', label: 'Pesan' }];
     const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const widths = pdfTableColumnWidths(columns, tableWidth);
@@ -451,7 +480,7 @@ function cell(text: string, options: { bold?: boolean; fill?: string; color?: st
 }
 
 async function buildDocx(model: ReportDocumentModel): Promise<Buffer> {
-  const rows = model.rows.length > 0 ? model.rows : [{ message: 'Tidak ada data' }];
+  const rows = model.rows.length > 0 ? model.rows : [{ message: EMPTY_REPORT_MESSAGE }];
   const columns = model.rows.length > 0 ? model.columns : [{ key: 'message', label: 'Pesan' }];
   const columnWidth = Math.max(650, Math.floor(DOCX_CONTENT_WIDTH / columns.length));
   const headerChildren: Paragraph[] = [];
