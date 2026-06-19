@@ -29,6 +29,7 @@ import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
 import id.sch.man1rokanhulu.absensi.ui.screens.ScannerCallbacks
 import id.sch.man1rokanhulu.absensi.ui.components.playFeedbackSound
 import id.sch.man1rokanhulu.absensi.ui.effectiveScanMode
+import id.sch.man1rokanhulu.absensi.ui.safeScanHistoryMessage
 import id.sch.man1rokanhulu.absensi.ui.screens.HelpScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HistoryScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HomeScreen
@@ -145,7 +146,7 @@ fun ReaderApp(
                             mode = entry.mode,
                             status = id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.SENT,
                             opaqueCode = parsed.opaqueCode,
-                            message = scan.message.ifBlank { "Antrean terkirim." }
+                            message = safeScanHistoryMessage(scan.message, "Antrean terkirim.")
                         )
                     )
                     sent++
@@ -156,7 +157,7 @@ fun ReaderApp(
                             mode = entry.mode,
                             status = id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.REJECTED,
                             opaqueCode = parsed.opaqueCode,
-                            message = scan.message.ifBlank { "Ditolak server saat kirim ulang." }
+                            message = safeScanHistoryMessage(scan.message, "Ditolak server saat kirim ulang.")
                         )
                     )
                     rejected++
@@ -171,7 +172,7 @@ fun ReaderApp(
                         mode = entry.mode,
                         status = id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.REJECTED,
                         opaqueCode = entry.qrCodeMasked,
-                        message = e.message ?: "Antrean rusak dan tidak bisa dikirim."
+                        message = safeScanHistoryMessage(e.message, "Antrean rusak dan tidak bisa dikirim.")
                     )
                 )
                 rejected++

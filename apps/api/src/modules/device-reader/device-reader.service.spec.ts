@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { DeviceReaderStatus, ReaderType, Role } from '@prisma/client';
+import { DevicePlatform, DeviceReaderStatus, ReaderType, Role } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { readerCredentialDigest } from '../security/device-signature.service';
 import { ANDROID_READER_LIMIT_MESSAGE, DeviceReaderService, MAX_ACTIVE_ANDROID_READERS } from './device-reader.service';
@@ -99,7 +99,7 @@ describe('DeviceReaderService credential security', () => {
     expect(prisma.deviceReader.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 20 }));
     expect(prisma.__tx.deviceReader.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: 'reader-1', provisioningTokenHash: { in: expect.arrayContaining([readerCredentialDigest(token), createHash('sha256').update(token).digest('hex')]) } }),
-      data: expect.objectContaining({ status: DeviceReaderStatus.ACTIVE, provisioningTokenHash: null, provisioningExpiresAt: null })
+      data: expect.objectContaining({ status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID, provisioningTokenHash: null, provisioningExpiresAt: null })
     }));
   });
 
@@ -163,6 +163,55 @@ describe('DeviceReaderService credential security', () => {
     await expect(new DeviceReaderService(raced, makeSignatures()).completeAndroidProvision({ provisionToken: token, deviceId: 'android-1' })).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('normalizes QR_ANDROID createReader platform to ANDROID even if client sends HARDWARE', async () => {
+    const prisma = makePrisma();
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.createReader({ name: 'HP Gerbang Manual', type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE }, actor);
+
+    expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE } });
+    expect(prisma.__tx.deviceReader.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: ReaderType.QR_ANDROID, platform: DevicePlatform.ANDROID }) }));
+  });
+
+  it('normalizes QR_ANDROID createReader missing platform to ANDROID', async () => {
+    const prisma = makePrisma();
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.createReader({ name: 'HP Mushola Manual', type: ReaderType.QR_ANDROID }, actor);
+
+    expect(prisma.__tx.deviceReader.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: ReaderType.QR_ANDROID, platform: DevicePlatform.ANDROID }) }));
+  });
+
+  it('blocks third ACTIVE QR_ANDROID even when client tries non-ANDROID platform', async () => {
+    const prisma = makePrisma();
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await expect(service.createReader({ name: 'HP Ketiga', type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE }, actor)).rejects.toMatchObject({ message: ANDROID_READER_LIMIT_MESSAGE });
+    expect(prisma.__tx.deviceReader.create).not.toHaveBeenCalled();
+  });
+
+  it('counts legacy ACTIVE QR_ANDROID rows regardless of platform and ignores inactive/revoked via ACTIVE filter', async () => {
+    const prisma = makePrisma();
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await expect(service.startAndroidProvision({ name: 'HP Pengganti' }, actor)).rejects.toMatchObject({ message: ANDROID_READER_LIMIT_MESSAGE });
+    expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE } });
+    expect(prisma.__tx.deviceReader.create).not.toHaveBeenCalled();
+  });
+
+  it('allows replacement when fewer than two ACTIVE QR_ANDROID readers remain', async () => {
+    const prisma = makePrisma();
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.startAndroidProvision({ name: 'HP Pengganti' }, actor);
+
+    expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE } });
+    expect(prisma.__tx.deviceReader.create).toHaveBeenCalled();
+  });
+
   it('rejects Android provision start when active Android reader limit is full', async () => {
     const prisma = makePrisma();
     prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS);
@@ -195,6 +244,20 @@ describe('DeviceReaderService credential security', () => {
 
     await expect(service.completeAndroidProvision({ provisionToken: token, deviceId: 'android-new' })).rejects.toMatchObject({ message: ANDROID_READER_LIMIT_MESSAGE });
     expect(prisma.__tx.deviceReader.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('normalizes legacy QR_ANDROID platform when reactivating an inactive reader', async () => {
+    const prisma = makePrisma();
+    const before = { id: 'reader-inactive', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE };
+    prisma.deviceReader.findUnique.mockResolvedValue(before);
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
+    prisma.__tx.deviceReader.update.mockResolvedValue({ ...before, status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID });
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.updateStatus('reader-inactive', { status: DeviceReaderStatus.ACTIVE }, actor);
+
+    expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE, id: { not: 'reader-inactive' } } });
+    expect(prisma.__tx.deviceReader.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID } }));
   });
 
   it('rejects reactivating Android reader when active reader limit is full', async () => {

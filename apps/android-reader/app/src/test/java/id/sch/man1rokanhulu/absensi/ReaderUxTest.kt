@@ -8,6 +8,7 @@ import id.sch.man1rokanhulu.absensi.ui.friendlyScanTitle
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceKind
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
+import id.sch.man1rokanhulu.absensi.ui.safeScanHistoryMessage
 import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
 import id.sch.man1rokanhulu.absensi.ui.showManualModePicker
 import org.junit.Assert.assertEquals
@@ -53,7 +54,7 @@ class ReaderUxTest {
         assertEquals("Server sedang bermasalah. Coba lagi sebentar atau hubungi operator IT.", serverProblem)
         assertFalse(serverProblem.contains("HTTP 502"))
 
-        assertEquals("HP scanner ini sudah dicabut atau dinonaktifkan. Minta admin aktivasi ulang.", friendlyScanMessage("HTTP 403"))
+        assertEquals("HP scanner belum aktif atau aksesnya sudah dicabut. Minta admin aktivasi ulang.", friendlyScanMessage("HTTP 403"))
         assertEquals("Server belum bisa dihubungi. Periksa Wi-Fi atau internet HP.", friendlyScanMessage("java.net.UnknownHostException: Unable to resolve host"))
         assertEquals("QR tidak dikenal atau sudah dicabut.", friendlyScanMessage("HTTP 404"))
         assertEquals("QR tidak dikenal atau sudah dicabut.", friendlyScanMessage("QR tidak dikenal atau sudah dicabut."))
@@ -73,5 +74,32 @@ class ReaderUxTest {
         assertEquals("HP scanner ini sudah dicabut atau dinonaktifkan. Minta admin aktivasi ulang.", friendlyActivationMessage("HTTP 401"))
         assertEquals("Kode aktivasi tidak ditemukan. Minta admin membuat kode baru.", friendlyActivationMessage("HTTP 404"))
         assertEquals("Server belum bisa dihubungi. Periksa Wi-Fi atau internet HP.", friendlyActivationMessage("Network error timeout okhttp"))
+    }
+
+    @Test
+    fun queueRetryHistoryMessagesAreSanitized() {
+        val cases = listOf(
+            "HTTP 502" to "Server sedang bermasalah. Coba lagi sebentar atau hubungi operator IT.",
+            "HTTP 401 readerSecret shrsec_superSecret" to "HP scanner belum aktif atau aksesnya sudah dicabut. Minta admin aktivasi ulang.",
+            "HTTP 403" to "HP scanner belum aktif atau aksesnya sudah dicabut. Minta admin aktivasi ulang.",
+            "java.net.SocketTimeoutException: timeout from OkHttp" to "Server belum bisa dihubungi. Periksa Wi-Fi atau internet HP.",
+            "Token provisioning tidak ditemukan: shrp_superSecretToken" to "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru.",
+            "Invalid token shrp_rawToken" to "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru.",
+            "Mode HP ini tidak cocok untuk scan ini." to "HP ini tidak cocok untuk scan ini. Gunakan HP scanner yang sesuai.",
+            "QR tidak dikenal atau sudah dicabut." to "QR tidak dikenal atau sudah dicabut.",
+            "Dzuhur hari ini sudah tercatat." to "Sudah tercatat."
+        )
+
+        cases.forEach { (raw, expected) ->
+            val stored = safeScanHistoryMessage(raw, "Fallback aman.")
+            assertEquals(expected, stored)
+            assertFalse(stored.contains("HTTP 502"))
+            assertFalse(stored.contains("HTTP 500"))
+            assertFalse(stored.contains("Exception"))
+            assertFalse(stored.contains("Retrofit"))
+            assertFalse(stored.contains("OkHttp"))
+            assertFalse(stored.contains("shrp_"))
+            assertFalse(stored.contains("shrsec_"))
+        }
     }
 }

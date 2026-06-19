@@ -110,7 +110,6 @@ export class DeviceReaderService {
     const activeCount = await tx.deviceReader.count({
       where: {
         type: ReaderType.QR_ANDROID,
-        platform: DevicePlatform.ANDROID,
         status: DeviceReaderStatus.ACTIVE,
         ...(excludingReaderId ? { id: { not: excludingReaderId } } : {})
       }
@@ -122,6 +121,7 @@ export class DeviceReaderService {
     const secret = this.signatures?.generateReaderSecret() ?? `shrsec_${randomBytes(32).toString('base64url')}`;
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
     const type = payload.type ?? ReaderType.GATE;
+    const platform = type === ReaderType.QR_ANDROID ? DevicePlatform.ANDROID : payload.platform ?? DevicePlatform.HARDWARE;
     const allowedModes = payload.allowedModes ?? defaultModes(type);
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -134,7 +134,7 @@ export class DeviceReaderService {
             readerSecretCiphertext: encrypted,
             readerSecretRotatedAt: new Date(),
             type,
-            platform: payload.platform ?? (type === ReaderType.QR_ANDROID ? DevicePlatform.ANDROID : DevicePlatform.HARDWARE),
+            platform,
             appVersion: payload.appVersion,
             appVersionCode: payload.appVersionCode,
             allowedModes,
@@ -240,6 +240,7 @@ export class DeviceReaderService {
             readerSecretRotatedAt: now,
             appVersion: payload.appVersion,
             appVersionCode: payload.appVersionCode,
+            platform: DevicePlatform.ANDROID,
             provisionedAt: now,
             provisioningTokenHash: null,
             provisioningExpiresAt: null,
@@ -302,7 +303,13 @@ export class DeviceReaderService {
       if (before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE) {
         await this.assertAndroidReaderActiveSlotAvailable(tx, id);
       }
-      const updated = await tx.deviceReader.update({ where: { id }, data: { status: payload.status } });
+      const updated = await tx.deviceReader.update({
+        where: { id },
+        data: {
+          status: payload.status,
+          ...(before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE ? { platform: DevicePlatform.ANDROID } : {})
+        }
+      });
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role,

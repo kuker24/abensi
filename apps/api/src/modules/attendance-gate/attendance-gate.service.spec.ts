@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { createHmac, randomUUID } from 'node:crypto';
-import { AndroidReaderMode, CardStatus, DeviceReaderStatus, GateDirection, PrayerType, Prisma, ReaderType, Role } from '@prisma/client';
+import { AndroidReaderMode, CardStatus, DevicePlatform, DeviceReaderStatus, GateDirection, PrayerType, Prisma, ReaderType, Role } from '@prisma/client';
 import { AttendanceGateService } from './attendance-gate.service';
 import { canonicalJson } from '../security/canonical-json';
 import { DeviceSignatureService, sha256Hex } from '../security/device-signature.service';
@@ -407,6 +407,23 @@ describe('DeviceSignatureService signed reader request', () => {
       rawBody,
       headers: { deviceId: 'reader-1', timestamp: new Date().toISOString(), nonce: 'nonce-ambiguous', bodyHash: sha256Hex(rawBody), signature: '0'.repeat(64) }
     })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('menolak QR_ANDROID inactive legacy-platform pada signed request', async () => {
+    const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
+    const service = new DeviceSignatureService({
+      deviceReader: { findMany: jest.fn().mockResolvedValue([{ id: 'reader-android-inactive', deviceId: 'android-legacy', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE, allowedModes: [AndroidReaderMode.MUSHOLA], readerSecretCiphertext: 'unused' }]) }
+    } as any, redis);
+    const rawBody = JSON.stringify({ credentialType: 'QR', qrCode: 'schoolhub:qr:v1:QR_7F3K9X2P8LQ0', mode: AndroidReaderMode.MUSHOLA });
+
+    await expect(service.assertValidSignedReaderRequest({
+      method: 'POST',
+      path: '/api/v1/attendance/qr-reader-scan',
+      rawBody,
+      expectedType: ReaderType.QR_ANDROID,
+      headers: { deviceId: 'android-legacy', timestamp: new Date().toISOString(), nonce: 'nonce-inactive-qr-android', bodyHash: sha256Hex(rawBody), signature: '0'.repeat(64) }
+    })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(redis.setPx).not.toHaveBeenCalled();
   });
 
   it('menolak reader inactive pada signed request', async () => {

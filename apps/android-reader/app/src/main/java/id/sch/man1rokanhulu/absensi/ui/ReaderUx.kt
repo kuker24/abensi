@@ -65,6 +65,7 @@ fun friendlyScanTitle(ok: Boolean, message: String): String {
 private const val SERVER_PROBLEM_MESSAGE = "Server sedang bermasalah. Coba lagi sebentar atau hubungi operator IT."
 private const val NETWORK_PROBLEM_MESSAGE = "Server belum bisa dihubungi. Periksa Wi-Fi atau internet HP."
 private const val READER_REVOKED_MESSAGE = "HP scanner ini sudah dicabut atau dinonaktifkan. Minta admin aktivasi ulang."
+private const val READER_ACCESS_MESSAGE = "HP scanner belum aktif atau aksesnya sudah dicabut. Minta admin aktivasi ulang."
 private const val ACTIVATION_TOKEN_MESSAGE = "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru."
 private const val WRONG_MODE_MESSAGE = "HP ini tidak cocok untuk scan ini. Gunakan HP scanner yang sesuai."
 private const val QR_REVOKED_MESSAGE = "QR tidak dikenal atau sudah dicabut."
@@ -103,7 +104,8 @@ fun friendlyScanMessage(raw: String?): String {
     return when {
         text.contains("sudah tercatat", ignoreCase = true) || text.contains("sudah ada", ignoreCase = true) -> "Sudah tercatat."
         isServerProblem(text) -> SERVER_PROBLEM_MESSAGE
-        isAuthProblem(text) -> READER_REVOKED_MESSAGE
+        isAuthProblem(text) -> READER_ACCESS_MESSAGE
+        isProvisionTokenProblem(text) -> ACTIVATION_TOKEN_MESSAGE
         status == 404 -> QR_REVOKED_MESSAGE
         text.contains("QR", ignoreCase = true) && (text.contains("tidak", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) || text.contains("invalid", ignoreCase = true)) -> QR_REVOKED_MESSAGE
         text.contains("Reader tidak aktif", ignoreCase = true) || text.contains("dinonaktif", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) -> READER_REVOKED_MESSAGE
@@ -111,9 +113,15 @@ fun friendlyScanMessage(raw: String?): String {
         text.contains("mushola", ignoreCase = true) && text.contains("siswa", ignoreCase = true) -> "HP Mushola hanya untuk scan siswa."
         text.contains("luar", ignoreCase = true) && text.contains("jadwal", ignoreCase = true) -> "Di luar jadwal scan. Coba lagi pada jadwal yang benar."
         isNetworkProblem(text) -> NETWORK_PROBLEM_MESSAGE
-        text.contains("Berhasil tercatat", ignoreCase = true) -> text
+        text.contains("tercatat", ignoreCase = true) || text.contains("scan diterima", ignoreCase = true) -> text
         else -> "Scan belum bisa diproses. Coba lagi atau hubungi operator IT."
     }
+}
+
+fun safeScanHistoryMessage(raw: String?, fallback: String): String {
+    val text = raw?.trim().orEmpty()
+    if (text.isBlank()) return fallback
+    return friendlyScanMessage(text)
 }
 
 fun shouldResetProvisioning(raw: String?): Boolean {
