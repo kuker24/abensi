@@ -119,6 +119,35 @@ function safeDateInput(value: string, mode: 'start' | 'end') {
   }
 }
 
+const REPORT_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'Asia/Jakarta'
+});
+
+const REPORT_MONTH_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC'
+});
+
+function formatReportDate(date: Date) {
+  return REPORT_DATE_FORMATTER.format(date);
+}
+
+function formatReportMonth(monthLabel: string) {
+  const [year, month] = monthLabel.split('-').map((value) => Number(value));
+  if (!year || !month) return monthLabel;
+  return REPORT_MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function formatReportRangeLabel(range: DateRange) {
+  const fromLabel = formatReportDate(range.from);
+  const toLabel = formatReportDate(range.to);
+  return fromLabel === toLabel ? fromLabel : `${fromLabel} sampai ${toLabel}`;
+}
+
 @Injectable()
 export class ReportingService {
   constructor(
@@ -1503,8 +1532,8 @@ export class ReportingService {
     const title = REPORT_TYPE_TITLES[normalizedType] ?? 'Laporan Sekolah';
     const generatedAt = new Date().toISOString();
     const rangeLabel = filters.month && 'monthLabel' in rangeForMeta
-      ? `Bulan ${rangeForMeta.monthLabel}`
-      : `${rangeForMeta.from.toISOString().slice(0, 10)} sampai ${rangeForMeta.to.toISOString().slice(0, 10)}`;
+      ? `Bulan ${formatReportMonth((rangeForMeta as DateRange & { monthLabel: string }).monthLabel)}`
+      : formatReportRangeLabel(rangeForMeta);
     const metadata = {
       generatedAt,
       generatedBy: actor?.role ?? 'unknown',

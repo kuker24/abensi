@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, BookOpen, Building2, Calendar, Check, Clock, Copy, CreditCard, DoorOpen, Download, Eye, FileText, Flag, HelpCircle, KeyRound, ListChecks, Plus, QrCode, Radar, RefreshCw, Save, ShieldCheck, Smartphone, Users, Wifi, Zap, Activity, TrendingUp, AlertOctagon, ScanLine } from 'lucide-react';
-import { apiDownload, apiFetch, formatDateTime, go, itemsOf, metaOf, monthNow, qs, readStoredUser, today } from '../../api';
+import { apiDownload, apiFetch, formatDateTime, go, itemsOf, metaOf, qs, readStoredUser, today } from '../../api';
 import { BRAND } from '../../branding';
 import { riskConfirm } from '../../confirm';
 import { useForm, useRemote } from '../../hooks';
@@ -725,16 +725,90 @@ export function SettingsPage({ notify }) {
   return <div className="content"><PageHead eyebrow="ATURAN ABSENSI" title="Aturan Absensi" sub="Atur aturan siswa, guru, mushola, dan HP scanner. Bagian angka/lokasi adalah pengaturan lanjutan." /><SimpleHelpBox title="Pakai pengaturan ini dengan hati-hati" items={['Untuk uji coba, biarkan input QR manual cadangan tetap aktif.', 'Aktifkan aplikasi HP Android sebagai jalur utama jika HP scanner sudah berhasil dipakai.', 'Jangan ubah lokasi sekolah tanpa konfirmasi operator.']} />{policy.loading || !form ? <LoadingState /> : policy.error ? <ErrorState error={policy.error} onRetry={policy.refresh} /> : <Card title="Kebijakan Lokasi"><form className="form-grid" onSubmit={submit}>{[['centerLat', 'Lintang lokasi'], ['centerLng', 'Bujur lokasi'], ['radiusMeter', 'Jarak aman (meter)'], ['arrivalGraceMinutes', 'Toleransi terlambat (menit)'], ['autoMissedGraceMinutes', 'Otomatis ditandai terlewat (menit)']].map(([k, l]) => <Field key={k} label={l}><TextInput type="number" placeholder="Isi angka" value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></Field>)}{[['enforceSessionOpen', 'Wajib berada di area sekolah saat buka sesi'], ['requireGateTapForOpen', 'Guru wajib scan gerbang sebelum buka sesi'], ['allowPicketOverride', 'Guru piket boleh memberi pengecualian']].map(([k, l]) => <label className="checkline" key={k}><input type="checkbox" checked={Boolean(form[k])} onChange={(e) => setForm({ ...form, [k]: e.target.checked })} /> {l}</label>)}<Btn variant="primary"><Save size={14} /> Simpan lokasi</Btn></form></Card>}{attendancePolicy.loading || !attendanceForm ? <LoadingState label="Memuat aturan absensi…" /> : attendancePolicy.error ? <ErrorState error={attendancePolicy.error} onRetry={attendancePolicy.refresh} /> : <Card title="Aturan Absensi" sub="Admin bisa menyalakan atau mematikan syarat scan sesuai aturan sekolah."><form className="form-grid" onSubmit={submitAttendance}>{[['requireStudentGateInBeforeClass', 'Siswa wajib scan gerbang sebelum presensi kelas'], ['requireStudentDhuha', 'Siswa wajib scan Dhuha'], ['requireStudentDzuhur', 'Siswa wajib scan Dzuhur'], ['requireStudentAsharForAfternoon', 'Siswa wajib scan Ashar sebelum pulang jika jadwal sampai sore'], ['requireStudentClassEligibility', 'Kunci presensi kelas jika syarat belum lengkap'], ['requireTeacherGateIn', 'Guru wajib scan gerbang masuk'], ['requireTeacherGateOut', 'Guru wajib scan gerbang keluar'], ['requireStaffGateIn', 'Karyawan/TU/operator wajib scan masuk'], ['requireStaffGateOut', 'Karyawan/TU/operator wajib scan keluar'], ['allowManualOverride', 'Admin/Guru piket boleh verifikasi manual dengan alasan'], ['allowStudentAsharCheckoutOverride', 'Petugas boleh memberi pengecualian pulang tanpa scan Ashar'], ['preferOfficialQrReader', 'Jadikan aplikasi HP Android sebagai jalur utama'], ['legacyQrScanEnabled', 'Izinkan input QR manual cadangan']].map(([k, l]) => <label className="checkline" key={k}><input type="checkbox" checked={Boolean(attendanceForm[k])} onChange={(e) => setAttendanceForm({ ...attendanceForm, [k]: e.target.checked })} /> {l}</label>)}{[['dhuhaStartTime', 'Mulai Dhuha'], ['dhuhaEndTime', 'Selesai Dhuha'], ['dzuhurStartTime', 'Mulai Dzuhur'], ['dzuhurEndTime', 'Selesai Dzuhur'], ['asharStartTime', 'Mulai Ashar'], ['asharEndTime', 'Selesai Ashar'], ['asharRequiredClassEndTime', 'Batas disebut jadwal sore']].map(([k, l]) => <Field key={k} label={l}><TextInput type="time" value={attendanceForm[k]} onChange={(e) => setAttendanceForm({ ...attendanceForm, [k]: e.target.value })} /></Field>)}<Field label="Jeda scan ganda (menit)"><TextInput type="number" value={attendanceForm.duplicateScanWindowMinutes} onChange={(e) => setAttendanceForm({ ...attendanceForm, duplicateScanWindowMinutes: e.target.value })} /></Field><Btn variant="primary"><Save size={14} /> Simpan aturan absensi</Btn></form></Card>}</div>;
 }
 
+export const REPORT_FORMAT_OPTIONS = [
+  { value: 'csv', label: 'CSV Data (.csv)' },
+  { value: 'xlsx', label: 'Excel Resmi (.xlsx)' },
+  { value: 'pdf', label: 'PDF Resmi (.pdf)' },
+  { value: 'docx', label: 'Word Resmi (.docx)' }
+];
+
+const REPORT_EXPORT_TYPES = {
+  'recap/classes': 'recap_classes',
+  'recap/students': 'recap_students',
+  'recap/subjects': 'recap_subjects',
+  'recap/teachers': 'recap_teachers',
+  'teacher-monthly': 'teacher_monthly',
+  'audit-coverage': 'audit_coverage'
+};
+
+const REPORT_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC'
+});
+
+export function formatReportDisplayDate(value) {
+  const [year, month, day] = String(value || '').slice(0, 10).split('-').map((part) => Number(part));
+  if (!year || !month || !day) return value || '—';
+  return REPORT_DATE_FORMATTER.format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+export function formatReportPeriod(from, to) {
+  const fromLabel = formatReportDisplayDate(from);
+  const toLabel = formatReportDisplayDate(to);
+  return fromLabel === toLabel ? fromLabel : `${fromLabel} sampai ${toLabel}`;
+}
+
+function monthFromDate(value) {
+  return /^\d{4}-\d{2}/.test(String(value || '')) ? String(value).slice(0, 7) : today().slice(0, 7);
+}
+
+export function buildOfficialReportExportPath(type, format, filters = {}) {
+  const params = {
+    reportType: REPORT_EXPORT_TYPES[type] || type.replace('/', '_'),
+    format
+  };
+  if (type === 'teacher-monthly') {
+    params.month = filters.month || monthFromDate(filters.from);
+  } else {
+    params.from = filters.from;
+    params.to = filters.to;
+  }
+  ['classId', 'subjectId', 'teacherId', 'studentId'].forEach((key) => {
+    if (filters[key]) params[key] = filters[key];
+  });
+  return `/reports/export${qs(params)}`;
+}
+
+function buildReportPreviewPath(type, filters = {}) {
+  if (type === 'teacher-monthly') {
+    return `/reports/${type}${qs({ month: filters.month || monthFromDate(filters.from), page: 1, limit: 100 })}`;
+  }
+  return `/reports/${type}${qs({ from: filters.from, to: filters.to, page: 1, limit: 100 })}`;
+}
+
 export function ReportsPage({ notify }) {
   const [type, setType] = useState('recap/classes');
   const [format, setFormat] = useState('xlsx');
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
-  const state = useRemote(() => apiFetch(`/reports/${type}${qs({ from, to, page: 1, limit: 100 })}`), [type, from, to]);
+  const previewPath = buildReportPreviewPath(type, { from, to });
+  const state = useRemote(() => apiFetch(previewPath), [previewPath]);
   const [exporting, setExporting] = useState(false);
-  const exportMap = { 'recap/classes': 'recap_classes', 'recap/students': 'recap_students', 'recap/subjects': 'recap_subjects', 'recap/teachers': 'recap_teachers', 'teacher-monthly': 'teacher_monthly', 'audit-coverage': 'audit_coverage' };
-  async function exportNow() { setExporting(true); try { await apiDownload(`/reports/export${qs({ reportType: exportMap[type], format, from, to, month: monthNow() })}`); notify('Berkas laporan berhasil diunduh.'); } catch (error) { notify(error.message || 'Unduhan gagal.', 'bad'); } finally { setExporting(false); } }
-  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub="Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi." actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label><SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}><option value="pdf">PDF Resmi</option><option value="docx">DOCX Word</option><option value="xlsx">XLSX</option><option value="csv">CSV</option></SelectInput><Btn onClick={() => window.print()}><FileText size={14} /> Cetak</Btn><Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Download'}</Btn></>} /><StepGuide title="Cara membuat laporan" steps={['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih PDF/DOCX/XLSX/CSV lalu klik Download.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {from} sampai {to}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
+  const periodLabel = formatReportPeriod(from, to);
+  async function exportNow() {
+    setExporting(true);
+    try {
+      await apiDownload(buildOfficialReportExportPath(type, format, { from, to }));
+      notify('Laporan resmi berhasil diunduh.');
+    } catch {
+      notify('Laporan belum bisa diunduh. Coba persempit periode atau hubungi admin.', 'bad');
+    } finally {
+      setExporting(false);
+    }
+  }
+  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub="Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi." actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label><SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn><Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn></>} /><StepGuide title="Cara membuat laporan" steps={['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
 }
 
 function GenericTableState({ state }) {

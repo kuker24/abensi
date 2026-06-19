@@ -134,21 +134,59 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
   return data;
 }
 
-export async function apiDownload(path: string, filename = 'export.xlsx'): Promise<void> {
-  const response = await fetch(`${API_BASE}${path}`, {
+export interface ApiDownloadResult {
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
+function filenameFromContentDisposition(disposition: string | null): string | null {
+  if (!disposition) return null;
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.replace(/^\"|\"$/g, ''));
+    } catch {
+      return encoded.replace(/^\"|\"$/g, '');
+    }
+  }
+  const regular = disposition.match(/filename=\"?([^\";]+)\"?/i)?.[1];
+  return regular ? regular.trim() : null;
+}
+
+export async function apiDownload(path: string, filename = 'export.xlsx'): Promise<ApiDownloadResult> {
+  const request = () => fetch(`${API_BASE}${path}`, {
+    headers: { accept: '*/*' },
     credentials: 'include'
   });
+  let response = await request();
+  const canRefresh = path !== '/auth/login' && path !== '/auth/refresh';
+  let authExpiredNotified = false;
+  if (response.status === 401 && canRefresh) {
+    if (await refreshAuth()) {
+      response = await request();
+    } else {
+      notifyAuthExpired();
+      authExpiredNotified = true;
+    }
+  }
+  if (response.status === 401 && canRefresh && !authExpiredNotified) notifyAuthExpired();
   if (!response.ok) throw new Error(`Unduhan gagal HTTP ${response.status}`);
-  const blob = await response.blob();
-  const disposition = response.headers.get('content-disposition') || '';
-  const match = disposition.match(/filename="?([^";]+)"?/);
-  const finalName = match?.[1] || filename;
+
+  const contentType = response.headers.get('content-type') || 'application/octet-stream';
+  const responseBlob = await response.blob();
+  const blob = responseBlob.type === contentType ? responseBlob : new Blob([responseBlob], { type: contentType });
+  const finalName = filenameFromContentDisposition(response.headers.get('content-disposition')) || filename;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = finalName;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
   anchor.click();
+  document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+  return { filename: finalName, contentType: blob.type, size: blob.size };
 }
 
 export function itemsOf<T = any>(payload: any): T[] {
