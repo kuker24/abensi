@@ -20,6 +20,10 @@ const routeHandlers = [
   'recapSubjects',
   'recapTeachers',
   'teacherMonthly',
+  'staffGateAttendance',
+  'teacherSessionActivity',
+  'studentPrayerAttendance',
+  'studentWorshipRecap',
   'auditCoverage',
   'exportReport'
 ] as const;

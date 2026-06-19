@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  DeviceReaderStatus,
+  GateDirection,
+  PrayerType,
+  ReaderType,
   Role,
   SessionStatus,
   StudentAttendanceStatus,
@@ -270,7 +274,8 @@ export class ReportingService {
     const cached = await this.getCached<Record<string, unknown>>(cacheKey);
     if (cached) return cached;
 
-    const [sessionsToday, closedSessions, openFlags, gateTapToday, teacherPresentToday] = await Promise.all([
+    const staffRoles = [Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER];
+    const [sessionsToday, closedSessions, openSessions, openFlags, gateTapToday, staffPresentToday, teacherPresentToday, prayerDhuhaToday, prayerDzuhurToday, activeAndroidReaders] = await Promise.all([
       this.prisma.session.count({
         where: {
           startsAt: { gte: dayStart, lte: dayEnd }
@@ -280,6 +285,12 @@ export class ReportingService {
         where: {
           startsAt: { gte: dayStart, lte: dayEnd },
           status: SessionStatus.CLOSED
+        }
+      }),
+      this.prisma.session.count({
+        where: {
+          startsAt: { gte: dayStart, lte: dayEnd },
+          status: SessionStatus.OPEN
         }
       }),
       this.prisma.reconciliationFlag.count({
@@ -292,6 +303,13 @@ export class ReportingService {
           tappedAt: { gte: dayStart, lte: dayEnd }
         }
       }),
+      this.prisma.gateLog.count({
+        where: {
+          direction: GateDirection.IN,
+          tappedAt: { gte: dayStart, lte: dayEnd },
+          user: { role: { in: staffRoles }, active: true }
+        }
+      }),
       this.prisma.teacherSessionPresence.count({
         where: {
           status: {
@@ -301,19 +319,62 @@ export class ReportingService {
             startsAt: { gte: dayStart, lte: dayEnd }
           }
         }
+      }),
+      this.prisma.prayerAttendanceLog.count({ where: { attendanceDate: businessDayBounds(dayStart).date, prayerType: PrayerType.DHUHA } }),
+      this.prisma.prayerAttendanceLog.count({ where: { attendanceDate: businessDayBounds(dayStart).date, prayerType: PrayerType.DZUHUR } }),
+      this.prisma.deviceReader.findMany({
+        where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE },
+        select: { id: true, name: true, locationName: true, locationLabel: true, allowedModes: true, lastSeenAt: true, lastSignedScanAt: true, status: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 10
       })
     ]);
 
     const coverage = sessionsToday === 0 ? 0 : Number(((closedSessions / sessionsToday) * 100).toFixed(2));
 
+    const findReader = (mode: 'gate' | 'mushola') => activeAndroidReaders.find((reader) => {
+      const modes = (reader.allowedModes ?? []).map(String);
+      return mode === 'gate'
+        ? modes.includes('GATE_IN') || modes.includes('GATE_OUT')
+        : modes.includes('MUSHOLA');
+    }) ?? null;
+    const readerPayload = (reader: typeof activeAndroidReaders[number] | null) => {
+      if (!reader) return null;
+      const lastSeenAt = reader.lastSignedScanAt || reader.lastSeenAt;
+      const online = lastSeenAt ? Date.now() - lastSeenAt.getTime() <= 5 * 60_000 : false;
+      return {
+        id: reader.id,
+        name: reader.name,
+        location: reader.locationName || reader.locationLabel || null,
+        status: reader.status,
+        online,
+        lastSeenAt,
+        allowedModes: reader.allowedModes
+      };
+    };
+
     const result = {
       date: dayStart.toISOString(),
       sessionsToday,
       closedSessions,
+      openSessions,
+      unclosedSessions: openSessions,
       attendanceCoveragePercent: coverage,
       anomalyOpenCount: openFlags,
+      openFlags,
       gateTapToday,
-      teacherPresenceCount: teacherPresentToday
+      gateLogsToday: gateTapToday,
+      staffPresentToday,
+      teacherPresenceCount: teacherPresentToday,
+      teacherTeachingToday: teacherPresentToday,
+      prayerDhuhaToday,
+      prayerDzuhurToday,
+      androidReaders: {
+        activeCount: activeAndroidReaders.length,
+        maxActive: 2,
+        gate: readerPayload(findReader('gate')),
+        mushola: readerPayload(findReader('mushola'))
+      }
     };
 
     await this.setCached(cacheKey, result, date ? 60 : 10);
@@ -1364,6 +1425,162 @@ export class ReportingService {
     };
   }
 
+  async staffGateAttendance(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const staffRoles = [Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER];
+    const logs = await this.prisma.gateLog.findMany({
+      where: {
+        tappedAt: { gte: range.from, lte: range.to },
+        user: { role: { in: staffRoles }, active: true }
+      },
+      include: {
+        user: { select: { id: true, fullName: true, username: true, role: true } }
+      },
+      orderBy: [{ businessDate: 'asc' }, { user: { fullName: 'asc' } }, { tappedAt: 'asc' }]
+    });
+
+    const grouped = new Map<string, { userId: string; fullName: string; username: string; role: Role; date: string; datang: Date | null; pulang: Date | null }>();
+    for (const log of logs) {
+      const date = businessDateKey(log.businessDate ?? log.tappedAt);
+      const key = `${log.userId}:${date}`;
+      const current = grouped.get(key) ?? { userId: log.userId, fullName: log.user.fullName, username: log.user.username, role: log.user.role, date, datang: null, pulang: null };
+      if (log.direction === GateDirection.IN && (!current.datang || log.tappedAt < current.datang)) current.datang = log.tappedAt;
+      if (log.direction === GateDirection.OUT && (!current.pulang || log.tappedAt > current.pulang)) current.pulang = log.tappedAt;
+      grouped.set(key, current);
+    }
+
+    const rows = [...grouped.values()].map((item) => ({
+      userId: item.userId,
+      fullName: item.fullName,
+      username: item.username,
+      role: item.role,
+      date: item.date,
+      datang: item.datang?.toISOString() ?? null,
+      pulang: item.pulang?.toISOString() ?? null,
+      status: item.datang && item.pulang ? 'LENGKAP' : item.datang ? 'DATANG' : 'BELUM_SCAN',
+      note: item.datang && !item.pulang ? 'Belum scan pulang' : ''
+    }));
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
+  async teacherSessionActivity(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const sessions = await this.prisma.session.findMany({
+      where: this.buildSessionWhere(range, filters),
+      include: {
+        schoolClass: { select: { code: true, name: true } },
+        subject: { select: { code: true, name: true } },
+        teacher: { select: { id: true, fullName: true, username: true } },
+        teacherPresence: { select: { teacherId: true, status: true, checkInAt: true, checkOutAt: true } }
+      },
+      orderBy: { startsAt: 'asc' }
+    });
+
+    const rows = sessions.map((session) => {
+      const presence = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
+      return {
+        sessionId: session.id,
+        teacherId: session.teacherId,
+        teacherName: session.teacher.fullName,
+        username: session.teacher.username,
+        schoolClass: session.schoolClass.code,
+        subjectName: session.subject.name,
+        startsAt: session.startsAt.toISOString(),
+        endsAt: session.endsAt.toISOString(),
+        startedAt: presence?.checkInAt?.toISOString() ?? null,
+        closedAt: presence?.checkOutAt?.toISOString() ?? null,
+        status: presence?.status ?? session.status
+      };
+    });
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
+  async studentPrayerAttendance(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const logs = await this.prisma.prayerAttendanceLog.findMany({
+      where: {
+        scannedAt: { gte: range.from, lte: range.to },
+        ...(filters.studentId ? { studentId: filters.studentId } : {})
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            enrollments: { where: { active: true }, include: { schoolClass: { select: { code: true, name: true } } }, take: 1 }
+          }
+        }
+      },
+      orderBy: { scannedAt: 'desc' }
+    });
+    const readerIds = Array.from(new Set(logs.map((log) => log.readerId).filter(Boolean))) as string[];
+    const readers = readerIds.length ? await this.prisma.deviceReader.findMany({ where: { id: { in: readerIds } }, select: { id: true, name: true, locationName: true, locationLabel: true } }) : [];
+    const readerMap = new Map(readers.map((reader) => [reader.id, reader]));
+
+    const rows = logs.map((log) => ({
+      studentId: log.studentId,
+      fullName: log.student.fullName,
+      username: log.student.username,
+      schoolClass: log.student.enrollments[0]?.schoolClass?.code ?? null,
+      prayerType: log.prayerType,
+      date: businessDateKey(log.attendanceDate ?? log.scannedAt),
+      scannedAt: log.scannedAt.toISOString(),
+      reader: (log.readerId ? readerMap.get(log.readerId)?.name : null) ?? log.deviceId ?? '—',
+      status: 'TERCATAT'
+    }));
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
+  async studentWorshipRecap(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const logs = await this.prisma.prayerAttendanceLog.findMany({
+      where: {
+        scannedAt: { gte: range.from, lte: range.to },
+        ...(filters.studentId ? { studentId: filters.studentId } : {})
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            enrollments: { where: { active: true }, include: { schoolClass: { select: { code: true, name: true } } }, take: 1 }
+          }
+        }
+      }
+    });
+
+    const grouped = new Map<string, { studentId: string; fullName: string; username: string; schoolClass: string | null; counters: Record<PrayerType, number> }>();
+    for (const log of logs) {
+      const existing = grouped.get(log.studentId) ?? {
+        studentId: log.studentId,
+        fullName: log.student.fullName,
+        username: log.student.username,
+        schoolClass: log.student.enrollments[0]?.schoolClass?.code ?? null,
+        counters: { DHUHA: 0, DZUHUR: 0, ASHAR: 0 }
+      };
+      existing.counters[log.prayerType] += 1;
+      grouped.set(log.studentId, existing);
+    }
+
+    const rows = [...grouped.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'id')).map((item) => ({
+      studentId: item.studentId,
+      fullName: item.fullName,
+      username: item.username,
+      schoolClass: item.schoolClass,
+      dhuhaCount: item.counters.DHUHA,
+      dzuhurCount: item.counters.DZUHUR,
+      asharCount: item.counters.ASHAR,
+      periodSummary: `${item.counters.DHUHA} Dhuha · ${item.counters.DZUHUR} Dzuhur · ${item.counters.ASHAR} Ashar`
+    }));
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
   private loadReportLogo(): Buffer | null {
     const candidates = [
       join(process.cwd(), 'assets', 'logoman1.jpeg'),
@@ -1391,6 +1608,10 @@ export class ReportingService {
       'recap_subjects',
       'recap_teachers',
       'teacher_monthly',
+      'staff_gate_attendance',
+      'teacher_session_activity',
+      'student_prayer_attendance',
+      'student_worship_recap',
       'audit_coverage'
     ]);
 
@@ -1498,6 +1719,65 @@ export class ReportingService {
         telat: item.counters.TELAT,
         excused_absence: item.counters.EXCUSED_ABSENCE,
         alpa_mengajar: item.counters.ALPA_MENGAJAR
+      }));
+    }
+
+    if (normalizedType === 'staff_gate_attendance') {
+      const data = await this.staffGateAttendance(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        full_name: item.fullName,
+        username: item.username,
+        role: item.role,
+        date: item.date,
+        datang: item.datang,
+        pulang: item.pulang,
+        status: item.status,
+        note: item.note
+      }));
+    }
+
+    if (normalizedType === 'teacher_session_activity') {
+      const data = await this.teacherSessionActivity(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        teacher_id: item.teacherId,
+        teacher_name: item.teacherName,
+        username: item.username,
+        school_class: item.schoolClass,
+        subject_name: item.subjectName,
+        starts_at: item.startsAt,
+        ends_at: item.endsAt,
+        started_at: item.startedAt,
+        closed_at: item.closedAt,
+        status: item.status
+      }));
+    }
+
+    if (normalizedType === 'student_prayer_attendance') {
+      const data = await this.studentPrayerAttendance(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        student_id: item.studentId,
+        full_name: item.fullName,
+        username: item.username,
+        school_class: item.schoolClass,
+        prayer_type: item.prayerType,
+        date: item.date,
+        scanned_at: item.scannedAt,
+        reader: item.reader,
+        status: item.status
+      }));
+    }
+
+    if (normalizedType === 'student_worship_recap') {
+      const data = await this.studentWorshipRecap(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        student_id: item.studentId,
+        full_name: item.fullName,
+        username: item.username,
+        school_class: item.schoolClass,
+        dhuha_count: item.dhuhaCount,
+        dzuhur_count: item.dzuhurCount,
+        ashar_count: item.asharCount,
+        period_summary: item.periodSummary
       }));
     }
 

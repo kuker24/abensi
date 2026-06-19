@@ -59,9 +59,15 @@ import id.sch.man1rokanhulu.absensi.ui.components.FeedbackData
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
 import id.sch.man1rokanhulu.absensi.ui.components.ModeChipRow
 import id.sch.man1rokanhulu.absensi.ui.components.StatusBar
-import id.sch.man1rokanhulu.absensi.ui.components.modeLabel
+import id.sch.man1rokanhulu.absensi.ui.friendlyScanMessage
+import id.sch.man1rokanhulu.absensi.ui.friendlyScanTitle
+import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
+import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
+import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
+import id.sch.man1rokanhulu.absensi.ui.showManualModePicker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.io.IOException
 
 data class ScannerCallbacks(
@@ -69,7 +75,8 @@ data class ScannerCallbacks(
     val onModeChange: (String) -> Unit,
     val onBack: () -> Unit,
     val onHelp: () -> Unit,
-    val onRetryQueue: () -> Unit
+    val onRetryQueue: () -> Unit,
+    val onProvisioningLost: () -> Unit = {}
 )
 
 @Composable
@@ -90,7 +97,9 @@ fun ScannerScreen(
     val queue = remember { OfflineQueueRepository(context) }
     val scanGate = remember { ContinuousScanGate(3000) }
     val latestMode by rememberUpdatedState(mode)
-    var feedback by remember { mutableStateOf(FeedbackData("Siap Scan", "Arahkan QR siswa ke kamera. Tahan stabil sampai berbunyi.", FeedbackTone.IDLE)) }
+    val deviceTitle = readerDeviceTitle(allowedModes)
+    val deviceSummary = readerModeSummary(allowedModes)
+    var feedback by remember { mutableStateOf(FeedbackData("Siap Scan", "Arahkan QR ke kamera. Tahan stabil sampai berbunyi.", FeedbackTone.IDLE)) }
     var busy by remember { mutableStateOf(false) }
     var connection by remember { mutableStateOf(ConnectionStatus.CHECKING) }
     var torchOn by remember { mutableStateOf(false) }
@@ -148,6 +157,8 @@ fun ScannerScreen(
                                     val deviceId = config.deviceId ?: error("HP belum diaktifkan.")
                                     val secret = config.readerSecret ?: error("HP belum diaktifkan.")
                                     val scan = api.scanQr(parsed.qrCode, latestMode, deviceId, secret)
+                                    val friendly = friendlyScanMessage(scan.message)
+                                    val summary = parseServerScanSummary(scan.body)
                                     if (scan.ok) {
                                         historyStore.add(
                                             ScanHistoryEntry(
@@ -155,10 +166,13 @@ fun ScannerScreen(
                                                 mode = latestMode,
                                                 status = ScanHistoryStatus.SENT,
                                                 maskedCode = ScanHistoryStore.maskQr(parsed.opaqueCode),
-                                                message = scan.message.ifBlank { "Scan diterima." }
+                                                message = friendly.ifBlank { "Scan diterima." },
+                                                displayName = summary.displayName,
+                                                displayMeta = summary.displayMeta,
+                                                actionLabel = summary.actionLabel
                                             )
                                         )
-                                        FeedbackData("Berhasil", scan.message.ifBlank { "Scan diterima." }, FeedbackTone.SUCCESS)
+                                        FeedbackData(friendlyScanTitle(true, friendly), friendly.ifBlank { "Scan diterima." }, FeedbackTone.SUCCESS)
                                     } else {
                                         historyStore.add(
                                             ScanHistoryEntry(
@@ -166,10 +180,14 @@ fun ScannerScreen(
                                                 mode = latestMode,
                                                 status = ScanHistoryStatus.REJECTED,
                                                 maskedCode = ScanHistoryStore.maskQr(parsed.opaqueCode),
-                                                message = scan.message.ifBlank { "Ditolak server." }
+                                                message = friendly.ifBlank { "Scan ditolak server." },
+                                                displayName = summary.displayName,
+                                                displayMeta = summary.displayMeta,
+                                                actionLabel = summary.actionLabel
                                             )
                                         )
-                                        FeedbackData("Ditolak", scan.message.ifBlank { "Scan ditolak server." }, FeedbackTone.ERROR)
+                                        if (shouldResetProvisioning(scan.message)) callbacks.onProvisioningLost()
+                                        FeedbackData(friendlyScanTitle(false, friendly), friendly.ifBlank { "Scan ditolak server." }, FeedbackTone.ERROR)
                                     }
                                 } catch (e: IOException) {
                                     val saved = runCatching { queue.enqueue(raw, latestMode) }.getOrDefault(false)
@@ -190,7 +208,9 @@ fun ScannerScreen(
                                         FeedbackData("Antrean Penuh", "Scan belum tersimpan. Sambungkan internet lalu coba scan lagi.", FeedbackTone.ERROR)
                                     }
                                 } catch (e: Exception) {
-                                    FeedbackData("Ditolak", e.message ?: "QR tidak bisa dipakai.", FeedbackTone.ERROR)
+                                    val friendly = friendlyScanMessage(e.message)
+                                    if (shouldResetProvisioning(e.message)) callbacks.onProvisioningLost()
+                                    FeedbackData(friendlyScanTitle(false, friendly), friendly, FeedbackTone.ERROR)
                                 }
                                 feedback = nextFeedback
                                 callbacks.onResult(nextFeedback)
@@ -231,10 +251,10 @@ fun ScannerScreen(
                 StatusBar(
                     connection = connection,
                     queueCount = queueCount,
-                    locationLabel = config.locationLabel.ifBlank { modeLabel(mode) },
+                    locationLabel = config.locationLabel.ifBlank { "$deviceTitle · $deviceSummary" },
                     compact = true
                 )
-                if (allowedModes.size > 1) {
+                if (showManualModePicker(allowedModes)) {
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(14.dp))
@@ -352,3 +372,29 @@ private fun CameraPermissionRequiredScreen(
         }
     }
 }
+
+private data class ServerScanSummary(
+    val displayName: String? = null,
+    val displayMeta: String? = null,
+    val actionLabel: String? = null
+)
+
+private fun parseServerScanSummary(body: String): ServerScanSummary = runCatching {
+    val obj = JSONObject(body.ifBlank { "{}" })
+    val user = obj.optJSONObject("user")
+    val item = obj.optJSONObject("item")
+    val name = user?.optString("fullName")?.ifBlank { null }
+    val role = user?.optString("role")?.ifBlank { null }?.replace('_', ' ')
+    val className = user?.optString("className")?.ifBlank { null }
+    val action = obj.optString("action").ifBlank { null }
+    val kind = obj.optString("kind").ifBlank { null }
+    val prayer = item?.optString("prayerType")?.ifBlank { null }
+    val actionLabel = when {
+        !action.isNullOrBlank() -> action
+        kind == "PRAYER" && !prayer.isNullOrBlank() -> prayer.lowercase().replaceFirstChar { it.uppercase() }
+        kind == "CHECK_ONLY" -> "Cek QR"
+        else -> kind
+    }
+    val meta = listOfNotNull(role, className).joinToString(" · ").ifBlank { null }
+    ServerScanSummary(name, meta, actionLabel)
+}.getOrDefault(ServerScanSummary())

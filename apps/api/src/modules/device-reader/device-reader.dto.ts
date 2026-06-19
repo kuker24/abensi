@@ -1,5 +1,5 @@
 import { AndroidReaderMode, DevicePlatform, DeviceReaderStatus, ReaderType } from '@prisma/client';
-import { ArrayUnique, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { ArrayUnique, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class CreateReaderDto {
   @IsString()
@@ -115,6 +115,7 @@ export class AndroidProvisionStartDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(60)
   expiresInMinutes?: number;
 }
 

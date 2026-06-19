@@ -26,6 +26,9 @@ function generateProvisionToken() {
   return `shrp_${randomBytes(24).toString('base64url')}`;
 }
 
+export const MAX_ACTIVE_ANDROID_READERS = 2;
+export const ANDROID_READER_LIMIT_MESSAGE = 'Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.';
+
 const MAX_PROVISION_TOKEN_LENGTH = 128;
 const PROVISION_TOKEN_PATTERN = /^shrp_[A-Za-z0-9_-]{16,}$/;
 
@@ -55,8 +58,12 @@ function uniqueProvisioningMatch<T extends { id: string; provisioningTokenHash?:
 function defaultModes(type?: ReaderType) {
   if (type === ReaderType.GATE) return [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT];
   if (type === ReaderType.MUSHOLA) return [AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY];
-  if (type === ReaderType.QR_ANDROID) return [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY];
+  if (type === ReaderType.QR_ANDROID) return [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT];
   return [];
+}
+
+function clampProvisionMinutes(value?: number) {
+  return Math.max(1, Math.min(60, value ?? 15));
 }
 
 interface Actor {
@@ -99,13 +106,26 @@ export class DeviceReaderService {
     return this.redact(match.reader);
   }
 
+  private async assertAndroidReaderActiveSlotAvailable(tx: Pick<PrismaService, 'deviceReader'> | Prisma.TransactionClient, excludingReaderId?: string | null) {
+    const activeCount = await tx.deviceReader.count({
+      where: {
+        type: ReaderType.QR_ANDROID,
+        status: DeviceReaderStatus.ACTIVE,
+        ...(excludingReaderId ? { id: { not: excludingReaderId } } : {})
+      }
+    });
+    if (activeCount >= MAX_ACTIVE_ANDROID_READERS) throw new ConflictException(ANDROID_READER_LIMIT_MESSAGE);
+  }
+
   async createReader(payload: CreateReaderDto, actor: Actor) {
     const secret = this.signatures?.generateReaderSecret() ?? `shrsec_${randomBytes(32).toString('base64url')}`;
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
     const type = payload.type ?? ReaderType.GATE;
+    const platform = type === ReaderType.QR_ANDROID ? DevicePlatform.ANDROID : payload.platform ?? DevicePlatform.HARDWARE;
     const allowedModes = payload.allowedModes ?? defaultModes(type);
     try {
       return await this.prisma.$transaction(async (tx) => {
+        if (type === ReaderType.QR_ANDROID) await this.assertAndroidReaderActiveSlotAvailable(tx);
         const created = await tx.deviceReader.create({
           data: {
             name: payload.name,
@@ -114,7 +134,7 @@ export class DeviceReaderService {
             readerSecretCiphertext: encrypted,
             readerSecretRotatedAt: new Date(),
             type,
-            platform: payload.platform ?? (type === ReaderType.QR_ANDROID ? DevicePlatform.ANDROID : DevicePlatform.HARDWARE),
+            platform,
             appVersion: payload.appVersion,
             appVersionCode: payload.appVersionCode,
             allowedModes,
@@ -146,9 +166,10 @@ export class DeviceReaderService {
 
   async startAndroidProvision(payload: AndroidProvisionStartDto, actor: Actor) {
     const token = generateProvisionToken();
-    const expiresAt = new Date(Date.now() + Math.max(1, payload.expiresInMinutes ?? 15) * 60_000);
+    const expiresAt = new Date(Date.now() + clampProvisionMinutes(payload.expiresInMinutes) * 60_000);
     const allowedModes = payload.allowedModes?.length ? payload.allowedModes : defaultModes(ReaderType.QR_ANDROID);
     const created = await this.prisma.$transaction(async (tx) => {
+      await this.assertAndroidReaderActiveSlotAvailable(tx);
       const item = await tx.deviceReader.create({
         data: {
           name: payload.name,
@@ -202,6 +223,7 @@ export class DeviceReaderService {
     const tokenHashes = readerCredentialDigestCandidates(provisionToken);
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
+        await this.assertAndroidReaderActiveSlotAvailable(tx, reader.id);
         const claimed = await tx.deviceReader.updateMany({
           where: {
             id: reader.id,
@@ -218,6 +240,7 @@ export class DeviceReaderService {
             readerSecretRotatedAt: now,
             appVersion: payload.appVersion,
             appVersionCode: payload.appVersionCode,
+            platform: DevicePlatform.ANDROID,
             provisionedAt: now,
             provisioningTokenHash: null,
             provisioningExpiresAt: null,
@@ -277,7 +300,16 @@ export class DeviceReaderService {
     if (before.status === payload.status) throw new BadRequestException('Status reader sudah sama.');
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.deviceReader.update({ where: { id }, data: { status: payload.status } });
+      if (before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE) {
+        await this.assertAndroidReaderActiveSlotAvailable(tx, id);
+      }
+      const updated = await tx.deviceReader.update({
+        where: { id },
+        data: {
+          status: payload.status,
+          ...(before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE ? { platform: DevicePlatform.ANDROID } : {})
+        }
+      });
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role,

@@ -280,6 +280,67 @@ export class ReportingController {
     return this.reportingService.teacherMonthly(pagination, { month, teacherId });
   }
 
+  @Get('staff-gate-attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  staffGateAttendance(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.staffGateAttendance(pagination, { from, to });
+  }
+
+  @Get('teacher-session-activity')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  teacherSessionActivity(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.teacherSessionActivity(pagination, { from, to, classId, subjectId, teacherId });
+  }
+
+  @Get('student-prayer-attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  studentPrayerAttendance(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('studentId') studentId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.studentPrayerAttendance(pagination, { from, to, studentId });
+  }
+
+  @Get('student-worship-recap')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  studentWorshipRecap(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('studentId') studentId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.studentWorshipRecap(pagination, { from, to, studentId });
+  }
+
   @Get('audit-coverage')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.DEVELOPER)
