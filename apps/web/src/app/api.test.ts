@@ -36,9 +36,7 @@ describe('apiDownload official report downloads', () => {
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['PK official workbook'], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    }), {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('PK official workbook', {
       status: 200,
       headers: {
         'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

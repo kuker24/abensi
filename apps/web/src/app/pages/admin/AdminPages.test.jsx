@@ -58,9 +58,7 @@ describe('official report download UI', () => {
     const fetchMock = vi.fn(async (input) => {
       const url = String(input);
       if (url.includes('/reports/export')) {
-        return new Response(new Blob(['PK official workbook'], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        }), {
+        return new Response('PK official workbook', {
           status: 200,
           headers: {
             'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
