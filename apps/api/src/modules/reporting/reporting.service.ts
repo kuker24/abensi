@@ -8,6 +8,7 @@ import {
   SessionStatus,
   StudentAttendanceStatus,
   TeacherSessionStatus,
+  AttendanceReviewState,
   type Prisma
 } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -1774,10 +1775,12 @@ export class ReportingService {
         });
         const requiredPrayerSet = new Set(requiredPrayers);
         const attendanceRecords = classSessions.flatMap((session) => session.attendances.filter((attendance) => attendance.studentId === enrollment.studentId));
-        const presentCount = attendanceRecords.filter((attendance) => attendance.status === StudentAttendanceStatus.HADIR || attendance.status === StudentAttendanceStatus.TELAT).length;
-        const nonPresentCount = attendanceRecords.filter((attendance) => attendance.status !== StudentAttendanceStatus.HADIR && attendance.status !== StudentAttendanceStatus.TELAT).length;
+        const confirmedAttendanceRecords = attendanceRecords.filter((attendance) => attendance.reviewState !== AttendanceReviewState.DEFAULTED);
+        const defaultedAttendanceCount = attendanceRecords.length - confirmedAttendanceRecords.length;
+        const presentCount = confirmedAttendanceRecords.filter((attendance) => attendance.status === StudentAttendanceStatus.HADIR || attendance.status === StudentAttendanceStatus.TELAT).length;
+        const nonPresentCount = confirmedAttendanceRecords.filter((attendance) => attendance.status !== StudentAttendanceStatus.HADIR && attendance.status !== StudentAttendanceStatus.TELAT).length;
         const scheduledCount = classSessions.length;
-        const missingClassCount = Math.max(0, scheduledCount - attendanceRecords.length);
+        const missingClassCount = Math.max(0, scheduledCount - confirmedAttendanceRecords.length);
         const missingPrayerTypes = requiredPrayers.filter((prayerType) => !completedPrayers.has(prayerType));
         const missingCodes: StudentDailyMissingRequirement[] = [];
         if (!gate.in) missingCodes.push('BELUM_SCAN_DATANG');
@@ -1815,7 +1818,8 @@ export class ReportingService {
           gateDepartureAt: gate.out?.toISOString() ?? null,
           classAttendanceSummary: {
             scheduledCount,
-            recordedCount: attendanceRecords.length,
+            recordedCount: confirmedAttendanceRecords.length,
+            defaultedCount: defaultedAttendanceCount,
             presentCount,
             missingCount: missingClassCount,
             nonPresentCount

@@ -29,6 +29,7 @@ function makePrisma(user: any) {
     smartCard: { update: jest.fn() },
     deviceReader: { updateMany: jest.fn(), update: jest.fn().mockResolvedValue({ id: 'reader-1' }) },
     prayerAttendanceLog: { create: jest.fn().mockResolvedValue({ id: 'prayer-1', studentId: user.id, prayerType: PrayerType.ASHAR }) },
+    studentAttendance: { create: jest.fn(), createMany: jest.fn(), update: jest.fn(), updateMany: jest.fn(), upsert: jest.fn() },
     qrCredential: { update: jest.fn().mockResolvedValue({ id: 'qr-1' }) },
     attendanceOverride: { upsert: jest.fn().mockResolvedValue({ id: 'override-1', studentId: user.id, status: 'APPROVED' }) },
     auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
@@ -86,6 +87,9 @@ describe('AttendanceGateService adaptive QR scan', () => {
     expect(result.kind).toBe('GATE');
     expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 'siswa-1', direction: GateDirection.IN, businessDate: expect.any(Date), manualReason: 'Validasi manual UAT presensi siswa.' }) }));
     expect(prisma.__tx.gateLog.create.mock.calls[0][0].data.tappedAt.getFullYear()).not.toBe(2020);
+    expect(prisma.__tx.studentAttendance.create).not.toHaveBeenCalled();
+    expect(prisma.__tx.studentAttendance.createMany).not.toHaveBeenCalled();
+    expect(prisma.__tx.studentAttendance.updateMany).not.toHaveBeenCalled();
   });
 
   it('memetakan unique businessDate/direction menjadi kode konflik stabil', async () => {
@@ -172,6 +176,9 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
     expect(result.message).toBe('Sholat Ashar tercatat.');
     expect(prisma.__tx.prayerAttendanceLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ prayerType: PrayerType.ASHAR, signatureVerified: true }) }));
+    expect(prisma.__tx.studentAttendance.create).not.toHaveBeenCalled();
+    expect(prisma.__tx.studentAttendance.createMany).not.toHaveBeenCalled();
+    expect(prisma.__tx.studentAttendance.updateMany).not.toHaveBeenCalled();
   });
 
   it('mengembalikan pesan ramah saat scan ibadah duplikat dan tidak menimpa log lama', async () => {

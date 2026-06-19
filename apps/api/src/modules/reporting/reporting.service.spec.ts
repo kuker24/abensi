@@ -1,4 +1,4 @@
-import { GateDirection, PrayerType, StudentAttendanceStatus } from '@prisma/client';
+import { AttendanceReviewState, GateDirection, PrayerType, Role, StudentAttendanceStatus } from '@prisma/client';
 import { ReportingService } from './reporting.service';
 
 const dateKey = '2026-06-19';
@@ -20,6 +20,7 @@ function makeService(options: {
   gateIn?: boolean;
   gateOut?: boolean;
   classStatus?: StudentAttendanceStatus | null;
+  classReviewState?: AttendanceReviewState;
   prayers?: readonly PrayerType[];
 } = {}) {
   const gateLogs = [
@@ -27,7 +28,7 @@ function makeService(options: {
     options.gateOut && { userId: student.id, direction: GateDirection.OUT, businessDate, tappedAt: new Date('2026-06-19T08:00:00.000Z') }
   ].filter(Boolean);
   const attendances = options.classStatus
-    ? [{ studentId: student.id, status: options.classStatus, reviewState: 'CONFIRMED' }]
+    ? [{ studentId: student.id, status: options.classStatus, reviewState: options.classReviewState ?? AttendanceReviewState.CONFIRMED }]
     : [];
   const prayerLogs = (options.prayers ?? []).map((prayerType, index) => ({
     studentId: student.id,
@@ -99,5 +100,62 @@ describe('ReportingService student daily completeness', () => {
 
     expect(row.finalStatus).toBe('PERLU_VERIFIKASI');
     expect(row.missingRequirements).toEqual(['Perlu verifikasi']);
+  });
+
+  it('treats DEFAULTED ALPA as belum diabsen guru', async () => {
+    const { result, row } = await firstRow({
+      gateIn: true,
+      gateOut: true,
+      classStatus: StudentAttendanceStatus.ALPA,
+      classReviewState: AttendanceReviewState.DEFAULTED,
+      prayers: [PrayerType.DHUHA, PrayerType.DZUHUR]
+    });
+
+    expect(row.finalStatus).toBe('BELUM_ABSEN_KELAS');
+    expect(row.classAttendanceLabel).toBe('Belum diabsen guru');
+    expect(row.classAttendanceSummary).toEqual(expect.objectContaining({ recordedCount: 0, defaultedCount: 1, missingCount: 1 }));
+    expect(row.missingRequirementCodes).toContain('BELUM_ABSEN_KELAS');
+    expect(result.summary.missingClassAttendanceCount).toBe(1);
+  });
+
+  it.each([
+    StudentAttendanceStatus.HADIR,
+    StudentAttendanceStatus.TELAT,
+    StudentAttendanceStatus.IZIN,
+    StudentAttendanceStatus.SAKIT,
+    StudentAttendanceStatus.ALPA
+  ])('counts teacher-confirmed %s as class attendance evidence', async (classStatus) => {
+    const { row } = await firstRow({ gateIn: true, gateOut: true, classStatus, prayers: [PrayerType.DHUHA, PrayerType.DZUHUR] });
+
+    expect(row.missingRequirementCodes).not.toContain('BELUM_ABSEN_KELAS');
+    expect(row.classAttendanceSummary.recordedCount).toBe(1);
+  });
+
+  it('exports Hadir Kelas Tanpa Scan Gerbang from teacher-confirmed rows only', async () => {
+    const confirmed = makeService({ classStatus: StudentAttendanceStatus.HADIR, prayers: [PrayerType.DHUHA, PrayerType.DZUHUR] });
+    const defaulted = makeService({ classStatus: StudentAttendanceStatus.HADIR, classReviewState: AttendanceReviewState.DEFAULTED, prayers: [PrayerType.DHUHA, PrayerType.DZUHUR] });
+
+    const confirmedCsv = await confirmed.service.exportReport('class_present_no_gate_scan', 'csv', { from: dateKey, to: dateKey }, { sub: 'admin-1', role: Role.ADMIN_TU });
+    const defaultedCsv = await defaulted.service.exportReport('class_present_no_gate_scan', 'csv', { from: dateKey, to: dateKey }, { sub: 'admin-1', role: Role.ADMIN_TU });
+
+    expect(confirmedCsv.buffer.toString('utf8')).toContain('Siswa Satu');
+    expect(defaultedCsv.buffer.toString('utf8')).not.toContain('Siswa Satu');
+    expect(defaultedCsv.buffer.toString('utf8')).not.toMatch(/report_metadata|\{"/);
+  });
+
+  it('exports Scan Gerbang Tanpa Absensi Kelas when gate scan exists without teacher-confirmed class row', async () => {
+    const { service } = makeService({
+      gateIn: true,
+      classStatus: StudentAttendanceStatus.ALPA,
+      classReviewState: AttendanceReviewState.DEFAULTED,
+      prayers: [PrayerType.DHUHA, PrayerType.DZUHUR]
+    });
+
+    const csv = await service.exportReport('gate_scan_no_class_attendance', 'csv', { from: dateKey, to: dateKey }, { sub: 'admin-1', role: Role.ADMIN_TU });
+    const text = csv.buffer.toString('utf8');
+
+    expect(text).toContain('Siswa Satu');
+    expect(text).toContain('Belum diabsen guru');
+    expect(text).not.toMatch(/DEFAULTED|BELUM_ABSEN_KELAS/);
   });
 });

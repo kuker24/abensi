@@ -249,6 +249,7 @@ export class AttendanceClassService {
       return new Map(ids.map((studentId) => [studentId, {
         allowed: true,
         locked: false,
+        warning: false,
         reasons: [],
         requirements: {
           gateIn: true,
@@ -295,10 +296,10 @@ export class AttendanceClassService {
       if (!hasGate) missing.push('Belum scan gerbang masuk');
       if (!hasDhuha) missing.push('Belum scan Dhuha');
       if (!hasDzuhur) missing.push('Belum scan Dzuhur');
-      const allowed = missing.length === 0 || Boolean(override);
       return [studentId, {
-        allowed,
-        locked: !allowed,
+        allowed: true,
+        locked: false,
+        warning: missing.length > 0 && !override,
         reasons: override ? [`Diizinkan manual: ${override.reason}`] : missing,
         requirements: {
           gateIn: hasGate,
@@ -550,6 +551,8 @@ export class AttendanceClassService {
       });
       return {
         updated: 0,
+        warnings: [],
+        warningCount: 0,
         rejected: [],
         rejectedCount: 0,
         ignoredCount,
@@ -575,15 +578,14 @@ export class AttendanceClassService {
     }
 
     const eligibilityMap = await this.eligibilityForStudents(explicitItems.map((item) => item.studentId), session.startsAt);
-    const rejected = explicitItems
-      .filter((item) => (item.status === StudentAttendanceStatus.HADIR || item.status === StudentAttendanceStatus.TELAT) && eligibilityMap.get(item.studentId)?.locked)
+    const warnings = explicitItems
+      .filter((item) => (item.status === StudentAttendanceStatus.HADIR || item.status === StudentAttendanceStatus.TELAT) && eligibilityMap.get(item.studentId)?.warning)
       .map((item) => ({
         studentId: item.studentId,
         status: item.status,
         reasons: eligibilityMap.get(item.studentId)?.reasons ?? ['Syarat presensi belum lengkap']
       }));
-    const rejectedIds = new Set(rejected.map((item) => item.studentId));
-    const allowedItems = explicitItems.filter((item) => !rejectedIds.has(item.studentId));
+    const allowedItems = explicitItems;
 
     return this.prisma.$transaction(async (tx) => {
       const stillOpen = await tx.session.updateMany({ where: { id: sessionId, status: SessionStatus.OPEN }, data: { updatedAt: new Date() } });
@@ -667,34 +669,36 @@ export class AttendanceClassService {
         action: confirmationSource === AttendanceConfirmationSource.MANUAL_SINGLE ? 'class.attendance.confirmed_single' : 'class.attendance.confirmed_bulk',
         resource: 'session',
         resourceId: sessionId,
-        after: { count: result.length, rejectedCount: rejected.length, ignoredCount, source: confirmationSource }
+        after: { count: result.length, warningCount: warnings.length, ignoredCount, source: confirmationSource }
       });
       await writeLiveMonitorOutboxEvent(tx, {
         eventType: 'attendance.changed',
         aggregateType: 'session',
         aggregateId: sessionId,
         logicalKey: `attendance:${sessionId}:record:${Date.now()}:${actor.sub}`,
-        payload: { sessionId, updated: result.length, rejectedCount: rejected.length, ignoredCount, source: confirmationSource }
+        payload: { sessionId, updated: result.length, warningCount: warnings.length, ignoredCount, source: confirmationSource }
       });
 
-      if (rejected.length) {
+      if (warnings.length) {
         await writeAudit(tx, {
           actorId: actor.sub,
           actorRole: actor.role as Role,
           module: 'attendance',
-          action: 'attendance.class.blocked_by_policy',
+          action: 'attendance.class.saved_with_scan_warnings',
           resource: 'session',
           resourceId: sessionId,
-          after: { rejected }
+          after: { warnings }
         });
       }
 
       return {
         updated: result.length,
-        rejected,
-        rejectedCount: rejected.length,
+        warnings,
+        warningCount: warnings.length,
+        rejected: [],
+        rejectedCount: 0,
         ignoredCount,
-        message: rejected.length ? 'Sebagian siswa belum memenuhi syarat scan wajib sehingga tidak disimpan sebagai hadir/telat.' : 'Presensi siswa tersimpan.'
+        message: warnings.length ? 'Presensi siswa tersimpan. Beberapa siswa masih punya catatan scan untuk dipantau petugas.' : 'Presensi siswa tersimpan.'
       };
     });
   }
@@ -724,19 +728,17 @@ export class AttendanceClassService {
       throw new ConflictException({ code: 'SESSION_ROSTER_EMPTY', message: 'Roster sesi kosong sehingga tidak dapat dikonfirmasi massal.' });
     }
 
-    let rejected: Array<{ studentId: string; status: StudentAttendanceStatus; reasons: string[] }> = [];
-    let allowedIds = rosterStudentIds;
+    let warnings: Array<{ studentId: string; status: StudentAttendanceStatus; reasons: string[] }> = [];
+    const allowedIds = rosterStudentIds;
     if (targetStatus === StudentAttendanceStatus.HADIR) {
       const eligibilityMap = await this.eligibilityForStudents(rosterStudentIds, session.startsAt);
-      rejected = rosterStudentIds
-        .filter((studentId) => eligibilityMap.get(studentId)?.locked)
+      warnings = rosterStudentIds
+        .filter((studentId) => eligibilityMap.get(studentId)?.warning)
         .map((studentId) => ({
           studentId,
           status: targetStatus,
           reasons: eligibilityMap.get(studentId)?.reasons ?? ['Syarat presensi belum lengkap']
         }));
-      const rejectedIds = new Set(rejected.map((item) => item.studentId));
-      allowedIds = rosterStudentIds.filter((studentId) => !rejectedIds.has(studentId));
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -762,33 +764,35 @@ export class AttendanceClassService {
         action: targetStatus === StudentAttendanceStatus.HADIR ? 'class.attendance.bulk_confirm_present' : 'class.attendance.bulk_confirm_alpa',
         resource: 'session',
         resourceId: sessionId,
-        after: { count: updated.count, rejectedCount: rejected.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
+        after: { count: updated.count, warningCount: warnings.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
       });
       await writeLiveMonitorOutboxEvent(tx, {
         eventType: 'attendance.bulk_changed',
         aggregateType: 'session',
         aggregateId: sessionId,
         logicalKey: `attendance:${sessionId}:bulk:${targetStatus}:${Date.now()}:${actor.sub}`,
-        payload: { sessionId, updated: updated.count, rejectedCount: rejected.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
+        payload: { sessionId, updated: updated.count, warningCount: warnings.length, status: targetStatus, source: AttendanceConfirmationSource.MANUAL_BULK }
       });
-      if (rejected.length) {
+      if (warnings.length) {
         await writeAudit(tx, {
           actorId: actor.sub,
           actorRole: actor.role as Role,
           module: 'attendance',
-          action: 'attendance.class.blocked_by_policy',
+          action: 'attendance.class.saved_with_scan_warnings',
           resource: 'session',
           resourceId: sessionId,
-          after: { rejected }
+          after: { warnings }
         });
       }
 
       return {
         updated: updated.count,
-        rejected,
-        rejectedCount: rejected.length,
+        warnings,
+        warningCount: warnings.length,
+        rejected: [],
+        rejectedCount: 0,
         message: targetStatus === StudentAttendanceStatus.HADIR
-          ? `${updated.count} siswa default dikonfirmasi hadir.`
+          ? (warnings.length ? `${updated.count} siswa default dikonfirmasi hadir. Beberapa siswa masih punya catatan scan untuk dipantau petugas.` : `${updated.count} siswa default dikonfirmasi hadir.`)
           : `${updated.count} siswa default dikonfirmasi ALPA.`
       };
     });
@@ -1076,7 +1080,7 @@ export class AttendanceClassService {
     const eligibilityMap = await this.eligibilityForStudents(snapshotRows.map((item) => item.studentId), session.startsAt);
     const roster = snapshotRows.map((row) => {
       const existing = attendanceMap.get(row.studentId);
-      const eligibility = eligibilityMap.get(row.studentId) ?? { allowed: true, locked: false, reasons: [], requirements: { gateIn: true, dhuha: true, dzuhur: true, override: false } };
+      const eligibility = eligibilityMap.get(row.studentId) ?? { allowed: true, locked: false, warning: false, reasons: [], requirements: { gateIn: true, dhuha: true, dzuhur: true, override: false } };
       return {
         studentId: row.studentId,
         rosterId: row.rosterId,

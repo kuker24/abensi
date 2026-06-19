@@ -52,9 +52,10 @@ describe('student daily completeness UI', () => {
           summary: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 2, missingClassAttendanceCount: 3, missingPrayerCount: 4, needsVerificationCount: 0 },
           items: [
             { studentId: 'siswa-1', fullName: 'Aisyah Putri', username: 'siswa.aisyah', schoolClass: 'X-A', gateArrivalAt: '2026-06-19T00:00:00.000Z', gateDepartureAt: null, classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: 'Belum scan sholat', finalStatus: 'BELUM_SCAN_PULANG', note: 'Belum scan pulang, Belum scan sholat' },
-            { studentId: 'siswa-2', fullName: 'Budi Santoso', username: 'siswa.budi', schoolClass: 'X-A', gateArrivalAt: '2026-06-19T00:05:00.000Z', gateDepartureAt: '2026-06-19T08:00:00.000Z', classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'HADIR_LENGKAP', note: 'Hadir lengkap' }
+            { studentId: 'siswa-2', fullName: 'Budi Santoso', username: 'siswa.budi', schoolClass: 'X-A', gateArrivalAt: '2026-06-19T00:05:00.000Z', gateDepartureAt: '2026-06-19T08:00:00.000Z', classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'HADIR_LENGKAP', note: 'Hadir lengkap' },
+            { studentId: 'siswa-3', fullName: 'Citra Lestari', username: 'siswa.citra', schoolClass: 'X-A', gateArrivalAt: '2026-06-19T00:10:00.000Z', gateDepartureAt: '2026-06-19T08:05:00.000Z', classAttendanceLabel: 'Belum diabsen guru', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'BELUM_ABSEN_KELAS', note: 'Belum diabsen guru' }
           ],
-          meta: { page: 1, limit: 200, total: 2, totalPages: 1 }
+          meta: { page: 1, limit: 200, total: 3, totalPages: 1 }
         }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -70,7 +71,10 @@ describe('student daily completeness UI', () => {
     expect(screen.getByText('Aisyah Putri')).toBeInTheDocument();
     expect(screen.getAllByText('Belum scan pulang').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Hadir lengkap').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Belum diabsen guru').length).toBeGreaterThan(0);
     expect(screen.queryByText('BELUM_SCAN_PULANG')).not.toBeInTheDocument();
+    expect(screen.queryByText('BELUM_ABSEN_KELAS')).not.toBeInTheDocument();
+    expect(screen.queryByText('DEFAULTED')).not.toBeInTheDocument();
     expect(screen.queryByText('HADIR_LENGKAP')).not.toBeInTheDocument();
   });
 });
