@@ -98,8 +98,8 @@ fun HomeScreen(
                     Text("Siap Scan", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
                         when (deviceTitle) {
-                            "HP Gerbang" -> "Scan pertama tercatat Datang. Scan berikutnya setelah jeda aman tercatat Pulang."
-                            "HP Mushola" -> "Siswa scan QR saat sholat. Duplikat hari yang sama akan diberi pesan sudah tercatat."
+                            "HP Gerbang" -> "Untuk kepala, guru, staf, dan siswa datang/pulang. Scan pertama tercatat Datang, scan berikutnya setelah jeda aman tercatat Pulang."
+                            "HP Mushola" -> "Untuk scan sholat/ibadah siswa. Duplikat hari yang sama akan diberi pesan sudah tercatat."
                             else -> "Arahkan QR ke kamera untuk cek ke server."
                         },
                         style = MaterialTheme.typography.bodyMedium,

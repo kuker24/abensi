@@ -69,6 +69,33 @@ function readerStatusTone(reader) {
   return reader.online ? 'ok' : 'warn';
 }
 
+const STUDENT_DAILY_STATUS_OPTIONS = [
+  { value: '', label: 'Semua status' },
+  { value: 'HADIR_LENGKAP', label: 'Hadir lengkap' },
+  { value: 'BELUM_SCAN_DATANG', label: 'Belum scan datang' },
+  { value: 'BELUM_SCAN_PULANG', label: 'Belum scan pulang' },
+  { value: 'BELUM_ABSEN_KELAS', label: 'Belum diabsen guru' },
+  { value: 'BELUM_SCAN_SHOLAT', label: 'Belum scan sholat' },
+  { value: 'PERLU_VERIFIKASI', label: 'Perlu verifikasi' }
+];
+
+const STUDENT_DAILY_MISSING_OPTIONS = [
+  { value: '', label: 'Semua kebutuhan' },
+  { value: 'BELUM_SCAN_DATANG', label: 'Belum scan datang' },
+  { value: 'BELUM_SCAN_PULANG', label: 'Belum scan pulang' },
+  { value: 'BELUM_ABSEN_KELAS', label: 'Belum diabsen guru' },
+  { value: 'BELUM_SCAN_SHOLAT', label: 'Belum scan sholat' },
+  { value: 'PERLU_VERIFIKASI', label: 'Perlu verifikasi' }
+];
+
+function friendlyDailyStatus(value) {
+  return STUDENT_DAILY_STATUS_OPTIONS.find((option) => option.value === value)?.label || statusLabel(value);
+}
+
+function studentDailySummary(data) {
+  return data?.summary || data?.studentCompleteness || {};
+}
+
 export function AdminDashboard() {
   const dashboard = useRemote(() => apiFetch('/reports/dashboard'), []);
   const trend = useRemote(() => apiFetch('/reports/trend?days=7'), []);
@@ -84,6 +111,7 @@ export function AdminDashboard() {
   const androidReaders = d.androidReaders || {};
   const gateReader = androidReaders.gate;
   const musholaReader = androidReaders.mushola;
+  const studentSummary = studentDailySummary(d);
 
   return <div className="content dashboard-redesign"><PageHead eyebrow="COMMAND CENTER" title="Ringkasan Admin" sub="Pantau operasi sekolah hari ini dari satu layar: sesi, scan, cakupan, dan masalah aktif." actions={<><Btn onClick={() => go('/admin/reports')}><FileText size={14} /> Buka laporan</Btn><Btn variant="primary" onClick={() => go('/admin/anomaly')}><Flag size={14} /> Cek masalah</Btn></>} />
     <section className="dashboard-hero admin-hero">
@@ -99,12 +127,14 @@ export function AdminDashboard() {
       </div>
     </section>
 
-    <RoleTaskPanel title="Aksi cepat operasional" tasks={[{ title: 'Aktifkan HP Scanner', desc: 'Buat kode HP Gerbang atau HP Mushola.', icon: <Smartphone size={18} />, tone: 'ok', onClick: () => go('/admin/devices') }, { title: 'Lihat Sesi Guru', desc: 'Pantau guru masuk kelas dan sesi belum ditutup.', icon: <Radar size={18} />, onClick: () => go('/admin/sessions') }, { title: 'Lihat Absensi Sholat', desc: 'Ringkasan Dhuha/Dzuhur dan daftar siswa scan.', icon: <Building2 size={18} />, onClick: () => go('/admin/prayer-attendance') }, { title: 'Kepala/Staf Hadir', desc: 'Datang-pulang kepala, TU, dan staf.', icon: <Users size={18} />, onClick: () => go('/admin/staff-attendance') }, { title: 'Laporan Hari Ini', desc: 'Unduh laporan resmi harian.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }, { title: 'Cetak Kartu QR', desc: 'Siapkan kartu QR siswa/guru.', icon: <CreditCard size={18} />, onClick: () => go('/admin/devices') }]} />
+    <RoleTaskPanel title="Aksi cepat operasional" tasks={[{ title: 'Aktifkan HP Scanner', desc: 'Buat kode HP Gerbang atau HP Mushola.', icon: <Smartphone size={18} />, tone: 'ok', onClick: () => go('/admin/devices') }, { title: 'Kelengkapan Siswa', desc: 'Cek datang, pulang, kelas, dan sholat siswa.', icon: <CheckSquare size={18} />, tone: 'warn', onClick: () => go('/admin/student-completeness') }, { title: 'Lihat Sesi Guru', desc: 'Pantau guru masuk kelas dan sesi belum ditutup.', icon: <Radar size={18} />, onClick: () => go('/admin/sessions') }, { title: 'Lihat Absensi Sholat', desc: 'Ringkasan Dhuha/Dzuhur dan daftar siswa scan.', icon: <Building2 size={18} />, onClick: () => go('/admin/prayer-attendance') }, { title: 'Kepala/Staf Hadir', desc: 'Datang-pulang kepala, TU, staf, guru, dan siswa di HP Gerbang.', icon: <Users size={18} />, onClick: () => go('/admin/staff-attendance') }, { title: 'Laporan Hari Ini', desc: 'Unduh laporan resmi harian.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }, { title: 'Cetak Kartu QR', desc: 'Siapkan kartu QR siswa/guru.', icon: <CreditCard size={18} />, onClick: () => go('/admin/devices') }]} />
 
     {dashboard.loading ? <LoadingState /> : dashboard.error ? <ErrorState error={dashboard.error} onRetry={dashboard.refresh} /> : <><div className="grid g-4">
       <StatCardPremium icon={<Smartphone size={20} />} label="HP Gerbang" value={readerStatusText(gateReader)} sub={gateReader?.lastSeenAt ? `Terakhir ${formatDateTime(gateReader.lastSeenAt)}` : 'Aktivasi HP Gerbang'} tone={readerStatusTone(gateReader)} onClick={() => go('/admin/devices')} />
       <StatCardPremium icon={<Building2 size={20} />} label="HP Mushola" value={readerStatusText(musholaReader)} sub={musholaReader?.lastSeenAt ? `Terakhir ${formatDateTime(musholaReader.lastSeenAt)}` : 'Aktivasi HP Mushola'} tone={readerStatusTone(musholaReader)} onClick={() => go('/admin/devices')} />
       <StatCardPremium icon={<Users size={20} />} label="Kepala/Staf Hadir" value={d.staffPresentToday ?? 0} sub="Scan datang hari ini" onClick={() => go('/admin/staff-attendance')} />
+      <StatCardPremium icon={<CheckSquare size={20} />} label="Siswa hadir lengkap" value={studentSummary.completeCount ?? d.studentCompleteCount ?? 0} sub="Gerbang, kelas, dan sholat lengkap" tone="ok" onClick={() => go('/admin/student-completeness')} />
+      <StatCardPremium icon={<AlertTriangle size={20} />} label="Belum scan pulang" value={studentSummary.missingDepartureCount ?? d.studentMissingDepartureCount ?? 0} sub="Perlu diingatkan sebelum pulang" tone="warn" onClick={() => go('/admin/student-completeness')} />
       <StatCardPremium icon={<CheckSquare size={20} />} label="Guru Mengajar" value={d.teacherTeachingToday ?? d.teacherPresenceCount ?? 0} sub="Masuk kelas hari ini" onClick={() => go('/admin/sessions')} />
       <StatCardPremium icon={<Activity size={20} />} label="Sesi Belum Ditutup" value={d.unclosedSessions ?? open} sub={`${closed} selesai · ${open} berjalan`} tone={(d.unclosedSessions ?? open) > 0 ? 'warn' : 'ok'} />
       <StatCardPremium icon={<Building2 size={20} />} label="Sholat Dhuha/Dzuhur" value={`${d.prayerDhuhaToday ?? 0}/${d.prayerDzuhurToday ?? 0}`} sub="Siswa sudah scan" onClick={() => go('/admin/prayer-attendance')} />
@@ -159,6 +189,24 @@ export function PrayerAttendancePage({ notify }) {
     notify('Rekap karakter/ibadah berhasil diunduh.');
   }
   return <div className="content"><PageHead eyebrow="SHOLAT SISWA" title="Absensi Sholat" sub="Pantau scan QR siswa di HP Mushola untuk Dhuha dan Dzuhur." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal sholat" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={() => { logs.refresh(); recap.refresh(); }}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={exportLogs}><Download size={14} /> Export Log</Btn><Btn onClick={exportRecap}><Download size={14} /> Export Rekap</Btn></>} /><div className="grid g-4"><StatCardPremium icon={<Building2 size={18} />} label="Dhuha" value={dhuha} sub="Sudah scan" tone="ok" /><StatCardPremium icon={<Building2 size={18} />} label="Dzuhur" value={dzuhur} sub="Sudah scan" tone="ok" /><StatCardPremium icon={<Users size={18} />} label="Total Scan" value={rows.length} sub="Hari ini" /><StatCardPremium icon={<AlertTriangle size={18} />} label="Belum Scan" value="Lihat rekap" sub="Gunakan export/rekap kelas" tone="warn" /></div><div className="grid g-2" style={{ marginTop: 18 }}><Card title="Log Sholat" sub="Data scan siswa dari HP Mushola"><AsyncTable state={logs} columns={[{ header: 'Siswa', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Sholat', render: (r) => <StatusPill status={r.prayerType} /> }, { header: 'Waktu', render: (r) => formatDateTime(r.scannedAt) }, { header: 'HP', render: (r) => r.reader || '—' }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} empty="Belum ada scan sholat pada tanggal ini." /></Card><Card title="Rekap Ibadah Siswa" sub="Hitungan Dhuha/Dzuhur per siswa"><AsyncTable state={recap} columns={[{ header: 'Siswa', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Dhuha', render: (r) => r.dhuhaCount ?? 0 }, { header: 'Dzuhur', render: (r) => r.dzuhurCount ?? 0 }, { header: 'Ringkasan', render: (r) => r.periodSummary || '—' }]} empty="Belum ada rekap ibadah pada tanggal ini." /></Card></div></div>;
+}
+
+export function StudentDailyCompletenessPage({ notify }) {
+  const [date, setDate] = useState(today());
+  const [classId, setClassId] = useState('');
+  const [status, setStatus] = useState('');
+  const [missingRequirement, setMissingRequirement] = useState('');
+  const classes = useRemote(() => apiFetch('/academic/classes?page=1&limit=200'), []);
+  const state = useRemote(() => apiFetch(`/reports/student-daily-completeness${qs({ from: date, to: date, classId, status, missingRequirement, page: 1, limit: 200 })}`), [date, classId, status, missingRequirement]);
+  const summary = studentDailySummary(state.data);
+  async function exportReport() {
+    await apiDownload(buildOfficialReportExportPath('student-daily-completeness', 'xlsx', { from: date, to: date, classId, status, missingRequirement }));
+    notify('Rekap Kehadiran Lengkap Siswa berhasil diunduh.');
+  }
+  return <div className="content"><PageHead eyebrow="KELENGKAPAN SISWA" title="Kehadiran Lengkap Siswa" sub="Siswa hadir lengkap jika sudah scan datang, scan pulang, diabsen guru, dan scan sholat saat wajib." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal kelengkapan siswa" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><SelectInput aria-label="Filter kelas" value={classId} onChange={(e) => setClassId(e.target.value)}><option value="">Semua kelas</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</SelectInput><SelectInput aria-label="Filter status akhir" value={status} onChange={(e) => setStatus(e.target.value)}>{STUDENT_DAILY_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><SelectInput aria-label="Filter kebutuhan kurang" value={missingRequirement} onChange={(e) => setMissingRequirement(e.target.value)}>{STUDENT_DAILY_MISSING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={exportReport}><Download size={14} /> Export</Btn></>} />
+    <div className="grid g-4"><StatCardPremium icon={<CheckSquare size={18} />} label="Siswa hadir lengkap" value={summary.completeCount ?? 0} sub="Semua syarat selesai" tone="ok" /><StatCardPremium icon={<AlertTriangle size={18} />} label="Belum scan datang" value={summary.missingArrivalCount ?? 0} sub="Cek HP Gerbang pagi" tone="warn" /><StatCardPremium icon={<DoorOpen size={18} />} label="Belum scan pulang" value={summary.missingDepartureCount ?? 0} sub="Cek HP Gerbang pulang" tone="warn" /><StatCardPremium icon={<Users size={18} />} label="Belum absen kelas" value={summary.missingClassAttendanceCount ?? 0} sub="Belum diabsen guru" tone="warn" /><StatCardPremium icon={<Building2 size={18} />} label="Belum scan sholat" value={summary.missingPrayerCount ?? 0} sub="Cek HP Mushola" tone="warn" /><StatCardPremium icon={<Flag size={18} />} label="Perlu verifikasi" value={summary.needsVerificationCount ?? 0} sub="Butuh cek petugas" tone="bad" /></div>
+    <Card title="Rekap Harian Siswa" sub="Gerbang, kelas, dan sholat tetap menjadi bukti terpisah. Scan gerbang tidak otomatis mengisi presensi kelas."><AsyncTable state={state} empty="Belum ada data siswa pada filter ini." columns={[{ header: 'Nama', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Datang gerbang', render: (r) => r.gateArrivalAt ? formatDateTime(r.gateArrivalAt) : 'Belum scan datang' }, { header: 'Pulang gerbang', render: (r) => r.gateDepartureAt ? formatDateTime(r.gateDepartureAt) : 'Belum scan pulang' }, { header: 'Absensi kelas', render: (r) => r.classAttendanceLabel || 'Belum diabsen guru' }, { header: 'Sholat', render: (r) => r.prayerAttendanceLabel || 'Belum scan sholat' }, { header: 'Status akhir', render: (r) => <StatusPill status={r.finalStatus} /> }, { header: 'Keterangan', render: (r) => r.note || friendlyDailyStatus(r.finalStatus) }]} /></Card>
+  </div>;
 }
 
 export function AnomalyPage({ notify }) {
@@ -623,8 +671,8 @@ const ANDROID_MODE_LABELS = {
 };
 
 const ANDROID_READER_PRESETS = [
-  { key: 'gate-both', icon: <RefreshCw size={26} />, title: 'HP Gerbang', desc: 'Untuk Kepala/Staf datang dan pulang. Scan pertama = datang, scan berikutnya = pulang.', name: 'HP Gerbang', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'] },
-  { key: 'mushola', icon: <Building2 size={26} />, title: 'HP Mushola', desc: 'Untuk siswa scan sholat Dhuha dan Dzuhur.', name: 'HP Mushola', locationName: 'Mushola', allowedModes: ['MUSHOLA'] }
+  { key: 'gate-both', icon: <RefreshCw size={26} />, title: 'HP Gerbang', desc: 'Untuk kepala, guru, staf, dan siswa datang/pulang.', name: 'HP Gerbang', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'] },
+  { key: 'mushola', icon: <Building2 size={26} />, title: 'HP Mushola', desc: 'Untuk scan sholat/ibadah siswa.', name: 'HP Mushola', locationName: 'Mushola', allowedModes: ['MUSHOLA'] }
 ];
 
 function androidModeLabel(mode) {
@@ -733,7 +781,7 @@ function AndroidReaderPanel({ notify }) {
     return <div className="row"><Btn size="sm" onClick={() => status(r, r.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')}>{r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan lagi'}</Btn><Btn size="sm" variant="danger" onClick={() => revoke(r)}>Cabut</Btn></div>;
   }
 
-  return <div className="android-activation-page"><div className="activation-hero"><div><Pill tone="ok"><Smartphone size={13} /> Mode mudah</Pill><h2>Aktifkan HP Scanner Android</h2><p>Awal sekolah memakai 2 HP aktif: HP Gerbang dan HP Mushola. Jika penuh, cabut salah satu HP dulu sebelum mengganti perangkat.</p></div><div className="activation-safe"><ShieldCheck size={20} /><span>Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.</span></div></div><div className="wizard-steps"><div className="wizard-step active"><b>1</b><span>Pilih tempat HP dipakai</span></div><div className={`wizard-step ${form.allowedModes.length ? 'active' : ''}`}><b>2</b><span>Buat kode aktivasi</span></div><div className={`wizard-step ${activationCode ? 'active' : ''}`}><b>3</b><span>Tempel kode di aplikasi HP</span></div></div><div className="grid activation-grid"><Card title={`1. Pilih HP Scanner (${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS} aktif)`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Klik HP Gerbang atau HP Mushola. Web otomatis mengatur mode yang benar.'}><div className="preset-grid">{ANDROID_READER_PRESETS.map((preset) => <button key={preset.key} type="button" className={`preset-card ${selectedPreset === preset.key ? 'selected' : ''}`} onClick={() => applyPreset(preset)}><span className="preset-icon">{preset.icon}</span><b>{preset.title}</b><small>{preset.desc}</small></button>)}</div><div className="simple-summary"><div><span>Nama HP</span><b>{form.name}</b></div><div><span>Lokasi</span><b>{form.locationName}</b></div><div><span>Dipakai untuk</span><b>{androidModesText(form.allowedModes)}</b></div></div></Card><Card title="2. Buat kode aktivasi" sub="Kode ini berlaku sebentar dan hanya untuk mengaktifkan satu HP scanner."><div className="activation-form-simple"><Field label="Nama HP / Lokasi"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} /></Field><Field label="Tempat HP dipasang"><TextInput value={form.locationName} onChange={(e) => set('locationName', e.target.value)} /></Field><Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field><Btn variant="primary" type="button" disabled={limitReached} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn></div><div className="security-note"><AlertTriangle size={16} /><span>Jangan kirim kode ini ke grup umum. Kode hanya untuk mengaktifkan 1 HP scanner.</span></div></Card>{activationCode && <Card title="3. Masukkan kode di aplikasi HP" sub="Salin kode ini, lalu tempel di kolom Kode Aktivasi dari Admin pada aplikasi Android."><div className={`activation-code-card ${expired ? 'expired' : ''}`}><div className="activation-code-label"><Clock size={15} /> {formatRemaining(remainingMs)}</div><div className="activation-code-value">{activationCode}</div><div className="copy-actions"><Btn type="button" variant="primary" onClick={copyActivationCode} disabled={expired}><Copy size={15} /> Salin Kode</Btn><Btn type="button" onClick={startProvision}><RefreshCw size={15} /> Buat Kode Baru</Btn></div></div><ol className="activation-instructions"><li>Buka aplikasi <b>{BRAND.fullName}</b> di HP.</li><li>Isi alamat web jika diminta.</li><li>Tempel kode ini ke kolom <b>Kode Aktivasi dari Admin</b>.</li><li>Tekan <b>Aktifkan HP Ini</b>, lalu mulai scan.</li></ol></Card>}</div><div className="activation-help-grid"><Card title="HP Gerbang"><p>Untuk Kepala/Staf datang dan pulang. Scan pertama hari itu menjadi Datang, scan berikutnya menjadi Pulang.</p></Card><Card title="HP Mushola"><p>Untuk siswa scan sholat Dhuha dan Dzuhur di mushola.</p></Card><Card title="Batas 2 HP aktif"><p>Jika ingin mengganti HP, klik Cabut pada HP lama lalu buat kode aktivasi baru.</p></Card></div><Card title={`HP Scanner Aktif: ${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS}`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Daftar HP scanner yang sudah dibuat. Detail teknis disembunyikan agar tidak membingungkan operator.'}><AsyncTable state={androidRows} empty="Belum ada HP scanner Android" columns={[{ header: 'Nama HP', render: (r) => r.name || 'HP Scanner' }, { header: 'Lokasi', render: (r) => r.locationName || r.locationLabel || '—' }, { header: 'Status', render: (r) => <AndroidReaderStatusBadge reader={r} /> }, { header: 'Dipakai untuk', render: (r) => androidModesText(r.allowedModes || []) }, { header: 'Terakhir dipakai', render: (r) => formatDateTime(r.lastSignedScanAt || r.lastSeenAt) }]} onRow={(r) => renderAndroidReaderActions(r)} /></Card></div>;
+  return <div className="android-activation-page"><div className="activation-hero"><div><Pill tone="ok"><Smartphone size={13} /> Mode mudah</Pill><h2>Aktifkan HP Scanner Android</h2><p>Awal sekolah memakai 2 HP aktif: HP Gerbang dan HP Mushola. Jika penuh, cabut salah satu HP dulu sebelum mengganti perangkat.</p></div><div className="activation-safe"><ShieldCheck size={20} /><span>Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.</span></div></div><div className="wizard-steps"><div className="wizard-step active"><b>1</b><span>Pilih tempat HP dipakai</span></div><div className={`wizard-step ${form.allowedModes.length ? 'active' : ''}`}><b>2</b><span>Buat kode aktivasi</span></div><div className={`wizard-step ${activationCode ? 'active' : ''}`}><b>3</b><span>Tempel kode di aplikasi HP</span></div></div><div className="grid activation-grid"><Card title={`1. Pilih HP Scanner (${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS} aktif)`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Klik HP Gerbang atau HP Mushola. Web otomatis mengatur mode yang benar.'}><div className="preset-grid">{ANDROID_READER_PRESETS.map((preset) => <button key={preset.key} type="button" className={`preset-card ${selectedPreset === preset.key ? 'selected' : ''}`} onClick={() => applyPreset(preset)}><span className="preset-icon">{preset.icon}</span><b>{preset.title}</b><small>{preset.desc}</small></button>)}</div><div className="simple-summary"><div><span>Nama HP</span><b>{form.name}</b></div><div><span>Lokasi</span><b>{form.locationName}</b></div><div><span>Dipakai untuk</span><b>{androidModesText(form.allowedModes)}</b></div></div></Card><Card title="2. Buat kode aktivasi" sub="Kode ini berlaku sebentar dan hanya untuk mengaktifkan satu HP scanner."><div className="activation-form-simple"><Field label="Nama HP / Lokasi"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} /></Field><Field label="Tempat HP dipasang"><TextInput value={form.locationName} onChange={(e) => set('locationName', e.target.value)} /></Field><Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field><Btn variant="primary" type="button" disabled={limitReached} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn></div><div className="security-note"><AlertTriangle size={16} /><span>Jangan kirim kode ini ke grup umum. Kode hanya untuk mengaktifkan 1 HP scanner.</span></div></Card>{activationCode && <Card title="3. Masukkan kode di aplikasi HP" sub="Salin kode ini, lalu tempel di kolom Kode Aktivasi dari Admin pada aplikasi Android."><div className={`activation-code-card ${expired ? 'expired' : ''}`}><div className="activation-code-label"><Clock size={15} /> {formatRemaining(remainingMs)}</div><div className="activation-code-value">{activationCode}</div><div className="copy-actions"><Btn type="button" variant="primary" onClick={copyActivationCode} disabled={expired}><Copy size={15} /> Salin Kode</Btn><Btn type="button" onClick={startProvision}><RefreshCw size={15} /> Buat Kode Baru</Btn></div></div><ol className="activation-instructions"><li>Buka aplikasi <b>{BRAND.fullName}</b> di HP.</li><li>Isi alamat web jika diminta.</li><li>Tempel kode ini ke kolom <b>Kode Aktivasi dari Admin</b>.</li><li>Tekan <b>Aktifkan HP Ini</b>, lalu mulai scan.</li></ol></Card>}</div><div className="activation-help-grid"><Card title="HP Gerbang"><p>Untuk kepala, guru, staf, dan siswa datang/pulang. Scan pertama hari itu menjadi Datang, scan berikutnya menjadi Pulang.</p></Card><Card title="HP Mushola"><p>Untuk scan sholat/ibadah siswa.</p></Card><Card title="Batas 2 HP aktif"><p>Jika ingin mengganti HP, klik Cabut pada HP lama lalu buat kode aktivasi baru.</p></Card></div><Card title={`HP Scanner Aktif: ${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS}`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Daftar HP scanner yang sudah dibuat. Detail teknis disembunyikan agar tidak membingungkan operator.'}><AsyncTable state={androidRows} empty="Belum ada HP scanner Android" columns={[{ header: 'Nama HP', render: (r) => r.name || 'HP Scanner' }, { header: 'Lokasi', render: (r) => r.locationName || r.locationLabel || '—' }, { header: 'Status', render: (r) => <AndroidReaderStatusBadge reader={r} /> }, { header: 'Dipakai untuk', render: (r) => androidModesText(r.allowedModes || []) }, { header: 'Terakhir dipakai', render: (r) => formatDateTime(r.lastSignedScanAt || r.lastSeenAt) }]} onRow={(r) => renderAndroidReaderActions(r)} /></Card></div>;
 }
 
 function MobileVersionPanel({ notify }) {
@@ -822,6 +870,12 @@ const REPORT_EXPORT_TYPES = {
   'teacher-session-activity': 'teacher_session_activity',
   'student-prayer-attendance': 'student_prayer_attendance',
   'student-worship-recap': 'student_worship_recap',
+  'student-daily-completeness': 'student_daily_complete_attendance',
+  'missing-arrival-scan': 'missing_arrival_scan',
+  'missing-departure-scan': 'missing_departure_scan',
+  'class-present-no-gate-scan': 'class_present_no_gate_scan',
+  'gate-scan-no-class-attendance': 'gate_scan_no_class_attendance',
+  'prayer-recap': 'prayer_recap',
   'audit-coverage': 'audit_coverage'
 };
 
@@ -859,7 +913,7 @@ export function buildOfficialReportExportPath(type, format, filters = {}) {
     params.from = filters.from;
     params.to = filters.to;
   }
-  ['classId', 'subjectId', 'teacherId', 'studentId'].forEach((key) => {
+  ['classId', 'subjectId', 'teacherId', 'studentId', 'status', 'missingRequirement'].forEach((key) => {
     if (filters[key]) params[key] = filters[key];
   });
   return `/reports/export${qs(params)}`;
@@ -869,6 +923,12 @@ function buildReportPreviewPath(type, filters = {}) {
   if (type === 'teacher-monthly') {
     return `/reports/${type}${qs({ month: filters.month || monthFromDate(filters.from), page: 1, limit: 100 })}`;
   }
+  const dailyCompletenessTypes = new Set(['student-daily-completeness', 'missing-arrival-scan', 'missing-departure-scan', 'class-present-no-gate-scan', 'gate-scan-no-class-attendance']);
+  if (dailyCompletenessTypes.has(type)) {
+    const missingRequirement = type === 'missing-arrival-scan' ? 'BELUM_SCAN_DATANG' : type === 'missing-departure-scan' ? 'BELUM_SCAN_PULANG' : filters.missingRequirement;
+    return `/reports/student-daily-completeness${qs({ from: filters.from, to: filters.to, missingRequirement, page: 1, limit: 100 })}`;
+  }
+  if (type === 'prayer-recap') return `/reports/student-worship-recap${qs({ from: filters.from, to: filters.to, page: 1, limit: 100 })}`;
   return `/reports/${type}${qs({ from: filters.from, to: filters.to, page: 1, limit: 100 })}`;
 }
 
@@ -892,7 +952,30 @@ export function ReportsPage({ notify }) {
       setExporting(false);
     }
   }
-  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub="Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi." actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="staff-gate-attendance">Kepala/Staf Datang-Pulang</option><option value="teacher-session-activity">Guru Masuk Mengajar</option><option value="student-prayer-attendance">Sholat Siswa</option><option value="student-worship-recap">Rekap Ibadah Siswa</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label><SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn><Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn></>} /><StepGuide title="Cara membuat laporan" steps={['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
+  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub="Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi." actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="staff-gate-attendance">Kepala/Staf Datang-Pulang</option><option value="teacher-session-activity">Guru Masuk Mengajar</option><option value="student-daily-completeness">Rekap Kehadiran Lengkap Siswa</option><option value="missing-arrival-scan">Belum Scan Datang</option><option value="missing-departure-scan">Belum Scan Pulang</option><option value="class-present-no-gate-scan">Hadir Kelas Tanpa Scan Gerbang</option><option value="gate-scan-no-class-attendance">Scan Gerbang Tanpa Absensi Kelas</option><option value="student-prayer-attendance">Sholat Siswa</option><option value="student-worship-recap">Rekap Ibadah Siswa</option><option value="prayer-recap">Rekap Sholat Siswa</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label><SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn><Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn></>} /><StepGuide title="Cara membuat laporan" steps={['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
+}
+
+const REPORT_PREVIEW_LABELS = {
+  fullName: 'Nama',
+  username: 'Nama akun',
+  schoolClass: 'Kelas',
+  date: 'Tanggal',
+  gateArrivalAt: 'Datang gerbang',
+  gateDepartureAt: 'Pulang gerbang',
+  classAttendanceLabel: 'Absensi kelas',
+  prayerAttendanceLabel: 'Sholat',
+  finalStatus: 'Status akhir',
+  finalStatusLabel: 'Status akhir',
+  note: 'Keterangan'
+};
+
+function reportPreviewValue(row, key) {
+  const value = row[key];
+  if (key === 'finalStatus') return friendlyDailyStatus(value);
+  if (key === 'gateArrivalAt' || key === 'gateDepartureAt') return value ? formatDateTime(value) : '—';
+  if (Array.isArray(value)) return value.map((item) => statusLabel(item)).join(', ');
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return value !== undefined && value !== null ? String(value) : '—';
 }
 
 function GenericTableState({ state }) {
@@ -900,8 +983,9 @@ function GenericTableState({ state }) {
   if (state.error) return <ErrorState error={state.error} onRetry={state.refresh} />;
   const rows = itemsOf(state.data);
   if (!rows.length) return <FriendlyEmptyState title="Belum ada data laporan" sub="Coba ubah jenis laporan atau rentang tanggal." />;
-  const keys = Array.from(new Set(rows.flatMap((r) => Object.keys(r).filter((k) => !['id'].includes(k))))).slice(0, 8);
-  return <DataTable rows={rows} columns={keys.map((key) => ({ header: key, render: (r) => typeof r[key] === 'object' ? JSON.stringify(r[key]) : String(r[key] ?? '—') }))} />;
+  const hiddenKeys = new Set(['id', 'studentId', 'userId', 'classId', 'classAttendanceSummary', 'prayerAttendanceSummary', 'missingRequirementCodes', 'missingRequirements']);
+  const keys = Array.from(new Set(rows.flatMap((r) => Object.keys(r).filter((k) => !hiddenKeys.has(k))))).slice(0, 8);
+  return <DataTable rows={rows} columns={keys.map((key) => ({ header: REPORT_PREVIEW_LABELS[key] || key, render: (r) => reportPreviewValue(r, key) }))} />;
 }
 
 export function AuditPage() {

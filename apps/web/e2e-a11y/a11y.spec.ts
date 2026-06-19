@@ -37,7 +37,8 @@ async function mockApi(page: Page) {
     if (url.includes('/auth/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: JSON.parse(await page.evaluate((key) => localStorage.getItem(key) || '{}', USER_KEY)) }) });
     if (url.includes('/health/')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
     if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ shouldShow: false, version: 'test' }) });
-    if (url.includes('/reports/dashboard')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionsToday: 1, closedSessions: 0, openSessions: 1, attendanceCoveragePercent: 75, openFlags: 1, gateTapCount: 4 }) });
+    if (url.includes('/reports/dashboard')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionsToday: 1, closedSessions: 0, openSessions: 1, attendanceCoveragePercent: 75, openFlags: 1, gateTapCount: 4, studentCompleteness: { completeCount: 1, missingArrivalCount: 0, missingDepartureCount: 1, missingClassAttendanceCount: 0, missingPrayerCount: 1, needsVerificationCount: 0 } }) });
+    if (url.includes('/reports/student-daily-completeness')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { completeCount: 1, missingArrivalCount: 0, missingDepartureCount: 1, missingClassAttendanceCount: 0, missingPrayerCount: 1, needsVerificationCount: 0 }, items: [{ studentId: 'siswa-1', fullName: 'Citra', username: 'siswa.citra', schoolClass: 'X-A', gateArrivalAt: '2026-06-14T00:00:00.000Z', gateDepartureAt: null, classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: 'Belum scan sholat', finalStatus: 'BELUM_SCAN_PULANG', note: 'Belum scan pulang, Belum scan sholat' }], meta: { page: 1, limit: 100, total: 1, totalPages: 1, hasNext: false, hasPrev: false } }) });
     if (url.includes('/reports/trend')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ label: 'Hari ini', coveragePercent: 75 }]) });
     if (url.includes('/reports/live-monitor')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'event-1', type: 'GATE_IN', title: 'Scan masuk', timestamp: '2026-06-14T00:00:00.000Z' }])) });
     if (url.includes('/reports/my-attendance')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
@@ -109,6 +110,7 @@ const routeMatrix = [
   { path: '/admin/master-data', user: demoUsers[0], label: 'admin-master-data' },
   { path: '/admin/devices', user: demoUsers[0], label: 'admin-devices' },
   { path: '/admin/reports', user: demoUsers[0], label: 'admin-reports' },
+  { path: '/admin/student-completeness', user: demoUsers[0], label: 'admin-student-completeness' },
   { path: '/admin/settings', user: demoUsers[0], label: 'admin-settings' },
   { path: '/admin/live-monitor', user: demoUsers[0], label: 'admin-live-monitor' },
   { path: '/admin/notifications', user: demoUsers[0], label: 'admin-notifications' },

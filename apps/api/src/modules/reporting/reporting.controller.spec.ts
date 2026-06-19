@@ -22,6 +22,7 @@ const routeHandlers = [
   'teacherMonthly',
   'staffGateAttendance',
   'teacherSessionActivity',
+  'studentDailyCompleteness',
   'studentPrayerAttendance',
   'studentWorshipRecap',
   'auditCoverage',
@@ -66,6 +67,7 @@ describe('ReportingController role/capability contract', () => {
     [Role.GURU_PIKET, 'liveMonitor', 200],
     [Role.GURU_PIKET, 'recapClasses', 403],
     [Role.ADMIN_TU, 'classMonthly', 200],
+    [Role.ADMIN_TU, 'studentDailyCompleteness', 200],
     [Role.ADMIN_TU, 'exportReport', 200]
   ] as Array<[Role, ReportingHandler, number]>)('%s -> %s returns expected auth status %s', (role, handler, status) => {
     expect(expectedStatus(role, handler)).toBe(status);
