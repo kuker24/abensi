@@ -390,8 +390,7 @@ function UsersPanel({ notify }) {
     { role: 'SISWA', title: 'Buat Akun Siswa', desc: 'Untuk siswa yang akan melihat kehadiran dan punya QR.', icon: <Users size={18} /> },
     { role: 'GURU_MAPEL', title: 'Buat Akun Guru', desc: 'Untuk guru mapel yang mengisi presensi kelas.', icon: <BookOpen size={18} /> },
     { role: 'GURU_PIKET', title: 'Buat Akun Guru Piket', desc: 'Untuk petugas piket yang cek masalah dan catatan piket.', icon: <ListChecks size={18} /> },
-    { role: 'OPERATOR_IT', title: 'Buat Akun Operator', desc: 'Untuk pengelola perangkat, kartu, dan sistem.', icon: <ShieldCheck size={18} /> },
-    { role: 'KEPALA_SEKOLAH', title: 'Buat Akun Kepala Sekolah', desc: 'Untuk pimpinan yang hanya memantau dashboard dan laporan.', icon: <Eye size={18} /> }
+    { role: 'OPERATOR_IT', title: 'Buat Akun Operator', desc: 'Untuk pengelola perangkat, kartu, dan sistem.', icon: <ShieldCheck size={18} /> }
   ];
   function applyUserPreset(role) {
     setForm((prev) => ({ ...emptyUserForm, username: prev.id ? '' : prev.username, fullName: prev.id ? '' : prev.fullName, role }));
