@@ -21,7 +21,6 @@ import {
   ListChecks,
   Lock,
   LogOut,
-  MapPin,
   Menu,
   Radar,
   RefreshCw,
@@ -343,27 +342,27 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
           </div>
           <div className="login-hero">
             <div className="eyebrow"><span className="dot" /> SIAB2</div>
-            <h1>Satu sistem akademik.<br />Presensi lebih tertib.<br /><span className="grad">Karakter lebih terjaga.</span></h1>
-            <p>{BRAND.description} membantu sekolah mengelola kehadiran siswa dari gerbang dan kelas. Jika ada siswa belum tempel kartu, tidak masuk kelas, atau data tidak sesuai, petugas akan lebih mudah mengetahuinya.</p>
+            <h1>Presensi sekolah lebih rapi dalam <span className="grad">satu sistem.</span></h1>
+            <p>Kelola kehadiran dari gerbang, kelas, dan mushola dengan data yang mudah dipantau oleh guru, admin, dan petugas sekolah.</p>
             <div className="row" style={{ gap: 8, marginTop: 22, flexWrap: 'wrap' }}>
-              <span className="chip chip-light"><Shield size={12} /> Semua perubahan tercatat</span>
-              <span className="chip chip-light"><MapPin size={12} /> Hanya di area sekolah</span>
-              <span className="chip chip-light"><Zap size={12} /> Cepat dan ringan</span>
+              <span className="chip chip-light"><Shield size={12} /> Perubahan tercatat</span>
+              <span className="chip chip-light"><Activity size={12} /> Data mudah dipantau</span>
+              <span className="chip chip-light"><Zap size={12} /> Operasional cepat</span>
             </div>
           </div>
           <div className="login-divider" />
           <div className="login-specs">
             <div className="login-spec">
-              <span className="k">DI GERBANG</span>
-              <span className="v">Tempel kartu siswa</span>
+              <span className="k">GERBANG</span>
+              <span className="v">Scan datang dan pulang</span>
             </div>
             <div className="login-spec">
-              <span className="k">DI KELAS</span>
-              <span className="v">Dicek oleh guru</span>
+              <span className="k">KELAS</span>
+              <span className="v">Guru mencatat kehadiran</span>
             </div>
             <div className="login-spec">
-              <span className="k">PENGECEKAN DATA</span>
-              <span className="v">Dibantu otomatis</span>
+              <span className="k">LAPORAN</span>
+              <span className="v">Admin memantau data</span>
             </div>
           </div>
         </div>
