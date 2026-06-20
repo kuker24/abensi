@@ -26,6 +26,8 @@
     "test:visual": "bash scripts/visual_regression.sh",
     "test:https-smoke": "bash scripts/https_smoke.sh",
     "test:post-deploy-smoke": "bash scripts/test_post_deploy_smoke.sh",
+    "test:post-deploy-smoke:mjs": "node scripts/test_post_deploy_smoke_mjs.mjs",
+    "smoke:post-deploy": "node scripts/post_deploy_smoke.mjs",
     "test:https-ci-fixture": "bash scripts/https_ci_fixture.sh",
     "security:secrets": "bash scripts/secret_scan.sh",
     "security:container-scan": "bash scripts/container_scan.sh",
