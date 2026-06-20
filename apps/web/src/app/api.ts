@@ -19,12 +19,13 @@ export function readStoredUser(): User | null {
 export function normalizeRole(apiRole?: string, fallback: RouteArea = 'admin'): RouteArea {
   if (apiRole === 'GURU_MAPEL') return 'guru';
   if (apiRole === 'SISWA') return 'siswa';
-  if (apiRole === 'ADMIN_TU' || apiRole === 'OPERATOR_IT' || apiRole === 'GURU_PIKET' || apiRole === 'DEVELOPER') return 'admin';
+  if (apiRole === 'ADMIN_TU' || apiRole === 'KEPALA_SEKOLAH' || apiRole === 'OPERATOR_IT' || apiRole === 'GURU_PIKET' || apiRole === 'DEVELOPER') return 'admin';
   return fallback;
 }
 
 export function defaultPathFor(user?: User | null): string {
   if (user?.role === 'DEVELOPER') return '/admin/developer-control';
+  if (user?.role === 'KEPALA_SEKOLAH') return '/admin/principal-dashboard';
   if (user?.role === 'OPERATOR_IT') return '/admin/it-dashboard';
   if (user?.role === 'GURU_PIKET') return '/admin/picket-dashboard';
   const role = normalizeRole(user?.role, 'admin');

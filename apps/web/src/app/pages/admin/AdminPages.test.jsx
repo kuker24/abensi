@@ -4,6 +4,11 @@ import { AuditPage, DevicesPage, ReportsPage, StudentDailyCompletenessPage, REPO
 
 afterEach(() => {
   cleanup();
+  try {
+    window.localStorage?.clear?.();
+    Object.defineProperty(window, 'localStorage', { value: undefined, configurable: true });
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, configurable: true });
+  } catch { /* ignore unavailable storage */ }
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -298,6 +303,24 @@ describe('official report download UI', () => {
     expect(String(exportCall?.[0])).toContain('reportType=recap_classes');
     expect(String(exportCall?.[0])).toContain('format=xlsx');
     expect(notify).toHaveBeenCalledWith('Laporan resmi berhasil diunduh.');
+  });
+
+  it('hides official export controls for Kepala Sekolah read-only reports', async () => {
+    const storedUser = JSON.stringify({ id: 'kepala-1', role: 'KEPALA_SEKOLAH' });
+    const localStorageMock = { getItem: vi.fn((key) => key === 'schoolhub_user' ? storedUser : null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn() };
+    Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true });
+    Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, configurable: true });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ items: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    })));
+
+    render(<ReportsPage notify={vi.fn()} />);
+
+    expect(await screen.findByText(/Belum ada data laporan/i)).toBeInTheDocument();
+    expect(screen.queryByText('Excel Resmi (.xlsx)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Unduh Laporan/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Cetak Pratinjau \/ Cetak/i })).toBeInTheDocument();
   });
 
   it('does not expose raw server errors to report operators', async () => {

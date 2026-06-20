@@ -95,6 +95,7 @@ export function statusLabel(status?: string | null): string {
     DZUHUR: 'Dzuhur',
     ASHAR: 'Ashar',
     ADMIN_TU: 'Admin/TU',
+    KEPALA_SEKOLAH: 'Kepala Sekolah',
     OPERATOR_IT: 'Operator IT',
     GURU_MAPEL: 'Guru Mapel',
     GURU_PIKET: 'Guru Piket',
@@ -106,7 +107,7 @@ export function statusLabel(status?: string | null): string {
 export function StatusPill({ status }: { status?: string | null }) {
   const tone = ({
     HADIR: 'ok', TELAT: 'warn', IZIN: 'info', SAKIT: 'acc', ALPA: 'bad', EXCUSED_ABSENCE: 'info', ALPA_MENGAJAR: 'bad',
-    OPEN: 'ok', CLOSED: '', SCHEDULED: '', MISSED: 'bad', ACTIVE: 'ok', LOST: 'bad', INACTIVE: '', REVOKED: 'bad', RESOLVED: 'ok', QUEUED: 'warn', IN: 'ok', OUT: 'info', WARN: 'warn', URGENT: 'bad', PENDING: 'warn', APPROVED: 'ok', REJECTED: 'bad', CANCELLED: '', DINAS_LUAR: 'info', IN_REVIEW: 'info', ESCALATED: 'warn', HIGH: 'warn', LOW: 'info', GATE_TAP: 'ok', ANOMALY: 'warn', SESSION_OPENED: 'ok', SESSION_CLOSED: 'info', CLASS_ATTENDANCE: 'info', TEACHER_CHECKIN: 'ok', TEACHER_CHECKOUT: 'info', GATE: 'ok', QR_ANDROID: 'ok', GATE_IN: 'ok', GATE_OUT: 'info', MUSHOLA: 'info', CLASS: 'warn', MANUAL: 'info', DHUHA: 'ok', DZUHUR: 'ok', ASHAR: 'ok', HADIR_LENGKAP: 'ok', BELUM_SCAN_DATANG: 'warn', BELUM_SCAN_PULANG: 'warn', BELUM_ABSEN_KELAS: 'warn', BELUM_SCAN_SHOLAT: 'warn', PERLU_VERIFIKASI: 'bad', BELUM_SCAN_GERBANG: 'warn', BELUM_SCAN_DHUHA: 'warn', BELUM_SCAN_DZUHUR: 'warn', BELUM_SCAN_ASHAR: 'warn', BELUM_SCAN_KELUAR_GERBANG: 'warn', DEVELOPER: 'acc'
+    OPEN: 'ok', CLOSED: '', SCHEDULED: '', MISSED: 'bad', ACTIVE: 'ok', LOST: 'bad', INACTIVE: '', REVOKED: 'bad', RESOLVED: 'ok', QUEUED: 'warn', IN: 'ok', OUT: 'info', WARN: 'warn', URGENT: 'bad', PENDING: 'warn', APPROVED: 'ok', REJECTED: 'bad', CANCELLED: '', DINAS_LUAR: 'info', IN_REVIEW: 'info', ESCALATED: 'warn', HIGH: 'warn', LOW: 'info', GATE_TAP: 'ok', ANOMALY: 'warn', SESSION_OPENED: 'ok', SESSION_CLOSED: 'info', CLASS_ATTENDANCE: 'info', TEACHER_CHECKIN: 'ok', TEACHER_CHECKOUT: 'info', GATE: 'ok', QR_ANDROID: 'ok', GATE_IN: 'ok', GATE_OUT: 'info', MUSHOLA: 'info', CLASS: 'warn', MANUAL: 'info', DHUHA: 'ok', DZUHUR: 'ok', ASHAR: 'ok', HADIR_LENGKAP: 'ok', BELUM_SCAN_DATANG: 'warn', BELUM_SCAN_PULANG: 'warn', BELUM_ABSEN_KELAS: 'warn', BELUM_SCAN_SHOLAT: 'warn', PERLU_VERIFIKASI: 'bad', BELUM_SCAN_GERBANG: 'warn', BELUM_SCAN_DHUHA: 'warn', BELUM_SCAN_DZUHUR: 'warn', BELUM_SCAN_ASHAR: 'warn', BELUM_SCAN_KELUAR_GERBANG: 'warn', KEPALA_SEKOLAH: 'acc', DEVELOPER: 'acc'
   } as Record<string, string>)[String(status)] || '';
   return <Pill tone={tone}>{statusLabel(status)}</Pill>;
 }

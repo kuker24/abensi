@@ -11,6 +11,7 @@ datasource db {
 
 enum Role {
   ADMIN_TU
+  KEPALA_SEKOLAH
   GURU_MAPEL
   GURU_PIKET
   SISWA
