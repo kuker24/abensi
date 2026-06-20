@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -248,7 +250,14 @@ fun ScannerScreen(
             )
         }
 
-        Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatusBar(
                     connection = connection,
@@ -290,7 +299,7 @@ fun ScannerScreen(
                     Button(
                         onClick = { paused = !paused },
                         modifier = Modifier.weight(1f).height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (paused) MaterialTheme.colorScheme.primary else Color(0xFF232529))
+                        colors = if (paused) scannerPrimaryButtonColors() else scannerDarkButtonColors()
                     ) { Text(if (paused) "Mulai Scan" else "Jeda Scan") }
                     Button(
                         onClick = {
@@ -298,7 +307,7 @@ fun ScannerScreen(
                             cameraControl?.enableTorch(torchOn)
                         },
                         modifier = Modifier.weight(1f).height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                        colors = scannerDarkButtonColors()
                     ) { Text(if (torchOn) "Lampu ON" else "Lampu") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -306,18 +315,18 @@ fun ScannerScreen(
                         Button(
                             onClick = callbacks.onRetryQueue,
                             modifier = Modifier.weight(1f).height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            colors = scannerPrimaryButtonColors()
                         ) { Text("Kirim ($queueCount)") }
                     }
                     Button(
                         onClick = callbacks.onHelp,
                         modifier = Modifier.weight(1f).height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                        colors = scannerDarkButtonColors()
                     ) { Text("Bantuan") }
                     Button(
                         onClick = { confirmModeChange = true },
                         modifier = Modifier.weight(1f).height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                        colors = scannerDarkButtonColors()
                     ) { Text("Ubah Mode") }
                 }
             }
@@ -349,6 +358,8 @@ private fun CameraPermissionRequiredScreen(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -373,28 +384,44 @@ private fun CameraPermissionRequiredScreen(
             Button(
                 onClick = requestCameraPermission,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = scannerPrimaryButtonColors()
             ) { Text("Izinkan Kamera") }
             Button(
                 onClick = openAppSettings,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                colors = scannerDarkButtonColors()
             ) { Text("Buka Pengaturan HP") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = callbacks.onHelp,
                     modifier = Modifier.weight(1f).height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                    colors = scannerDarkButtonColors()
                 ) { Text("Bantuan") }
                 Button(
                     onClick = callbacks.onBack,
                     modifier = Modifier.weight(1f).height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                    colors = scannerDarkButtonColors()
                 ) { Text("Kembali") }
             }
         }
     }
 }
+
+@Composable
+private fun scannerPrimaryButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = MaterialTheme.colorScheme.primary,
+    contentColor = MaterialTheme.colorScheme.onPrimary,
+    disabledContainerColor = Color(0xFF1E2025),
+    disabledContentColor = Color.White.copy(alpha = 0.58f)
+)
+
+@Composable
+private fun scannerDarkButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = Color(0xFF232529),
+    contentColor = Color.White,
+    disabledContainerColor = Color(0xFF1E2025),
+    disabledContentColor = Color.White.copy(alpha = 0.58f)
+)
 
 private data class ServerScanSummary(
     val displayName: String? = null,
