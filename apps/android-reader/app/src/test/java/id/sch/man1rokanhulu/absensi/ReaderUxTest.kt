@@ -63,6 +63,9 @@ class ReaderUxTest {
         assertEquals("Pulang tercatat", friendlyScanMessage("Pulang tercatat."))
         assertEquals("Sudah tercatat", friendlyScanTitle(true, "Sudah tercatat."))
         assertTrue(shouldResetProvisioning("Reader sudah dicabut."))
+        assertTrue(shouldResetProvisioning("Signature reader tidak valid.", 401))
+        assertFalse(shouldResetProvisioning("Mode scan tidak diizinkan untuk reader ini.", 403))
+        assertEquals("HP scanner belum aktif atau dicabut. Minta admin aktivasi ulang.", friendlyScanMessage("Signature reader tidak valid."))
     }
 
     @Test

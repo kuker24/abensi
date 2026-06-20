@@ -190,7 +190,7 @@ fun ScannerScreen(
                                                 actionLabel = summary.actionLabel
                                             )
                                         )
-                                        if (shouldResetProvisioning(scan.message)) callbacks.onProvisioningLost()
+                                        if (shouldResetProvisioning(scan.message, scan.statusCode)) callbacks.onProvisioningLost()
                                         FeedbackData(friendlyScanTitle(false, friendly), friendly.ifBlank { "Scan ditolak server." }, FeedbackTone.ERROR)
                                     }
                                 } catch (e: IOException) {
