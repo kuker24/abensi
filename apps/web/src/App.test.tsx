@@ -121,6 +121,24 @@ describe('PRD v2.2 UI shell', () => {
     expect(window.localStorage.getItem('schoolhub_user')).toBeNull();
   });
 
+  it('maps invalid login credentials to operator-friendly Indonesian copy', async () => {
+    mockStorage();
+    window.history.replaceState({}, '', '/login');
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ message: 'Username atau password salah.' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' }
+    })) as any;
+
+    render(<App />);
+    fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'akun-salah' } });
+    fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-salah' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
+
+    await waitFor(() => expect(screen.getByText('Nama akun atau kata sandi salah.')).toBeInTheDocument());
+    expect(screen.queryByText(/401|Unauthorized|stack|JSON/i)).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+  });
+
   it('keeps student attendance read-only and does not expose a self check-in route', async () => {
     const storage = mockStorage();
     const student = { id: 's1', username: 'siswa', fullName: 'Siswa Demo', role: 'SISWA' };

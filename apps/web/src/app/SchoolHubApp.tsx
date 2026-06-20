@@ -761,7 +761,9 @@ function App() {
       const message = err instanceof Error ? err.message : 'Login gagal. Periksa koneksi atau kredensial Anda.';
       const friendlyMessage = message.includes('tidak sesuai pilihan peran')
         ? `Akun ini bukan akun ${loginAreaLabel(selectedRole)}. Pilih tab yang sesuai atau gunakan akun ${loginAreaLabel(selectedRole)}.`
-        : message;
+        : message.includes('Username atau password salah')
+          ? 'Nama akun atau kata sandi salah.'
+          : message;
       notify(friendlyMessage, 'bad');
       throw new Error(friendlyMessage);
     }

@@ -10,6 +10,58 @@ afterEach(() => {
 });
 
 describe('HP Scanner Android operator UI', () => {
+  it('clarifies the two physical scanner model without role-specific HP labels', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/device-readers')) return new Response(JSON.stringify({ items: [], meta: { page: 1, limit: 200, total: 0, totalPages: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<DevicesPage notify={vi.fn()} />);
+
+    expect(await screen.findByText('Kelola 2 HP scanner sekolah')).toBeInTheDocument();
+    expect(screen.getAllByText('HP Gerbang').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('HP Mushola').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Gunakan HP Gerbang untuk scan datang/pulang dan HP Mushola untuk scan sholat siswa.').length).toBeGreaterThanOrEqual(1);
+    expect(document.body.textContent).not.toMatch(/HP Guru|HP Siswa|HP Staff|HP Kepala|Scanner Guru|Scanner Siswa/i);
+  });
+
+  it('shows selected HP-specific activation instructions without exposing scanner secrets in the list', async () => {
+    const notify = vi.fn();
+    const fetchMock = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/device-readers/android/provision/start')) {
+        return new Response(JSON.stringify({
+          item: { id: 'pending-reader', name: 'HP Pending', hasProvisioningToken: true, hasReaderSecret: false },
+          provisionToken: 'shrp_activationCodeOnlyForThisFlow',
+          provisioningQr: 'schoolhub:reader-provision:v1:shrp_activationCodeOnlyForThisFlow',
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString()
+        }), { status: 201, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/device-readers')) {
+        return new Response(JSON.stringify({
+          items: [{ id: 'reader-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-1', name: 'HP Gerbang Aktif', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'], hasReaderSecret: true }],
+          meta: { page: 1, limit: 200, total: 1, totalPages: 1 }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DevicesPage notify={notify} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Buat Kode Aktivasi/i }));
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Buka aplikasi SIAB2 Reader di HP Gerbang lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    expect(screen.getByText('shrp_activationCodeOnlyForThisFlow')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /HP Mushola.*sholat\/ibadah siswa/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Buat Kode Aktivasi/i }));
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Buka aplikasi SIAB2 Reader di HP Mushola lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
+  });
+
   it('shows safe secret copy and does not offer Aktifkan lagi for pending unprovisioned readers', async () => {
     const notify = vi.fn();
     const readers = [
