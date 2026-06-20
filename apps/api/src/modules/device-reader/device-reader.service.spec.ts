@@ -295,4 +295,161 @@ describe('DeviceReaderService credential security', () => {
 
     await expect(service.getStatus(identifier)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('revoke QR_ANDROID clears device identity', async () => {
+    const prisma = makePrisma();
+    const expiresAt = new Date(Date.now() + 60_000);
+    const before = {
+      id: 'android-reader-1',
+      name: 'HP Scanner 1',
+      type: ReaderType.QR_ANDROID,
+      platform: DevicePlatform.ANDROID,
+      status: DeviceReaderStatus.ACTIVE,
+      deviceId: 'physical-hp-1',
+      readerSecretCiphertext: 'enc-secret',
+      provisioningTokenHash: 'token-hash',
+      provisioningExpiresAt: expiresAt,
+      lastSeenAt: new Date('2026-06-20T01:00:00.000Z'),
+      lastSignedScanAt: new Date('2026-06-20T01:05:00.000Z'),
+      allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]
+    };
+    const after = {
+      ...before,
+      status: DeviceReaderStatus.REVOKED,
+      deviceId: null,
+      readerSecretCiphertext: null,
+      provisioningTokenHash: null,
+      provisioningExpiresAt: null,
+      lastSignedScanAt: null,
+      revokedAt: new Date(),
+      revokedById: actor.sub,
+      revokedReason: 'HP diganti'
+    };
+    prisma.deviceReader.findUnique.mockResolvedValue(before);
+    prisma.__tx.deviceReader.update.mockResolvedValue(after);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    const result = await service.revoke('android-reader-1', { reason: 'HP diganti' }, actor);
+
+    expect(prisma.__tx.deviceReader.update).toHaveBeenCalledWith({
+      where: { id: 'android-reader-1' },
+      data: expect.objectContaining({
+        status: DeviceReaderStatus.REVOKED,
+        revokedById: actor.sub,
+        revokedReason: 'HP diganti',
+        deviceId: null,
+        readerSecretCiphertext: null,
+        provisioningTokenHash: null,
+        provisioningExpiresAt: null,
+        lastSignedScanAt: null
+      })
+    });
+    expect(prisma.__tx.deviceReader.update.mock.calls[0][0].data).not.toHaveProperty('lastSeenAt');
+    expect(prisma.__tx.deviceReader.update.mock.calls[0][0].data).not.toHaveProperty('allowedModes');
+    expect(result).toMatchObject({ status: DeviceReaderStatus.REVOKED, deviceId: null, hasReaderSecret: false, hasProvisioningToken: false });
+  });
+
+  it('revoke QR_ANDROID frees deviceId for reprovision', async () => {
+    const prisma = makePrisma();
+    const token = 'shrp_reprovisionToken_12345';
+    const oldRevokedReader = { id: 'old-reader', type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.REVOKED, deviceId: null };
+    const pendingReader = { id: 'new-reader', name: 'HP Scanner baru', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [], provisioningTokenHash: readerCredentialDigest(token), provisioningExpiresAt: new Date(Date.now() + 60_000) };
+    prisma.deviceReader.findMany.mockResolvedValue([pendingReader]);
+    prisma.__tx.deviceReader.count.mockResolvedValue(1);
+    prisma.__tx.deviceReader.findUniqueOrThrow.mockResolvedValue({ ...pendingReader, deviceId: 'physical-hp-1', status: DeviceReaderStatus.ACTIVE, provisioningTokenHash: null, readerSecretCiphertext: 'enc-secret' });
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await expect(service.completeAndroidProvision({ provisionToken: token, deviceId: oldRevokedReader.deviceId ?? 'physical-hp-1' })).resolves.toMatchObject({ deviceId: 'physical-hp-1', readerId: 'new-reader' });
+
+    expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE, id: { not: 'new-reader' } } });
+    expect(prisma.__tx.deviceReader.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ deviceId: 'physical-hp-1', status: DeviceReaderStatus.ACTIVE, provisioningTokenHash: null, provisioningExpiresAt: null })
+    }));
+  });
+
+  it('revoke QR_ANDROID frees active slot', async () => {
+    const prisma = makePrisma();
+    prisma.__tx.deviceReader.count.mockResolvedValue(0);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.startAndroidProvision({ name: 'HP Scanner pengganti' }, actor);
+
+    expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE } });
+    expect(prisma.__tx.deviceReader.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID }) }));
+  });
+
+  it('non-QR reader revoke unchanged', async () => {
+    const prisma = makePrisma();
+    const before = {
+      id: 'gate-reader-1',
+      name: 'Gerbang 1',
+      type: ReaderType.GATE,
+      status: DeviceReaderStatus.ACTIVE,
+      deviceId: 'gate-device-1',
+      readerSecretCiphertext: 'enc-secret',
+      provisioningTokenHash: 'unused-token',
+      provisioningExpiresAt: new Date(Date.now() + 60_000),
+      lastSignedScanAt: new Date('2026-06-20T01:05:00.000Z')
+    };
+    prisma.deviceReader.findUnique.mockResolvedValue(before);
+    prisma.__tx.deviceReader.update.mockResolvedValue({ ...before, status: DeviceReaderStatus.REVOKED, revokedAt: new Date(), revokedById: actor.sub, revokedReason: 'rusak' });
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.revoke('gate-reader-1', { reason: 'rusak' }, actor);
+
+    expect(prisma.__tx.deviceReader.update).toHaveBeenCalledWith({
+      where: { id: 'gate-reader-1' },
+      data: expect.objectContaining({ status: DeviceReaderStatus.REVOKED, revokedById: actor.sub, revokedReason: 'rusak' })
+    });
+    const updateData = prisma.__tx.deviceReader.update.mock.calls[0][0].data;
+    expect(updateData).not.toHaveProperty('deviceId');
+    expect(updateData).not.toHaveProperty('readerSecretCiphertext');
+    expect(updateData).not.toHaveProperty('provisioningTokenHash');
+    expect(updateData).not.toHaveProperty('provisioningExpiresAt');
+    expect(updateData).not.toHaveProperty('lastSignedScanAt');
+  });
+
+  it('audit redact safety for reader revoke', async () => {
+    const prisma = makePrisma();
+    const before = {
+      id: 'android-reader-1',
+      name: 'HP Scanner 1',
+      type: ReaderType.QR_ANDROID,
+      status: DeviceReaderStatus.ACTIVE,
+      deviceId: 'physical-hp-1',
+      apiKeyHash: 'api-key-hash-secret',
+      keyPrefix: 'shr_abc',
+      keyLast4: 'wxyz',
+      readerSecretCiphertext: 'ciphertext-secret',
+      provisioningTokenHash: 'provisioning-token-secret',
+      provisioningExpiresAt: new Date(Date.now() + 60_000),
+      lastSignedScanAt: new Date('2026-06-20T01:05:00.000Z')
+    };
+    const after = {
+      ...before,
+      status: DeviceReaderStatus.REVOKED,
+      deviceId: null,
+      readerSecretCiphertext: null,
+      provisioningTokenHash: null,
+      provisioningExpiresAt: null,
+      lastSignedScanAt: null,
+      revokedAt: new Date(),
+      revokedById: actor.sub,
+      revokedReason: 'diganti'
+    };
+    prisma.deviceReader.findUnique.mockResolvedValue(before);
+    prisma.__tx.deviceReader.update.mockResolvedValue(after);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.revoke('android-reader-1', { reason: 'diganti' }, actor);
+
+    const auditData = prisma.__tx.auditEntry.create.mock.calls[0][0].data;
+    const serializedAudit = JSON.stringify({ before: auditData.before, after: auditData.after, canonicalPayload: auditData.canonicalPayload });
+    expect(serializedAudit).not.toContain('apiKeyHash');
+    expect(serializedAudit).not.toContain('readerSecretCiphertext');
+    expect(serializedAudit).not.toContain('provisioningTokenHash');
+    expect(serializedAudit).not.toContain('api-key-hash-secret');
+    expect(serializedAudit).not.toContain('ciphertext-secret');
+    expect(serializedAudit).not.toContain('provisioning-token-secret');
+  });
 });

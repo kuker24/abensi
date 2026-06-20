@@ -384,8 +384,24 @@ export class DeviceReaderService {
     const before = await this.prisma.deviceReader.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Reader tidak ditemukan.');
     if (before.status === DeviceReaderStatus.REVOKED) throw new BadRequestException('Reader sudah dicabut.');
+    const revokedAt = new Date();
+    const revokeData: Prisma.DeviceReaderUncheckedUpdateInput = {
+      status: DeviceReaderStatus.REVOKED,
+      revokedAt,
+      revokedById: actor.sub,
+      revokedReason: payload.reason
+    };
+    if (before.type === ReaderType.QR_ANDROID) {
+      Object.assign(revokeData, {
+        deviceId: null,
+        readerSecretCiphertext: null,
+        provisioningTokenHash: null,
+        provisioningExpiresAt: null,
+        lastSignedScanAt: null
+      });
+    }
     const updated = await this.prisma.$transaction(async (tx) => {
-      const item = await tx.deviceReader.update({ where: { id }, data: { status: DeviceReaderStatus.REVOKED, revokedAt: new Date(), revokedById: actor.sub, revokedReason: payload.reason } });
+      const item = await tx.deviceReader.update({ where: { id }, data: revokeData });
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role,
