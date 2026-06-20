@@ -6,11 +6,26 @@ const val DEFAULT_SIAB2_SERVER_URL = "https://absensi.man1rokanhulu.cloud"
 
 enum class ReaderDeviceKind { GATE, MUSHOLA, CHECK_ONLY, MIXED }
 
+private fun normalizeMode(mode: String): String = when (mode.trim().uppercase()) {
+    "GATE_IN", "GATE_OUT" -> "GERBANG"
+    else -> mode.trim().uppercase()
+}
+
+fun selectableScanModes(allowedModes: List<String>): List<String> {
+    val normalized = allowedModes.map(::normalizeMode).toSet()
+    val result = mutableListOf<String>()
+    if (normalized.contains("GERBANG")) result.add("GERBANG")
+    if (normalized.contains("MUSHOLA")) result.add("MUSHOLA")
+    if (result.isEmpty() && normalized.contains("CHECK_ONLY")) result.add("CHECK_ONLY")
+    return result.ifEmpty { listOf("GERBANG", "MUSHOLA") }
+}
+
 fun readerDeviceKind(allowedModes: List<String>): ReaderDeviceKind {
-    val modes = allowedModes.map { it.trim().uppercase() }.toSet()
-    val hasGate = modes.contains("GATE_IN") || modes.contains("GATE_OUT")
+    val modes = selectableScanModes(allowedModes).toSet()
+    val hasGate = modes.contains("GERBANG")
     val hasMushola = modes.contains("MUSHOLA")
     return when {
+        hasGate && hasMushola -> ReaderDeviceKind.MIXED
         hasGate -> ReaderDeviceKind.GATE
         hasMushola -> ReaderDeviceKind.MUSHOLA
         modes.contains("CHECK_ONLY") -> ReaderDeviceKind.CHECK_ONLY
@@ -19,31 +34,43 @@ fun readerDeviceKind(allowedModes: List<String>): ReaderDeviceKind {
 }
 
 fun readerDeviceTitle(allowedModes: List<String>): String = when (readerDeviceKind(allowedModes)) {
-    ReaderDeviceKind.GATE -> "HP Gerbang"
-    ReaderDeviceKind.MUSHOLA -> "HP Mushola"
+    ReaderDeviceKind.GATE, ReaderDeviceKind.MUSHOLA, ReaderDeviceKind.MIXED -> "HP Scanner"
     ReaderDeviceKind.CHECK_ONLY -> "Mode Cek QR"
-    ReaderDeviceKind.MIXED -> "HP Scanner"
 }
 
 fun readerModeSummary(allowedModes: List<String>): String = when (readerDeviceKind(allowedModes)) {
-    ReaderDeviceKind.GATE -> "Mode: Datang & Pulang"
-    ReaderDeviceKind.MUSHOLA -> "Sholat saat ini: ${currentPrayerLabel()}"
+    ReaderDeviceKind.GATE -> "Mode Gerbang tersedia"
+    ReaderDeviceKind.MUSHOLA -> "Mode Mushola tersedia"
     ReaderDeviceKind.CHECK_ONLY -> "Mode: Cek Saja"
-    ReaderDeviceKind.MIXED -> "Mode scanner aktif"
+    ReaderDeviceKind.MIXED -> "Pilih Mode Gerbang atau Mode Mushola"
 }
 
 fun effectiveScanMode(allowedModes: List<String>, currentMode: String): String {
-    val modes = allowedModes.map { it.trim().uppercase() }.filter { it.isNotBlank() }
-    val kind = readerDeviceKind(modes)
-    return when (kind) {
-        ReaderDeviceKind.GATE -> "GATE_IN" // server auto-maps first scan to Datang and later valid scan to Pulang when both modes are allowed.
-        ReaderDeviceKind.MUSHOLA -> "MUSHOLA"
-        ReaderDeviceKind.CHECK_ONLY -> "CHECK_ONLY"
-        ReaderDeviceKind.MIXED -> if (modes.contains(currentMode.uppercase())) currentMode.uppercase() else modes.firstOrNull() ?: "CHECK_ONLY"
+    val modes = selectableScanModes(allowedModes)
+    val normalizedCurrent = normalizeMode(currentMode)
+    return when {
+        modes.contains(normalizedCurrent) -> normalizedCurrent
+        modes.contains("GERBANG") -> "GERBANG"
+        modes.contains("MUSHOLA") -> "MUSHOLA"
+        else -> modes.firstOrNull() ?: "GERBANG"
     }
 }
 
-fun showManualModePicker(allowedModes: List<String>): Boolean = readerDeviceKind(allowedModes) == ReaderDeviceKind.MIXED
+fun showManualModePicker(allowedModes: List<String>): Boolean = selectableScanModes(allowedModes).size > 1
+
+fun scanModeTitle(mode: String): String = when (normalizeMode(mode)) {
+    "GERBANG" -> "Mode Gerbang"
+    "MUSHOLA" -> "Mode Mushola"
+    "CHECK_ONLY" -> "Mode Cek QR"
+    else -> "Mode Scan"
+}
+
+fun scanModeHelper(mode: String): String = when (normalizeMode(mode)) {
+    "GERBANG" -> "Scan datang/pulang."
+    "MUSHOLA" -> "Scan sholat siswa."
+    "CHECK_ONLY" -> "Cek QR tanpa mencatat presensi."
+    else -> "Arahkan QR ke kamera."
+}
 
 fun currentPrayerLabel(now: LocalTime = LocalTime.now()): String = when {
     now.isBefore(LocalTime.of(10, 31)) -> "Dhuha"
@@ -56,6 +83,9 @@ fun friendlyScanTitle(ok: Boolean, message: String): String {
     val lower = message.lowercase()
     return when {
         lower.contains("sudah tercatat") || lower.contains("sudah ada") -> "Sudah tercatat"
+        lower.contains("datang tercatat") -> "Datang tercatat"
+        lower.contains("pulang tercatat") -> "Pulang tercatat"
+        lower.contains("sholat tercatat") -> "Sholat tercatat"
         ok -> "Berhasil tercatat"
         lower.contains("server") || lower.contains("internet") || lower.contains("wifi") -> "Server belum bisa dihubungi"
         else -> "Scan ditolak"
@@ -67,7 +97,7 @@ private const val NETWORK_PROBLEM_MESSAGE = "Server belum bisa dihubungi. Periks
 private const val READER_REVOKED_MESSAGE = "HP scanner belum aktif atau dicabut. Minta admin aktivasi ulang."
 private const val READER_ACCESS_MESSAGE = "HP scanner belum aktif atau dicabut. Minta admin aktivasi ulang."
 private const val ACTIVATION_TOKEN_MESSAGE = "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru."
-private const val WRONG_MODE_MESSAGE = "QR tidak cocok untuk HP ini"
+private const val WRONG_MODE_MESSAGE = "QR tidak cocok untuk mode scan ini"
 private const val QR_REVOKED_MESSAGE = "QR tidak dikenal atau sudah dicabut."
 
 private fun httpStatusCode(text: String): Int? = Regex("\\bHTTP\\s+(\\d{3})\\b", RegexOption.IGNORE_CASE).find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
@@ -105,14 +135,15 @@ fun friendlyScanMessage(raw: String?): String {
         text.contains("sudah tercatat", ignoreCase = true) || text.contains("sudah ada", ignoreCase = true) -> "Sudah tercatat"
         text.contains("datang", ignoreCase = true) && text.contains("tercatat", ignoreCase = true) -> "Datang tercatat"
         text.contains("pulang", ignoreCase = true) && text.contains("tercatat", ignoreCase = true) -> "Pulang tercatat"
+        text.contains("sholat", ignoreCase = true) && text.contains("tercatat", ignoreCase = true) -> "Sholat tercatat"
         isServerProblem(text) -> SERVER_PROBLEM_MESSAGE
         isAuthProblem(text) -> READER_ACCESS_MESSAGE
         isProvisionTokenProblem(text) -> ACTIVATION_TOKEN_MESSAGE
         status == 404 -> QR_REVOKED_MESSAGE
-        text.contains("Mode scan", ignoreCase = true) || text.contains("Mode HP", ignoreCase = true) || text.contains("Tipe reader", ignoreCase = true) || text.contains("tidak cocok", ignoreCase = true) -> WRONG_MODE_MESSAGE
+        text.contains("Mode scan", ignoreCase = true) || text.contains("Mode HP", ignoreCase = true) || text.contains("Mode Gerbang", ignoreCase = true) || text.contains("Mode Mushola", ignoreCase = true) || text.contains("Tipe reader", ignoreCase = true) || text.contains("tidak cocok", ignoreCase = true) -> WRONG_MODE_MESSAGE
         text.contains("QR", ignoreCase = true) && (text.contains("tidak", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) || text.contains("invalid", ignoreCase = true)) -> QR_REVOKED_MESSAGE
         text.contains("Reader tidak aktif", ignoreCase = true) || text.contains("dinonaktif", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) -> READER_REVOKED_MESSAGE
-        text.contains("mushola", ignoreCase = true) && text.contains("siswa", ignoreCase = true) -> "HP Mushola hanya untuk scan siswa."
+        text.contains("mushola", ignoreCase = true) && text.contains("siswa", ignoreCase = true) -> WRONG_MODE_MESSAGE
         text.contains("luar", ignoreCase = true) && text.contains("jadwal", ignoreCase = true) -> "Di luar jadwal scan. Coba lagi pada jadwal yang benar."
         isNetworkProblem(text) -> NETWORK_PROBLEM_MESSAGE
         text.contains("tercatat", ignoreCase = true) || text.contains("scan diterima", ignoreCase = true) -> text

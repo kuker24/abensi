@@ -33,6 +33,9 @@ import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrSca
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
 const MIN_GATE_STAY_MINUTES = Number(process.env.MIN_GATE_STAY_MINUTES ?? '10');
 const STEP_UP_FOR_POLICY = process.env.STEP_UP_FOR_POLICY === 'true';
+const WRONG_SCAN_MODE_MESSAGE = 'QR tidak cocok untuk mode scan ini. Ubah mode HP terlebih dahulu.';
+const GATE_QR_ANDROID_MODES = new Set<AndroidReaderMode>([AndroidReaderMode.GERBANG, AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT]);
+const VALID_QR_ANDROID_MODES = new Set<AndroidReaderMode>([AndroidReaderMode.GERBANG, AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
 function dayBounds(value: Date | string = new Date()) {
   return jakartaBusinessDayBounds(value);
 }
@@ -91,6 +94,14 @@ function gateDirectionLabel(direction: GateDirection) {
 
 function prayerLabel(prayerType: PrayerType) {
   return prayerType === PrayerType.DHUHA ? 'Dhuha' : prayerType === PrayerType.DZUHUR ? 'Dzuhur' : 'Ashar';
+}
+
+function scanModeLabel(mode?: AndroidReaderMode | null) {
+  if (!mode) return null;
+  if (mode === AndroidReaderMode.MUSHOLA) return 'Mushola';
+  if (mode === AndroidReaderMode.CHECK_ONLY) return 'Cek Saja';
+  if (GATE_QR_ANDROID_MODES.has(mode)) return 'Gerbang';
+  return String(mode).replace('_', ' ');
 }
 
 function canReviewOverride(role: Role) {
@@ -187,8 +198,17 @@ export class AttendanceGateService {
         take: pagination.limit
       })
     ]);
+    const readerMap = await this.readerNameMap(items.map((item) => item.readerId));
 
-    return { items, meta: buildPaginationMeta(total, pagination) };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        deviceName: (item.readerId ? readerMap.get(item.readerId)?.name : null) ?? item.deviceId ?? '—',
+        scanModeLabel: scanModeLabel(item.scanMode) ?? 'Gerbang',
+        resultLabel: gateDirectionLabel(item.direction)
+      })),
+      meta: buildPaginationMeta(total, pagination)
+    };
   }
 
   async listPrayerLogs(pagination: PaginationQuery, date?: string, studentId?: string) {
@@ -208,7 +228,23 @@ export class AttendanceGateService {
         take: pagination.limit
       })
     ]);
-    return { items, meta: buildPaginationMeta(total, pagination) };
+    const readerMap = await this.readerNameMap(items.map((item) => item.readerId));
+    return {
+      items: items.map((item) => ({
+        ...item,
+        deviceName: (item.readerId ? readerMap.get(item.readerId)?.name : null) ?? item.deviceId ?? '—',
+        scanModeLabel: scanModeLabel(item.scanMode) ?? 'Mushola',
+        resultLabel: 'Sholat'
+      })),
+      meta: buildPaginationMeta(total, pagination)
+    };
+  }
+
+  private async readerNameMap(readerIds: Array<string | null | undefined>) {
+    const ids = Array.from(new Set(readerIds.filter(Boolean))) as string[];
+    if (!ids.length) return new Map<string, { id: string; name: string; locationName?: string | null; locationLabel?: string | null }>();
+    const readers = await this.prisma.deviceReader.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, locationName: true, locationLabel: true } });
+    return new Map(readers.map((reader) => [reader.id, reader]));
   }
 
   async tap(payload: TapGateDto, actor: ScanActor) {
@@ -394,13 +430,16 @@ export class AttendanceGateService {
       appVersionCode: payload.appVersionCode,
       headers: signed
     });
-    if (verification.reader.allowedModes?.length && !verification.reader.allowedModes.includes(payload.mode)) {
-      await this.securityAudit('attendance.qr.reader.scan.denied_wrong_mode', verification.reader.id, { mode: payload.mode, allowedModes: verification.reader.allowedModes });
-      throw new ForbiddenException('Mode HP ini tidak cocok untuk scan ini.');
+    const requestedMode = payload.scanMode ?? payload.mode;
+    if (!requestedMode || !VALID_QR_ANDROID_MODES.has(requestedMode)) {
+      await this.logRejectedQrReaderScan(verification, requestedMode ?? null, 'UNSUPPORTED_SCAN_MODE');
+      await this.securityAudit('attendance.qr.reader.scan.denied_wrong_mode', verification.reader.id, { mode: requestedMode ?? null });
+      throw new BadRequestException('Mode scan QR tidak didukung.');
     }
     const scannedAt = new Date();
     const credential = await this.qrCredentials.findActiveByQrCode(payload.qrCode).catch(async (error) => {
-      await this.securityAudit('attendance.qr.reader.scan.rejected', verification.reader.id, { reason: error.message, qrMasked: redactQr(payload.qrCode), mode: payload.mode });
+      await this.logRejectedQrReaderScan(verification, requestedMode, 'QR_CREDENTIAL_REJECTED');
+      await this.securityAudit('attendance.qr.reader.scan.rejected', verification.reader.id, { reason: error.message, qrMasked: redactQr(payload.qrCode), mode: requestedMode });
       throw error;
     }) as any;
     const user = credential.user;
@@ -412,11 +451,11 @@ export class AttendanceGateService {
       nonceHash: verification.nonceHash,
       bodyHash: verification.bodyHash,
       qrCredentialId: credential.id,
-      scanMode: payload.mode,
+      scanMode: requestedMode,
       appVersion: payload.appVersion ?? verification.reader.appVersion ?? null
     };
 
-    if (payload.mode === AndroidReaderMode.CHECK_ONLY) {
+    if (requestedMode === AndroidReaderMode.CHECK_ONLY) {
       const result = await this.prisma.$transaction(async (tx) => {
         await tx.deviceReader.update({ where: { id: verification.reader.id }, data: { lastSeenAt: scannedAt, lastSignedScanAt: scannedAt, appVersion: payload.appVersion ?? verification.reader.appVersion, appVersionCode: payload.appVersionCode ?? verification.reader.appVersionCode } });
         await tx.qrCredential.update({ where: { id: credential.id }, data: { lastUsedAt: scannedAt } });
@@ -427,23 +466,24 @@ export class AttendanceGateService {
           action: 'attendance.qr.reader.scan.accepted',
           resource: 'qrCredential',
           resourceId: credential.id,
-          after: { mode: payload.mode, qrMasked: redactQr(payload.qrCode), userId: user.id, readerId: verification.reader.id, checkOnly: true } as Prisma.InputJsonValue
+          after: { mode: requestedMode, qrMasked: redactQr(payload.qrCode), userId: user.id, readerId: verification.reader.id, checkOnly: true } as Prisma.InputJsonValue
         });
         return true;
       });
       return { kind: 'CHECK_ONLY', ok: result, message: 'QR valid. Tidak ada presensi yang dicatat.', user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
     }
 
-    if (payload.mode === AndroidReaderMode.GATE_IN || payload.mode === AndroidReaderMode.GATE_OUT) {
-      const result = await this.recordQrAndroidGateScan(user.id, user.role, scannedAt, actor, commonOptions, verification.reader.allowedModes ?? [], payload.mode);
-      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, action: result.action, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id, idempotent: Boolean((result as { idempotent?: boolean }).idempotent) });
+    if (GATE_QR_ANDROID_MODES.has(requestedMode)) {
+      const result = await this.recordQrAndroidGateScan(user.id, user.role, scannedAt, actor, commonOptions, requestedMode);
+      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: requestedMode, action: result.action, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id, idempotent: Boolean((result as { idempotent?: boolean }).idempotent) });
       return { ...result, ok: true, user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
     }
 
-    if (payload.mode === AndroidReaderMode.MUSHOLA) {
+    if (requestedMode === AndroidReaderMode.MUSHOLA) {
       if (user.role !== Role.SISWA) {
-        await this.securityAudit('attendance.qr.reader.scan.rejected', verification.reader.id, { reason: 'Mushola hanya untuk siswa', userId: user.id, mode: payload.mode });
-        throw new ForbiddenException('Scan mushola hanya untuk siswa.');
+        await this.logRejectedQrReaderScan(verification, requestedMode, 'MUSHOLA_NON_STUDENT');
+        await this.securityAudit('attendance.qr.reader.scan.rejected', verification.reader.id, { reason: 'Mushola hanya untuk siswa', userId: user.id, mode: requestedMode });
+        throw new ForbiddenException(WRONG_SCAN_MODE_MESSAGE);
       }
       const policy = await this.getAttendancePolicy();
       const classification = scannedPrayerType(scannedAt, policy);
@@ -451,11 +491,28 @@ export class AttendanceGateService {
         return this.rejectPrayerOutsideWindow(user.id, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions, classification);
       }
       const result = await this.recordPrayerScan(user.id, classification.prayerType, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions);
-      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: payload.mode, prayerType: classification.prayerType, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
+      await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: requestedMode, prayerType: classification.prayerType, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
       return { ...result, ok: true, user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
     }
 
     throw new BadRequestException('Mode scan QR tidak didukung.');
+  }
+
+  private async logRejectedQrReaderScan(
+    verification: { reader: { id: string; deviceId?: string | null }; nonceHash: string; bodyHash: string },
+    scanMode: AndroidReaderMode | null,
+    reason: string
+  ) {
+    await this.prisma.rejectedDeviceScan.create({
+      data: {
+        readerId: verification.reader.id,
+        deviceId: verification.reader.deviceId ?? verification.reader.id,
+        scanMode: scanMode && VALID_QR_ANDROID_MODES.has(scanMode) ? scanMode : null,
+        nonceHash: verification.nonceHash,
+        bodyHash: verification.bodyHash,
+        reason
+      }
+    }).catch(() => null);
   }
 
   private async touchSuccessfulReaderScan(scannedAt: Date, options: RecordOptions) {
@@ -470,14 +527,7 @@ export class AttendanceGateService {
     });
   }
 
-  private async recordQrAndroidGateScan(userId: string, role: Role, scannedAt: Date, actor: ScanActor, options: RecordOptions, allowedModes: AndroidReaderMode[], requestedMode: AndroidReaderMode) {
-    const canAutoDirection = allowedModes.includes(AndroidReaderMode.GATE_IN) && allowedModes.includes(AndroidReaderMode.GATE_OUT);
-    if (!canAutoDirection) {
-      const direction = requestedMode === AndroidReaderMode.GATE_OUT ? GateDirection.OUT : GateDirection.IN;
-      const result = await this.recordGateScan(userId, direction, scannedAt, actor, options, role);
-      return { ...result, action: gateDirectionLabel(direction) };
-    }
-
+  private async recordQrAndroidGateScan(userId: string, role: Role, scannedAt: Date, actor: ScanActor, options: RecordOptions, requestedMode: AndroidReaderMode) {
     const businessDate = gateBusinessDate(scannedAt);
     const logs = await this.prisma.gateLog.findMany({
       where: { userId, businessDate },
@@ -487,7 +537,7 @@ export class AttendanceGateService {
     const firstOut = logs.find((item) => item.direction === GateDirection.OUT) ?? null;
 
     if (!firstIn) {
-      const result = await this.recordGateScan(userId, GateDirection.IN, scannedAt, actor, { ...options, scanMode: AndroidReaderMode.GATE_IN }, role);
+      const result = await this.recordGateScan(userId, GateDirection.IN, scannedAt, actor, { ...options, scanMode: requestedMode }, role);
       return { ...result, message: 'Datang tercatat.', action: 'Datang' };
     }
 
@@ -504,7 +554,7 @@ export class AttendanceGateService {
       return { kind: 'GATE', message: 'Sudah tercatat.', item: firstIn, idempotent: true, action: 'Datang' };
     }
 
-    const result = await this.recordGateScan(userId, GateDirection.OUT, scannedAt, actor, { ...options, scanMode: AndroidReaderMode.GATE_OUT }, role);
+    const result = await this.recordGateScan(userId, GateDirection.OUT, scannedAt, actor, { ...options, scanMode: requestedMode }, role);
     return { ...result, message: 'Pulang tercatat.', action: 'Pulang' };
   }
 
@@ -746,6 +796,7 @@ export class AttendanceGateService {
       data: {
         readerId: options.readerId ?? null,
         deviceId: options.deviceId ?? null,
+        scanMode: options.scanMode ?? null,
         nonceHash: options.nonceHash ?? null,
         bodyHash: options.bodyHash ?? null,
         reason: API_ERROR_CODES.PRAYER_OUTSIDE_WINDOW

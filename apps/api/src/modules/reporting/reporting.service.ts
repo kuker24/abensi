@@ -382,7 +382,7 @@ export class ReportingService {
     const findReader = (mode: 'gate' | 'mushola') => activeAndroidReaders.find((reader) => {
       const modes = (reader.allowedModes ?? []).map(String);
       return mode === 'gate'
-        ? modes.includes('GATE_IN') || modes.includes('GATE_OUT')
+        ? modes.includes('GERBANG') || modes.includes('GATE_IN') || modes.includes('GATE_OUT')
         : modes.includes('MUSHOLA');
     }) ?? null;
     const readerPayload = (reader: typeof activeAndroidReaders[number] | null) => {
@@ -1583,6 +1583,8 @@ export class ReportingService {
       date: businessDateKey(log.attendanceDate ?? log.scannedAt),
       scannedAt: log.scannedAt.toISOString(),
       reader: (log.readerId ? readerMap.get(log.readerId)?.name : null) ?? log.deviceId ?? '—',
+      scanMode: log.scanMode,
+      scanModeLabel: log.scanMode === 'GERBANG' || log.scanMode === 'GATE_IN' || log.scanMode === 'GATE_OUT' ? 'Gerbang' : 'Mushola',
       status: 'TERCATAT'
     }));
 

@@ -65,7 +65,7 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
     ) {
         Text("Aktivasi SIAB2 Reader", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Masukkan kode dari admin. Setelah aktif, HP ini langsung menjadi scanner khusus Gerbang atau Mushola sesuai aktivasi server.",
+            "Masukkan kode dari admin. Setelah aktif, pilih Mode Gerbang atau Mode Mushola dari aplikasi ini.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -97,7 +97,7 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
                         config.deviceId = data.deviceId
                         config.readerSecret = data.readerSecret
                         config.allowedModesCsv = data.allowedModes.joinToString(",")
-                        config.lastScanMode = data.allowedModes.firstOrNull() ?: "CHECK_ONLY"
+                        config.lastScanMode = data.allowedModes.firstOrNull() ?: "GERBANG"
                         val title = readerDeviceTitle(data.allowedModes)
                         status = "$title berhasil diaktifkan. ${readerModeSummary(data.allowedModes)}. Siap dipakai scan."
                         onDone()
@@ -137,7 +137,7 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
                         value = deviceName,
                         onValueChange = { deviceName = it },
                         label = { Text("Nama HP") },
-                        placeholder = { Text("HP Gerbang / HP Mushola") },
+                        placeholder = { Text("HP Scanner 1 / HP Scanner 2") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

@@ -1,7 +1,12 @@
 package id.sch.man1rokanhulu.absensi
 
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
+import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,5 +27,25 @@ class SchoolHubApiClientTest {
         assertFalse(api.validateServerUrl("", releaseBuild = false))
         assertFalse(api.validateServerUrl("ftp://ehadir.example.sch.id", releaseBuild = false))
         assertFalse(api.validateServerUrl("ehadir.example.sch.id", releaseBuild = false))
+    }
+
+    @Test fun scanQrSendsRuntimeScanModeField() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(403).setHeader("content-type", "text/plain").setBody("forbidden"))
+        server.start()
+        try {
+            val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
+            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "GERBANG", "android-1", "shrsec_test")
+            val request = server.takeRequest()
+            val body = request.body.readUtf8()
+
+            assertFalse(result.ok)
+            assertEquals("/api/v1/attendance/qr-reader-scan", request.path)
+            assertTrue(body.contains("\"scanMode\":\"GERBANG\""))
+            assertFalse(body.contains("\"mode\""))
+            assertNotNull(request.getHeader("x-reader-signature"))
+        } finally {
+            server.shutdown()
+        }
     }
 }

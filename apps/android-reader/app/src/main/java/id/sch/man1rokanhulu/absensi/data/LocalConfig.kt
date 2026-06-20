@@ -45,11 +45,11 @@ class LocalConfig(context: Context) {
         set(value) = plain.edit().putString("deviceName", value).apply()
 
     var allowedModesCsv: String
-        get() = plain.getString("allowedModes", "GATE_IN,GATE_OUT,MUSHOLA,CHECK_ONLY") ?: "GATE_IN,GATE_OUT,MUSHOLA,CHECK_ONLY"
+        get() = plain.getString("allowedModes", "GERBANG,MUSHOLA") ?: "GERBANG,MUSHOLA"
         set(value) = plain.edit().putString("allowedModes", value).apply()
 
     var lastScanMode: String
-        get() = plain.getString("lastScanMode", "GATE_IN") ?: "GATE_IN"
+        get() = plain.getString("lastScanMode", "GERBANG") ?: "GERBANG"
         set(value) = plain.edit().putString("lastScanMode", value).apply()
 
     var autoOpenScanner: Boolean

@@ -58,8 +58,15 @@ function uniqueProvisioningMatch<T extends { id: string; provisioningTokenHash?:
 function defaultModes(type?: ReaderType) {
   if (type === ReaderType.GATE) return [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT];
   if (type === ReaderType.MUSHOLA) return [AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY];
-  if (type === ReaderType.QR_ANDROID) return [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT];
+  if (type === ReaderType.QR_ANDROID) return [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY];
   return [];
+}
+
+function effectiveAllowedModes(type: ReaderType, requested?: AndroidReaderMode[] | null) {
+  // QR_ANDROID is a physical phone identity only; it must not be permanently bound
+  // to Gerbang or Mushola. The APK chooses GERBANG/MUSHOLA at scan time.
+  if (type === ReaderType.QR_ANDROID) return defaultModes(ReaderType.QR_ANDROID);
+  return requested ?? defaultModes(type);
 }
 
 function clampProvisionMinutes(value?: number) {
@@ -94,7 +101,22 @@ export class DeviceReaderService {
       this.prisma.deviceReader.count(),
       this.prisma.deviceReader.findMany({ orderBy: { createdAt: 'desc' }, skip: pagination.skip, take: pagination.limit })
     ]);
-    return { items: items.map((item) => this.redact(item)), meta: buildPaginationMeta(total, pagination) };
+    const androidReaderIds = items.filter((item) => item.type === ReaderType.QR_ANDROID).map((item) => item.id);
+    const lastModeByReader = new Map<string, AndroidReaderMode>();
+    if (androidReaderIds.length) {
+      const latestByReader = await Promise.all(androidReaderIds.map(async (readerId) => {
+        const [gate, prayer] = await Promise.all([
+          this.prisma.gateLog.findFirst({ where: { readerId }, orderBy: { tappedAt: 'desc' }, select: { scanMode: true, tappedAt: true } }),
+          this.prisma.prayerAttendanceLog.findFirst({ where: { readerId }, orderBy: { scannedAt: 'desc' }, select: { scanMode: true, scannedAt: true } })
+        ]);
+        const gateAt = gate?.tappedAt?.getTime() ?? 0;
+        const prayerAt = prayer?.scannedAt?.getTime() ?? 0;
+        const scanMode = gateAt >= prayerAt ? gate?.scanMode : prayer?.scanMode;
+        return { readerId, scanMode: scanMode ?? null };
+      }));
+      for (const item of latestByReader) if (item.scanMode) lastModeByReader.set(item.readerId, item.scanMode);
+    }
+    return { items: items.map((item) => ({ ...this.redact(item), lastUsedMode: lastModeByReader.get(item.id) ?? null })), meta: buildPaginationMeta(total, pagination) };
   }
 
   async getStatus(id: string) {
@@ -122,7 +144,7 @@ export class DeviceReaderService {
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
     const type = payload.type ?? ReaderType.GATE;
     const platform = type === ReaderType.QR_ANDROID ? DevicePlatform.ANDROID : payload.platform ?? DevicePlatform.HARDWARE;
-    const allowedModes = payload.allowedModes ?? defaultModes(type);
+    const allowedModes = effectiveAllowedModes(type, payload.allowedModes);
     try {
       return await this.prisma.$transaction(async (tx) => {
         if (type === ReaderType.QR_ANDROID) await this.assertAndroidReaderActiveSlotAvailable(tx);
@@ -167,7 +189,7 @@ export class DeviceReaderService {
   async startAndroidProvision(payload: AndroidProvisionStartDto, actor: Actor) {
     const token = generateProvisionToken();
     const expiresAt = new Date(Date.now() + clampProvisionMinutes(payload.expiresInMinutes) * 60_000);
-    const allowedModes = payload.allowedModes?.length ? payload.allowedModes : defaultModes(ReaderType.QR_ANDROID);
+    const allowedModes = effectiveAllowedModes(ReaderType.QR_ANDROID, payload.allowedModes);
     const created = await this.prisma.$transaction(async (tx) => {
       await this.assertAndroidReaderActiveSlotAvailable(tx);
       const item = await tx.deviceReader.create({
@@ -241,6 +263,7 @@ export class DeviceReaderService {
             appVersion: payload.appVersion,
             appVersionCode: payload.appVersionCode,
             platform: DevicePlatform.ANDROID,
+            allowedModes: defaultModes(ReaderType.QR_ANDROID),
             provisionedAt: now,
             provisioningTokenHash: null,
             provisioningExpiresAt: null,
@@ -307,7 +330,7 @@ export class DeviceReaderService {
         where: { id },
         data: {
           status: payload.status,
-          ...(before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE ? { platform: DevicePlatform.ANDROID } : {})
+          ...(before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE ? { platform: DevicePlatform.ANDROID, allowedModes: defaultModes(ReaderType.QR_ANDROID) } : {})
         }
       });
       await writeAudit(tx, {
@@ -336,7 +359,7 @@ export class DeviceReaderService {
           locationName: payload.locationName ?? payload.locationLabel,
           locationLat: payload.locationLat,
           locationLng: payload.locationLng,
-          allowedModes: payload.allowedModes,
+          allowedModes: before.type === ReaderType.QR_ANDROID ? defaultModes(ReaderType.QR_ANDROID) : payload.allowedModes,
           appVersion: payload.appVersion,
           appVersionCode: payload.appVersionCode,
           updatedById: actor.sub

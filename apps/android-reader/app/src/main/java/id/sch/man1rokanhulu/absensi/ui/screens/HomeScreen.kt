@@ -29,9 +29,8 @@ import id.sch.man1rokanhulu.absensi.data.ScanHistoryEntry
 import id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
-import id.sch.man1rokanhulu.absensi.ui.showManualModePicker
+import id.sch.man1rokanhulu.absensi.ui.selectableScanModes
 import id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus
-import id.sch.man1rokanhulu.absensi.ui.components.ModeChipRow
 import id.sch.man1rokanhulu.absensi.ui.components.PrimaryActionButton
 import id.sch.man1rokanhulu.absensi.ui.components.SecondaryActionButton
 import id.sch.man1rokanhulu.absensi.ui.components.StatusBar
@@ -59,6 +58,9 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     val deviceTitle = readerDeviceTitle(allowedModes)
     val modeSummary = readerModeSummary(allowedModes)
+    val scanModes = selectableScanModes(allowedModes)
+    val canScanGerbang = scanModes.contains("GERBANG")
+    val canScanMushola = scanModes.contains("MUSHOLA")
     val lastEntry = recentEntries.firstOrNull()
 
     PullToRefreshBox(
@@ -79,10 +81,10 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text("SIAB2 Reader", style = MaterialTheme.typography.headlineMedium)
-            Text(deviceTitle, style = MaterialTheme.typography.headlineSmall)
+            Text("Pilih Mode Scan", style = MaterialTheme.typography.headlineMedium)
+            Text(config.deviceName.ifBlank { "HP Scanner" }, style = MaterialTheme.typography.headlineSmall)
             Text(
-                config.deviceName.ifBlank { "HP Scanner" },
+                "Satu aplikasi untuk Mode Gerbang atau Mode Mushola.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -95,28 +97,35 @@ fun HomeScreen(
             ) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(modeSummary, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("Siap Scan", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("2 HP scanner fleksibel", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
-                        when (deviceTitle) {
-                            "HP Gerbang" -> "Untuk kepala, guru, staf, dan siswa datang/pulang. Scan pertama tercatat Datang, scan berikutnya setelah jeda aman tercatat Pulang."
-                            "HP Mushola" -> "Untuk scan sholat/ibadah siswa. Duplikat hari yang sama akan diberi pesan sudah tercatat."
-                            else -> "Arahkan QR ke kamera untuk cek ke server."
-                        },
+                        "Pilih mode sesuai waktu operasional. Saat pagi/pulang kedua HP bisa sama-sama Mode Gerbang. Saat sholat kedua HP bisa sama-sama Mode Mushola.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
 
-            PrimaryActionButton(text = "SCAN SEKARANG", onClick = onStart)
+            if (canScanGerbang) {
+                ModeActionCard(
+                    title = "Scan Gerbang",
+                    helper = "Untuk datang/pulang siswa, guru, staf, dan kepala.",
+                    primary = true,
+                    onClick = { onMode("GERBANG"); onStart() }
+                )
+            }
 
-            if (showManualModePicker(allowedModes)) {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Mode lanjutan", style = MaterialTheme.typography.titleMedium)
-                        ModeChipRow(allowedModes, currentMode, onMode)
-                    }
-                }
+            if (canScanMushola) {
+                ModeActionCard(
+                    title = "Scan Mushola",
+                    helper = "Untuk sholat/ibadah siswa.",
+                    primary = !canScanGerbang,
+                    onClick = { onMode("MUSHOLA"); onStart() }
+                )
+            }
+
+            if (!canScanGerbang && !canScanMushola) {
+                PrimaryActionButton(text = "CEK QR", onClick = { onMode(currentMode); onStart() })
             }
 
             if (queueCount > 0) {
@@ -156,6 +165,18 @@ fun HomeScreen(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun ModeActionCard(title: String, helper: String, primary: Boolean, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(helper, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (primary) PrimaryActionButton(text = title, onClick = onClick)
+            else SecondaryActionButton(text = title, onClick = onClick)
         }
     }
 }

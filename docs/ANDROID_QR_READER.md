@@ -20,12 +20,13 @@ APK Android menjadi **reader resmi** SIAB2 Reader, bukan scanner biasa. Scan QR 
 POST /api/v1/attendance/qr-reader-scan
 ```
 
-Mode:
+Mode runtime:
 
-- `GATE_IN`
-- `GATE_OUT`
-- `MUSHOLA`
-- `CHECK_ONLY`
+- `GERBANG` — datang/pulang otomatis berdasarkan riwayat harian server.
+- `MUSHOLA` — scan sholat siswa, prayer type ditentukan dari waktu server.
+- `CHECK_ONLY` — validasi QR tanpa mencatat presensi.
+
+Payload lama `GATE_IN`/`GATE_OUT` tetap dikenali sebagai mode gerbang untuk kompatibilitas, tetapi APK baru mengirim `scanMode=GERBANG`.
 
 ## Prasyarat build
 
@@ -66,41 +67,43 @@ apps/android-reader/app/build/outputs/apk/debug
 ## Provisioning perangkat
 
 1. Admin buka web `/admin/devices`.
-2. Pilih tab **Android QR Reader**.
-3. Isi nama perangkat, lokasi, dan allowed modes.
-4. Klik **Buat QR Provisioning**.
+2. Pilih tab **Aktivasi HP Scanner**.
+3. Pilih **HP Scanner 1** atau **HP Scanner 2**; keduanya otomatis mendapat Mode Gerbang dan Mode Mushola.
+4. Klik **Buat Kode Aktivasi**.
 5. Buka APK di HP.
 6. Isi server URL.
-7. Scan/tempel QR provisioning.
+7. Tempel kode aktivasi dari admin.
 8. APK memanggil:
 
 ```http
 POST /api/v1/device-readers/android/provision/complete
 ```
 
-9. Server mengembalikan `deviceId`, `readerSecret`, dan allowed modes sekali saja.
+9. Server mengembalikan `deviceId`, `readerSecret`, dan daftar mode sekali saja.
 10. APK menyimpan secret di encrypted storage/Android Keystore.
 
 ## Cara scan untuk operator awam
 
 1. Buka aplikasi.
-2. Tekan **Mulai Scan**.
-3. Pilih lokasi jika perlu: **Gerbang Masuk**, **Gerbang Keluar**, **Mushola**, atau **Cek Saja**.
-4. Arahkan QR siswa/guru ke kamera.
-5. Tunggu tanda besar di layar:
+2. Pilih **Scan Gerbang** untuk datang/pulang atau **Scan Mushola** untuk sholat siswa.
+3. Arahkan QR siswa/guru ke kamera sesuai mode yang dipilih.
+4. Tunggu tanda besar di layar:
    - Hijau **Berhasil**: scan diterima server.
    - Merah **Ditolak**: scan tidak boleh dipakai, baca alasannya.
    - Kuning **Internet Bermasalah**: scan disimpan sementara dan belum final.
 
 Scanner berjalan terus-menerus. Setelah satu siswa hijau, siswa berikutnya bisa langsung scan tanpa keluar masuk menu.
 
-## Mode HP ditempel di gerbang/mushola
+## Mode fleksibel 2 HP scanner
 
-APK mendukung penggunaan seperti kiosk:
+APK mendukung penggunaan seperti kiosk fleksibel:
 
+- Maksimal 2 HP scanner aktif di server.
+- Kedua HP dapat sama-sama memilih **Mode Gerbang** saat pagi/pulang.
+- Kedua HP dapat sama-sama memilih **Mode Mushola** saat jadwal sholat.
 - Layar tetap menyala saat scanner aktif.
 - Kamera tetap aktif terus selama halaman scanner dibuka.
-- Tombol cepat ganti lokasi scan tersedia di layar scanner.
+- Tombol **Ubah Mode** menutup scanner agar operator memilih mode dari layar utama.
 - Tombol **Lampu Kamera** tersedia untuk kondisi gelap.
 - Opsi **Langsung buka scanner saat aplikasi dibuka** tersedia di Pengaturan.
 
@@ -114,8 +117,8 @@ QR yang sama dicegah terbaca berulang terlalu cepat, tetapi QR siswa berbeda bis
 | Release build menolak HTTP | Gunakan HTTPS untuk production |
 | Signature invalid | Reprovision/rotate secret perangkat |
 | QR ditolak | Cek status `QrCredential`, user aktif, expiry, revoke |
-| Mode ditolak | Cek `allowedModes` di panel Android QR Reader |
-| OUT ditolak | Pastikan sudah GATE IN dan Ashar jika jadwal sore |
+| Mode ditolak | Pilih Mode Gerbang untuk datang/pulang atau Mode Mushola untuk sholat siswa |
+| Pulang ditolak | Pastikan sudah scan datang dan Ashar jika jadwal sore |
 
 ## Catatan keamanan
 

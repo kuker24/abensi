@@ -158,14 +158,14 @@ Catatan:
 
 1. Buka web admin.
 2. Masuk ke `/admin/devices`.
-3. Buka tab **Android QR Reader**.
-4. Buat QR provisioning.
+3. Buka tab **Aktivasi HP Scanner**.
+4. Pilih **HP Scanner 1** atau **HP Scanner 2**, lalu buat kode aktivasi.
 5. Buka APK di HP.
 6. Isi server URL.
-7. Scan QR provisioning.
-8. Mulai uji dengan mode **CHECK_ONLY** dulu.
+7. Tempel kode aktivasi dari admin.
+8. Mulai uji **Scan Gerbang** dan **Scan Mushola** sesuai kebutuhan operasional.
 
-Jika CHECK_ONLY sudah aman, lanjutkan mode `MUSHOLA`, `GATE_IN`, dan `GATE_OUT` sesuai kebutuhan.
+Kedua HP scanner bersifat fleksibel: saat pagi/pulang keduanya bisa dipakai Mode Gerbang, dan saat sholat keduanya bisa dipakai Mode Mushola.
 
 ## Troubleshooting Singkat
 
@@ -176,4 +176,4 @@ Jika CHECK_ONLY sudah aman, lanjutkan mode `MUSHOLA`, `GATE_IN`, dan `GATE_OUT` 
 | Web gagal dicek | Pastikan URL benar dan web bisa dibuka di browser |
 | APK Resmi gagal karena keystore | Buat/import keystore di Mode Lanjutan |
 | Install USB gagal | Copy APK manual ke HP atau install Android platform-tools |
-| QR provisioning kedaluwarsa | Buat QR provisioning baru dari admin web |
+| Kode aktivasi kedaluwarsa | Buat kode aktivasi baru dari admin web |
