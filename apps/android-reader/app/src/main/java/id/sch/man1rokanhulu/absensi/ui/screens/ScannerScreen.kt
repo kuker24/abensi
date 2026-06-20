@@ -262,16 +262,23 @@ fun ScannerScreen(
                         .background(Color.Black.copy(alpha = 0.55f))
                         .padding(12.dp)
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(scanModeTitle(mode), color = Color.White, style = MaterialTheme.typography.titleLarge)
-                        Text(scanModeHelper(mode), color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("MODE AKTIF", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.labelLarge)
+                        Text(scanModeTitle(mode), color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                        Text(scanModeHelper(mode), color = Color.White.copy(alpha = 0.84f), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
 
-            FeedbackCard(feedback)
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                FeedbackCard(feedback)
                 if (paused) {
                     Text(
                         "Scan dijeda. Tekan Mulai Scan untuk melanjutkan.",
@@ -282,34 +289,34 @@ fun ScannerScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = { paused = !paused },
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier.weight(1f).height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (paused) MaterialTheme.colorScheme.primary else Color(0xFF232529))
-                    ) { Text(if (paused) "Mulai Scan" else "Jeda") }
+                    ) { Text(if (paused) "Mulai Scan" else "Jeda Scan") }
                     Button(
                         onClick = {
                             torchOn = !torchOn
                             cameraControl?.enableTorch(torchOn)
                         },
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier.weight(1f).height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
-                    ) { Text(if (torchOn) "Matikan Lampu" else "Lampu") }
+                    ) { Text(if (torchOn) "Lampu ON" else "Lampu") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     if (queueCount > 0) {
                         Button(
                             onClick = callbacks.onRetryQueue,
-                            modifier = Modifier.weight(1f).height(48.dp),
+                            modifier = Modifier.weight(1f).height(50.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) { Text("Kirim Antrean ($queueCount)") }
+                        ) { Text("Kirim ($queueCount)") }
                     }
                     Button(
                         onClick = callbacks.onHelp,
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier.weight(1f).height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
                     ) { Text("Bantuan") }
                     Button(
                         onClick = { confirmModeChange = true },
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier.weight(1f).height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
                     ) { Text("Ubah Mode") }
                 }
