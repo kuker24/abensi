@@ -23,7 +23,7 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     data class ProvisionResult(val deviceId: String, val readerId: String?, val readerSecret: String, val allowedModes: List<String>)
-    data class ScanResult(val ok: Boolean, val message: String, val color: String, val body: String)
+    data class ScanResult(val ok: Boolean, val message: String, val color: String, val body: String, val statusCode: Int? = null)
     data class VersionInfo(val latestVersionName: String, val latestVersionCode: Int, val minSupportedVersionCode: Int, val forceUpdate: Boolean, val releaseNotes: String?)
 
     private fun base(): String = baseUrlProvider().trim().removeSuffix("/")
@@ -79,9 +79,9 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         headers.forEach { (key, value) -> requestBuilder.header(key, value) }
         http.newCall(requestBuilder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext ScanResult(false, errorMessage(text, response.code), "red", text)
+            if (!response.isSuccessful) return@withContext ScanResult(false, errorMessage(text, response.code), "red", text, response.code)
             val obj = JSONObject(text)
-            ScanResult(true, obj.optString("message", "Scan diterima server."), "green", text)
+            ScanResult(true, obj.optString("message", "Scan diterima server."), "green", text, response.code)
         }
     }
 
@@ -97,13 +97,21 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
 
     private fun JSONArray.toList(): List<String> = (0 until length()).map { optString(it) }
 
-    private fun errorMessage(text: String, code: Int): String = runCatching {
-        val obj = JSONObject(text)
-        val message = obj.opt("message")
-        when (message) {
-            is JSONArray -> (0 until message.length()).joinToString(", ") { message.optString(it) }
-            is String -> message
-            else -> "HTTP $code"
-        }
-    }.getOrDefault("HTTP $code")
+    private fun errorMessage(text: String, code: Int): String {
+        val parsed = runCatching {
+            val obj = JSONObject(text)
+            val message = obj.opt("message")
+            when (message) {
+                is JSONArray -> (0 until message.length()).joinToString(", ") { message.optString(it) }
+                is String -> message
+                else -> null
+            }
+        }.getOrNull()
+        if (!parsed.isNullOrBlank()) return parsed
+
+        val regexMessage = Regex("\"message\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.getOrNull(1)
+        if (!regexMessage.isNullOrBlank()) return regexMessage
+
+        return "HTTP $code"
+    }
 }

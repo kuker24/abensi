@@ -142,7 +142,7 @@ fun friendlyScanMessage(raw: String?): String {
         status == 404 -> QR_REVOKED_MESSAGE
         text.contains("Mode scan", ignoreCase = true) || text.contains("Mode HP", ignoreCase = true) || text.contains("Mode Gerbang", ignoreCase = true) || text.contains("Mode Mushola", ignoreCase = true) || text.contains("Tipe reader", ignoreCase = true) || text.contains("tidak cocok", ignoreCase = true) -> WRONG_MODE_MESSAGE
         text.contains("QR", ignoreCase = true) && (text.contains("tidak", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) || text.contains("invalid", ignoreCase = true)) -> QR_REVOKED_MESSAGE
-        text.contains("Reader tidak aktif", ignoreCase = true) || text.contains("dinonaktif", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) -> READER_REVOKED_MESSAGE
+        text.contains("Signature reader", ignoreCase = true) || text.contains("Reader tidak aktif", ignoreCase = true) || text.contains("dinonaktif", ignoreCase = true) || text.contains("dicabut", ignoreCase = true) -> READER_REVOKED_MESSAGE
         text.contains("mushola", ignoreCase = true) && text.contains("siswa", ignoreCase = true) -> WRONG_MODE_MESSAGE
         text.contains("luar", ignoreCase = true) && text.contains("jadwal", ignoreCase = true) -> "Di luar jadwal scan. Coba lagi pada jadwal yang benar."
         isNetworkProblem(text) -> NETWORK_PROBLEM_MESSAGE
@@ -157,12 +157,19 @@ fun safeScanHistoryMessage(raw: String?, fallback: String): String {
     return friendlyScanMessage(text)
 }
 
-fun shouldResetProvisioning(raw: String?): Boolean {
+fun shouldResetProvisioning(raw: String?, statusCode: Int? = null): Boolean {
     val text = raw?.lowercase().orEmpty()
-    return text.contains("reader tidak aktif") ||
+    val identityMessage = text.contains("reader tidak aktif") ||
         text.contains("sudah dicabut") ||
         text.contains("dinonaktif") ||
         text.contains("hp scanner belum aktif") ||
-        text.contains("http 401") ||
-        text.contains("http 403")
+        text.contains("tidak ditemukan") && text.contains("reader") ||
+        text.contains("signature reader") ||
+        text.contains("reader belum memiliki secret")
+
+    if (identityMessage) return true
+    if (statusCode == 401 && text.contains("signature")) return true
+    if (statusCode == 403 && text.contains("reader") && !text.contains("mode")) return true
+
+    return text.contains("http 401") || text.contains("http 403")
 }

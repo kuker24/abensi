@@ -40,10 +40,32 @@ class SchoolHubApiClientTest {
             val body = request.body.readUtf8()
 
             assertFalse(result.ok)
+            assertEquals(403, result.statusCode)
             assertEquals("/api/v1/attendance/qr-reader-scan", request.path)
             assertTrue(body.contains("\"scanMode\":\"GERBANG\""))
             assertFalse(body.contains("\"mode\""))
             assertNotNull(request.getHeader("x-reader-signature"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test fun scanQrKeepsAuthStatusForRevokedIdentityHandling() = runTest {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(401)
+                .setHeader("content-type", "application/json")
+                .setBody("{\"message\":\"Signature reader tidak valid.\"}")
+        )
+        server.start()
+        try {
+            val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
+            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "GERBANG", "android-1", "shrsec_test")
+
+            assertFalse(result.ok)
+            assertEquals(401, result.statusCode)
+            assertEquals("Signature reader tidak valid.", result.message)
         } finally {
             server.shutdown()
         }
