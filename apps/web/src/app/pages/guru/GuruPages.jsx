@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, Wifi, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
 import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, today } from '../../api';
 import { riskConfirm } from '../../confirm';
 import { BrowserGeoError, captureBrowserGeolocation } from '../../geolocation';
@@ -89,24 +89,73 @@ function AttendanceTableState({ state }) {
   }))} />;
 }
 
-export function TeacherDashboard() {
-  const sessions = useRemote(() => apiFetch(`/attendance/class-sessions${qs({ date: today(), page: 1, limit: 50 })}`), []);
-  const mine = useRemote(() => apiFetch('/reports/my-attendance?days=14'), []);
-  const rows = itemsOf(sessions.data);
-  const next = rows.find((s) => s.status === 'OPEN') || rows.find((s) => s.status === 'SCHEDULED') || rows[0];
-  const openCount = rows.filter((s) => s.status === 'OPEN').length;
-  const scheduledCount = rows.filter((s) => s.status === 'SCHEDULED').length;
+function teacherSessionStatusLabel(status) {
+  return ({
+    SCHEDULED: 'Belum mulai',
+    OPEN: 'Sedang berjalan',
+    CLOSED: 'Sudah ditutup',
+    MISSED: 'Terlewat'
+  })[String(status)] || statusLabel(status);
+}
 
-  return <div className="content dashboard-redesign"><PageHead eyebrow="GURU MAPEL" title="Mulai Mengajar" sub="Lihat kelas hari ini, klik Masuk Kelas, isi presensi siswa, lalu Tutup Sesi." actions={<Btn variant="primary" onClick={() => go('/guru/presensi')}><CheckSquare size={14} /> Masuk Kelas</Btn>} />
-    <RoleTaskPanel title="Aksi cepat guru" tasks={[{ title: 'Masuk Kelas', desc: 'Buka sesi hari ini dan mulai presensi.', icon: <CheckSquare size={18} />, tone: 'ok', onClick: () => go('/guru/presensi') }, { title: 'Perbaiki presensi', desc: 'Jika ada kesalahan, koreksi dengan alasan.', icon: <Save size={18} />, onClick: () => go('/guru/koreksi') }, { title: 'Ajukan izin', desc: 'Kirim izin/sakit/dinas luar ke Admin/TU.', icon: <Clock size={18} />, onClick: () => go('/guru/izin') }]} />
-    {sessions.loading ? <LoadingState /> : sessions.error ? <ErrorState error={sessions.error} /> : <>{next ? <section className="dashboard-hero teacher-hero"><div className="dashboard-hero-copy"><div className="eyebrow"><span className="dot" /> SESI UTAMA · {statusLabel(next.status)}</div><h2>{next.subject?.name || 'Mata pelajaran'} · {next.schoolClass?.code || 'Kelas'}</h2><p>Mulai kelas dari sini. Klik Masuk Kelas, tandai Semua Hadir bila sesuai, ubah pengecualian, lalu Tutup Sesi.</p><div className="row muted dashboard-meta"><span><Clock size={14} /> {formatDateTime(next.startsAt)}</span><span><Users size={14} /> {next.teacher?.fullName || 'Guru mapel'}</span></div><div className="dashboard-hero-actions"><Btn variant="primary" size="lg" onClick={() => go('/guru/presensi')}><ArrowRight size={16} /> Masuk Kelas</Btn><span className="chip"><MapPin size={12} /> Lokasi sekolah siap</span><span className="chip"><Wifi size={12} /> Server online</span></div></div><div className="dashboard-hero-panel compact"><StatusPill status={next.status} /><div className="hero-kpi-grid vertical"><span><b>{openCount}</b>Sesi berjalan</span><span><b>{scheduledCount}</b>Menunggu mulai</span><span><b>{rows.length}</b>Total sesi</span></div></div></section> : <div className="empty" style={{ marginBottom: 18 }}><b>Tidak ada sesi hari ini</b><span>Semua sesi sudah selesai atau belum dijadwalkan.</span></div>}
-      <div className="grid g-3 chart-summary"><Card title="Status sesi" sub="Ringkasan sesi hari ini."><StackedBar segments={sessionSegments(sessions.data)} /></Card><Card title="Kehadiran saya (14 hari)" sub="Ringkasan status kehadiran guru."><StatusDonut counts={countByStatus(mine.data)} title="Kehadiran saya" /></Card></div><div className="grid g-3" style={{ marginTop: 18 }}><Card title="Jadwal sesi hari ini">{rows.length ? <DataTable rows={rows} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.startsAt) }, { header: 'Kelas', render: (r) => r.schoolClass?.code || '—' }, { header: 'Mapel', render: (r) => r.subject?.name || '—' }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} /> : <EmptyState title="Tidak ada sesi" sub="Belum ada sesi terjadwal hari ini." />}</Card><Card title="Riwayat kehadiran saya" sub="14 hari terakhir" actions={<Btn size="sm" onClick={() => go('/guru/kehadiran-saya')}>Lihat semua</Btn>}><AttendanceTableState state={mine} /></Card></div></>}
+function teacherSessionTone(status) {
+  return ({ SCHEDULED: 'warn', OPEN: 'ok', CLOSED: 'info', MISSED: 'bad' })[String(status)] || '';
+}
+
+function presensiPath(sessionId) {
+  return `/guru/presensi${qs({ sessionId })}`;
+}
+
+function TeacherTodaySessionCard({ item }) {
+  const progressTotal = Math.max(0, Number(item.studentTotal || 0));
+  const filled = Math.max(0, Number(item.attendanceFilledCount || 0));
+  const pending = Math.max(0, Number(item.pendingCount || 0));
+  const warnings = [];
+  if (item.status === 'OPEN') warnings.push('Sesi ini belum ditutup.');
+  if (item.status === 'SCHEDULED') warnings.push('Presensi belum dimulai.');
+  if (item.status === 'MISSED') warnings.push('Sesi ini belum ditutup.');
+  if (pending > 0) warnings.push('Masih ada siswa yang belum diabsen.');
+
+  return <article className={`teacher-session-card ${teacherSessionTone(item.status)}`}>
+    <div className="teacher-session-main">
+      <div className="teacher-session-copy">
+        <div className="teacher-session-kicker"><Clock size={14} /> {item.startTime || '—'}–{item.endTime || '—'} <StatusPill status={item.status} /></div>
+        <h3>{item.className || 'Kelas'} · {item.subjectName || 'Mata pelajaran'}</h3>
+        <div className="teacher-session-meta"><span>{teacherSessionStatusLabel(item.status)}</span><span>{filled}/{progressTotal} siswa</span><span>{pending} belum diabsen</span></div>
+        <div className="teacher-session-progress"><RosterProgress current={filled} total={progressTotal} /></div>
+        {warnings.length > 0 && <div className="teacher-session-warnings">{warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+      </div>
+      <div className="teacher-session-actions" aria-label={`Aksi ${item.className || 'kelas'}`}>
+        {item.actions?.canStart && <Btn variant="primary" onClick={() => go(presensiPath(item.sessionId))}><CheckSquare size={14} /> Mulai Presensi</Btn>}
+        {item.actions?.canContinue && <Btn variant="primary" onClick={() => go(presensiPath(item.sessionId))}><ArrowRight size={14} /> Lanjutkan Presensi</Btn>}
+        {item.actions?.canClose && <Btn onClick={() => go(presensiPath(item.sessionId))}><Check size={14} /> Tutup Sesi</Btn>}
+        {item.actions?.canViewRecap && <Btn onClick={() => go('/guru/rekap')}><BarChart3 size={14} /> Lihat Rekap</Btn>}
+      </div>
+    </div>
+  </article>;
+}
+
+export function TeacherDashboard() {
+  const todayState = useRemote(() => apiFetch('/teacher/today'), []);
+  const data = todayState.data || {};
+  const summary = data.summary || {};
+  const rows = itemsOf(data);
+  const hasUnclosed = Number(summary.unclosed || 0) > 0;
+
+  return <div className="content dashboard-redesign teacher-today-workspace"><PageHead eyebrow="GURU MAPEL" title="Kelas Saya Hari Ini" sub="Pantau jadwal mengajar dan selesaikan presensi kelas tanpa membuka banyak menu." actions={<Btn variant="primary" onClick={() => go('/guru/presensi')}><CheckSquare size={14} /> Mulai Presensi</Btn>} />
+    <RoleTaskPanel title="Aksi cepat guru" tasks={[{ title: 'Isi presensi', desc: 'Buka sesi hari ini dan selesaikan presensi siswa.', icon: <CheckSquare size={18} />, tone: 'ok', onClick: () => go('/guru/presensi') }, { title: 'Perbaiki presensi', desc: 'Koreksi data jika ada kesalahan dengan alasan.', icon: <Save size={18} />, onClick: () => go('/guru/koreksi') }, { title: 'Laporan kelas', desc: 'Lihat rekap kelas yang Anda ajar.', icon: <BarChart3 size={18} />, onClick: () => go('/guru/rekap') }]} />
+    {todayState.loading ? <LoadingState /> : todayState.error ? <ErrorState error={todayState.error} onRetry={todayState.refresh} /> : <>
+      {hasUnclosed && <div className="inline-note warn"><Clock size={14} /> Ada {summary.unclosed} sesi yang belum ditutup. Selesaikan dari tombol Lanjutkan Presensi atau Tutup Sesi.</div>}
+      <div className="grid g-4 teacher-today-kpis"><StatCardPremium icon={<Clock size={18} />} label="Sesi hari ini" value={summary.sessionsToday || 0} sub="Total jadwal mengajar" /><StatCardPremium icon={<Activity size={18} />} label="Sedang berjalan" value={summary.open || 0} sub="Sesi OPEN" tone={summary.open ? 'ok' : ''} /><StatCardPremium icon={<Users size={18} />} label="Belum ditutup" value={summary.unclosed || 0} sub={`${summary.studentsPendingAttendance || 0} siswa belum diabsen`} tone={summary.unclosed ? 'warn' : 'ok'} /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Selesai" value={summary.closed || 0} sub="Sesi sudah ditutup" tone="info" /></div>
+      <Card title="Daftar jadwal/sesi hari ini" sub="Pilih aksi sesuai status sesi.">{rows.length ? <div className="teacher-session-list">{rows.map((item) => <TeacherTodaySessionCard key={item.sessionId} item={item} />)}</div> : <EmptyState title="Tidak ada jadwal mengajar hari ini." sub="Jadwal akan tampil otomatis sesuai data yang diatur admin." action={<Btn onClick={() => go('/guru/kehadiran-saya')}>Lihat Kehadiran Saya</Btn>} />}</Card>
+      <Card title="Status sesi" sub="Ringkasan sesi hari ini."><StackedBar segments={[{ label: 'Belum mulai', value: summary.scheduled || 0, tone: 'warn' }, { label: 'Sedang berjalan', value: summary.open || 0, tone: 'ok' }, { label: 'Sudah ditutup', value: summary.closed || 0, tone: 'info' }, { label: 'Terlewat', value: summary.missed || 0, tone: 'bad' }]} total={summary.sessionsToday || 0} /></Card>
+    </>}
   </div>;
 }
 
 export function ClassInputPage({ notify }) {
   const sessions = useRemote(() => apiFetch(`/attendance/class-sessions${qs({ date: today(), page: 1, limit: 50 })}`), []);
-  const [sessionId, setSessionId] = useState('');
+  const [sessionId, setSessionId] = useState(() => new URLSearchParams(window.location.search).get('sessionId') || '');
   const [earlyReason, setEarlyReason] = useState('Kelas diakhiri lebih awal atas kondisi yang sudah dicatat.');
   const [nowTick, setNowTick] = useState(Date.now());
   const [actionLoading, setActionLoading] = useState('');
@@ -116,9 +165,15 @@ export function ClassInputPage({ notify }) {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    const first = itemsOf(sessions.data).find((s) => s.status === 'OPEN') || itemsOf(sessions.data).find((s) => s.status === 'SCHEDULED') || itemsOf(sessions.data)[0];
+    const rows = itemsOf(sessions.data);
+    const requestedSessionId = new URLSearchParams(window.location.search).get('sessionId') || '';
+    if (requestedSessionId && rows.some((s) => s.id === requestedSessionId)) {
+      if (sessionId !== requestedSessionId) setSessionId(requestedSessionId);
+      return;
+    }
+    const first = rows.find((s) => s.status === 'OPEN') || rows.find((s) => s.status === 'SCHEDULED') || rows[0];
     if (first && !sessionId) setSessionId(first.id);
-  }, [sessions.data]);
+  }, [sessions.data, sessionId]);
   const rosterState = useRemote(() => sessionId ? apiFetch(`/attendance/class-sessions/${sessionId}/roster`) : Promise.resolve({ roster: [] }), [sessionId]);
   const [roster, setRoster] = useState([]);
   useEffect(() => {
