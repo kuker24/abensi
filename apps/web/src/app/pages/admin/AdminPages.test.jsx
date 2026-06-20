@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DevicesPage, ReportsPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
+import { DevicesPage, ReportsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -40,6 +40,45 @@ describe('HP Scanner Android operator UI', () => {
   });
 });
 
+describe('student daily completeness UI', () => {
+  it('shows gate/class/prayer columns with friendly Indonesian status labels', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/academic/classes')) {
+        return new Response(JSON.stringify({ items: [{ id: 'class-1', code: 'X-A', name: 'Kelas X A' }], meta: { page: 1, limit: 200, total: 1, totalPages: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/reports/student-daily-completeness')) {
+        return new Response(JSON.stringify({
+          summary: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 2, missingClassAttendanceCount: 3, missingPrayerCount: 4, needsVerificationCount: 0 },
+          items: [
+            { studentId: 'siswa-1', fullName: 'Aisyah Putri', username: 'siswa.aisyah', schoolClass: 'X-A', gateArrivalAt: '2026-06-19T00:00:00.000Z', gateDepartureAt: null, classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: 'Belum scan sholat', finalStatus: 'BELUM_SCAN_PULANG', note: 'Belum scan pulang, Belum scan sholat' },
+            { studentId: 'siswa-2', fullName: 'Budi Santoso', username: 'siswa.budi', schoolClass: 'X-A', gateArrivalAt: '2026-06-19T00:05:00.000Z', gateDepartureAt: '2026-06-19T08:00:00.000Z', classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'HADIR_LENGKAP', note: 'Hadir lengkap' },
+            { studentId: 'siswa-3', fullName: 'Citra Lestari', username: 'siswa.citra', schoolClass: 'X-A', gateArrivalAt: '2026-06-19T00:10:00.000Z', gateDepartureAt: '2026-06-19T08:05:00.000Z', classAttendanceLabel: 'Belum diabsen guru', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'BELUM_ABSEN_KELAS', note: 'Belum diabsen guru' }
+          ],
+          meta: { page: 1, limit: 200, total: 3, totalPages: 1 }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<StudentDailyCompletenessPage notify={vi.fn()} />);
+
+    expect(await screen.findByText('Kehadiran Lengkap Siswa')).toBeInTheDocument();
+    expect(screen.getByText('Datang gerbang')).toBeInTheDocument();
+    expect(screen.getByText('Pulang gerbang')).toBeInTheDocument();
+    expect(screen.getByText('Absensi kelas')).toBeInTheDocument();
+    expect(screen.getByText('Sholat')).toBeInTheDocument();
+    expect(screen.getByText('Aisyah Putri')).toBeInTheDocument();
+    expect(screen.getAllByText('Belum scan pulang').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Hadir lengkap').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Belum diabsen guru').length).toBeGreaterThan(0);
+    expect(screen.queryByText('BELUM_SCAN_PULANG')).not.toBeInTheDocument();
+    expect(screen.queryByText('BELUM_ABSEN_KELAS')).not.toBeInTheDocument();
+    expect(screen.queryByText('DEFAULTED')).not.toBeInTheDocument();
+    expect(screen.queryByText('HADIR_LENGKAP')).not.toBeInTheDocument();
+  });
+});
+
 describe('official report download UI', () => {
   it('builds official backend export paths and does not add month to normal date-range reports', () => {
     const path = buildOfficialReportExportPath('recap/classes', 'xlsx', {
@@ -66,6 +105,12 @@ describe('official report download UI', () => {
     expect(buildOfficialReportExportPath('teacher-session-activity', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=teacher_session_activity');
     expect(buildOfficialReportExportPath('student-prayer-attendance', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=student_prayer_attendance');
     expect(buildOfficialReportExportPath('student-worship-recap', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=student_worship_recap');
+    expect(buildOfficialReportExportPath('student-daily-completeness', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=student_daily_complete_attendance');
+    expect(buildOfficialReportExportPath('missing-arrival-scan', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=missing_arrival_scan');
+    expect(buildOfficialReportExportPath('missing-departure-scan', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=missing_departure_scan');
+    expect(buildOfficialReportExportPath('class-present-no-gate-scan', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=class_present_no_gate_scan');
+    expect(buildOfficialReportExportPath('gate-scan-no-class-attendance', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=gate_scan_no_class_attendance');
+    expect(buildOfficialReportExportPath('prayer-recap', 'xlsx', { from: '2026-06-19', to: '2026-06-19' })).toContain('reportType=prayer_recap');
   });
 
   it('uses Indonesian date summary instead of US date style', () => {

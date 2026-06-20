@@ -86,6 +86,12 @@ export const REPORT_TYPE_TITLES: Record<string, string> = {
   teacher_session_activity: 'Laporan Guru Masuk Mengajar',
   student_prayer_attendance: 'Laporan Sholat Siswa',
   student_worship_recap: 'Rekap Karakter/Ibadah Siswa',
+  student_daily_complete_attendance: 'Rekap Kehadiran Lengkap Siswa',
+  missing_arrival_scan: 'Belum Scan Datang',
+  missing_departure_scan: 'Belum Scan Pulang',
+  class_present_no_gate_scan: 'Hadir Kelas Tanpa Scan Gerbang',
+  gate_scan_no_class_attendance: 'Scan Gerbang Tanpa Absensi Kelas',
+  prayer_recap: 'Rekap Sholat Siswa',
   audit_coverage: 'Cakupan Audit Presensi'
 };
 
@@ -130,6 +136,11 @@ export const REPORT_COLUMN_LABELS: Record<string, string> = {
   date: 'Tanggal',
   datang: 'Datang',
   pulang: 'Pulang',
+  gate_arrival_at: 'Scan Datang',
+  gate_departure_at: 'Scan Pulang',
+  class_attendance: 'Absensi Kelas',
+  prayer_attendance: 'Sholat',
+  final_status: 'Status Akhir',
   note: 'Keterangan',
   school_class: 'Kelas',
   prayer_type: 'Sholat',

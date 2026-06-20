@@ -33,8 +33,6 @@ import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrSca
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
 const MIN_GATE_STAY_MINUTES = Number(process.env.MIN_GATE_STAY_MINUTES ?? '10');
 const STEP_UP_FOR_POLICY = process.env.STEP_UP_FOR_POLICY === 'true';
-const GATE_STAFF_ONLY_MESSAGE = 'Mode HP Gerbang hanya untuk Kepala, Staf, Karyawan, dan TU. Guru masuk kelas lewat web, siswa scan sholat di HP Mushola.';
-
 function dayBounds(value: Date | string = new Date()) {
   return jakartaBusinessDayBounds(value);
 }
@@ -473,11 +471,6 @@ export class AttendanceGateService {
   }
 
   private async recordQrAndroidGateScan(userId: string, role: Role, scannedAt: Date, actor: ScanActor, options: RecordOptions, allowedModes: AndroidReaderMode[], requestedMode: AndroidReaderMode) {
-    if (!isStaffRole(role)) {
-      await this.securityAudit('attendance.qr.reader.scan.denied_wrong_gate_role', options.readerId ?? userId, { userId, role, requestedMode });
-      throw new ForbiddenException(GATE_STAFF_ONLY_MESSAGE);
-    }
-
     const canAutoDirection = allowedModes.includes(AndroidReaderMode.GATE_IN) && allowedModes.includes(AndroidReaderMode.GATE_OUT);
     if (!canAutoDirection) {
       const direction = requestedMode === AndroidReaderMode.GATE_OUT ? GateDirection.OUT : GateDirection.IN;
@@ -495,24 +488,24 @@ export class AttendanceGateService {
 
     if (!firstIn) {
       const result = await this.recordGateScan(userId, GateDirection.IN, scannedAt, actor, { ...options, scanMode: AndroidReaderMode.GATE_IN }, role);
-      return { ...result, message: `Berhasil tercatat. Datang ${formatMinute(localMinutesOfDay(scannedAt))}.`, action: 'Datang' };
+      return { ...result, message: 'Datang tercatat.', action: 'Datang' };
     }
 
     if (firstOut) {
       await this.touchSuccessfulReaderScan(scannedAt, options);
       await this.securityAudit('attendance.qr.reader.scan.idempotent_gate_out', firstOut.id, { userId, businessDate: businessDate.toISOString() });
-      return { kind: 'GATE', message: 'Sudah tercatat. Scan pulang hari ini sudah ada.', item: firstOut, idempotent: true, action: 'Pulang' };
+      return { kind: 'GATE', message: 'Sudah tercatat.', item: firstOut, idempotent: true, action: 'Pulang' };
     }
 
     const minutesSinceIn = Math.floor((scannedAt.getTime() - firstIn.tappedAt.getTime()) / 60000);
     if (minutesSinceIn < MIN_GATE_STAY_MINUTES) {
       await this.touchSuccessfulReaderScan(scannedAt, options);
       await this.securityAudit('attendance.qr.reader.scan.idempotent_gate_in', firstIn.id, { userId, minutesSinceIn, minimumMinutes: MIN_GATE_STAY_MINUTES });
-      return { kind: 'GATE', message: `Sudah tercatat. Scan masuk hari ini sudah ada. Pulang bisa dicatat setelah ${MIN_GATE_STAY_MINUTES} menit.`, item: firstIn, idempotent: true, action: 'Datang' };
+      return { kind: 'GATE', message: 'Sudah tercatat.', item: firstIn, idempotent: true, action: 'Datang' };
     }
 
     const result = await this.recordGateScan(userId, GateDirection.OUT, scannedAt, actor, { ...options, scanMode: AndroidReaderMode.GATE_OUT }, role);
-    return { ...result, message: `Berhasil tercatat. Pulang ${formatMinute(localMinutesOfDay(scannedAt))}.`, action: 'Pulang' };
+    return { ...result, message: 'Pulang tercatat.', action: 'Pulang' };
   }
 
   private scanUserPayload(user: { id: string; fullName: string; username: string; role: Role; enrollments?: Array<{ schoolClass?: { code?: string; name?: string } | null }> }) {

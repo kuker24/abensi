@@ -38,7 +38,8 @@ async function routeCommonApi(page: Page) {
     if (url.includes('/health/detail') || url.includes('/health/ready')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ready', api: 'ok', database: 'ok' }) });
     if (url.includes('/tutorials/me') && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.04.26', shouldShow: false }) });
     if (url.includes('/tutorials/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'guru-1', username: 'guru.demo', fullName: 'Guru Demo', role: 'GURU_MAPEL', active: true, tutorial: { shouldShow: false, completedAt: new Date().toISOString() } }])) });
-    if (url.includes('/reports/dashboard')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionsToday: 2, closedSessions: 1, openSessions: 1, attendanceCoveragePercent: 80, openFlags: 0, gateTapCount: 12 }) });
+    if (url.includes('/reports/dashboard')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionsToday: 2, closedSessions: 1, openSessions: 1, attendanceCoveragePercent: 80, openFlags: 0, gateTapCount: 12, studentCompleteness: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 } }) });
+    if (url.includes('/reports/student-daily-completeness')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 }, items: [{ studentId: 'siswa-1', fullName: 'Aisyah Putri', username: 'siswa.aisyah', schoolClass: 'X-A', gateArrivalAt: '2026-06-14T00:00:00.000Z', gateDepartureAt: null, classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: 'Belum scan sholat', finalStatus: 'BELUM_SCAN_PULANG', note: 'Belum scan pulang, Belum scan sholat' }, { studentId: 'siswa-2', fullName: 'Citra Lestari', username: 'siswa.citra', schoolClass: 'X-A', gateArrivalAt: '2026-06-14T00:05:00.000Z', gateDepartureAt: '2026-06-14T08:00:00.000Z', classAttendanceLabel: 'Belum diabsen guru', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'BELUM_ABSEN_KELAS', note: 'Belum diabsen guru' }], meta: { page: 1, limit: 100, total: 2, totalPages: 1 } }) });
     if (url.includes('/reports/trend')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ label: 'Hari ini', coveragePercent: 80 }]) });
     if (url.includes('/access/geofence')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 1, centerLat: 0, centerLng: 0, radiusMeter: 300, enforceSessionOpen: true, arrivalGraceMinutes: 15, autoMissedGraceMinutes: 15, requireGateTapForOpen: false, allowPicketOverride: true }) });
     if (url.includes('/attendance/policy')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 1, requireStudentGateInBeforeClass: true, requireStudentDhuha: true, requireStudentDzuhur: true, requireStudentAsharForAfternoon: true, requireStudentClassEligibility: true, requireTeacherGateIn: true, requireTeacherGateOut: true, requireStaffGateIn: true, requireStaffGateOut: true, allowManualOverride: true, allowStudentAsharCheckoutOverride: true, dhuhaStartTime: '07:00', dhuhaEndTime: '10:30', dzuhurStartTime: '11:45', dzuhurEndTime: '13:30', asharStartTime: '15:00', asharEndTime: '16:30', asharRequiredClassEndTime: '15:00', duplicateScanWindowMinutes: 5 }) });
@@ -245,6 +246,21 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     expect(layout.listTop).toBeGreaterThan(layout.formTop);
     await expect(page.getByRole('tab', { name: 'Buat/Edit Akun' })).toBeVisible();
     await expect(page.locator('.notif-dot')).toHaveCount(0);
+  });
+
+  test('student completeness recap route loads on mobile without horizontal overflow', async ({ page }) => {
+    await routeCommonApi(page);
+    await seedAuth(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/admin/student-completeness');
+    await expect(page.getByRole('heading', { name: 'Kehadiran Lengkap Siswa' })).toBeVisible();
+    await expect(page.getByText('Aisyah Putri')).toBeVisible();
+    await expect(page.getByText('Citra Lestari')).toBeVisible();
+    await expect(page.locator('tr', { hasText: 'Citra Lestari' }).getByText('Belum diabsen guru').first()).toBeVisible();
+    await expect(page.getByText(/BELUM_ABSEN_KELAS|DEFAULTED/)).toHaveCount(0);
+    await expect(page.locator('.stat-label', { hasText: 'Belum scan pulang' })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    expect(overflow).toBe(false);
   });
 
   test('semua role melihat menu sesuai tugas dan setiap menu utama bisa dibuka tanpa error tampilan', async ({ page }) => {
@@ -508,8 +524,8 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
       teacherPresence: null
     };
     const roster = [
-      { studentId: 's1', fullName: 'Alya Putri', username: '24001', cardStatus: 'ACTIVE', status: 'ALPA' },
-      { studentId: 's2', fullName: 'Rafa Maulana', username: '24002', cardStatus: 'ACTIVE', status: 'ALPA' }
+      { studentId: 's1', fullName: 'Alya Putri', username: '24001', cardStatus: 'ACTIVE', status: 'ALPA', eligibility: { allowed: true, locked: true, warning: true, reasons: ['Belum scan gerbang masuk', 'Belum scan Dhuha'], requirements: { gateIn: false, dhuha: false, dzuhur: true, override: false } } },
+      { studentId: 's2', fullName: 'Rafa Maulana', username: '24002', cardStatus: 'ACTIVE', status: 'ALPA', eligibility: { allowed: true, locked: false, warning: false, reasons: [], requirements: { gateIn: true, dhuha: true, dzuhur: true, override: false } } }
     ];
 
     await page.route('**/api/v1/attendance/class-sessions**', async (route: Route) => {
@@ -558,6 +574,12 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     expect(selectTheme.overflow).toBe(false);
     await page.getByRole('button', { name: /Masuk Kelas/ }).click();
     await expect(page.getByText('Absen masuk guru tercatat.')).toBeVisible();
+    const alyaRow = page.locator('.roster-row').filter({ hasText: 'Alya Putri' });
+    await expect(alyaRow.getByText('Belum scan datang')).toBeVisible();
+    await expect(alyaRow.getByText('Belum scan sholat')).toBeVisible();
+    await expect(alyaRow.getByRole('button', { name: 'Hadir' })).toBeEnabled();
+    await expect(alyaRow.getByRole('button', { name: 'Terlambat' })).toBeEnabled();
+    await expect(alyaRow.getByText(/Terkunci|BELUM_SCAN|DEFAULTED/)).toHaveCount(0);
     await page.getByRole('button', { name: /Semua Hadir/ }).click();
     await page.getByRole('button', { name: /^Simpan$/ }).first().click();
     await expect(page.getByText('Presensi siswa awal pembelajaran tersimpan.')).toBeVisible();

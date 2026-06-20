@@ -311,6 +311,24 @@ export class ReportingController {
     return this.reportingService.teacherSessionActivity(pagination, { from, to, classId, subjectId, teacherId });
   }
 
+  @Get('student-daily-completeness')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  studentDailyCompleteness(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('studentId') studentId?: string,
+    @Query('status') status?: string,
+    @Query('missingRequirement') missingRequirement?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.studentDailyCompleteness(pagination, { from, to, classId, studentId, status, missingRequirement });
+  }
+
   @Get('student-prayer-attendance')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.DEVELOPER)
@@ -377,6 +395,8 @@ export class ReportingController {
     @Query('subjectId') subjectId?: string,
     @Query('teacherId') teacherId?: string,
     @Query('studentId') studentId?: string,
+    @Query('status') status?: string,
+    @Query('missingRequirement') missingRequirement?: string,
     @Query('month') month?: string,
     @CurrentUser() user?: { sub: string; role: Role },
     @Req() request?: Request,
@@ -392,6 +412,8 @@ export class ReportingController {
       subjectId,
       teacherId,
       studentId,
+      status,
+      missingRequirement,
       month
     }, user, request ? { requestIp: request.ip, requestDevice: request.headers['user-agent'] || null } : undefined);
 

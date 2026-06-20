@@ -100,7 +100,7 @@ describe('AttendanceClassService explicit attendance review', () => {
     status: SessionStatus.OPEN
   };
 
-  function makeRecordService(existingUpdatedAt = new Date('2026-06-14T01:05:00.000Z')) {
+  function makeRecordService(existingUpdatedAt = new Date('2026-06-14T01:05:00.000Z'), policyOverrides: Record<string, unknown> = {}) {
     const tx = {
       session: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       studentAttendance: {
@@ -129,7 +129,19 @@ describe('AttendanceClassService explicit attendance review', () => {
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue(session) },
       sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]) },
-      attendancePolicy: { findUnique: jest.fn().mockResolvedValue({ requireStudentClassEligibility: false }) },
+      attendancePolicy: { findUnique: jest.fn().mockResolvedValue({
+        requireStudentClassEligibility: false,
+        requireStudentGateInBeforeClass: false,
+        requireStudentDhuha: false,
+        requireStudentDzuhur: false,
+        allowManualOverride: false,
+        dhuhaStartTime: '07:00',
+        dzuhurStartTime: '11:45',
+        ...policyOverrides
+      }) },
+      gateLog: { findMany: jest.fn().mockResolvedValue([]) },
+      prayerAttendanceLog: { findMany: jest.fn().mockResolvedValue([]) },
+      attendanceOverride: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((callback) => callback(tx))
     } as any;
     return { service: new AttendanceClassService(prisma), prisma, tx, existingUpdatedAt };
@@ -179,7 +191,47 @@ describe('AttendanceClassService explicit attendance review', () => {
     expect(tx.studentAttendance.updateMany).not.toHaveBeenCalled();
   });
 
-  it('konfirmasi massal hadir hanya mengubah baris DEFAULTED yang eligible', async () => {
+  it('tetap menyimpan HADIR meski siswa belum scan gerbang', async () => {
+    const { service, tx, prisma, existingUpdatedAt } = makeRecordService(new Date('2026-06-14T01:05:00.000Z'), {
+      requireStudentClassEligibility: true,
+      requireStudentGateInBeforeClass: true
+    });
+
+    const result = await service.recordAttendance('session-1', guru, {
+      items: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, updatedAt: existingUpdatedAt.toISOString(), confirm: true }]
+    });
+
+    expect(prisma.gateLog.findMany).toHaveBeenCalled();
+    expect(result.updated).toBe(1);
+    expect(result.rejectedCount).toBe(0);
+    expect(result.warningCount).toBe(1);
+    expect(tx.studentAttendance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: StudentAttendanceStatus.HADIR, reviewState: AttendanceReviewState.CONFIRMED })
+    }));
+  });
+
+  it('tetap menyimpan TELAT meski siswa belum scan sholat', async () => {
+    const { service, tx, prisma, existingUpdatedAt } = makeRecordService(new Date('2026-06-14T01:05:00.000Z'), {
+      requireStudentClassEligibility: true,
+      requireStudentGateInBeforeClass: false,
+      requireStudentDhuha: true,
+      dhuhaStartTime: '07:00'
+    });
+
+    const result = await service.recordAttendance('session-1', guru, {
+      items: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.TELAT, updatedAt: existingUpdatedAt.toISOString(), confirm: true }]
+    });
+
+    expect(prisma.prayerAttendanceLog.findMany).toHaveBeenCalled();
+    expect(result.updated).toBe(1);
+    expect(result.rejectedCount).toBe(0);
+    expect(result.warningCount).toBe(1);
+    expect(tx.studentAttendance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: StudentAttendanceStatus.TELAT, reviewState: AttendanceReviewState.CONFIRMED })
+    }));
+  });
+
+  it('konfirmasi massal hadir tetap mengubah baris DEFAULTED meski scan belum lengkap', async () => {
     const tx = {
       studentAttendance: {
         createMany: jest.fn().mockResolvedValue({ count: 2 }),
@@ -190,7 +242,18 @@ describe('AttendanceClassService explicit attendance review', () => {
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue(session) },
       sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }, { studentId: 'siswa-2' }]) },
-      attendancePolicy: { findUnique: jest.fn().mockResolvedValue({ requireStudentClassEligibility: false }) },
+      attendancePolicy: { findUnique: jest.fn().mockResolvedValue({
+        requireStudentClassEligibility: true,
+        requireStudentGateInBeforeClass: true,
+        requireStudentDhuha: true,
+        requireStudentDzuhur: false,
+        allowManualOverride: false,
+        dhuhaStartTime: '07:00',
+        dzuhurStartTime: '11:45'
+      }) },
+      gateLog: { findMany: jest.fn().mockResolvedValue([]) },
+      prayerAttendanceLog: { findMany: jest.fn().mockResolvedValue([]) },
+      attendanceOverride: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((callback) => callback(tx))
     } as any;
     const service = new AttendanceClassService(prisma);
@@ -198,6 +261,8 @@ describe('AttendanceClassService explicit attendance review', () => {
     const result = await service.bulkConfirmPresent('session-1', guru);
 
     expect(result.updated).toBe(2);
+    expect(result.rejectedCount).toBe(0);
+    expect(result.warningCount).toBe(2);
     expect(tx.studentAttendance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ reviewState: AttendanceReviewState.DEFAULTED }),
       data: expect.objectContaining({ status: StudentAttendanceStatus.HADIR, confirmationSource: AttendanceConfirmationSource.MANUAL_BULK })
