@@ -51,14 +51,19 @@ describe('HP Scanner Android operator UI', () => {
 
     render(<DevicesPage notify={notify} />);
 
+    expect(await screen.findByText('Gerbang & Mushola')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /Buat Kode Aktivasi/i }));
     expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP Scanner 1, lalu masukkan kode aktivasi.')).toBeInTheDocument();
     expect(screen.getByText('shrp_activationCodeOnlyForThisFlow')).toBeInTheDocument();
+    const firstProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/android/provision/start'));
+    expect(JSON.parse(String(firstProvisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
 
     fireEvent.click(screen.getByRole('button', { name: /HP Scanner 2.*Mode Gerbang\/Mushola dipilih dari aplikasi/i }));
     fireEvent.click(screen.getByRole('button', { name: /Buat Kode Aktivasi/i }));
     expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP Scanner 2, lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    const provisionCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/device-readers/android/provision/start'));
+    expect(JSON.parse(String(provisionCalls.at(-1)?.[1]?.body))).not.toHaveProperty('allowedModes');
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
   });
 
@@ -69,12 +74,14 @@ describe('HP Scanner Android operator UI', () => {
       { id: 'active-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-active', name: 'HP Scanner 1 Aktif', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'GERBANG' },
       { id: 'inactive-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'android-inactive', name: 'HP Scanner 2 Nonaktif', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'MUSHOLA' }
     ];
-    vi.stubGlobal('fetch', vi.fn(async (input) => {
+    const fetchMock = vi.fn(async (input) => {
       const url = String(input);
       if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
       if (url.includes('/device-readers')) return new Response(JSON.stringify({ items: readers, meta: { page: 1, limit: 200, total: readers.length, totalPages: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
       return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
-    }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('confirm', vi.fn(() => true));
 
     render(<DevicesPage notify={notify} />);
 
@@ -89,6 +96,11 @@ describe('HP Scanner Android operator UI', () => {
     expect(within(pendingRow).getByRole('button', { name: 'Cabut' })).toBeInTheDocument();
     expect(within(activeRow).getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
     expect(within(inactiveRow).getByRole('button', { name: 'Aktifkan lagi' })).toBeInTheDocument();
+
+    fireEvent.click(within(pendingRow).getByRole('button', { name: 'Buat kode baru' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/device-readers/android/provision/start'))).toBe(true));
+    const replaceProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/android/provision/start'));
+    expect(JSON.parse(String(replaceProvisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
   });
 });
 

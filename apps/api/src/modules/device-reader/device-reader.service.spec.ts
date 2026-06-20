@@ -86,6 +86,18 @@ describe('DeviceReaderService credential security', () => {
     expect(data.provisioningTokenHash).toBe(readerCredentialDigest(result.provisionToken));
     expect(data.provisioningTokenHash).not.toBe(createHash('sha256').update(result.provisionToken).digest('hex'));
     expect(data.provisioningTokenHash).not.toBe(result.provisionToken);
+    expect(data.type).toBe(ReaderType.QR_ANDROID);
+    expect(data.allowedModes).toEqual([AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
+  });
+
+  it('ignores legacy Android provisioning allowedModes and keeps flexible defaults', async () => {
+    const prisma = makePrisma();
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await service.startAndroidProvision({ name: 'Android Reader', allowedModes: ['GATE_IN', 'GATE_OUT'] }, actor);
+    const data = prisma.__tx.deviceReader.create.mock.calls[0][0].data;
+
+    expect(data.allowedModes).toEqual([AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
   });
 
   it('completes provisioning with current HMAC token and clears token atomically', async () => {

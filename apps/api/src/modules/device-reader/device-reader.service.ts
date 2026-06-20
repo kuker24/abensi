@@ -189,7 +189,7 @@ export class DeviceReaderService {
   async startAndroidProvision(payload: AndroidProvisionStartDto, actor: Actor) {
     const token = generateProvisionToken();
     const expiresAt = new Date(Date.now() + clampProvisionMinutes(payload.expiresInMinutes) * 60_000);
-    const allowedModes = effectiveAllowedModes(ReaderType.QR_ANDROID, payload.allowedModes);
+    const allowedModes = effectiveAllowedModes(ReaderType.QR_ANDROID);
     const created = await this.prisma.$transaction(async (tx) => {
       await this.assertAndroidReaderActiveSlotAvailable(tx);
       const item = await tx.deviceReader.create({
