@@ -123,7 +123,25 @@ The bootstrap creates only one `ADMIN_TU`, sets `mustChangePassword=true`, does 
 
 Developer bootstrap remains disabled by default. Enable only with `DEVELOPER_BOOTSTRAP_ENABLED=true` and a strong `DEVELOPER_PASSWORD` if operationally required.
 
-## 9. UAT smoke
+## 9. Post-deploy smoke
+
+Default smoke bersifat non-destruktif dan tidak membutuhkan password. Jalankan setelah deploy untuk memverifikasi root web, health API, security headers dasar, dan fallback route halaman audit:
+
+```bash
+BASE_URL=https://your-domain bash scripts/post_deploy_smoke.sh
+```
+
+Opsional, jika perlu memastikan endpoint audit tidak error setelah deploy, aktifkan smoke audit terautentikasi dengan kredensial Admin/TU dari environment. Script tidak mencetak password, token, cookie, atau payload audit mentah:
+
+```bash
+AUTHENTICATED_AUDIT_SMOKE=YES \
+BASE_URL=https://your-domain \
+POST_DEPLOY_SMOKE_ADMIN_USERNAME=admin.tu \
+POST_DEPLOY_SMOKE_ADMIN_PASSWORD='...' \
+bash scripts/post_deploy_smoke.sh
+```
+
+## 10. UAT smoke
 
 Read-only cookie/CSRF smoke:
 
@@ -147,7 +165,7 @@ ADMIN_USERNAME=... ADMIN_PASSWORD=... GURU_PASSWORD=... SISWA_PASSWORD=... \
 bash scripts/uat_smoke.sh
 ```
 
-## 10. Public HTTPS smoke
+## 11. Public HTTPS smoke
 
 ```bash
 PUBLIC_APP_ORIGIN=https://your-domain \
@@ -157,7 +175,7 @@ bash scripts/public_https_smoke.sh
 
 This validates redirect, trusted certificate, HSTS/security headers, Secure/HttpOnly cookies, `/auth/me`, CSRF rejection/success, SSE, mixed content, internal ports, and logout.
 
-## 11. Backups
+## 12. Backups
 
 Manual encrypted backup:
 
@@ -176,7 +194,7 @@ sudo systemctl enable --now schoolhub-backup.timer
 
 Recommended: daily encrypted backup, weekly retained backup, monthly restore drill, and off-VPS copy using `BACKUP_UPLOAD_HOOK`.
 
-## 12. Restore verification and restore
+## 13. Restore verification and restore
 
 Verify backup without overwriting production:
 
@@ -196,7 +214,7 @@ Production restore requires explicit confirmation:
 bash scripts/restore_backup.sh --env-file /opt/schoolhub/.env --backup /path/backup.dump.enc --restore-production
 ```
 
-## 13. Rollback
+## 14. Rollback
 
 Application rollback only:
 
@@ -206,7 +224,7 @@ bash scripts/rollback_production.sh --env-file /opt/schoolhub/.env --target-sha 
 
 Rollback never blindly reverses migrations or restores the database. Database restore requires `--restore-database --backup FILE` and explicit confirmation.
 
-## 14. Status check
+## 15. Status check
 
 ```bash
 USE_VPS_TOPOLOGY=true bash scripts/deployment_status.sh --env-file /opt/schoolhub/.env
@@ -214,7 +232,7 @@ USE_VPS_TOPOLOGY=true bash scripts/deployment_status.sh --env-file /opt/schoolhu
 
 Status includes Git SHA, containers, images, health, migrations, audit chain, backup age, disk/memory, certificate expiration, queue/Redis state, and latest deployment evidence.
 
-## 15. Certificate troubleshooting
+## 16. Certificate troubleshooting
 
 - Confirm DNS A/AAAA records point to the VPS.
 - Confirm ports 80/443 are open in UFW and provider firewall.
@@ -222,7 +240,7 @@ Status includes Git SHA, containers, images, health, migrations, audit chain, ba
 - Temporarily disable Cloudflare proxy for issuance if needed.
 - Re-run `scripts/public_https_smoke.sh` after renewal.
 
-## 16. Disk-full recovery
+## 17. Disk-full recovery
 
 1. Stop write traffic if the database volume is at risk.
 2. Inspect: `df -h`, `docker system df`, backup directory age.
@@ -230,7 +248,7 @@ Status includes Git SHA, containers, images, health, migrations, audit chain, ba
 4. Do not delete current database volumes or latest verified backups.
 5. Re-run deployment status and backup verification.
 
-## 17. Database recovery
+## 18. Database recovery
 
 1. Stop app write traffic: `docker compose ... stop reverse-proxy worker api`.
 2. Verify the selected backup with `scripts/verify_backup.sh`.

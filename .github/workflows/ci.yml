@@ -228,6 +228,8 @@ jobs:
             scripts/bootstrap_ubuntu_24_04.sh \
             scripts/uat_smoke.sh \
             scripts/public_https_smoke.sh \
+            scripts/post_deploy_smoke.sh \
+            scripts/test_post_deploy_smoke.sh \
             scripts/https_smoke.sh \
             scripts/https_ci_fixture.sh \
             scripts/backup_production.sh \
@@ -260,9 +262,11 @@ jobs:
           fi
       - name: Rollback dry-run
         run: bash scripts/rollback_production.sh --env-file .env.production.test --target-sha "$GITHUB_SHA" --dry-run
+      - name: Post-deploy smoke fixture
+        run: npm run test:post-deploy-smoke
       - name: UAT script has no legacy browser token dependency and uses geolocation contract
         run: |
-          ! grep -R -E 'accessToken|Authorization: Bearer|authorization: Bearer' scripts/uat_smoke.sh
+          ! grep -R -E 'accessToken|Authorization: Bearer|authorization: Bearer' scripts/uat_smoke.sh scripts/post_deploy_smoke.sh
           grep -q 'accuracyMeter' scripts/uat_smoke.sh
           grep -q 'browser_geolocation' scripts/uat_smoke.sh
           ! grep -R -E '"lat"|"lng"' scripts/uat_smoke.sh
