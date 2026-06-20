@@ -726,7 +726,7 @@ function AndroidReaderPanel({ notify }) {
 
   async function startProvision() {
     if (activeAndroidCount >= MAX_ACTIVE_ANDROID_READERS) return notify('Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.', 'warn');
-    const data = await apiFetch('/device-readers/android/provision/start', { method: 'POST', body: JSON.stringify({ name: form.name, locationName: form.locationName, allowedModes: FLEXIBLE_ANDROID_MODES, expiresInMinutes: Number(form.expiresInMinutes) || 15 }) });
+    const data = await apiFetch('/device-readers/android/provision/start', { method: 'POST', body: JSON.stringify({ name: form.name, locationName: form.locationName, expiresInMinutes: Number(form.expiresInMinutes) || 15 }) });
     setResult(data); readers.refresh(); notify('Kode aktivasi HP berhasil dibuat. Salin kode ke aplikasi HP.');
   }
 
@@ -751,7 +751,6 @@ function AndroidReaderPanel({ notify }) {
       body: JSON.stringify({
         name: row.name || 'HP Scanner',
         locationName: row.locationName || row.locationLabel || '',
-        allowedModes: FLEXIBLE_ANDROID_MODES,
         expiresInMinutes: Number(form.expiresInMinutes) || 15
       })
     });
