@@ -27,4 +27,4 @@ but is explicitly treated as manual/legacy admin path and can be disabled throug
 
 ## Security properties
 
-The Android endpoint requires `x-reader-*` HMAC headers and verifies `DeviceReader.type = QR_ANDROID`, allowed scan mode, nonce anti-replay, timestamp skew, body hash, app version, QR credential status, user activity, and server-side AttendancePolicy.
+The Android endpoint requires `x-reader-*` HMAC headers and verifies `DeviceReader.type = QR_ANDROID`, active reader identity, runtime `scanMode`, nonce anti-replay, timestamp skew, body hash, app version, QR credential status, user activity, and server-side AttendancePolicy. `QR_ANDROID` is a physical phone identity; it is not permanently bound to gate vs mushola.

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { DevicePlatform, DeviceReaderStatus, ReaderType, Role } from '@prisma/client';
+import { AndroidReaderMode, DevicePlatform, DeviceReaderStatus, ReaderType, Role } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { readerCredentialDigest } from '../security/device-signature.service';
 import { ANDROID_READER_LIMIT_MESSAGE, DeviceReaderService, MAX_ACTIVE_ANDROID_READERS } from './device-reader.service';
@@ -25,7 +25,7 @@ function makePrisma() {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }) => ({ id: data.id ?? 'reader-1', status: data.status ?? DeviceReaderStatus.ACTIVE, type: data.type ?? ReaderType.GATE, allowedModes: data.allowedModes ?? [], ...data })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'reader-1', deviceId: 'android-1', name: 'Android', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [], provisioningTokenHash: null, readerSecretCiphertext: 'enc-secret' }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'reader-1', deviceId: 'android-1', name: 'Android', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY], provisioningTokenHash: null, readerSecretCiphertext: 'enc-secret' }),
       update: jest.fn()
     }
   };
@@ -35,6 +35,8 @@ function makePrisma() {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn()
     },
+    gateLog: { findFirst: jest.fn().mockResolvedValue(null) },
+    prayerAttendanceLog: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn(async (callback: any) => callback(tx)),
     __tx: tx
   } as any;
@@ -163,23 +165,23 @@ describe('DeviceReaderService credential security', () => {
     await expect(new DeviceReaderService(raced, makeSignatures()).completeAndroidProvision({ provisionToken: token, deviceId: 'android-1' })).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('normalizes QR_ANDROID createReader platform to ANDROID even if client sends HARDWARE', async () => {
+  it('normalizes QR_ANDROID createReader platform to ANDROID even if client sends HARDWARE and gives flexible modes', async () => {
     const prisma = makePrisma();
     const service = new DeviceReaderService(prisma, makeSignatures());
 
-    await service.createReader({ name: 'HP Gerbang Manual', type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE }, actor);
+    await service.createReader({ name: 'HP Scanner 1', type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE }, actor);
 
     expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE } });
-    expect(prisma.__tx.deviceReader.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: ReaderType.QR_ANDROID, platform: DevicePlatform.ANDROID }) }));
+    expect(prisma.__tx.deviceReader.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: ReaderType.QR_ANDROID, platform: DevicePlatform.ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] }) }));
   });
 
-  it('normalizes QR_ANDROID createReader missing platform to ANDROID', async () => {
+  it('normalizes QR_ANDROID createReader missing platform to ANDROID and ignores permanent mode binding', async () => {
     const prisma = makePrisma();
     const service = new DeviceReaderService(prisma, makeSignatures());
 
-    await service.createReader({ name: 'HP Mushola Manual', type: ReaderType.QR_ANDROID }, actor);
+    await service.createReader({ name: 'HP Scanner 2', type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.MUSHOLA] }, actor);
 
-    expect(prisma.__tx.deviceReader.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: ReaderType.QR_ANDROID, platform: DevicePlatform.ANDROID }) }));
+    expect(prisma.__tx.deviceReader.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: ReaderType.QR_ANDROID, platform: DevicePlatform.ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] }) }));
   });
 
   it('blocks third ACTIVE QR_ANDROID even when client tries non-ANDROID platform', async () => {
@@ -257,7 +259,7 @@ describe('DeviceReaderService credential security', () => {
     await service.updateStatus('reader-inactive', { status: DeviceReaderStatus.ACTIVE }, actor);
 
     expect(prisma.__tx.deviceReader.count).toHaveBeenCalledWith({ where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE, id: { not: 'reader-inactive' } } });
-    expect(prisma.__tx.deviceReader.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID } }));
+    expect(prisma.__tx.deviceReader.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] } }));
   });
 
   it('rejects reactivating Android reader when active reader limit is full', async () => {

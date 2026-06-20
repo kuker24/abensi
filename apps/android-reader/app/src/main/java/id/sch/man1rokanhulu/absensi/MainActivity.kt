@@ -197,9 +197,7 @@ fun ReaderApp(
     AppTheme {
         when (route) {
             Route.SPLASH -> SplashScreen {
-                route = if (!config.isProvisioned()) Route.SETUP
-                else if (config.autoOpenScanner) Route.SCANNER
-                else Route.HOME
+                route = if (!config.isProvisioned()) Route.SETUP else Route.HOME
             }
             Route.SETUP -> SetupScreen(config, api) {
                 chooseMode(effectiveScanMode(config.allowedModes(), config.allowedModes().firstOrNull() ?: "CHECK_ONLY"))

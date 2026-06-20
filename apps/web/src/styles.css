@@ -872,6 +872,8 @@ label, .field-label { display: block; font-size: var(--text-xs); font-weight: va
 .step-guide-item b { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--primary); color: #1c1917; flex: 0 0 auto; box-shadow: 0 0 10px var(--primary-glow); }
 
 /* ========= teacher attendance flow ========= */
+.teacher-attendance-flow > * + * { margin-top: 18px; }
+.teacher-attendance-flow > .page-head + * { margin-top: 0; }
 .attendance-checkpoint { display: grid; grid-template-columns: minmax(180px, 320px) 1fr; gap: 18px; align-items: center; margin-bottom: 20px; padding: 18px; border: 1px solid var(--border-2); border-radius: var(--radius-xl); background: var(--gradient-card); box-shadow: var(--shadow-sm); }
 .attendance-checkpoint .eyebrow { margin-bottom: 4px; }
 .attendance-checkpoint b { display: block; font-family: var(--font-serif); font-size: clamp(28px, 4vw, 42px); line-height: 1; color: var(--fg); }

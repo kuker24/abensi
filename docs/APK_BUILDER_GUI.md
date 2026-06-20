@@ -136,7 +136,7 @@ SCHOOLHUB_VERSION_CODE=3
 - Builder tidak menyimpan reader secret production.
 - Secret perangkat diprovision setelah APK terinstall lewat server/admin panel.
 - Secret disimpan APK di encrypted storage/Android Keystore.
-- Jangan share keystore release, password keystore, QR provisioning, atau secret reader.
+- Jangan share keystore release, password keystore, kode aktivasi HP, atau secret reader.
 
 Panduan operator lengkap:
 

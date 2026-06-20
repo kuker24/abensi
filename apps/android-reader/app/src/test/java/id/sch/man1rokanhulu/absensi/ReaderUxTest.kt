@@ -8,6 +8,7 @@ import id.sch.man1rokanhulu.absensi.ui.friendlyScanTitle
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceKind
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
+import id.sch.man1rokanhulu.absensi.ui.selectableScanModes
 import id.sch.man1rokanhulu.absensi.ui.safeScanHistoryMessage
 import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
 import id.sch.man1rokanhulu.absensi.ui.showManualModePicker
@@ -18,23 +19,36 @@ import org.junit.Test
 
 class ReaderUxTest {
     @Test
-    fun gateReaderUsesDedicatedGateUxAndAutoMode() {
+    fun flexibleReaderUsesTwoSelectableModes() {
+        val modes = listOf("GERBANG", "MUSHOLA", "CHECK_ONLY")
+
+        assertEquals(ReaderDeviceKind.MIXED, readerDeviceKind(modes))
+        assertEquals("HP Scanner", readerDeviceTitle(modes))
+        assertEquals("Pilih Mode Gerbang atau Mode Mushola", readerModeSummary(modes))
+        assertEquals(listOf("GERBANG", "MUSHOLA"), selectableScanModes(modes))
+        assertEquals("GERBANG", effectiveScanMode(modes, "GATE_OUT"))
+        assertEquals("MUSHOLA", effectiveScanMode(modes, "MUSHOLA"))
+        assertTrue(showManualModePicker(modes))
+    }
+
+    @Test
+    fun legacyGateReaderModesNormalizeToGerbang() {
         val modes = listOf("GATE_IN", "GATE_OUT")
 
         assertEquals(ReaderDeviceKind.GATE, readerDeviceKind(modes))
-        assertEquals("HP Gerbang", readerDeviceTitle(modes))
-        assertEquals("Mode: Datang & Pulang", readerModeSummary(modes))
-        assertEquals("GATE_IN", effectiveScanMode(modes, "GATE_OUT"))
+        assertEquals("HP Scanner", readerDeviceTitle(modes))
+        assertEquals("Mode Gerbang tersedia", readerModeSummary(modes))
+        assertEquals("GERBANG", effectiveScanMode(modes, "GATE_OUT"))
         assertFalse(showManualModePicker(modes))
     }
 
     @Test
-    fun musholaReaderUsesDedicatedMusholaUx() {
+    fun musholaReaderUsesScannerUx() {
         val modes = listOf("MUSHOLA")
 
         assertEquals(ReaderDeviceKind.MUSHOLA, readerDeviceKind(modes))
-        assertEquals("HP Mushola", readerDeviceTitle(modes))
-        assertTrue(readerModeSummary(modes).startsWith("Sholat saat ini:"))
+        assertEquals("HP Scanner", readerDeviceTitle(modes))
+        assertEquals("Mode Mushola tersedia", readerModeSummary(modes))
         assertEquals("MUSHOLA", effectiveScanMode(modes, "CHECK_ONLY"))
         assertFalse(showManualModePicker(modes))
     }
@@ -42,8 +56,8 @@ class ReaderUxTest {
     @Test
     fun friendlyMessagesHideTechnicalErrors() {
         assertEquals("HP scanner belum aktif atau dicabut. Minta admin aktivasi ulang.", friendlyScanMessage("Reader tidak aktif, dicabut, atau tidak ditemukan."))
-        assertEquals("QR tidak cocok untuk HP ini", friendlyScanMessage("Mode HP Gerbang hanya untuk siswa lain."))
-        assertEquals("QR tidak cocok untuk HP ini", friendlyScanMessage("QR tidak cocok untuk HP ini"))
+        assertEquals("QR tidak cocok untuk mode scan ini", friendlyScanMessage("Mode Gerbang hanya untuk scan datang/pulang."))
+        assertEquals("QR tidak cocok untuk mode scan ini", friendlyScanMessage("QR tidak cocok untuk mode scan ini"))
         assertEquals("Sudah tercatat", friendlyScanMessage("Dzuhur hari ini sudah tercatat."))
         assertEquals("Datang tercatat", friendlyScanMessage("Datang tercatat."))
         assertEquals("Pulang tercatat", friendlyScanMessage("Pulang tercatat."))
@@ -88,7 +102,7 @@ class ReaderUxTest {
             "java.net.SocketTimeoutException: timeout from OkHttp" to "Server belum bisa dihubungi. Periksa Wi-Fi atau internet HP.",
             "Token provisioning tidak ditemukan: shrp_superSecretToken" to "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru.",
             "Invalid token shrp_rawToken" to "Kode aktivasi salah atau sudah kedaluwarsa. Minta admin membuat kode baru.",
-            "Mode HP ini tidak cocok untuk scan ini." to "QR tidak cocok untuk HP ini",
+            "Mode HP ini tidak cocok untuk scan ini." to "QR tidak cocok untuk mode scan ini",
             "QR tidak dikenal atau sudah dicabut." to "QR tidak dikenal atau sudah dicabut.",
             "Datang tercatat." to "Datang tercatat",
             "Pulang tercatat." to "Pulang tercatat",

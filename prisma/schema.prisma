@@ -141,6 +141,7 @@ enum DevicePlatform {
 }
 
 enum AndroidReaderMode {
+  GERBANG
   GATE_IN
   GATE_OUT
   MUSHOLA
@@ -602,23 +603,25 @@ model BusinessDateBackfillReport {
 }
 
 model RejectedDeviceScan {
-  id               String         @id @default(cuid())
+  id               String             @id @default(cuid())
   eventId          String?
   cardUid          String?
   direction        GateDirection?
   deviceTimestamp  DateTime?
-  serverReceivedAt DateTime       @default(now())
+  serverReceivedAt DateTime           @default(now())
   readerId         String?
   deviceId         String?
+  scanMode         AndroidReaderMode?
   nonceHash        String?
   bodyHash         String?
   reason           String
-  createdAt        DateTime       @default(now())
+  createdAt        DateTime           @default(now())
 
   reader DeviceReader? @relation(fields: [readerId], references: [id], onDelete: SetNull)
 
   @@index([eventId])
   @@index([readerId, createdAt])
+  @@index([scanMode, createdAt])
   @@index([createdAt])
 }
 

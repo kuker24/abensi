@@ -53,18 +53,19 @@ import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
 import id.sch.man1rokanhulu.absensi.scanner.BarcodeAnalyzer
 import id.sch.man1rokanhulu.absensi.scanner.ContinuousScanGate
 import id.sch.man1rokanhulu.absensi.security.QrParser
+import id.sch.man1rokanhulu.absensi.ui.components.ConfirmDialog
 import id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackCard
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackData
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
-import id.sch.man1rokanhulu.absensi.ui.components.ModeChipRow
 import id.sch.man1rokanhulu.absensi.ui.components.StatusBar
 import id.sch.man1rokanhulu.absensi.ui.friendlyScanMessage
 import id.sch.man1rokanhulu.absensi.ui.friendlyScanTitle
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
+import id.sch.man1rokanhulu.absensi.ui.scanModeHelper
+import id.sch.man1rokanhulu.absensi.ui.scanModeTitle
 import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
-import id.sch.man1rokanhulu.absensi.ui.showManualModePicker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -104,6 +105,7 @@ fun ScannerScreen(
     var connection by remember { mutableStateOf(ConnectionStatus.CHECKING) }
     var torchOn by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
+    var confirmModeChange by remember { mutableStateOf(false) }
     var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
 
     DisposableEffect(config.keepScreenOn) {
@@ -254,14 +256,15 @@ fun ScannerScreen(
                     locationLabel = config.locationLabel.ifBlank { "$deviceTitle · $deviceSummary" },
                     compact = true
                 )
-                if (showManualModePicker(allowedModes)) {
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .padding(10.dp)
-                    ) {
-                        ModeChipRow(allowedModes, mode, callbacks.onModeChange)
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(scanModeTitle(mode), color = Color.White, style = MaterialTheme.typography.titleLarge)
+                        Text(scanModeHelper(mode), color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -305,13 +308,26 @@ fun ScannerScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
                     ) { Text("Bantuan") }
                     Button(
-                        onClick = callbacks.onBack,
+                        onClick = { confirmModeChange = true },
                         modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
-                    ) { Text("Tutup") }
+                    ) { Text("Ubah Mode") }
                 }
             }
             Spacer(Modifier.height(0.dp))
+        }
+
+        if (confirmModeChange) {
+            ConfirmDialog(
+                title = "Yakin ubah mode scan?",
+                message = "Scan akan ditutup agar operator memilih Mode Gerbang atau Mode Mushola.",
+                confirmLabel = "Ubah Mode",
+                onConfirm = {
+                    confirmModeChange = false
+                    callbacks.onBack()
+                },
+                onDismiss = { confirmModeChange = false }
+            )
         }
     }
 }

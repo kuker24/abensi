@@ -19,10 +19,10 @@ describe('HP Scanner Android operator UI', () => {
 
     render(<DevicesPage notify={vi.fn()} />);
 
-    expect(await screen.findByText('Kelola 2 HP scanner sekolah')).toBeInTheDocument();
-    expect(screen.getAllByText('HP Gerbang').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('HP Mushola').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Gunakan HP Gerbang untuk scan datang/pulang dan HP Mushola untuk scan sholat siswa.').length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText('2 HP scanner fleksibel')).toBeInTheDocument();
+    expect(screen.getAllByText('HP Scanner 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('HP Scanner 2').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Kedua HP bisa dipakai untuk Mode Gerbang atau Mode Mushola sesuai kebutuhan/i)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/HP Guru|HP Siswa|HP Staff|HP Kepala|Scanner Guru|Scanner Siswa/i);
   });
 
@@ -41,7 +41,7 @@ describe('HP Scanner Android operator UI', () => {
       }
       if (url.includes('/device-readers')) {
         return new Response(JSON.stringify({
-          items: [{ id: 'reader-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-1', name: 'HP Gerbang Aktif', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'], hasReaderSecret: true }],
+          items: [{ id: 'reader-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-1', name: 'HP Scanner 1', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'GERBANG', hasReaderSecret: true }],
           meta: { page: 1, limit: 200, total: 1, totalPages: 1 }
         }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
@@ -52,22 +52,22 @@ describe('HP Scanner Android operator UI', () => {
     render(<DevicesPage notify={notify} />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Buat Kode Aktivasi/i }));
-    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Buka aplikasi SIAB2 Reader di HP Gerbang lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP Scanner 1, lalu masukkan kode aktivasi.')).toBeInTheDocument();
     expect(screen.getByText('shrp_activationCodeOnlyForThisFlow')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /HP Mushola.*sholat\/ibadah siswa/i }));
+    fireEvent.click(screen.getByRole('button', { name: /HP Scanner 2.*Mode Gerbang\/Mushola dipilih dari aplikasi/i }));
     fireEvent.click(screen.getByRole('button', { name: /Buat Kode Aktivasi/i }));
-    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Buka aplikasi SIAB2 Reader di HP Mushola lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP Scanner 2, lalu masukkan kode aktivasi.')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
   });
 
   it('shows safe secret copy and does not offer Aktifkan lagi for pending unprovisioned readers', async () => {
     const notify = vi.fn();
     const readers = [
-      { id: 'pending-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: null, name: 'HP Gerbang Pending', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'] },
-      { id: 'active-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-active', name: 'HP Gerbang Aktif', locationName: 'Gerbang', allowedModes: ['GATE_IN', 'GATE_OUT'] },
-      { id: 'inactive-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'android-inactive', name: 'HP Mushola Nonaktif', locationName: 'Mushola', allowedModes: ['MUSHOLA'] }
+      { id: 'pending-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: null, name: 'HP Scanner 1 Pending', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'] },
+      { id: 'active-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-active', name: 'HP Scanner 1 Aktif', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'GERBANG' },
+      { id: 'inactive-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'android-inactive', name: 'HP Scanner 2 Nonaktif', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'MUSHOLA' }
     ];
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);
@@ -79,9 +79,9 @@ describe('HP Scanner Android operator UI', () => {
     render(<DevicesPage notify={notify} />);
 
     expect(await screen.findByText('Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.')).toBeInTheDocument();
-    const pendingRow = screen.getByText('HP Gerbang Pending').closest('tr');
-    const activeRow = screen.getByText('HP Gerbang Aktif').closest('tr');
-    const inactiveRow = screen.getByText('HP Mushola Nonaktif').closest('tr');
+    const pendingRow = screen.getByText('HP Scanner 1 Pending').closest('tr');
+    const activeRow = screen.getByText('HP Scanner 1 Aktif').closest('tr');
+    const inactiveRow = screen.getByText('HP Scanner 2 Nonaktif').closest('tr');
 
     expect(within(pendingRow).getByText('Menunggu aktivasi HP')).toBeInTheDocument();
     expect(within(pendingRow).queryByRole('button', { name: 'Aktifkan lagi' })).not.toBeInTheDocument();

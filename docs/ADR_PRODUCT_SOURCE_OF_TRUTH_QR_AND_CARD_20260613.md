@@ -22,7 +22,7 @@ Therefore, PRD v2.2 remains valid with this amendment: **Android QR reader is an
 ## Threat model
 
 - Browser/client role claims are untrusted.
-- Reader identity is verified by server-side `DeviceReader` status/type/mode and HMAC headers.
+- Reader identity is verified by server-side `DeviceReader` status/type and HMAC headers; QR Android phones select `scanMode` (`GERBANG`/`MUSHOLA`) at runtime instead of being permanently bound to a location.
 - Nonce replay, timestamp skew, body hash mismatch, inactive/revoked reader, inactive/lost card, and invalid QR credential are rejected and persisted as rejected scans where applicable.
 - Raw reader secrets/API keys must not be stored or logged.
 

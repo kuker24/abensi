@@ -67,7 +67,7 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         val bodyMap = mapOf(
             "credentialType" to "QR",
             "qrCode" to qrCode,
-            "mode" to mode,
+            "scanMode" to mode,
             "clientScannedAt" to Instant.now().toString(),
             "appVersion" to BuildConfig.VERSION_NAME,
             "appVersionCode" to BuildConfig.VERSION_CODE
