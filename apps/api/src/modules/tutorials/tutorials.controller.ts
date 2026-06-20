@@ -16,21 +16,21 @@ export class TutorialsController {
   constructor(private readonly tutorialsService: TutorialsService) {}
 
   @Get('me')
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
   @Capabilities('profile.self.read')
   me(@CurrentUser() user: { sub: string; role: string }) {
     return this.tutorialsService.getMyTutorial(user);
   }
 
   @Post('me/complete')
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
   @Capabilities('profile.self.update')
   complete(@CurrentUser() user: { sub: string; role: string }, @Body() body: CompleteTutorialDto) {
     return this.tutorialsService.completeMyTutorial(user, body.version);
   }
 
   @Post('me/dismiss')
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
   @Capabilities('profile.self.update')
   dismiss(@CurrentUser() user: { sub: string; role: string }, @Body() body: DismissTutorialDto) {
     return this.tutorialsService.dismissMyTutorial(user, body.version);

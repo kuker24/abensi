@@ -133,6 +133,49 @@ export function AdminDashboard() {
   </div>;
 }
 
+export function PrincipalDashboard() {
+  const dashboard = useRemote(() => apiFetch('/reports/dashboard'), []);
+  const trend = useRemote(() => apiFetch('/reports/trend?days=7'), []);
+  const live = useRemote(() => apiFetch('/reports/live-monitor?page=1&limit=8'), []);
+  const d = dashboard.data || {};
+  const coverage = Number(d.attendanceCoveragePercent ?? d.coveragePercent ?? 0) || 0;
+  const closed = Number(d.closedSessions ?? 0) || 0;
+  const open = Number(d.openSessions ?? 0) || 0;
+  const scheduled = Math.max(0, Number(d.scheduledSessions ?? d.sessionsToday ?? 0) - closed - open);
+  const openFlags = Number(d.openFlags ?? 0) || 0;
+  const gateScans = Number(d.gateTapCount ?? d.gateLogsToday ?? 0) || 0;
+  const studentSummary = studentDailySummary(d);
+
+  return <div className="content dashboard-redesign"><PageHead eyebrow="KEPALA SEKOLAH" title="Ringkasan Kepala Sekolah" sub="Mode baca saja untuk memantau kehadiran, sesi, scan gerbang, dan laporan utama tanpa mengubah data." actions={<><Btn onClick={() => go('/admin/reports')}><FileText size={14} /> Buka laporan</Btn><Btn variant="primary" onClick={() => go('/admin/live-monitor')}><Activity size={14} /> Aktivitas sekarang</Btn></>} />
+    <section className="dashboard-hero admin-hero">
+      <div className="dashboard-hero-copy">
+        <div className="eyebrow"><span className="dot" /> PANTAUAN READ-ONLY</div>
+        <h2>Melihat kondisi sekolah hari ini tanpa akses perubahan data.</h2>
+        <p>Gunakan angka ringkas ini untuk mengambil keputusan, lalu teruskan tindak lanjut ke Admin/TU, Operator IT, atau Guru Piket sesuai kewenangan.</p>
+        <div className="dashboard-hero-actions"><span className="chip"><ShieldCheck size={12} /> Hanya lihat data</span><span className="chip"><Eye size={12} /> Tidak ada tombol mutasi</span></div>
+      </div>
+      <div className="dashboard-hero-panel">
+        <ProgressRing value={coverage} label="Cakupan presensi" sub={`${coverage}% data sudah tercatat`} />
+        <div className="hero-kpi-grid"><span><b>{d.sessionsToday ?? 0}</b>Sesi hari ini</span><span><b>{gateScans}</b>Scan gerbang</span><span><b>{openFlags}</b>Masalah aktif</span></div>
+      </div>
+    </section>
+
+    <RoleTaskPanel title="Pantauan utama" tasks={[{ title: 'Kehadiran lengkap siswa', desc: 'Cek datang, pulang, kelas, dan sholat siswa.', icon: <CheckSquare size={18} />, tone: 'ok', onClick: () => go('/admin/student-completeness') }, { title: 'Sholat siswa', desc: 'Lihat ringkasan Dhuha, Dzuhur, dan Ashar.', icon: <Building2 size={18} />, onClick: () => go('/admin/prayer-attendance') }, { title: 'Kepala/Staf hadir', desc: 'Pantau scan datang-pulang staf dan guru.', icon: <Users size={18} />, onClick: () => go('/admin/staff-attendance') }, { title: 'Laporan sekolah', desc: 'Buka pratinjau laporan dan cetak pratinjau bila perlu.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }]} />
+
+    {dashboard.loading ? <LoadingState /> : dashboard.error ? <ErrorState error={dashboard.error} onRetry={dashboard.refresh} /> : <><div className="grid g-4">
+      <StatCardPremium icon={<Users size={20} />} label="Kepala/Staf Hadir" value={d.staffPresentToday ?? 0} sub="Scan datang hari ini" onClick={() => go('/admin/staff-attendance')} />
+      <StatCardPremium icon={<CheckSquare size={20} />} label="Siswa hadir lengkap" value={studentSummary.completeCount ?? d.studentCompleteCount ?? 0} sub="Gerbang, kelas, dan sholat lengkap" tone="ok" onClick={() => go('/admin/student-completeness')} />
+      <StatCardPremium icon={<AlertTriangle size={20} />} label="Belum scan pulang" value={studentSummary.missingDepartureCount ?? d.studentMissingDepartureCount ?? 0} sub="Perlu tindak lanjut petugas" tone="warn" onClick={() => go('/admin/student-completeness')} />
+      <StatCardPremium icon={<Activity size={20} />} label="Sesi Belum Ditutup" value={d.unclosedSessions ?? open} sub={`${closed} selesai · ${open} berjalan`} tone={(d.unclosedSessions ?? open) > 0 ? 'warn' : 'ok'} />
+      <StatCardPremium icon={<Building2 size={20} />} label="Sholat Dhuha/Dzuhur" value={`${d.prayerDhuhaToday ?? 0}/${d.prayerDzuhurToday ?? 0}`} sub="Siswa sudah scan" onClick={() => go('/admin/prayer-attendance')} />
+      <StatCardPremium icon={<ScanLine size={20} />} label="Scan Gerbang" value={gateScans} sub="Catatan masuk/pulang" />
+    </div><div className="grid g-3 chart-summary"><Card title="Cakupan presensi" sub="Ringkasan kelengkapan hari ini."><ProgressRing value={coverage} label="Presensi tercatat" sub={`${coverage}% dari data yang masuk`} /></Card><Card title="Status sesi hari ini" sub="Selesai, berjalan, dan terjadwal."><StackedBar segments={[{ label: 'Selesai', value: closed, tone: 'ok' }, { label: 'Berjalan', value: open, tone: 'info' }, { label: 'Terjadwal', value: scheduled, tone: 'warn' }]} total={Math.max(1, Number(d.sessionsToday ?? 0) || closed + open + scheduled)} /></Card><Card title="Kondisi cepat" sub="Masalah dan scan gerbang hari ini."><HorizontalBarList data={[{ label: 'Masalah aktif', value: openFlags }, { label: 'Scan gerbang', value: gateScans }]} labelKeys={['label']} valueKeys={['value']} /></Card></div></>}
+
+    <div className="grid g-3" style={{ marginTop: 18 }}><Card title="Aktivitas terbaru" sub="Aktivitas gerbang dan sesi" actions={<Btn size="sm" onClick={() => go('/admin/live-monitor')}>Lihat lengkap</Btn>}><DashboardMiniList state={live} type="activity" /></Card></div>
+    {trend.loading ? <LoadingState label="Memuat tren…" /> : trend.error ? <ErrorState error={trend.error} onRetry={trend.refresh} /> : <Card title="Tren 7 hari" sub="Cakupan presensi per hari"><TrendChart data={trend.data} /></Card>}
+  </div>;
+}
+
 export function SessionsPage({ admin = true }) {
   const [date, setDate] = useState(today());
   const [page, setPage] = useState(1);
@@ -152,12 +195,13 @@ export function HistoryPage() {
 
 export function StaffAttendancePage({ notify }) {
   const [date, setDate] = useState(today());
+  const canExport = readStoredUser()?.role !== 'KEPALA_SEKOLAH';
   const state = useRemote(() => apiFetch(`/reports/staff-gate-attendance${qs({ from: date, to: date, page: 1, limit: 200 })}`), [date]);
   async function exportReport() {
     await apiDownload(`/reports/export${qs({ reportType: 'staff_gate_attendance', format: 'xlsx', from: date, to: date })}`);
     notify('Laporan Kepala/Staf berhasil diunduh.');
   }
-  return <div className="content"><PageHead eyebrow="KEPALA / STAF" title="Datang & Pulang" sub="Tabel sederhana scan Mode Gerbang untuk kepala, TU, dan staf/karyawan." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal staf" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={exportReport}><Download size={14} /> Export Laporan</Btn></>} /><Card title="Kehadiran Kepala/Staf" sub="Scan pertama = Datang. Scan berikutnya setelah jeda aman = Pulang."><AsyncTable state={state} columns={[{ header: 'Nama', render: (r) => r.fullName || r.username }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Datang', render: (r) => formatDateTime(r.datang) }, { header: 'Pulang', render: (r) => formatDateTime(r.pulang) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Keterangan', render: (r) => r.note || '—' }]} empty="Belum ada scan kepala/staf pada tanggal ini." /></Card></div>;
+  return <div className="content"><PageHead eyebrow="KEPALA / STAF" title="Datang & Pulang" sub="Tabel sederhana scan Mode Gerbang untuk kepala, TU, dan staf/karyawan." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal staf" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn>{canExport && <Btn variant="primary" onClick={exportReport}><Download size={14} /> Export Laporan</Btn>}</>} /><Card title="Kehadiran Kepala/Staf" sub="Scan pertama = Datang. Scan berikutnya setelah jeda aman = Pulang."><AsyncTable state={state} columns={[{ header: 'Nama', render: (r) => r.fullName || r.username }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Datang', render: (r) => formatDateTime(r.datang) }, { header: 'Pulang', render: (r) => formatDateTime(r.pulang) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Keterangan', render: (r) => r.note || '—' }]} empty="Belum ada scan kepala/staf pada tanggal ini." /></Card></div>;
 }
 
 export function PrayerAttendancePage({ notify }) {
@@ -333,7 +377,7 @@ function TabBar({ value, onChange, groups, options }) {
 function UsersPanel({ notify }) {
   const currentUser = readStoredUser();
   const isDeveloper = currentUser?.role === 'DEVELOPER';
-  const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
+  const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
   const state = useRemote(() => apiFetch('/identity/users?page=1&limit=200'), []);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [roleFilter, setRoleFilter] = useState('ALL');
@@ -972,6 +1016,7 @@ export function ReportsPage({ notify }) {
   const previewPath = buildReportPreviewPath(type, { from, to });
   const state = useRemote(() => apiFetch(previewPath), [previewPath]);
   const [exporting, setExporting] = useState(false);
+  const canExport = readStoredUser()?.role !== 'KEPALA_SEKOLAH';
   const periodLabel = formatReportPeriod(from, to);
   async function exportNow() {
     setExporting(true);
@@ -984,7 +1029,7 @@ export function ReportsPage({ notify }) {
       setExporting(false);
     }
   }
-  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub="Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi." actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="staff-gate-attendance">Kepala/Staf Datang-Pulang</option><option value="teacher-session-activity">Guru Masuk Mengajar</option><option value="student-daily-completeness">Rekap Kehadiran Lengkap Siswa</option><option value="missing-arrival-scan">Belum Scan Datang</option><option value="missing-departure-scan">Belum Scan Pulang</option><option value="class-present-no-gate-scan">Hadir Kelas Tanpa Scan Gerbang</option><option value="gate-scan-no-class-attendance">Scan Gerbang Tanpa Absensi Kelas</option><option value="student-prayer-attendance">Sholat Siswa</option><option value="student-worship-recap">Rekap Ibadah Siswa</option><option value="prayer-recap">Rekap Sholat Siswa</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label><SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn><Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn></>} /><StepGuide title="Cara membuat laporan" steps={['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
+  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub={canExport ? 'Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi.' : 'Pilih jenis laporan dan tanggal untuk pratinjau baca saja.'} actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="staff-gate-attendance">Kepala/Staf Datang-Pulang</option><option value="teacher-session-activity">Guru Masuk Mengajar</option><option value="student-daily-completeness">Rekap Kehadiran Lengkap Siswa</option><option value="missing-arrival-scan">Belum Scan Datang</option><option value="missing-departure-scan">Belum Scan Pulang</option><option value="class-present-no-gate-scan">Hadir Kelas Tanpa Scan Gerbang</option><option value="gate-scan-no-class-attendance">Scan Gerbang Tanpa Absensi Kelas</option><option value="student-prayer-attendance">Sholat Siswa</option><option value="student-worship-recap">Rekap Ibadah Siswa</option><option value="prayer-recap">Rekap Sholat Siswa</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>{canExport && <SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput>}<Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn>{canExport && <Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn>}</>} /><StepGuide title="Cara membuat laporan" steps={canExport ? ['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.'] : ['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau baca saja.', 'Gunakan Cetak Pratinjau bila perlu.', 'Minta Admin/TU jika membutuhkan file resmi.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
 }
 
 const REPORT_PREVIEW_LABELS = {
@@ -1160,7 +1205,7 @@ export function DeveloperControlPage({ notify }) {
     users.refresh();
     notify(`Tutorial diaktifkan untuk ${result.activatedCount || 0} akun ${statusLabel(role)}.`);
   }
-  const roleChoices = [['', 'Semua peran'], ['ADMIN_TU', 'Admin/TU'], ['OPERATOR_IT', 'Operator IT'], ['GURU_PIKET', 'Guru Piket'], ['GURU_MAPEL', 'Guru Mapel'], ['SISWA', 'Siswa'], ['DEVELOPER', 'Developer']];
+  const roleChoices = [['', 'Semua peran'], ['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_PIKET', 'Guru Piket'], ['GURU_MAPEL', 'Guru Mapel'], ['SISWA', 'Siswa'], ['DEVELOPER', 'Developer']];
   return <div className="content"><PageHead eyebrow="DEVELOPER" title="Pusat Kontrol Developer" sub="Kontrol tutorial, bersihkan data aman, dan cek kesehatan sistem." /><TabBar value={tab} onChange={setTab} options={[["tutorial", "Kontrol Tutorial"], ["cleanup", "Bersihkan Data"], ["health", "Kesehatan Sistem"]]} /><RoleTaskPanel tasks={[{ title: 'Cek kesehatan sistem', desc: 'Pastikan aplikasi dan database siap.', icon: <ShieldCheck size={18} />, onClick: () => setTab('health') }, { title: 'Aktifkan tutorial', desc: 'Bantu pengguna yang masih bingung.', icon: <BookOpen size={18} />, onClick: () => setTab('tutorial') }, { title: 'Bersihkan data aman', desc: 'Lihat pratinjau sebelum membersihkan data sementara.', icon: <Zap size={18} />, tone: 'warn', onClick: () => setTab('cleanup') }, { title: 'Riwayat perubahan', desc: 'Telusuri aksi penting.', icon: <FileText size={18} />, onClick: () => go('/admin/audit') }]} /><div className="smart-help"><b>Prinsip aman:</b><span>Nonaktifkan akun untuk data bersejarah.</span><span>Hapus permanen hanya untuk akun test kosong.</span><span>Bersihkan data selalu lihat pratinjau dulu.</span></div>{tab === 'tutorial' && <div className="grid g-3"><Card title="Kontrol Tutorial" sub="Aktifkan tutorial ulang tanpa mengubah data absensi." actions={<><Btn onClick={() => users.refresh()}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={activateRole}><Zap size={14} /> Aktifkan per peran</Btn></>}><div className="form-grid"><Field label="Cari pengguna"><TextInput value={search} placeholder="Nama atau nama akun" onChange={(e) => setSearch(e.target.value)} /></Field><Field label="Filter peran"><SelectInput value={role} onChange={(e) => setRole(e.target.value)}>{roleChoices.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field><Field label="Alasan perubahan" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field></div><AsyncTable state={users} columns={[{ header: 'Pengguna', render: (r) => <span className="row"><Avatar name={r.fullName} size="sm" /> {r.fullName}</span> }, { header: 'Nama akun', key: 'username' }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Status tutorial', render: (r) => r.tutorial?.shouldShow ? <StatusPill status="PENDING" /> : r.tutorial?.completedAt ? <StatusPill status="RESOLVED" /> : <StatusPill status="IN_REVIEW" /> }, { header: 'Terakhir tampil', render: (r) => formatDateTime(r.tutorial?.lastSeenAt) }]} onRow={(r) => <Btn size="sm" disabled={reason.trim().length < 10} onClick={() => activateUser(r)}><BookOpen size={13} /> Aktifkan Tutorial Lagi</Btn>} /></Card></div>}{tab === 'cleanup' && <CleanupPanel notify={notify} />}{tab === 'health' && <Card title="Kesehatan Sistem" sub="Ringkasan status aplikasi agar siap dipakai.">{health.loading ? <LoadingState /> : health.error ? <ErrorState error={health.error} onRetry={health.refresh} /> : <pre className="codeblock">{JSON.stringify(health.data, null, 2)}</pre>}</Card>}</div>;
 }
 
@@ -1174,6 +1219,15 @@ export function HelpPage({ role = 'ADMIN_TU' }) {
         { title: 'Riwayat perubahan', desc: 'Telusuri aksi penting.', icon: <FileText size={18} />, onClick: () => go('/admin/audit') }
       ],
       steps: ['Gunakan akun developer hanya untuk kontrol sistem.', 'Cek kesehatan sistem sebelum perubahan besar.', 'Pantau Riwayat Perubahan setelah perubahan.']
+    },
+    KEPALA_SEKOLAH: {
+      title: 'Panduan Kepala Sekolah',
+      tasks: [
+        { title: 'Ringkasan Kepala Sekolah', desc: 'Pantau kondisi hari ini dalam mode baca saja.', icon: <Eye size={18} />, onClick: () => go('/admin/principal-dashboard') },
+        { title: 'Kehadiran lengkap siswa', desc: 'Cek kelengkapan gerbang, kelas, dan sholat.', icon: <CheckSquare size={18} />, onClick: () => go('/admin/student-completeness') },
+        { title: 'Laporan sekolah', desc: 'Buka pratinjau laporan.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }
+      ],
+      steps: ['Buka Ringkasan Kepala Sekolah.', 'Cek indikator yang perlu perhatian.', 'Koordinasikan tindak lanjut ke Admin/TU, Operator IT, atau Guru Piket.']
     },
     OPERATOR_IT: {
       title: 'Panduan Operator IT',

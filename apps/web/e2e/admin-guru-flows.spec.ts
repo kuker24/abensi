@@ -270,6 +270,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     page.on('pageerror', (error) => uiErrors.push(error.message));
     const cases = [
       { user: { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' }, start: '/admin/dashboard', menus: ['Ringkasan Hari Ini', 'Cek Sesi Kelas', 'Cek Masalah', 'Riwayat Scan', 'Akun & Data Sekolah', 'Panduan'] },
+      { user: { id: 'kepala-1', username: 'kepala.sekolah', fullName: 'Kepala Sekolah', role: 'KEPALA_SEKOLAH' }, start: '/admin/principal-dashboard', menus: ['Ringkasan Kepala Sekolah', 'Kehadiran Lengkap Siswa', 'Sholat Siswa', 'Kepala/Staf Hadir', 'Laporan Sekolah', 'Panduan Kepala Sekolah'] },
       { user: { id: 'op-1', username: 'operator.it', fullName: 'Operator IT', role: 'OPERATOR_IT' }, start: '/admin/it-dashboard', menus: ['Cek Sistem', 'HP Scanner & Kartu', 'Aktivitas Sekarang', 'Riwayat Perubahan', 'Panduan Operator'] },
       { user: { id: 'picket-1', username: 'guru.piket', fullName: 'Guru Piket', role: 'GURU_PIKET' }, start: '/admin/picket-dashboard', menus: ['Tugas Piket Hari Ini', 'Catatan Piket', 'Cek Sesi Kelas', 'Cek Masalah', 'Panduan Piket'] },
       { user: { id: 'guru-1', username: 'guru.matematika', fullName: 'Guru Mapel', role: 'GURU_MAPEL' }, start: '/guru/dashboard', menus: ['Ringkasan Mengajar', 'Isi Presensi Kelas', 'Perbaiki Presensi', 'Laporan Kelas Saya', 'Panduan'] },

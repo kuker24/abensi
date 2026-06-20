@@ -1,5 +1,6 @@
 export const ROLES = [
   'ADMIN_TU',
+  'KEPALA_SEKOLAH',
   'GURU_MAPEL',
   'GURU_PIKET',
   'SISWA',
@@ -54,6 +55,10 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'settings.read', 'settings.manage',
     'reports.self.read', 'reports.operational.read', 'reports.school.read', 'reports.export',
     'audit.read',
+    'profile.self.read', 'profile.self.update'
+  ]),
+  KEPALA_SEKOLAH: Object.freeze([
+    'reports.self.read', 'reports.operational.read', 'reports.school.read',
     'profile.self.read', 'profile.self.update'
   ]),
   OPERATOR_IT: Object.freeze([

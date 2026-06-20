@@ -27,6 +27,14 @@ function stepsForRole(role?: string): TutorialStep[] {
       { title: 'Pantau riwayat perubahan dan kesehatan sistem', body: 'Setiap aksi developer tercatat di Riwayat Perubahan. Gunakan catatan ini untuk memastikan perubahan tetap jelas dan bisa ditelusuri.', action: { label: 'Buka Riwayat Perubahan', path: '/admin/audit' } }
     ];
   }
+  if (role === 'KEPALA_SEKOLAH') {
+    return [
+      COMMON_START,
+      { title: 'Mulai dari Ringkasan Kepala Sekolah', body: 'Halaman ini berisi indikator hadir, scan gerbang, sesi, dan ibadah siswa dalam mode baca saja.', action: { label: 'Buka Ringkasan', path: '/admin/principal-dashboard' } },
+      { title: 'Baca laporan tanpa mengubah data', body: 'Gunakan menu laporan, kehadiran siswa, sholat siswa, dan aktivitas sekarang untuk memantau kondisi sekolah.' },
+      { title: 'Tindak lanjut melalui petugas', body: 'Jika ada masalah, koordinasikan dengan Admin/TU atau Guru Piket agar perubahan tetap dilakukan oleh petugas berwenang.' }
+    ];
+  }
   if (role === 'OPERATOR_IT') {
     return [
       COMMON_START,
