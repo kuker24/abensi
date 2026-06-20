@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.sch.man1rokanhulu.absensi.ui.theme.SemanticColors
 
@@ -75,7 +76,14 @@ fun StatusBar(
         )
         if (!locationLabel.isNullOrBlank()) {
             Dot(fg)
-            Text(locationLabel, style = MaterialTheme.typography.labelLarge, color = fg)
+            Text(
+                locationLabel,
+                modifier = Modifier.weight(1f, fill = false),
+                style = MaterialTheme.typography.labelLarge,
+                color = fg,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
         if (queueCount > 0) {
             Dot(fg)
