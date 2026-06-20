@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DevicesPage, ReportsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
+import { AuditPage, DevicesPage, ReportsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -101,6 +101,62 @@ describe('HP Scanner Android operator UI', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/device-readers/android/provision/start'))).toBe(true));
     const replaceProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/android/provision/start'));
     expect(JSON.parse(String(replaceProvisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
+  });
+});
+
+describe('audit page UI', () => {
+  it('shows a friendly empty state when audit endpoint returns no items', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/audit')) {
+        return new Response(JSON.stringify({ items: [], meta: { page: 1, limit: 50, total: 0, totalPages: 1 } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<AuditPage />);
+
+    expect(await screen.findByText('Belum ada riwayat perubahan')).toBeInTheDocument();
+    expect(screen.getByText('Setelah admin mengubah data, catatan akan muncul di sini.')).toBeInTheDocument();
+    expect(screen.queryByText(/Internal server error/i)).not.toBeInTheDocument();
+  });
+
+  it('renders audit rows returned with string sequence values', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/audit')) {
+        return new Response(JSON.stringify({
+          items: [{
+            id: 'audit-1',
+            sequence: '217',
+            action: 'identity.user.updated',
+            module: 'identity',
+            resource: 'user',
+            resourceId: 'user-1',
+            reason: 'Perubahan data',
+            createdAt: '2026-06-20T10:42:05.095Z',
+            actor: { fullName: 'Admin TU' },
+            after: { reason: 'fallback reason' }
+          }],
+          meta: { page: 1, limit: 50, total: 1, totalPages: 1 }
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<AuditPage />);
+
+    expect(await screen.findByText('identity.user.updated')).toBeInTheDocument();
+    expect(screen.getByText('identity')).toBeInTheDocument();
+    expect(screen.getByText('Admin TU')).toBeInTheDocument();
+    expect(screen.getByText('user:user-1')).toBeInTheDocument();
+    expect(screen.getByText('Perubahan data')).toBeInTheDocument();
   });
 });
 
