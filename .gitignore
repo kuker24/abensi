@@ -1,16 +1,68 @@
-node_modules/
-dist/
+# Environment / secrets
 .env
 .env.*
+!.env.example
 !.env.production.example
 !.env.production.supabase.example
-!.env.production.test
+!.env.production.test.example
 !apps/web/.env.example
-npm-debug.log*
-coverage/
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*credentials*.json
+akun_beta.txt
+.last_hardening_backup_path
+.last_deploy_artifact_path
+.env.local
+
+# Dependencies / build
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
 *.tsbuildinfo
-.DS_Store
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Coverage / test / browser reports
+coverage/
+.playwright/
+playwright-report/
+test-results/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/playwright-report-*/
+
+# Mutation testing
+.stryker-tmp/
+reports/mutation/
+mutation-report/
+
+# Local AI/security/test reports
+semgrep-results.json
+osv-results.json
+gitleaks-report.json
+gitleaks-dir-report.json
+repomix-output.*
+.knip-cache/
+
+# Python/cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS/editor
+.DS_Store
+
+# Android/local build outputs
 apps/android-reader/.gradle/
 apps/android-reader/local.properties
 apps/android-reader/**/build/
@@ -20,29 +72,16 @@ apps/android-reader/output/
 tools/apk-builder/.venv/
 tools/apk-builder/**/__pycache__/
 tools/apk-builder/.pytest_cache/
+
+# Local data/backups
 postgres_data/
 redis_data/
 backups/
-akun_beta.txt
-.last_hardening_backup_path
-.last_deploy_artifact_path
-.env.local
-*.pem
-*.key
-*.crt
-*.p12
-*.jks
 *.dump
 *.dump.enc
 *.sql.gz
 *.backup
-*credentials*.json
 
 # Local/CI generated artifacts
 artifacts/
 apps/api/.prisma-generate/
-
-# Local Playwright artifacts
-apps/web/test-results/
-apps/web/playwright-report/
-apps/web/playwright-report-*/

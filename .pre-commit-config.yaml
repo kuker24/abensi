@@ -1,0 +1,26 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks-staged
+        name: Gitleaks secret scan (staged)
+        entry: gitleaks protect --staged --redact --no-banner
+        language: system
+        pass_filenames: false
+
+      - id: typecheck
+        name: TypeScript typecheck
+        entry: npm run typecheck:all
+        language: system
+        pass_filenames: false
+
+      - id: web-unit-tests
+        name: Web unit tests
+        entry: npm run test:web
+        language: system
+        pass_filenames: false
+
+      - id: worker-unit-tests
+        name: Worker unit tests
+        entry: npm run test --prefix apps/worker
+        language: system
+        pass_filenames: false

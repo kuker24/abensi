@@ -1,0 +1,174 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignoreBinaries": [
+    "knip",
+    "playwright"
+  ],
+  "ignore": [
+    ".github/**",
+    "apps/android-reader/**",
+    "artifacts/**",
+    "backups/**",
+    "design/**",
+    "docs/**",
+    "Laporan/**",
+    "Logo/**",
+    "ops/**",
+    "outputs/**",
+    "prisma/migrations/**",
+    "node_modules/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/playwright-report*/**",
+    "**/test-results/**"
+  ],
+  "workspaces": {
+    ".": {
+      "entry": [
+        "package.json",
+        "scripts/**/*.{js,mjs,cjs,ts}",
+        "prisma/seed.ts"
+      ],
+      "project": [
+        "scripts/**/*.{js,mjs,cjs,ts}",
+        "prisma/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "@cyclonedx/cyclonedx-npm"
+      ]
+    },
+    "apps/api": {
+      "entry": [
+        "src/main.ts",
+        "src/app.module.ts",
+        "src/scripts/**/*.ts",
+        "src/**/*.spec.ts",
+        "jest.config.cjs",
+        "eslint.config.mjs"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "*.config.{js,cjs,mjs,ts}",
+        "eslint.config.mjs"
+      ]
+    },
+    "apps/web": {
+      "entry": [
+        "src/main.tsx",
+        "src/**/*.test.{ts,tsx}",
+        "src/test/setup.ts",
+        "e2e/**/*.ts",
+        "vite.config.ts",
+        "playwright.config.ts",
+        "playwright.*.config.ts",
+        "tailwind.config.ts",
+        "postcss.config.cjs",
+        "eslint.config.mjs"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "e2e/**/*.ts",
+        "*.config.{js,cjs,mjs,ts}",
+        "tailwind.config.ts",
+        "postcss.config.cjs"
+      ]
+    },
+    "apps/worker": {
+      "entry": [
+        "src/index.js",
+        "test/*.test.js"
+      ],
+      "project": [
+        "src/**/*.js",
+        "test/**/*.js"
+      ]
+    },
+    "packages/shared": {
+      "entry": [
+        "index.cjs",
+        "index.mjs",
+        "index.d.ts"
+      ],
+      "project": [
+        "*.{js,cjs,mjs,ts,d.ts}"
+      ]
+    },
+    "DataSekolah/generator-tanda-pengenal": {
+      "entry": [
+        "src/main.jsx",
+        "vite.config.js",
+        "eslint.config.js",
+        "tailwind.config.js",
+        "postcss.config.js"
+      ],
+      "project": [
+        "src/**/*.{js,jsx}",
+        "*.config.js"
+      ]
+    }
+  },
+  "ignoreIssues": {
+    "apps/api/src/common/business-time.ts": [
+      "exports"
+    ],
+    "apps/api/src/common/import-file.parser.ts": [
+      "exports"
+    ],
+    "apps/api/src/modules/reporting/report-document-exporter.ts": [
+      "exports",
+      "types"
+    ],
+    "apps/api/src/modules/tutorials/tutorials.service.ts": [
+      "exports"
+    ],
+    "apps/api/src/modules/qr-credentials/qr-code.util.ts": [
+      "exports"
+    ],
+    "apps/api/src/common/capabilities.ts": [
+      "types"
+    ],
+    "apps/api/src/common/pagination.ts": [
+      "types"
+    ],
+    "apps/web/src/app/api.ts": [
+      "exports"
+    ],
+    "apps/web/src/app/branding.ts": [
+      "exports"
+    ],
+    "apps/web/src/app/SchoolHubApp.tsx": [
+      "exports"
+    ],
+    "apps/web/src/app/ui.tsx": [
+      "exports"
+    ],
+    "apps/web/src/app/workos-auth.tsx": [
+      "exports",
+      "types"
+    ],
+    "apps/web/src/app/capabilities.ts": [
+      "exports",
+      "types"
+    ],
+    "apps/web/src/app/hooks.ts": [
+      "exports"
+    ],
+    "apps/web/src/App.tsx": [
+      "types"
+    ],
+    "apps/web/src/app/types.ts": [
+      "types"
+    ],
+    "DataSekolah/generator-tanda-pengenal/src/components/layout/index.js": [
+      "exports"
+    ],
+    "DataSekolah/generator-tanda-pengenal/src/utils/csvParser.js": [
+      "exports"
+    ],
+    "DataSekolah/generator-tanda-pengenal/src/utils/pdfGenerator.js": [
+      "exports"
+    ]
+  }
+}
