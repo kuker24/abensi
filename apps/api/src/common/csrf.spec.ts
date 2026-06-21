@@ -17,6 +17,10 @@ describe('csrfProtection', () => {
     expect(runCsrf('POST', '/api/v1/device-readers/android/provision/complete')).toBeUndefined();
   });
 
+  it('exempts signed Android reader heartbeat/status because it uses HMAC reader auth, not browser cookies', () => {
+    expect(runCsrf('POST', '/api/v1/device-readers/android/status')).toBeUndefined();
+  });
+
   it('keeps unsafe authenticated endpoints protected', () => {
     const error = runCsrf('POST', '/api/v1/auth/logout');
     expect(error).toBeInstanceOf(ForbiddenException);

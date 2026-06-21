@@ -11,6 +11,7 @@ const EXEMPT_PATH_SUFFIXES = [
   '/api/v1/auth/refresh',
   '/api/v1/auth/csrf',
   '/api/v1/device-readers/android/provision/complete',
+  '/api/v1/device-readers/android/status',
   '/api/v1/attendance/reader-scan',
   '/api/v1/attendance/qr-reader-scan',
   '/api/v1/device/gate/events',
