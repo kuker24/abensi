@@ -29,6 +29,24 @@ function paginated(items: unknown[]) {
   return { items, meta: { page: 1, limit: 100, total: items.length, totalPages: 1, hasNext: false, hasPrev: false } };
 }
 
+function studentTodayStatusFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    date: '2026-06-14',
+    student: { id: 'siswa-1', fullName: 'Citra', className: 'X-A' },
+    summary: { completedCount: 2, pendingCount: 3, overallStatus: 'PERLU_DILENGKAPI' },
+    items: [
+      { key: 'GATE_IN', label: 'Scan Datang', status: 'DONE', time: '07:03', description: 'Kedatangan sudah tercatat.' },
+      { key: 'CLASS_ATTENDANCE', label: 'Presensi Kelas', status: 'PENDING', time: null, description: 'Tunggu guru mengisi presensi kelas.' },
+      { key: 'PRAYER_DHUHA', label: 'Sholat Dhuha', status: 'DONE', time: '08:10', description: 'Sholat Dhuha sudah tercatat.' },
+      { key: 'PRAYER_DZUHUR', label: 'Sholat Dzuhur', status: 'PENDING', time: null, description: 'Scan Dzuhur di mushola.' },
+      { key: 'PRAYER_ASHAR', label: 'Sholat Ashar', status: 'NOT_REQUIRED', time: null, description: 'Sholat Ashar tidak wajib hari ini.' },
+      { key: 'GATE_OUT', label: 'Scan Pulang', status: 'PENDING', time: null, description: 'Scan pulang sebelum keluar sekolah.' }
+    ],
+    nextActions: ['Ikuti presensi kelas dengan guru.', 'Scan Dzuhur di mushola.', 'Scan pulang sebelum keluar sekolah.'],
+    ...overrides
+  };
+}
+
 async function routeCommonApi(page: Page) {
   await page.route('**/api/v1/**', async (route: Route) => {
     const url = route.request().url();
@@ -41,6 +59,7 @@ async function routeCommonApi(page: Page) {
     if (url.includes('/reports/dashboard')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionsToday: 2, closedSessions: 1, openSessions: 1, attendanceCoveragePercent: 80, openFlags: 0, gateTapCount: 12, studentCompleteness: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 } }) });
     if (url.includes('/reports/student-daily-completeness')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 }, items: [{ studentId: 'siswa-1', fullName: 'Aisyah Putri', username: 'siswa.aisyah', schoolClass: 'X-A', gateArrivalAt: '2026-06-14T00:00:00.000Z', gateDepartureAt: null, classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: 'Belum scan sholat', finalStatus: 'BELUM_SCAN_PULANG', note: 'Belum scan pulang, Belum scan sholat' }, { studentId: 'siswa-2', fullName: 'Citra Lestari', username: 'siswa.citra', schoolClass: 'X-A', gateArrivalAt: '2026-06-14T00:05:00.000Z', gateDepartureAt: '2026-06-14T08:00:00.000Z', classAttendanceLabel: 'Belum diabsen guru', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'BELUM_ABSEN_KELAS', note: 'Belum diabsen guru' }], meta: { page: 1, limit: 100, total: 2, totalPages: 1 } }) });
     if (url.includes('/reports/trend')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ label: 'Hari ini', coveragePercent: 80 }]) });
+    if (url.includes('/students/me/today-status')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(studentTodayStatusFixture()) });
     if (url.includes('/access/geofence')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 1, centerLat: 0, centerLng: 0, radiusMeter: 300, enforceSessionOpen: true, arrivalGraceMinutes: 15, autoMissedGraceMinutes: 15, requireGateTapForOpen: false, allowPicketOverride: true }) });
     if (url.includes('/attendance/policy')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 1, requireStudentGateInBeforeClass: true, requireStudentDhuha: true, requireStudentDzuhur: true, requireStudentAsharForAfternoon: true, requireStudentClassEligibility: true, requireTeacherGateIn: true, requireTeacherGateOut: true, requireStaffGateIn: true, requireStaffGateOut: true, allowManualOverride: true, allowStudentAsharCheckoutOverride: true, dhuhaStartTime: '07:00', dhuhaEndTime: '10:30', dzuhurStartTime: '11:45', dzuhurEndTime: '13:30', asharStartTime: '15:00', asharEndTime: '16:30', asharRequiredClassEndTime: '15:00', duplicateScanWindowMinutes: 5 }) });
     if (url.includes('/identity/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU', active: true, cardStatus: 'ACTIVE' }, { id: 'guru-1', username: 'guru.demo', fullName: 'Guru Demo', role: 'GURU_MAPEL', active: true, cardStatus: 'ACTIVE' }, { id: 'siswa-1', username: 'siswa.demo', fullName: 'Siswa Demo', role: 'SISWA', active: true, cardStatus: 'ACTIVE' }])) });
@@ -594,9 +613,24 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await page.route('**/api/v1/reports/my-attendance**', async (route: Route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], meta: { total: 0 } }) });
     });
+    await page.route('**/api/v1/students/me/today-status', async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(studentTodayStatusFixture({
+          summary: { completedCount: 1, pendingCount: 4, overallStatus: 'PERLU_DILENGKAPI' },
+          items: [
+            { key: 'GATE_IN', label: 'Scan Datang', status: 'DONE', time: '07:03', description: 'Kedatangan sudah tercatat.' },
+            { key: 'CLASS_ATTENDANCE', label: 'Presensi Kelas', status: 'PENDING', time: null, description: 'Tunggu guru mengisi presensi kelas.' }
+          ],
+          nextActions: ['Ikuti presensi kelas dengan guru.']
+        }))
+      });
+    });
     await page.goto('/siswa/dashboard');
-    await expect(page.getByRole('heading', { name: 'Kehadiran Saya' })).toBeVisible();
-    await expect(page.getByText('Siswa hanya bisa melihat, tidak bisa input atau koreksi.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Status Kehadiran Hari Ini' })).toBeVisible();
+    await expect(page.getByText('Checklist hari ini')).toBeVisible();
+    await expect(page.getByText('Siswa hanya melihat data, tidak bisa mengubah presensi.')).toBeVisible();
   });
 
   test('tidak ada horizontal overflow di semua viewport penting', async ({ page }) => {
