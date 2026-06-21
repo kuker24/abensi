@@ -165,6 +165,10 @@ jobs:
       BACKUP_DIR: artifacts/docker-backups
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Prepare CI production test env fixture
+        run: |
+          cp .env.production.test.example .env.production.test
+          chmod 600 .env.production.test
       - run: docker compose -f docker-compose.production.yml config
       - run: docker compose -f docker-compose.production.yml build
       - run: docker compose -f docker-compose.production.yml up -d
@@ -215,6 +219,10 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Prepare CI production test env fixture
+        run: |
+          cp .env.production.test.example .env.production.test
+          chmod 600 .env.production.test
       - name: Install shellcheck
         run: |
           sudo apt-get update
