@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { CalendarCheck, HelpCircle, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiFetch, formatDateTime, go, itemsOf, today } from '../../api';
 import { useRemote } from '../../hooks';
-import { Btn, Card, DataTable, EmptyState, ErrorState, Field, LoadingState, PageHead, RoleTaskPanel, SelectInput, SimpleHelpBox, StatusDonut, StatusPill } from '../../ui';
+import { Btn, Card, DataTable, EmptyState, ErrorState, Field, LoadingState, PageHead, RoleTaskPanel, SelectInput, SimpleHelpBox, StatCardPremium, StatusDonut, StatusPill } from '../../ui';
 
 function countByStatus(data) {
   return itemsOf(data).reduce((acc, row) => {
@@ -86,22 +86,89 @@ function AttendanceTable({ rows }) {
   );
 }
 
+const STUDENT_STATUS_LABELS = {
+  DONE: 'Sudah tercatat',
+  PENDING: 'Belum tercatat',
+  NOT_REQUIRED: 'Tidak wajib',
+  OUTSIDE_WINDOW: 'Belum waktunya'
+};
+
+function safeStudentTodayStatus() {
+  return {
+    date: today(),
+    student: { fullName: 'Siswa', className: null },
+    summary: { completedCount: 0, pendingCount: 5, overallStatus: 'PERLU_DILENGKAPI' },
+    items: [
+      { key: 'GATE_IN', label: 'Scan Datang', status: 'PENDING', time: null, description: 'Scan datang di gerbang.' },
+      { key: 'CLASS_ATTENDANCE', label: 'Presensi Kelas', status: 'PENDING', time: null, description: 'Tunggu guru mengisi presensi kelas.' },
+      { key: 'PRAYER_DHUHA', label: 'Sholat Dhuha', status: 'PENDING', time: null, description: 'Scan Dhuha di mushola.' },
+      { key: 'PRAYER_DZUHUR', label: 'Sholat Dzuhur', status: 'PENDING', time: null, description: 'Scan Dzuhur di mushola.' },
+      { key: 'PRAYER_ASHAR', label: 'Sholat Ashar', status: 'NOT_REQUIRED', time: null, description: 'Sholat Ashar tidak wajib hari ini.' },
+      { key: 'GATE_OUT', label: 'Scan Pulang', status: 'PENDING', time: null, description: 'Scan pulang sebelum keluar sekolah.' }
+    ],
+    nextActions: ['Scan datang di gerbang.', 'Ikuti presensi kelas dengan guru.', 'Scan Dhuha/Dzuhur di mushola.', 'Scan pulang sebelum keluar sekolah.']
+  };
+}
+
+function StudentStatusIcon({ status }) {
+  if (status === 'DONE') return <CheckCircle2 size={18} />;
+  if (status === 'PENDING') return <AlertTriangle size={18} />;
+  return <Circle size={18} />;
+}
+
+function StudentTodayStatusCard({ item }) {
+  const status = item.status || 'PENDING';
+  return <article className={`student-status-card ${String(status).toLowerCase()}`}>
+    <div className="student-status-icon"><StudentStatusIcon status={status} /></div>
+    <div className="student-status-copy">
+      <div className="student-status-top"><h3>{item.label}</h3><span>{STUDENT_STATUS_LABELS[status] || status}</span></div>
+      <p>{item.description || 'Status belum tersedia.'}</p>
+      {item.time && <div className="student-status-time">Jam {item.time}</div>}
+    </div>
+  </article>;
+}
+
+function StudentTodayStatusPanel({ state }) {
+  const hasError = Boolean(state.error);
+  const data = hasError ? safeStudentTodayStatus() : (state.data || safeStudentTodayStatus());
+  const items = itemsOf(data);
+  const summary = data.summary || {};
+  const nextActions = Array.isArray(data.nextActions) ? data.nextActions : [];
+
+  if (state.loading) return <LoadingState label="Memuat status kehadiran hari ini…" sub="Sistem sedang mengecek scan gerbang, presensi kelas, dan sholat." />;
+
+  return <section className="student-today-panel" aria-label="Status kehadiran hari ini">
+    {hasError && <div className="inline-note warn"><AlertTriangle size={14} /> Status otomatis belum bisa dimuat. Checklist aman sementara ditampilkan; tekan Perbarui status untuk mencoba lagi.</div>}
+    <div className="student-today-summary grid g-3">
+      <StatCardPremium icon={<CheckCircle2 size={18} />} label="Lengkap" value={summary.completedCount || 0} sub="Bagian sudah tercatat" tone="ok" />
+      <StatCardPremium icon={<AlertTriangle size={18} />} label="Perlu dilengkapi" value={summary.pendingCount || 0} sub="Bagian belum tercatat" tone={summary.pendingCount ? 'warn' : 'ok'} />
+      <StatCardPremium icon={<ShieldCheck size={18} />} label="Status hari ini" value={summary.overallStatus === 'LENGKAP' ? 'Lengkap' : 'Perlu dilengkapi'} sub={data.student?.className ? `Kelas ${data.student.className}` : 'Data pribadi siswa'} tone={summary.overallStatus === 'LENGKAP' ? 'ok' : 'warn'} />
+    </div>
+    <Card title="Checklist hari ini" sub="Scan gerbang, presensi kelas, sholat, dan kepulangan.">
+      <div className="student-status-grid">{items.map((item) => <StudentTodayStatusCard key={item.key} item={item} />)}</div>
+    </Card>
+    <Card title="Yang perlu kamu lakukan" sub="Ikuti daftar ini agar status hari ini lengkap." actions={<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn size="sm" onClick={state.refresh}><RefreshCw size={14} /> Perbarui status</Btn><Btn size="sm" onClick={() => document.getElementById('riwayat-kehadiran')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Lihat riwayat saya</Btn></div>}>
+      <ul className="student-next-actions">{nextActions.map((action, index) => <li key={`${action}-${index}`}>{action}</li>)}</ul>
+    </Card>
+  </section>;
+}
+
 export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) {
   const [days, setDays] = useState('60');
   const [status, setStatus] = useState('');
   const data = useRemote(() => apiFetch(`/reports/my-attendance?days=${days}`), [days]);
+  const todayStatus = useRemote(() => student ? apiFetch('/students/me/today-status') : Promise.resolve(null), [student]);
   const rows = itemsOf(data.data).filter((row) => !status || row.status === status || row.attendanceStatus === status || row.presenceStatus === status);
   const counts = countByStatus({ items: rows });
   const todayRows = rows.filter((row) => String(row.date || row.startsAt || row.createdAt || '').slice(0, 10) === today());
-  const presentRate = rows.length ? Math.round(((counts.HADIR || 0) / rows.length) * 100) : 0;
 
   return (
     <div className="content dashboard-redesign">
       <PageHead
         eyebrow={student ? 'SISWA · LIHAT SAJA' : 'PRIBADI'}
-        title={title}
+        title={student ? 'Status Kehadiran Hari Ini' : title}
         sub={student
-          ? 'Siswa hanya bisa melihat, tidak bisa input atau koreksi. Jika data hari ini belum muncul, kemungkinan guru belum menutup sesi.'
+          ? 'Lihat bagian yang sudah tercatat dan yang masih perlu dilengkapi hari ini.'
           : 'Gabungan data tap gerbang dan presensi kelas.'}
         actions={
           <>
@@ -127,7 +194,7 @@ export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) 
         }
       />
 
-      {student && <section className="dashboard-hero student-hero"><div className="dashboard-hero-copy"><div className="eyebrow"><span className="dot" /> MODE PANTAU SISWA</div><h2>Cek kehadiran tanpa mengubah data.</h2><p>Data bisa berubah sampai guru menyimpan dan menutup sesi. Jika ada perbedaan, gunakan jalur bantuan sekolah.</p><div className="dashboard-hero-actions"><Btn variant="primary" size="lg" onClick={() => go('/siswa/notifikasi')}><CalendarCheck size={16} /> Buka notifikasi</Btn><Btn size="lg" onClick={() => go('/siswa/panduan')}><HelpCircle size={16} /> Panduan bantuan</Btn></div></div><div className="dashboard-hero-panel compact"><div className="hero-kpi-grid vertical"><span><b>{todayRows.length}</b>Catatan hari ini</span><span><b>{counts.HADIR || 0}</b>Hadir</span><span><b>{presentRate}%</b>Rasio hadir</span></div><span className="chip"><ShieldCheck size={12} /> Hanya lihat data</span></div></section>}
+      {student && <StudentTodayStatusPanel state={todayStatus} />}
       {student && <RoleTaskPanel title="Aksi cepat siswa" tasks={[{ title: 'Lihat data hari ini', desc: 'Cek apakah presensi sudah muncul.', onClick: () => go('/siswa/dashboard') }, { title: 'Baca notifikasi', desc: 'Lihat pesan atau tugas dari sekolah.', onClick: () => go('/siswa/notifikasi') }, { title: 'Minta bantuan', desc: 'Jika data salah, hubungi wali kelas atau guru piket.', onClick: () => go('/siswa/panduan'), tone: 'warn' }]} />}
       {student && <SimpleHelpBox title="Yang perlu dipahami" items={['Data bisa belum final sampai guru menyimpan dan menutup sesi.', 'Siswa hanya melihat data, tidak bisa mengubah presensi.', 'Jika ada kesalahan, hubungi wali kelas atau guru piket.']} />}
       <div className="grid g-3">
@@ -180,7 +247,7 @@ export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) 
         </Card>
       </div>
 
-      <div style={{ marginTop: 18 }}>
+      <div id="riwayat-kehadiran" style={{ marginTop: 18, scrollMarginTop: 90 }}>
         <Card title="Riwayat kehadiran" sub={`${rows.length} catatan dalam ${days} hari terakhir`}>
           {data.loading ? (
             <LoadingState label="Memuat riwayat kehadiran…" />
