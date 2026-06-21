@@ -35,6 +35,7 @@ import id.sch.man1rokanhulu.absensi.ui.screens.ScannerCallbacks
 import id.sch.man1rokanhulu.absensi.ui.components.playFeedbackSound
 import id.sch.man1rokanhulu.absensi.ui.effectiveScanMode
 import id.sch.man1rokanhulu.absensi.ui.safeScanHistoryMessage
+import id.sch.man1rokanhulu.absensi.ui.screens.ForcedUpdateScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HelpScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HistoryScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HomeScreen
@@ -43,6 +44,8 @@ import id.sch.man1rokanhulu.absensi.ui.screens.SettingsScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.SetupScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.SplashScreen
 import id.sch.man1rokanhulu.absensi.ui.theme.AppTheme
+import id.sch.man1rokanhulu.absensi.update.ApkUpdateInstaller
+import id.sch.man1rokanhulu.absensi.update.ApkUpdatePolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -124,6 +127,10 @@ fun ReaderApp(
     var queueCount by remember { mutableIntStateOf(0) }
     var lastFeedback by remember { mutableStateOf<FeedbackData?>(null) }
     var connection by remember { mutableStateOf(id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.CHECKING) }
+    var updateInfo by remember { mutableStateOf<SchoolHubApiClient.VersionInfo?>(null) }
+    var updateBusy by remember { mutableStateOf(false) }
+    var updateMessage by remember { mutableStateOf<String?>(null) }
+    var updateDismissedCode by remember { mutableIntStateOf(0) }
 
     val initialMode = remember {
         val allowed = config.allowedModes()
@@ -154,6 +161,12 @@ fun ReaderApp(
         }.getOrDefault(id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.OFFLINE)
     }
 
+    fun effectiveUpdateInfo(): SchoolHubApiClient.VersionInfo? {
+        val info = updateInfo ?: return null
+        if (info.latestVersionCode == updateDismissedCode && !ApkUpdatePolicy.isForceUpdate(info)) return null
+        return info
+    }
+
     fun sendReaderStatus(statusMessage: String? = null) {
         val deviceId = config.deviceId
         val secret = config.readerSecret
@@ -180,6 +193,49 @@ fun ReaderApp(
                     deviceId,
                     secret
                 )
+            }
+        }
+    }
+
+    fun checkForUpdate(manual: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!manual && now - config.lastUpdateCheckAtMs < 30 * 60 * 1000) return
+        scope.launch {
+            if (manual) updateMessage = "Memeriksa update APK…"
+            val result = runCatching { api.version() }
+            config.lastUpdateCheckAtMs = now
+            result.onSuccess { info ->
+                updateInfo = info
+                updateMessage = when {
+                    ApkUpdatePolicy.isForceUpdate(info) -> "Update wajib tersedia. Download lalu konfirmasi installer Android."
+                    ApkUpdatePolicy.isUpdateAvailable(info) -> "Update tersedia. Tes di 1 HP sebelum rollout production."
+                    manual -> "Aplikasi sudah versi terbaru."
+                    else -> updateMessage
+                }
+            }.onFailure {
+                if (manual) updateMessage = "Belum bisa cek update. Scanner tetap bisa dipakai jika tidak ada update wajib tersimpan."
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val info = updateInfo ?: return
+        scope.launch {
+            updateBusy = true
+            updateMessage = "Mengunduh APK…"
+            try {
+                val apk = ApkUpdateInstaller.downloadAndVerify(context, config.serverUrl, info)
+                if (!ApkUpdateInstaller.canRequestInstall(context)) {
+                    updateMessage = "Aktifkan izin Install unknown apps untuk SIAB2 Reader, lalu tekan Download / Install lagi."
+                    ApkUpdateInstaller.openUnknownAppSettings(context)
+                } else {
+                    updateMessage = "Membuka installer Android. Konfirmasi install secara manual."
+                    ApkUpdateInstaller.openInstaller(context, apk)
+                }
+            } catch (e: Exception) {
+                updateMessage = e.message ?: "Update gagal. Coba lagi saat internet stabil."
+            } finally {
+                updateBusy = false
             }
         }
     }
@@ -244,6 +300,7 @@ fun ReaderApp(
     LaunchedEffect(Unit) {
         refreshQueueCount()
         sendReaderStatus("Aplikasi dibuka")
+        checkForUpdate(manual = false)
     }
 
     LaunchedEffect(route) {
@@ -264,6 +321,18 @@ fun ReaderApp(
     }
 
     AppTheme {
+        val visibleUpdateInfo = effectiveUpdateInfo()
+        if (visibleUpdateInfo != null && ApkUpdatePolicy.isForceUpdate(visibleUpdateInfo) && route != Route.SETTINGS && route != Route.HELP) {
+            ForcedUpdateScreen(
+                info = visibleUpdateInfo,
+                busy = updateBusy,
+                message = updateMessage,
+                onInstall = ::installUpdate,
+                onSettings = { route = Route.SETTINGS },
+                onHelp = { route = Route.HELP }
+            )
+            return@AppTheme
+        }
         when (route) {
             Route.SPLASH -> SplashScreen {
                 route = if (!config.isProvisioned()) Route.SETUP else Route.HOME
@@ -279,6 +348,11 @@ fun ReaderApp(
                 connection = connection,
                 queueCount = queueCount,
                 recentEntries = historyStore.list().take(5),
+                updateInfo = visibleUpdateInfo,
+                updateBusy = updateBusy,
+                updateMessage = updateMessage,
+                onInstallUpdate = ::installUpdate,
+                onDismissUpdate = { updateDismissedCode = updateInfo?.latestVersionCode ?: 0 },
                 onMode = ::chooseMode,
                 onStart = { route = Route.SCANNER },
                 onSettings = { route = Route.SETTINGS },
@@ -337,6 +411,8 @@ fun ReaderApp(
                 queueCount = queueCount,
                 onClearQueue = { scope.launch { runCatching { queueRepo.clear() }; refreshQueueCount() } },
                 onRetryQueue = { scope.launch { retryQueue() } },
+                onCheckUpdate = { checkForUpdate(manual = true) },
+                updateStatus = updateMessage,
                 onBack = { route = Route.HOME },
                 onReprovision = { config.clearDevice(); route = Route.SETUP }
             )

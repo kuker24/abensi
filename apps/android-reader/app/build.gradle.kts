@@ -10,8 +10,8 @@ plugins {
 val appName = (project.findProperty("SCHOOLHUB_APP_NAME") as String?) ?: "SIAB2 Reader"
 val appId = (project.findProperty("SCHOOLHUB_APPLICATION_ID") as String?) ?: "id.sch.man1rokanhulu.absensi"
 val serverBaseUrl = (project.findProperty("SCHOOLHUB_SERVER_BASE_URL") as String?) ?: "https://absensi.man1rokanhulu.cloud"
-val versionNameProp = (project.findProperty("SCHOOLHUB_VERSION_NAME") as String?) ?: "1.1.1"
-val versionCodeProp = ((project.findProperty("SCHOOLHUB_VERSION_CODE") as String?) ?: "3").toInt()
+val versionNameProp = (project.findProperty("SCHOOLHUB_VERSION_NAME") as String?) ?: "1.2.0"
+val versionCodeProp = ((project.findProperty("SCHOOLHUB_VERSION_CODE") as String?) ?: "4").toInt()
 val keystoreProps = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use { load(it) }

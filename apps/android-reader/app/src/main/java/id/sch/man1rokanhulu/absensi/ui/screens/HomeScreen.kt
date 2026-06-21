@@ -27,7 +27,9 @@ import id.sch.man1rokanhulu.absensi.BuildConfig
 import id.sch.man1rokanhulu.absensi.data.LocalConfig
 import id.sch.man1rokanhulu.absensi.data.ScanHistoryEntry
 import id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus
+import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
+import id.sch.man1rokanhulu.absensi.update.ApkUpdatePolicy
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
 import id.sch.man1rokanhulu.absensi.ui.selectableScanModes
 import id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus
@@ -47,6 +49,11 @@ fun HomeScreen(
     connection: ConnectionStatus,
     queueCount: Int,
     recentEntries: List<ScanHistoryEntry>,
+    updateInfo: SchoolHubApiClient.VersionInfo? = null,
+    updateBusy: Boolean = false,
+    updateMessage: String? = null,
+    onInstallUpdate: () -> Unit = {},
+    onDismissUpdate: () -> Unit = {},
     onMode: (String) -> Unit,
     onStart: () -> Unit,
     onSettings: () -> Unit,
@@ -90,6 +97,17 @@ fun HomeScreen(
             )
 
             StatusBar(connection, queueCount, config.locationLabel.ifBlank { deviceTitle })
+
+            if (updateInfo != null && ApkUpdatePolicy.shouldShowUpdate(updateInfo)) {
+                AndroidUpdateCard(
+                    info = updateInfo,
+                    forced = ApkUpdatePolicy.isForceUpdate(updateInfo),
+                    busy = updateBusy,
+                    message = updateMessage,
+                    onInstall = onInstallUpdate,
+                    onLater = onDismissUpdate
+                )
+            }
 
             Card(
                 Modifier.fillMaxWidth(),
@@ -165,6 +183,33 @@ fun HomeScreen(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun AndroidUpdateCard(
+    info: SchoolHubApiClient.VersionInfo,
+    forced: Boolean,
+    busy: Boolean,
+    message: String?,
+    onInstall: () -> Unit,
+    onLater: () -> Unit
+) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = if (forced) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (forced) "Update Wajib" else "Update APK Tersedia", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Versi sekarang ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · terbaru ${info.latestVersionName} (${info.latestVersionCode}).",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (!info.releaseNotes.isNullOrBlank()) Text(info.releaseNotes, style = MaterialTheme.typography.bodyMedium)
+            if (!message.isNullOrBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
+            PrimaryActionButton(text = if (busy) "Menyiapkan update…" else "Download / Install", loading = busy, onClick = onInstall)
+            if (!forced) SecondaryActionButton(text = "Nanti", onClick = onLater)
         }
     }
 }

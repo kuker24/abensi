@@ -50,6 +50,45 @@ class SchoolHubApiClientTest {
         }
     }
 
+    @Test fun versionParsesLegacyResponseWithoutUpdateCenterFields() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "application/json").setBody("{\"latestVersionName\":\"1.1.1\",\"latestVersionCode\":3,\"minSupportedVersionCode\":1,\"forceUpdate\":false,\"releaseNotes\":\"Legacy\"}"))
+        server.start()
+        try {
+            val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
+            val info = client.version()
+            assertEquals("1.1.1", info.latestVersionName)
+            assertEquals(3, info.latestVersionCode)
+            assertEquals(1, info.minSupportedVersionCode)
+            assertFalse(info.forceUpdate)
+            assertEquals("Legacy", info.releaseNotes)
+            assertEquals(null, info.downloadUrl)
+            assertEquals(null, info.apkSha256)
+            assertEquals(null, info.apkSizeBytes)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test fun versionParsesApkUpdateCenterFields() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "application/json").setBody("{\"latestVersionName\":\"1.2.0\",\"latestVersionCode\":4,\"minSupportedVersionCode\":3,\"forceUpdate\":true,\"releaseNotes\":\"Update center\",\"downloadUrl\":\"/api/v1/mobile/android-reader/releases/apk_1/download\",\"apkSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"apkSizeBytes\":123456}"))
+        server.start()
+        try {
+            val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
+            val info = client.version()
+            assertEquals("1.2.0", info.latestVersionName)
+            assertEquals(4, info.latestVersionCode)
+            assertEquals(3, info.minSupportedVersionCode)
+            assertTrue(info.forceUpdate)
+            assertEquals("/api/v1/mobile/android-reader/releases/apk_1/download", info.downloadUrl)
+            assertEquals("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", info.apkSha256)
+            assertEquals(123456L, info.apkSizeBytes)
+        } finally {
+            server.shutdown()
+        }
+    }
+
     @Test fun sendReaderStatusPostsSignedMonitoringPayloadWithoutQueuedQr() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "application/json").setBody("{\"ok\":true}"))

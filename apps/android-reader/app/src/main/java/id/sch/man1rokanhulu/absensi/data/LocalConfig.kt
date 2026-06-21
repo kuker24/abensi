@@ -60,6 +60,10 @@ class LocalConfig(context: Context) {
             edit.apply()
         }
 
+    var lastUpdateCheckAtMs: Long
+        get() = plain.getLong("lastUpdateCheckAtMs", 0L)
+        set(value) = plain.edit().putLong("lastUpdateCheckAtMs", value).apply()
+
     var autoOpenScanner: Boolean
         get() = plain.getBoolean("autoOpenScanner", false)
         set(value) = plain.edit().putBoolean("autoOpenScanner", value).apply()

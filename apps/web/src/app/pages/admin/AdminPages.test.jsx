@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuditPage, DevicesPage, ReportsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
+import { AndroidApkUpdatePage, AuditPage, DevicesPage, ReportsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -152,6 +152,30 @@ describe('HP Scanner Android operator UI', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/device-readers/android/provision/start'))).toBe(true));
     const replaceProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/android/provision/start'));
     expect(JSON.parse(String(replaceProvisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
+  });
+});
+
+describe('APK Update Center admin UI', () => {
+  it('shows latest APK metadata and safe rollout guidance without exposing storage paths', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/android-apk-releases')) {
+        return new Response(JSON.stringify({
+          items: [{ id: 'apk_1', versionName: '1.2.0', versionCode: 4, minSupportedVersionCode: 3, forceUpdate: true, releaseNotes: 'Update HP scanner', apkFileName: 'reader.apk', apkSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', apkSizeBytes: 12345678, isPublished: true, publishedAt: '2026-06-21T00:00:00.000Z', downloadUrl: '/api/v1/mobile/android-reader/releases/apk_1/download' }],
+          meta: { page: 1, limit: 50, total: 1, totalPages: 1 }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<AndroidApkUpdatePage notify={vi.fn()} />);
+
+    expect(await screen.findByText('APK Update Center')).toBeInTheDocument();
+    expect(screen.getAllByText('1.2.0').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Force update').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Tes di 1 HP dulu sebelum rollout production/i)).toBeInTheDocument();
+    expect(screen.getByText(/Android akan memverifikasi SHA256/i)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/apkPath|uploads\/android-apk-releases|readerSecret|shrsec_/i);
   });
 });
 

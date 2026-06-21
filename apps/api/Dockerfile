@@ -30,6 +30,7 @@ COPY --from=build --chown=node:node /workspace/apps/api/assets ./assets
 RUN find ./assets -type d -exec chmod 755 {} + \
   && find ./assets -type f -exec chmod 644 {} +
 COPY --from=build /workspace/prisma ./prisma
+RUN mkdir -p /app/uploads/android-apk-releases && chown -R node:node /app/uploads
 
 USER node
 EXPOSE 3000

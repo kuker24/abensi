@@ -10,6 +10,7 @@ export function AnomalyPage(props: { notify: (message: string, type?: string) =>
 export function MasterDataPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function SchedulePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function DevicesPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function AndroidApkUpdatePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function ReportsPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function LiveMonitorPage(): JSX.Element;
 export function SettingsPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
