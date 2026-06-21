@@ -27,6 +27,14 @@ async function mockApi(page: Page) {
     if (url.includes('/reports/trend')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ label: 'Hari ini', coveragePercent: 82 }]) });
     if (url.includes('/reports/student-daily-completeness')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 }, items: [], meta: { page: 1, limit: 100, total: 0, totalPages: 0 } }) });
     if (url.includes('/reports/my-attendance')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+    if (url.includes('/teacher/today')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      date: '2026-06-14',
+      summary: { sessionsToday: 2, scheduled: 0, open: 1, closed: 1, missed: 0, unclosed: 1, studentsPendingAttendance: 8 },
+      items: [
+        { sessionId: 'session-open', scheduleId: 'schedule-open', classId: 'class-1', className: 'X-A', subjectId: 'subject-1', subjectName: 'Matematika', startTime: '07:30', endTime: '09:00', status: 'OPEN', attendanceFilledCount: 24, studentTotal: 32, pendingCount: 8, actions: { canStart: false, canContinue: true, canClose: true, canViewRecap: true } },
+        { sessionId: 'session-closed', scheduleId: 'schedule-closed', classId: 'class-1', className: 'X-A', subjectId: 'subject-1', subjectName: 'Matematika', startTime: '09:15', endTime: '10:45', status: 'CLOSED', attendanceFilledCount: 32, studentTotal: 32, pendingCount: 0, actions: { canStart: false, canContinue: false, canClose: false, canViewRecap: true } }
+      ]
+    }) });
     if (url.includes('/notifications')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...paginated([{ id: 'notif-1', title: 'Cek sesi', body: 'Sesi perlu perhatian.', readAt: null, createdAt: '2026-06-14T02:00:00.000Z' }]), unreadCount: url.includes('unreadOnly=true') ? 1 : 1 }) });
     if (url.includes('/identity/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated(users)) });
     if (url.includes('/academic/years')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([academicYear])) });

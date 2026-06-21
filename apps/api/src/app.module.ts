@@ -19,6 +19,7 @@ import { SmartCardModule } from './modules/smart-card/smart-card.module';
 import { PicketBookModule } from './modules/picket-book/picket-book.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TeacherLeaveModule } from './modules/teacher-leave/teacher-leave.module';
+import { TeacherModule } from './modules/teacher/teacher.module';
 import { TutorialsModule } from './modules/tutorials/tutorials.module';
 import { SystemCleanupModule } from './modules/system-cleanup/system-cleanup.module';
 import { SecurityModule } from './modules/security/security.module';
@@ -48,6 +49,7 @@ import { validateEnvironment } from './config/env.validation';
     PicketBookModule,
     NotificationsModule,
     TeacherLeaveModule,
+    TeacherModule,
     TutorialsModule,
     SystemCleanupModule,
     OutboxModule,
