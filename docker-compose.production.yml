@@ -183,7 +183,11 @@ services:
       DEVELOPER_USERNAME: ${DEVELOPER_USERNAME:-developer}
       DEVELOPER_PASSWORD: ${DEVELOPER_PASSWORD:-}
       DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer Sistem}
+      ANDROID_APK_STORAGE_DIR: ${ANDROID_APK_STORAGE_DIR:-/app/uploads/android-apk-releases}
+      ANDROID_APK_MAX_BYTES: ${ANDROID_APK_MAX_BYTES:-157286400}
       PORT: 3000
+    volumes:
+      - android_apk_releases:/app/uploads/android-apk-releases
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -309,3 +313,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  android_apk_releases:

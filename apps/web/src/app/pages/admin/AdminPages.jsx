@@ -608,11 +608,15 @@ export function SchedulePage({ notify }) {
 }
 export function DevicesPage({ notify }) {
   const [tab, setTab] = useState('android');
-  const options = [['android', 'Aktivasi HP Scanner'], ['qr', 'Cetak Kartu'], ['version', 'Versi Aplikasi HP'], ['cards', 'Kartu RFID'], ['readers', 'Alat Lama'], ['scan', 'Input Manual Cadangan']];
+  const options = [['android', 'Aktivasi HP Scanner'], ['qr', 'Cetak Kartu'], ['apk', 'APK Update Center'], ['version', 'Versi Manual'], ['cards', 'Kartu RFID'], ['readers', 'Alat Lama'], ['scan', 'Input Manual Cadangan']];
   const pageCopy = tab === 'qr'
     ? { title: 'Cetak Kartu SIAB2', sub: 'Pilih kelas, sistem melengkapi QR resmi, lalu cetak kartu siap pakai.' }
     : { title: 'HP Scanner & Kartu', sub: 'Kelola 2 HP scanner sekolah yang bisa dipakai untuk Mode Gerbang atau Mode Mushola.' };
-  return <div className="content"><PageHead eyebrow="PERANGKAT ABSENSI" title={pageCopy.title} sub={pageCopy.sub} /><TabBar value={tab} onChange={setTab} options={options} />{tab === 'android' && <AndroidReaderPanel notify={notify} />}{tab === 'qr' && <QrCredentialPanel notify={notify} />}{tab === 'version' && <MobileVersionPanel notify={notify} />}{tab === 'cards' && <CardsPanel notify={notify} />}{tab === 'readers' && <ReadersPanel notify={notify} />}{tab === 'scan' && <ManualQrScanPanel notify={notify} />}</div>;
+  return <div className="content"><PageHead eyebrow="PERANGKAT ABSENSI" title={pageCopy.title} sub={pageCopy.sub} /><TabBar value={tab} onChange={setTab} options={options} />{tab === 'android' && <AndroidReaderPanel notify={notify} />}{tab === 'qr' && <QrCredentialPanel notify={notify} />}{tab === 'apk' && <AndroidApkUpdatePanel notify={notify} />}{tab === 'version' && <MobileVersionPanel notify={notify} />}{tab === 'cards' && <CardsPanel notify={notify} />}{tab === 'readers' && <ReadersPanel notify={notify} />}{tab === 'scan' && <ManualQrScanPanel notify={notify} />}</div>;
+}
+
+export function AndroidApkUpdatePage({ notify }) {
+  return <div className="content"><PageHead eyebrow="APK UPDATE CENTER" title="APK Update Center" sub="Upload, publish, dan pantau rilis APK HP Scanner. Tes di 1 HP dulu sebelum rollout production." actions={<Btn onClick={() => go('/admin/devices')}><Smartphone size={14} /> HP Scanner & Kartu</Btn>} /><AndroidApkUpdatePanel notify={notify} /></div>;
 }
 
 
@@ -859,6 +863,78 @@ function AndroidReaderPanel({ notify }) {
   }
 
   return <div className="android-activation-page"><div className="activation-hero"><div><Pill tone="ok"><Smartphone size={13} /> Mode fleksibel</Pill><h2>2 HP scanner fleksibel</h2><p>Kedua HP bisa dipakai untuk Mode Gerbang atau Mode Mushola sesuai kebutuhan. Saat pagi/pulang, dua HP dapat sama-sama dipakai untuk scan gerbang. Saat sholat, dua HP dapat sama-sama dipakai untuk scan mushola.</p></div><div className="activation-safe"><ShieldCheck size={20} /><span>Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.</span></div></div><div className="wizard-steps"><div className="wizard-step active"><b>1</b><span>Pilih HP fisik</span></div><div className="wizard-step active"><b>2</b><span>Buat kode aktivasi</span></div><div className={`wizard-step ${activationCode ? 'active' : ''}`}><b>3</b><span>Tempel kode di aplikasi HP</span></div></div><div className="grid activation-grid"><Card title={`1. Pilih HP Scanner (${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS} aktif)`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Pilih HP Scanner 1 atau HP Scanner 2. Mode Gerbang/Mushola dipilih nanti dari aplikasi HP.'}><div className="preset-grid">{ANDROID_READER_PRESETS.map((preset) => <button key={preset.key} type="button" className={`preset-card ${selectedPreset === preset.key ? 'selected' : ''}`} onClick={() => applyPreset(preset)}><span className="preset-icon">{preset.icon}</span><b>{preset.title}</b><small>{preset.desc}</small></button>)}</div><div className="simple-summary scanner-summary"><div><span>Nama HP</span><b>{form.name}</b></div><div><span>Lokasi</span><b>{form.locationName}</b></div><div><span>Mode tersedia</span><b>{androidModesText(form.allowedModes)}</b></div></div></Card><Card title="2. Buat kode aktivasi" sub="Kode ini berlaku sebentar dan hanya untuk mengaktifkan satu HP scanner."><div className="activation-form-simple"><Field label="Nama HP"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} /></Field><Field label="Label lokasi opsional"><TextInput value={form.locationName} onChange={(e) => set('locationName', e.target.value)} /></Field><Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field><Btn variant="primary" type="button" disabled={limitReached} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn></div><div className="security-note"><AlertTriangle size={16} /><span>Jangan kirim kode ini ke grup umum. Kode hanya untuk mengaktifkan 1 HP scanner.</span></div></Card>{activationCode && <Card title="3. Masukkan kode di aplikasi HP" sub="Salin kode ini, lalu tempel di kolom Kode Aktivasi dari Admin pada aplikasi Android."><div className={`activation-code-card ${expired ? 'expired' : ''}`}><div className="activation-code-label"><Clock size={15} /> {formatRemaining(remainingMs)}</div><div className="activation-code-value">{activationCode}</div><div className="copy-actions"><Btn type="button" variant="primary" onClick={copyActivationCode} disabled={expired}><Copy size={15} /> Salin Kode</Btn><Btn type="button" onClick={startProvision}><RefreshCw size={15} /> Buat Kode Baru</Btn></div></div><ol className="activation-instructions"><li>Install aplikasi <b>{BRAND.androidReaderLabel}</b> di {selectedScannerName}, lalu masukkan kode aktivasi.</li><li>Isi alamat web jika diminta.</li><li>Tempel kode ini ke kolom <b>Kode Aktivasi dari Admin</b>.</li><li>Tekan <b>Aktifkan HP Ini</b>. Setelah aktif, pilih <b>Mode Gerbang</b> atau <b>Mode Mushola</b> dari aplikasi.</li></ol></Card>}</div><div className="activation-help-grid"><Card title="Mode Gerbang"><p>Untuk datang/pulang siswa, guru, staf, dan kepala. Scan pertama hari itu menjadi Datang, scan berikutnya menjadi Pulang.</p></Card><Card title="Mode Mushola"><p>Untuk scan sholat/ibadah siswa. Non-siswa ditolak aman.</p></Card><Card title="2 HP scanner sekolah"><p>Kedua HP dapat memilih mode yang sama pada waktu yang sama. Jika mengganti HP fisik, klik Cabut pada HP lama lalu buat kode aktivasi baru.</p></Card></div><div className="grid g-4 reader-monitor-summary"><StatCardPremium icon={<Wifi size={18} />} label="HP online" value={`${onlineAndroidCount}/${activeAndroidCount}`} sub="Heartbeat ±2 menit terakhir" tone={onlineAndroidCount === activeAndroidCount && activeAndroidCount > 0 ? 'ok' : 'warn'} /><StatCardPremium icon={<AlertTriangle size={18} />} label="HP offline" value={offlineAndroidCount} sub="Perlu cek internet/aplikasi" tone={offlineAndroidCount > 0 ? 'bad' : 'ok'} /><StatCardPremium icon={<ListChecks size={18} />} label="Antrean offline" value={pendingQueueTotal} sub="Scan tersimpan di HP" tone={pendingQueueTotal > 0 ? 'warn' : 'ok'} /></div><Card title={`HP Scanner Aktif: ${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS}`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Pantau online/offline, antrean offline, heartbeat, versi app, baterai, jaringan, dan mode terakhir tiap HP.'}><div className="android-reader-table"><AsyncTable state={androidRows} empty="Belum ada HP scanner Android" columns={[{ header: 'Nama HP', render: (r) => r.name || 'HP Scanner' }, { header: 'Status HP', render: (r) => <div className="reader-monitor-cell"><Pill tone={androidMonitorTone(androidMonitorStatus(r))}>{androidMonitorLabel(androidMonitorStatus(r))}</Pill><AndroidReaderStatusBadge reader={r} /></div> }, { header: 'Antrean', render: (r) => <span className={(r.pendingQueueCount || 0) > 0 ? 'reader-queue-warn' : ''}>{r.pendingQueueCount ?? 0}</span> }, { header: 'Mode terakhir', render: (r) => androidLastUsedModeText(r.currentMode || r.lastUsedMode) }, { header: 'Heartbeat / Flush', render: (r) => <div className="reader-monitor-cell"><span>{formatDateTime(r.lastHeartbeatAt || r.lastSeenAt)}</span><small>Flush: {formatDateTime(r.lastQueueFlushAt)}</small></div> }, { header: 'Versi', render: (r) => r.appVersion ? `${r.appVersion}${r.appVersionCode ? ` (${r.appVersionCode})` : ''}` : '—' }, { header: 'Baterai/Jaringan', render: (r) => <div className="reader-monitor-cell"><span>{r.batteryLevel == null ? 'Baterai —' : `${r.batteryLevel}%`}</span><small>{r.networkStatus || 'Jaringan —'}</small></div> }, { header: 'Peringatan', render: (r) => androidWarningText(r) || 'Aman' }]} onRow={(r) => renderAndroidReaderActions(r)} /></div></Card></div>;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return '—';
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function shortHash(hash) {
+  const normalized = String(hash || '');
+  return normalized.length > 16 ? `${normalized.slice(0, 12)}…${normalized.slice(-8)}` : normalized || '—';
+}
+
+function AndroidApkUpdatePanel({ notify }) {
+  const releases = useRemote(() => apiFetch('/admin/android-apk-releases?page=1&limit=50'), []);
+  const latest = itemsOf(releases.data).filter((item) => item.isPublished).sort((a, b) => Number(b.versionCode) - Number(a.versionCode))[0] || null;
+  const [file, setFile] = useState(null);
+  const [form, set, reset] = useForm({ versionName: '1.2.0', versionCode: '4', minSupportedVersionCode: '1', forceUpdate: false, releaseNotes: 'Update APK HP Scanner.' });
+  const [busy, setBusy] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editForm, setEditForm] = useState({ minSupportedVersionCode: '', forceUpdate: false, releaseNotes: '' });
+
+  async function createRelease(event) {
+    event.preventDefault();
+    if (!file) return notify('Pilih file APK terlebih dahulu.', 'warn');
+    if (!String(file.name || '').toLowerCase().endsWith('.apk')) return notify('File harus berekstensi .apk.', 'bad');
+    if (latest && Number(form.versionCode) <= Number(latest.versionCode)) return notify('Version code harus lebih tinggi dari latest published.', 'warn');
+    const data = new FormData();
+    data.append('apk', file);
+    data.append('versionName', form.versionName);
+    data.append('versionCode', String(form.versionCode));
+    data.append('minSupportedVersionCode', String(form.minSupportedVersionCode || 1));
+    data.append('forceUpdate', String(Boolean(form.forceUpdate)));
+    data.append('releaseNotes', form.releaseNotes || '');
+    setBusy(true);
+    try {
+      await apiFetch('/admin/android-apk-releases', { method: 'POST', body: data });
+      reset({ versionName: '1.2.0', versionCode: String(Math.max(4, Number(form.versionCode) + 1)), minSupportedVersionCode: '1', forceUpdate: false, releaseNotes: 'Update APK HP Scanner.' });
+      setFile(null);
+      releases.refresh();
+      notify('Release APK berhasil dibuat. Publish setelah dites di 1 HP.', 'ok');
+    } finally { setBusy(false); }
+  }
+
+  async function publish(row) {
+    await apiFetch(`/admin/android-apk-releases/${row.id}/publish`, { method: 'POST', body: JSON.stringify({}) });
+    releases.refresh(); notify(`APK v${row.versionName} dipublish. Tes fisik tetap wajib sebelum rollout.`, 'ok');
+  }
+
+  async function unpublish(row) {
+    if (!await riskConfirm(`Unpublish APK v${row.versionName}? Android lama tidak akan melihat rilis ini lagi.`)) return;
+    await apiFetch(`/admin/android-apk-releases/${row.id}/unpublish`, { method: 'POST', body: JSON.stringify({}) });
+    releases.refresh(); notify('Release APK di-unpublish.');
+  }
+
+  async function saveEdit(row) {
+    await apiFetch(`/admin/android-apk-releases/${row.id}`, { method: 'PATCH', body: JSON.stringify({ ...editForm, minSupportedVersionCode: Number(editForm.minSupportedVersionCode), forceUpdate: Boolean(editForm.forceUpdate) }) });
+    setEditId(''); releases.refresh(); notify('Metadata release APK disimpan.');
+  }
+
+  async function download(row) {
+    await apiDownload(`/mobile/android-reader/releases/${row.id}/download`, row.apkFileName || `android-reader-v${row.versionCode}.apk`);
+    notify('APK diunduh untuk test install.');
+  }
+
+  function startEdit(row) {
+    setEditId(row.id);
+    setEditForm({ minSupportedVersionCode: String(row.minSupportedVersionCode || 1), forceUpdate: Boolean(row.forceUpdate), releaseNotes: row.releaseNotes || '' });
+  }
+
+  return <div className="apk-update-center"><div className="grid g-3"><Card title="Latest Published APK" sub="Dipakai endpoint versi Android reader."><div className="grid g-2 cards-grid"><ReadinessStat label="Version name" value={latest?.versionName || 'Belum ada'} tone={latest ? 'ok' : 'bad'} /><ReadinessStat label="Version code" value={latest?.versionCode ?? '—'} tone={latest ? 'ok' : ''} /><ReadinessStat label="Minimum" value={latest?.minSupportedVersionCode ?? '—'} /><ReadinessStat label="Force update" value={latest?.forceUpdate ? 'Ya' : 'Tidak'} tone={latest?.forceUpdate ? 'warn' : 'ok'} /></div>{latest && <SimpleHelpBox title="Metadata aman" items={[`Ukuran ${formatBytes(latest.apkSizeBytes)}`, `SHA256 ${shortHash(latest.apkSha256)}`, `Published ${formatDateTime(latest.publishedAt)}`]} />}</Card><Card title="Safety rollout" sub="Jangan langsung sebar APK ke HP production."><SimpleHelpBox title="Wajib sebelum rollout" items={['Upload APK debug/release yang sudah dibuild dari source resmi.', 'Publish hanya setelah test install di 1 HP.', 'Android akan memverifikasi SHA256 sebelum membuka installer.', 'Tidak ada silent install; operator tetap konfirmasi installer Android.']} /></Card><Card title="Endpoint Android" sub="Android reader membaca metadata ini."><pre className="codeblock">GET /api/v1/mobile/android-reader/version{latest ? `\nDownload: ${latest.downloadUrl}` : ''}</pre></Card></div><Card title="Upload APK Release" sub="Hash dihitung server. Jangan upload signing key/keystore."><form className="form-grid" onSubmit={createRelease}><Field label="File APK"><TextInput type="file" accept=".apk,application/vnd.android.package-archive" onChange={(event) => setFile(event.target.files?.[0] || null)} /></Field><Field label="Version name"><TextInput value={form.versionName} onChange={(event) => set('versionName', event.target.value)} required /></Field><Field label="Version code"><TextInput type="number" min="1" value={form.versionCode} onChange={(event) => set('versionCode', event.target.value)} required /></Field><Field label="Min supported version"><TextInput type="number" min="1" value={form.minSupportedVersionCode} onChange={(event) => set('minSupportedVersionCode', event.target.value)} required /></Field><label className="checkline"><input type="checkbox" checked={Boolean(form.forceUpdate)} onChange={(event) => set('forceUpdate', event.target.checked)} /> Paksa update untuk versi lama</label><Field label="Release notes"><TextInput type="textarea" rows={3} value={form.releaseNotes} onChange={(event) => set('releaseNotes', event.target.value)} /></Field>{latest && Number(form.versionCode) <= Number(latest.versionCode) && <div className="inline-error"><AlertTriangle size={14} /> Version code tidak lebih tinggi dari latest published.</div>}<Btn variant="primary" loading={busy} disabled={!file}><Download size={14} /> Upload Release</Btn></form></Card><Card title="Daftar APK Release" sub="Publish/unpublish rilis. Hanya release published tertinggi yang menjadi latest."><AsyncTable state={releases} empty="Belum ada release APK." columns={[{ header: 'Versi', render: (row) => <div><b>{row.versionName}</b><br /><span className="muted">code {row.versionCode}</span></div> }, { header: 'Minimum', render: (row) => row.minSupportedVersionCode }, { header: 'Status', render: (row) => <StatusPill status={row.isPublished ? 'PUBLISHED' : 'DRAFT'} /> }, { header: 'Force', render: (row) => row.forceUpdate ? <Pill tone="warn">Force update</Pill> : 'Opsional' }, { header: 'APK', render: (row) => <div><span>{formatBytes(row.apkSizeBytes)}</span><br /><span className="mono">{shortHash(row.apkSha256)}</span></div> }, { header: 'Published', render: (row) => formatDateTime(row.publishedAt) }]} onRow={(row) => <div className="row">{editId === row.id ? <><TextInput type="number" min="1" value={editForm.minSupportedVersionCode} onChange={(event) => setEditForm({ ...editForm, minSupportedVersionCode: event.target.value })} /><label className="checkline"><input type="checkbox" checked={Boolean(editForm.forceUpdate)} onChange={(event) => setEditForm({ ...editForm, forceUpdate: event.target.checked })} /> Force</label><Btn size="sm" onClick={() => saveEdit(row)}>Simpan</Btn><Btn size="sm" variant="ghost" onClick={() => setEditId('')}>Batal</Btn></> : <><Btn size="sm" onClick={() => download(row)}>Download test</Btn>{row.isPublished ? <Btn size="sm" variant="danger" onClick={() => unpublish(row)}>Unpublish</Btn> : <Btn size="sm" variant="primary" onClick={() => publish(row)}>Publish</Btn>}<Btn size="sm" onClick={() => startEdit(row)}>Edit</Btn></>}</div>} /></Card></div>;
 }
 
 function MobileVersionPanel({ notify }) {

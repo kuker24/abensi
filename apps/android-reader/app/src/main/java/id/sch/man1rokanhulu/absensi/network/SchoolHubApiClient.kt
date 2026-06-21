@@ -33,7 +33,16 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         val statusMessage: String? = null,
         val warnings: List<String> = emptyList()
     )
-    data class VersionInfo(val latestVersionName: String, val latestVersionCode: Int, val minSupportedVersionCode: Int, val forceUpdate: Boolean, val releaseNotes: String?)
+    data class VersionInfo(
+        val latestVersionName: String,
+        val latestVersionCode: Int,
+        val minSupportedVersionCode: Int,
+        val forceUpdate: Boolean,
+        val releaseNotes: String?,
+        val downloadUrl: String? = null,
+        val apkSha256: String? = null,
+        val apkSizeBytes: Long? = null
+    )
 
     private fun base(): String = baseUrlProvider().trim().removeSuffix("/")
 
@@ -119,12 +128,41 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         http.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IOException(errorMessage(text, response.code))
-            val obj = JSONObject(text)
-            VersionInfo(obj.optString("latestVersionName"), obj.optInt("latestVersionCode"), obj.optInt("minSupportedVersionCode"), obj.optBoolean("forceUpdate"), obj.optString("releaseNotes"))
+            parseVersionInfo(text)
         }
     }
 
     private fun JSONArray.toList(): List<String> = (0 until length()).map { optString(it) }
+
+    internal fun parseVersionInfo(text: String): VersionInfo {
+        runCatching {
+            val obj = JSONObject(text)
+            VersionInfo(
+                obj.optString("latestVersionName"),
+                obj.optInt("latestVersionCode"),
+                obj.optInt("minSupportedVersionCode"),
+                obj.optBoolean("forceUpdate"),
+                obj.optString("releaseNotes").ifBlank { null },
+                obj.optString("downloadUrl").ifBlank { null },
+                obj.optString("apkSha256").ifBlank { null },
+                if (obj.has("apkSizeBytes")) obj.optLong("apkSizeBytes") else null
+            )
+        }.getOrNull()?.let { return it }
+        fun stringValue(name: String): String? = Regex("\\\"$name\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"").find(text)?.groupValues?.getOrNull(1)?.ifBlank { null }
+        fun intValue(name: String): Int = Regex("\\\"$name\\\"\\s*:\\s*(-?\\d+)").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        fun longValue(name: String): Long? = Regex("\\\"$name\\\"\\s*:\\s*(-?\\d+)").find(text)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        fun boolValue(name: String): Boolean = Regex("\\\"$name\\\"\\s*:\\s*(true|false)").find(text)?.groupValues?.getOrNull(1)?.toBoolean() ?: false
+        return VersionInfo(
+            stringValue("latestVersionName").orEmpty(),
+            intValue("latestVersionCode"),
+            intValue("minSupportedVersionCode"),
+            boolValue("forceUpdate"),
+            stringValue("releaseNotes"),
+            stringValue("downloadUrl"),
+            stringValue("apkSha256"),
+            longValue("apkSizeBytes")
+        )
+    }
 
     private fun errorMessage(text: String, code: Int): String {
         val parsed = runCatching {

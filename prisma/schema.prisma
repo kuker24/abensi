@@ -258,6 +258,8 @@ model User {
   authSessions                          AuthSession[]
   tutorialState                         UserTutorialState?          @relation("TutorialStateUser")
   forcedTutorials                       UserTutorialState[]         @relation("TutorialForcedBy")
+  createdAndroidApkReleases             AndroidApkRelease[]         @relation("AndroidApkReleaseCreatedBy")
+  updatedAndroidApkReleases             AndroidApkRelease[]         @relation("AndroidApkReleaseUpdatedBy")
 
   @@index([role, active])
   @@index([active, createdAt])
@@ -1144,4 +1146,31 @@ model MobileAndroidReaderVersion {
   forceUpdate             Boolean  @default(false)
   updatedById             String?
   updatedAt               DateTime @updatedAt
+}
+
+model AndroidApkRelease {
+  id                      String    @id @default(cuid())
+  versionName             String
+  versionCode             Int       @unique
+  minSupportedVersionCode Int       @default(1)
+  forceUpdate             Boolean   @default(false)
+  releaseNotes            String?
+  apkFileName             String
+  apkPath                 String
+  apkSha256               String
+  apkSizeBytes            Int
+  contentType             String    @default("application/vnd.android.package-archive")
+  isPublished             Boolean   @default(false)
+  publishedAt             DateTime?
+  createdById             String?
+  updatedById             String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  createdBy User? @relation("AndroidApkReleaseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("AndroidApkReleaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([isPublished, versionCode])
+  @@index([createdAt])
+  @@index([createdById, createdAt])
 }
