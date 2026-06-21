@@ -1,11 +1,65 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ClassInputPage } from './GuruPages.jsx';
+import { ClassInputPage, TeacherDashboard } from './GuruPages.jsx';
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe('guru teacher today workspace', () => {
+  function mockTeacherToday(data) {
+    const fetchMock = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/teacher/today')) {
+        return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('renders empty state when teacher has no schedule today', async () => {
+    mockTeacherToday({
+      date: '2026-06-20',
+      summary: { sessionsToday: 0, scheduled: 0, open: 0, closed: 0, missed: 0, unclosed: 0, studentsPendingAttendance: 0 },
+      items: []
+    });
+
+    render(<TeacherDashboard />);
+
+    expect(await screen.findByText('Kelas Saya Hari Ini')).toBeInTheDocument();
+    expect(screen.getByText('Tidak ada jadwal mengajar hari ini.')).toBeInTheDocument();
+    expect(screen.getByText('Jadwal akan tampil otomatis sesuai data yang diatur admin.')).toBeInTheDocument();
+  });
+
+  it('renders scheduled, open, and closed sessions with state-based quick actions', async () => {
+    mockTeacherToday({
+      date: '2026-06-20',
+      summary: { sessionsToday: 3, scheduled: 1, open: 1, closed: 1, missed: 0, unclosed: 1, studentsPendingAttendance: 12 },
+      items: [
+        { sessionId: 'session-scheduled', className: 'X IPA 1', subjectName: 'Matematika', startTime: '07:30', endTime: '09:00', status: 'SCHEDULED', attendanceFilledCount: 0, studentTotal: 32, pendingCount: 32, actions: { canStart: true, canContinue: false, canClose: false, canViewRecap: false } },
+        { sessionId: 'session-open', className: 'XI IPS 2', subjectName: 'Sejarah', startTime: '09:15', endTime: '10:45', status: 'OPEN', attendanceFilledCount: 24, studentTotal: 32, pendingCount: 8, actions: { canStart: false, canContinue: true, canClose: true, canViewRecap: true } },
+        { sessionId: 'session-closed', className: 'XII Agama', subjectName: 'Fiqih', startTime: '11:00', endTime: '12:30', status: 'CLOSED', attendanceFilledCount: 30, studentTotal: 30, pendingCount: 0, actions: { canStart: false, canContinue: false, canClose: false, canViewRecap: true } }
+      ]
+    });
+
+    render(<TeacherDashboard />);
+
+    expect(await screen.findByText('X IPA 1 · Matematika')).toBeInTheDocument();
+    expect(screen.getByText('XI IPS 2 · Sejarah')).toBeInTheDocument();
+    expect(screen.getByText('XII Agama · Fiqih')).toBeInTheDocument();
+    expect(screen.getAllByText('Belum mulai').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Sedang berjalan').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Sudah ditutup').length).toBeGreaterThan(0);
+    expect(screen.getByText('Sesi ini belum ditutup.')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Mulai Presensi/ })).not.toHaveLength(0);
+    expect(screen.getByRole('button', { name: /Lanjutkan Presensi/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Tutup Sesi/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Lihat Rekap/ })).toHaveLength(2);
+  });
 });
 
 describe('guru class attendance warning-only scan status', () => {
