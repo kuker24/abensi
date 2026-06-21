@@ -131,6 +131,7 @@ interface RecordOptions {
   qrCredentialId?: string | null;
   scanMode?: AndroidReaderMode | null;
   appVersion?: string | null;
+  appVersionCode?: number | null;
   deviceEventId?: string | null;
   deviceTimestamp?: Date | null;
 }
@@ -452,12 +453,13 @@ export class AttendanceGateService {
       bodyHash: verification.bodyHash,
       qrCredentialId: credential.id,
       scanMode: requestedMode,
-      appVersion: payload.appVersion ?? verification.reader.appVersion ?? null
+      appVersion: payload.appVersion ?? verification.reader.appVersion ?? null,
+      appVersionCode: payload.appVersionCode ?? verification.reader.appVersionCode ?? null
     };
 
     if (requestedMode === AndroidReaderMode.CHECK_ONLY) {
       const result = await this.prisma.$transaction(async (tx) => {
-        await tx.deviceReader.update({ where: { id: verification.reader.id }, data: { lastSeenAt: scannedAt, lastSignedScanAt: scannedAt, appVersion: payload.appVersion ?? verification.reader.appVersion, appVersionCode: payload.appVersionCode ?? verification.reader.appVersionCode } });
+        await tx.deviceReader.update({ where: { id: verification.reader.id }, data: { lastSeenAt: scannedAt, lastSignedScanAt: scannedAt, currentMode: requestedMode, appVersion: payload.appVersion ?? verification.reader.appVersion, appVersionCode: payload.appVersionCode ?? verification.reader.appVersionCode } });
         await tx.qrCredential.update({ where: { id: credential.id }, data: { lastUsedAt: scannedAt } });
         await writeAudit(tx, {
           actorId: actor.sub,
@@ -521,7 +523,7 @@ export class AttendanceGateService {
       if (options.readerId || options.deviceId) {
         await tx.deviceReader.updateMany({
           where: options.readerId ? { id: options.readerId } : { deviceId: options.deviceId ?? '' },
-          data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+          data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, appVersionCode: options.appVersionCode ?? undefined, currentMode: options.scanMode ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
         });
       }
     });
@@ -740,7 +742,7 @@ export class AttendanceGateService {
         if (options.readerId || options.deviceId) {
           await tx.deviceReader.updateMany({
             where: options.readerId ? { id: options.readerId } : { deviceId: options.deviceId ?? '' },
-            data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+            data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, appVersionCode: options.appVersionCode ?? undefined, currentMode: options.scanMode ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
           });
         }
         await writeAudit(tx, {
@@ -852,7 +854,7 @@ export class AttendanceGateService {
       if (options.readerId || options.deviceId) {
         await tx.deviceReader.updateMany({
           where: options.readerId ? { id: options.readerId } : { deviceId: options.deviceId ?? '' },
-          data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
+          data: { lastSeenAt: scannedAt, appVersion: options.appVersion ?? undefined, appVersionCode: options.appVersionCode ?? undefined, currentMode: options.scanMode ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: scannedAt } : {}) }
         });
       }
       await writeAudit(tx, {

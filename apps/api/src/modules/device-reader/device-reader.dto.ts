@@ -1,5 +1,5 @@
 import { AndroidReaderMode, DevicePlatform, DeviceReaderStatus, ReaderType } from '@prisma/client';
-import { ArrayUnique, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreateReaderDto {
   @IsString()
@@ -140,6 +140,54 @@ export class AndroidProvisionCompleteDto {
   @IsInt()
   @Min(1)
   appVersionCode?: number;
+}
+
+export class AndroidReaderStatusDto {
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  pendingQueueCount!: number;
+
+  @IsOptional()
+  @IsDateString()
+  lastQueueFlushAt?: string;
+
+  @IsOptional()
+  @IsEnum(AndroidReaderMode)
+  currentMode?: AndroidReaderMode;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  batteryLevel?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  networkStatus?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  statusMessage?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  appVersion?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  appVersionCode?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  warnings?: string[];
 }
 
 export class RevokeReaderDto {

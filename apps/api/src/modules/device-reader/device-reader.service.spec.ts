@@ -33,7 +33,8 @@ function makePrisma() {
     deviceReader: {
       count: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
+      update: jest.fn(async ({ data }) => ({ id: 'reader-1', name: 'HP Scanner 1', type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE, deviceId: 'android-1', allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY], ...data }))
     },
     gateLog: { findFirst: jest.fn().mockResolvedValue(null) },
     prayerAttendanceLog: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -282,6 +283,63 @@ describe('DeviceReaderService credential security', () => {
 
     await expect(service.updateStatus('reader-inactive', { status: DeviceReaderStatus.ACTIVE }, actor)).rejects.toMatchObject({ message: ANDROID_READER_LIMIT_MESSAGE });
     expect(prisma.__tx.deviceReader.update).not.toHaveBeenCalled();
+  });
+
+  it('records signed Android reader heartbeat without exposing secrets', async () => {
+    const prisma = makePrisma();
+    const reader = {
+      id: 'reader-1',
+      name: 'HP Scanner 1',
+      type: ReaderType.QR_ANDROID,
+      status: DeviceReaderStatus.ACTIVE,
+      deviceId: 'android-1',
+      allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY],
+      readerSecretCiphertext: 'ciphertext-secret',
+      apiKeyHash: 'api-key-hash-secret',
+      provisioningTokenHash: null
+    };
+    const signatures = {
+      assertValidSignedReaderRequest: jest.fn().mockResolvedValue({ reader, timestamp: new Date(), nonceHash: 'nonce-hash', bodyHash: 'body-hash' })
+    } as any;
+    const service = new DeviceReaderService(prisma, signatures);
+    const payload = {
+      pendingQueueCount: 3,
+      currentMode: AndroidReaderMode.GERBANG,
+      batteryLevel: 72,
+      networkStatus: 'WIFI',
+      statusMessage: 'Scanner aktif',
+      warnings: ['OFFLINE_QUEUE_PENDING'],
+      lastQueueFlushAt: '2026-06-20T01:05:00.000Z',
+      appVersion: '1.2.3',
+      appVersionCode: 7
+    };
+
+    const result = await service.recordAndroidStatus(payload, {
+      deviceId: 'android-1',
+      timestamp: '2026-06-20T01:06:00.000Z',
+      nonce: 'nonce-status-1',
+      bodyHash: 'body-hash',
+      signature: 'signature',
+      method: 'POST',
+      path: '/api/v1/device-readers/android/status'
+    });
+
+    expect(signatures.assertValidSignedReaderRequest).toHaveBeenCalledWith(expect.objectContaining({ expectedType: ReaderType.QR_ANDROID, path: '/api/v1/device-readers/android/status' }));
+    expect(prisma.deviceReader.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'reader-1' },
+      data: expect.objectContaining({
+        pendingQueueCount: 3,
+        currentMode: AndroidReaderMode.GERBANG,
+        batteryLevel: 72,
+        networkStatus: 'WIFI',
+        statusWarnings: ['OFFLINE_QUEUE_PENDING'],
+        appVersion: '1.2.3',
+        appVersionCode: 7
+      })
+    }));
+    expect(result).toMatchObject({ ok: true, item: { pendingQueueCount: 3, currentMode: AndroidReaderMode.GERBANG, hasReaderSecret: false, monitorWarnings: ['OFFLINE_QUEUE_PENDING'] } });
+    expect(JSON.stringify(result)).not.toContain('ciphertext-secret');
+    expect(JSON.stringify(result)).not.toContain('api-key-hash-secret');
   });
 
   it('fails closed for ambiguous getStatus matches instead of returning the first candidate', async () => {

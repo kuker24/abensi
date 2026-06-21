@@ -1,9 +1,14 @@
 package id.sch.man1rokanhulu.absensi
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -41,6 +46,7 @@ import id.sch.man1rokanhulu.absensi.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.time.Instant
 
 class MainActivity : ComponentActivity() {
     private val cameraGranted = mutableStateOf(false)
@@ -79,6 +85,27 @@ class MainActivity : ComponentActivity() {
 private enum class Route { SPLASH, SETUP, HOME, SCANNER, SETTINGS, HELP, HISTORY }
 
 private data class QueueRetryResult(val sent: Int, val rejected: Int, val failed: Int)
+
+private fun batteryLevelPercent(context: Context): Int? {
+    val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
+    val level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+    val scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+    if (level < 0 || scale <= 0) return null
+    return (level * 100 / scale).coerceIn(0, 100)
+}
+
+private fun networkStatusLabel(context: Context): String {
+    val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return "UNKNOWN"
+    val network = manager.activeNetwork ?: return "OFFLINE"
+    val caps = manager.getNetworkCapabilities(network) ?: return "OFFLINE"
+    return when {
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) -> "ONLINE"
+        else -> "OFFLINE"
+    }
+}
 
 @Composable
 fun ReaderApp(
@@ -125,6 +152,36 @@ fun ReaderApp(
                 else -> id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.ONLINE
             }
         }.getOrDefault(id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.OFFLINE)
+    }
+
+    fun sendReaderStatus(statusMessage: String? = null) {
+        val deviceId = config.deviceId
+        val secret = config.readerSecret
+        if (deviceId.isNullOrBlank() || secret.isNullOrBlank()) return
+        scope.launch {
+            runCatching {
+                val pending = queueRepo.count()
+                val battery = batteryLevelPercent(context)
+                val network = networkStatusLabel(context)
+                val warnings = mutableListOf<String>()
+                if (pending > 0) warnings.add("OFFLINE_QUEUE_PENDING")
+                if (battery != null && battery <= 20) warnings.add("LOW_BATTERY")
+                if (network == "OFFLINE") warnings.add("NETWORK_OFFLINE")
+                api.sendReaderStatus(
+                    SchoolHubApiClient.ReaderStatusPayload(
+                        pendingQueueCount = pending,
+                        currentMode = mode,
+                        lastQueueFlushAt = config.lastQueueFlushAt,
+                        batteryLevel = battery,
+                        networkStatus = network,
+                        statusMessage = statusMessage,
+                        warnings = warnings
+                    ),
+                    deviceId,
+                    secret
+                )
+            }
+        }
     }
 
     suspend fun retryQueue(): QueueRetryResult {
@@ -178,12 +235,15 @@ fun ReaderApp(
                 rejected++
             }
         }
+        if (sent > 0) config.lastQueueFlushAt = Instant.now().toString()
         refreshQueueCount()
+        if (sent > 0 || rejected > 0 || failed > 0) sendReaderStatus("Antrean offline diproses")
         return QueueRetryResult(sent, rejected, failed)
     }
 
     LaunchedEffect(Unit) {
         refreshQueueCount()
+        sendReaderStatus("Aplikasi dibuka")
     }
 
     LaunchedEffect(route) {
@@ -191,6 +251,15 @@ fun ReaderApp(
         while (true) {
             connection = checkConnection()
             delay(15_000)
+        }
+    }
+
+    LaunchedEffect(route, mode) {
+        if (route != Route.SCANNER) return@LaunchedEffect
+        sendReaderStatus("Scanner aktif")
+        while (true) {
+            delay(60_000)
+            sendReaderStatus("Scanner aktif")
         }
     }
 
@@ -245,7 +314,10 @@ fun ReaderApp(
                         ) {
                             playFeedbackSound(context, feedback.tone, config.soundEnabled, config.vibrationEnabled)
                         }
-                        scope.launch { refreshQueueCount() }
+                        scope.launch {
+                            refreshQueueCount()
+                            if (feedback.tone == FeedbackTone.PENDING) sendReaderStatus("Scan masuk antrean offline")
+                        }
                     },
                     onModeChange = ::chooseMode,
                     onBack = { route = Route.HOME },

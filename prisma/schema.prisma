@@ -911,6 +911,14 @@ model DeviceReader {
   locationName           String?
   locationLat            Float?
   locationLng            Float?
+  pendingQueueCount      Int                 @default(0)
+  lastQueueFlushAt       DateTime?
+  lastHeartbeatAt        DateTime?
+  currentMode            AndroidReaderMode?
+  batteryLevel           Int?
+  networkStatus          String?
+  lastStatusMessage      String?
+  statusWarnings         String[]            @default([])
   provisioningTokenHash  String?             @unique
   provisioningExpiresAt  DateTime?
   provisionedAt          DateTime?
@@ -933,6 +941,7 @@ model DeviceReader {
   @@index([type, status])
   @@index([platform, status])
   @@index([status, lastSeenAt])
+  @@index([type, lastHeartbeatAt])
   @@index([keyPrefix])
   @@index([lastSignedScanAt])
 }
