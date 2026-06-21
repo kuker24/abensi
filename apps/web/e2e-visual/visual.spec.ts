@@ -27,6 +27,20 @@ async function mockApi(page: Page) {
     if (url.includes('/reports/trend')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ label: 'Hari ini', coveragePercent: 82 }]) });
     if (url.includes('/reports/student-daily-completeness')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 }, items: [], meta: { page: 1, limit: 100, total: 0, totalPages: 0 } }) });
     if (url.includes('/reports/my-attendance')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+    if (url.includes('/students/me/today-status')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      date: '2026-06-14',
+      student: { id: 'siswa-1', fullName: 'Aisyah Putri', className: 'X-A' },
+      summary: { completedCount: 2, pendingCount: 3, overallStatus: 'PERLU_DILENGKAPI' },
+      items: [
+        { key: 'GATE_IN', label: 'Scan Datang', status: 'DONE', time: '07:03', description: 'Kedatangan sudah tercatat.' },
+        { key: 'CLASS_ATTENDANCE', label: 'Presensi Kelas', status: 'PENDING', time: null, description: 'Tunggu guru mengisi presensi kelas.' },
+        { key: 'PRAYER_DHUHA', label: 'Sholat Dhuha', status: 'DONE', time: '08:10', description: 'Sholat Dhuha sudah tercatat.' },
+        { key: 'PRAYER_DZUHUR', label: 'Sholat Dzuhur', status: 'PENDING', time: null, description: 'Scan Dzuhur di mushola.' },
+        { key: 'PRAYER_ASHAR', label: 'Sholat Ashar', status: 'NOT_REQUIRED', time: null, description: 'Sholat Ashar tidak wajib hari ini.' },
+        { key: 'GATE_OUT', label: 'Scan Pulang', status: 'PENDING', time: null, description: 'Scan pulang sebelum keluar sekolah.' }
+      ],
+      nextActions: ['Ikuti presensi kelas dengan guru.', 'Scan Dzuhur di mushola.', 'Scan pulang sebelum keluar sekolah.']
+    }) });
     if (url.includes('/teacher/today')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       date: '2026-06-14',
       summary: { sessionsToday: 2, scheduled: 0, open: 1, closed: 1, missed: 0, unclosed: 1, studentsPendingAttendance: 8 },

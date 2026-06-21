@@ -937,6 +937,28 @@ label, .field-label { display: block; font-size: var(--text-xs); font-weight: va
 .step-guide-item:hover { border-color: var(--border-2); background: rgba(255,255,255,.055); }
 .step-guide-item b { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--primary); color: #1c1917; flex: 0 0 auto; box-shadow: 0 0 10px var(--primary-glow); }
 
+/* ========= student today status ========= */
+.student-today-panel { display: grid; gap: 16px; margin-bottom: 18px; }
+.student-today-summary { margin-bottom: 0; }
+.student-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.student-status-card { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: start; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: linear-gradient(135deg, rgba(255,255,255,.052), rgba(255,255,255,.018)); box-shadow: var(--shadow-sm); }
+.student-status-card.done { border-color: var(--ok-dim); background: linear-gradient(135deg, rgba(34,197,94,.12), rgba(255,255,255,.018)); }
+.student-status-card.pending { border-color: var(--warn-dim); background: linear-gradient(135deg, rgba(245,158,11,.12), rgba(255,255,255,.018)); }
+.student-status-card.not_required, .student-status-card.outside_window { opacity: .82; background: rgba(255,255,255,.025); }
+.student-status-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: var(--radius); color: var(--fg-muted); background: var(--surface-2); border: 1px solid var(--border); }
+.student-status-card.done .student-status-icon { color: var(--ok); background: var(--ok-soft); border-color: var(--ok-dim); }
+.student-status-card.pending .student-status-icon { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-dim); }
+.student-status-copy { min-width: 0; display: grid; gap: 5px; }
+.student-status-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+.student-status-top h3 { margin: 0; color: var(--fg); font-size: var(--text-md); line-height: var(--leading-tight); }
+.student-status-top span { flex: 0 0 auto; padding: 4px 8px; border-radius: var(--radius-full); color: var(--fg-muted); background: rgba(255,255,255,.045); border: 1px solid var(--border); font-size: 11px; font-weight: var(--font-bold); }
+.student-status-card.done .student-status-top span { color: var(--ok); border-color: var(--ok-dim); background: var(--ok-soft); }
+.student-status-card.pending .student-status-top span { color: var(--warn); border-color: var(--warn-dim); background: var(--warn-soft); }
+.student-status-copy p { margin: 0; color: var(--fg-muted); font-size: var(--text-sm); line-height: var(--leading-relaxed); }
+.student-status-time { color: var(--fg); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--font-bold); }
+.student-next-actions { margin: 0; padding-left: 20px; color: var(--fg-muted); line-height: var(--leading-relaxed); }
+.student-next-actions li + li { margin-top: 6px; }
+
 /* ========= teacher today workspace ========= */
 .teacher-today-workspace > * + * { margin-top: 18px; }
 .teacher-today-workspace > .page-head + * { margin-top: 0; }
@@ -1046,6 +1068,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   .trend-col { min-width: 54px; }
   .hbar-row { grid-template-columns: 1fr; gap: 5px; }
   .dashboard-mini-row { align-items: flex-start; flex-direction: column; }
+  .student-status-grid { grid-template-columns: 1fr; }
+  .student-status-card { grid-template-columns: 38px minmax(0, 1fr); padding: 12px; }
+  .student-status-icon { width: 38px; height: 38px; }
+  .student-status-top { flex-direction: column; align-items: flex-start; }
   .teacher-session-main { grid-template-columns: 1fr; align-items: stretch; padding: 14px; }
   .teacher-session-actions { justify-content: stretch; max-width: none; }
   .teacher-session-actions .btn { flex: 1 1 150px; }
