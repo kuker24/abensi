@@ -12,9 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -235,28 +235,12 @@ fun ScannerScreen(
             previewView
         }, modifier = Modifier.fillMaxSize())
 
-        // Aiming overlay (visual guide)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(60.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                Modifier
-                    .size(240.dp)
-                    .border(width = 2.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), shape = RoundedCornerShape(20.dp))
-                    .semantics { contentDescription = "Area scan QR code" }
-            )
-        }
-
         Column(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatusBar(
@@ -277,6 +261,24 @@ fun ScannerScreen(
                         Text(scanModeHelper(mode), color = Color.White.copy(alpha = 0.84f), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
+            }
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 12.dp, bottom = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val availableFrame = minOf(maxWidth - 24.dp, maxHeight - 16.dp, 236.dp)
+                val frameMin = if (maxHeight < 176.dp) 120.dp else 168.dp
+                val frameSize = availableFrame.coerceAtLeast(frameMin)
+                Box(
+                    Modifier
+                        .size(frameSize)
+                        .border(width = 2.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.82f), shape = RoundedCornerShape(20.dp))
+                        .semantics { contentDescription = "Area scan QR code" }
+                )
             }
 
             Column(
@@ -330,7 +332,6 @@ fun ScannerScreen(
                     ) { Text("Ubah Mode") }
                 }
             }
-            Spacer(Modifier.height(0.dp))
         }
 
         if (confirmModeChange) {
