@@ -4,9 +4,10 @@ import { AndroidReaderMode, DevicePlatform, DeviceReaderStatus, Prisma, ReaderTy
 import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
-import { DeviceSignatureService, credentialHashMatches, normalizedReaderIdentifier, readerCandidateWhere, readerCredentialDigest, readerCredentialDigestCandidates, readerLookupLimit, uniqueReaderMatch } from '../security/device-signature.service';
+import { canonicalJson } from '../security/canonical-json';
+import { DeviceSignatureService, credentialHashMatches, normalizedReaderIdentifier, readerCandidateWhere, readerCredentialDigest, readerCredentialDigestCandidates, readerLookupLimit, uniqueReaderMatch, type ReaderSignatureHeaders } from '../security/device-signature.service';
 import { StepUpAuthService } from '../security/step-up-auth.service';
-import { AndroidProvisionCompleteDto, AndroidProvisionStartDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
+import { AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
 
 function mintReaderCredential() {
   return `shr_${randomBytes(16).toString('hex')}`;
@@ -30,6 +31,7 @@ export const MAX_ACTIVE_ANDROID_READERS = 2;
 export const ANDROID_READER_LIMIT_MESSAGE = 'Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.';
 
 const MAX_PROVISION_TOKEN_LENGTH = 128;
+const ANDROID_READER_ONLINE_WINDOW_MS = Number(process.env.ANDROID_READER_ONLINE_WINDOW_MS ?? '120000');
 const PROVISION_TOKEN_PATTERN = /^shrp_[A-Za-z0-9_-]{16,}$/;
 
 function normalizeProvisionToken(token: string | null | undefined) {
@@ -73,6 +75,24 @@ function clampProvisionMinutes(value?: number) {
   return Math.max(1, Math.min(60, value ?? 15));
 }
 
+function clampText(value: string | null | undefined, max: number) {
+  const normalized = String(value || '').trim();
+  return normalized ? normalized.slice(0, max) : null;
+}
+
+function sanitizeWarnings(warnings?: string[] | null) {
+  const seen = new Set<string>();
+  const safe: string[] = [];
+  for (const warning of warnings || []) {
+    const normalized = clampText(warning, 80);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    safe.push(normalized);
+    if (safe.length >= 10) break;
+  }
+  return safe;
+}
+
 interface Actor {
   sub: string;
   role: Role;
@@ -96,6 +116,31 @@ export class DeviceReaderService {
     };
   }
 
+  private androidMonitoring(reader: { type?: ReaderType | null; status?: DeviceReaderStatus | null; deviceId?: string | null; lastHeartbeatAt?: Date | string | null; pendingQueueCount?: number | null; batteryLevel?: number | null; networkStatus?: string | null; statusWarnings?: string[] | null }) {
+    if (reader.type !== ReaderType.QR_ANDROID) return {};
+    const heartbeatAt = reader.lastHeartbeatAt ? new Date(reader.lastHeartbeatAt).getTime() : 0;
+    const heartbeatFresh = heartbeatAt > 0 && Date.now() - heartbeatAt <= ANDROID_READER_ONLINE_WINDOW_MS;
+    const isOnline = reader.status === DeviceReaderStatus.ACTIVE && Boolean(reader.deviceId) && heartbeatFresh;
+    const monitoringStatus = reader.status === DeviceReaderStatus.REVOKED
+      ? 'REVOKED'
+      : !reader.deviceId
+        ? 'PENDING'
+        : reader.status !== DeviceReaderStatus.ACTIVE
+          ? 'INACTIVE'
+          : isOnline ? 'ONLINE' : 'OFFLINE';
+    const warnings = new Set(sanitizeWarnings(reader.statusWarnings));
+    if (monitoringStatus === 'OFFLINE') warnings.add('HEARTBEAT_OFFLINE');
+    if ((reader.pendingQueueCount ?? 0) > 0) warnings.add('OFFLINE_QUEUE_PENDING');
+    if (typeof reader.batteryLevel === 'number' && reader.batteryLevel <= 20) warnings.add('LOW_BATTERY');
+    const network = String(reader.networkStatus || '').toUpperCase();
+    if (network === 'OFFLINE' || network === 'NO_NETWORK') warnings.add('NETWORK_OFFLINE');
+    return { isOnline, monitoringStatus, monitorWarnings: [...warnings] };
+  }
+
+  private readerResponse<T extends { type?: ReaderType | null; status?: DeviceReaderStatus | null; deviceId?: string | null; lastHeartbeatAt?: Date | string | null; pendingQueueCount?: number | null; batteryLevel?: number | null; networkStatus?: string | null; statusWarnings?: string[] | null; apiKeyHash?: string | null; keyPrefix?: string | null; keyLast4?: string | null; readerSecretCiphertext?: string | null; provisioningTokenHash?: string | null }>(reader: T, lastUsedMode?: AndroidReaderMode | null) {
+    return { ...this.redact(reader), lastUsedMode: lastUsedMode ?? null, ...this.androidMonitoring(reader) };
+  }
+
   async listReaders(pagination: PaginationQuery) {
     const [total, items] = await Promise.all([
       this.prisma.deviceReader.count(),
@@ -116,7 +161,7 @@ export class DeviceReaderService {
       }));
       for (const item of latestByReader) if (item.scanMode) lastModeByReader.set(item.readerId, item.scanMode);
     }
-    return { items: items.map((item) => ({ ...this.redact(item), lastUsedMode: lastModeByReader.get(item.id) ?? null })), meta: buildPaginationMeta(total, pagination) };
+    return { items: items.map((item) => this.readerResponse(item, lastModeByReader.get(item.id) ?? null)), meta: buildPaginationMeta(total, pagination) };
   }
 
   async getStatus(id: string) {
@@ -125,7 +170,39 @@ export class DeviceReaderService {
     const readers = await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(normalized), take: readerLookupLimit() });
     const match = uniqueReaderMatch(readers, normalized);
     if (match.status !== 'matched') throw new NotFoundException('Reader tidak ditemukan.');
-    return this.redact(match.reader);
+    return this.readerResponse(match.reader);
+  }
+
+  async recordAndroidStatus(payload: AndroidReaderStatusDto, signed: ReaderSignatureHeaders & { method: string; path: string }) {
+    if (!this.signatures) throw new ForbiddenException('Verifikasi signature reader belum tersedia.');
+    const bodyForHash = canonicalJson(payload);
+    const verification = await this.signatures.assertValidSignedReaderRequest({
+      method: signed.method,
+      path: signed.path,
+      rawBody: bodyForHash,
+      expectedType: ReaderType.QR_ANDROID,
+      appVersionCode: payload.appVersionCode,
+      headers: signed
+    });
+    const lastQueueFlushAt = payload.lastQueueFlushAt ? new Date(payload.lastQueueFlushAt) : undefined;
+    if (lastQueueFlushAt && Number.isNaN(lastQueueFlushAt.getTime())) throw new BadRequestException('Waktu flush antrean tidak valid.');
+    const updated = await this.prisma.deviceReader.update({
+      where: { id: verification.reader.id },
+      data: {
+        lastSeenAt: new Date(),
+        lastHeartbeatAt: new Date(),
+        pendingQueueCount: payload.pendingQueueCount,
+        lastQueueFlushAt,
+        currentMode: payload.currentMode,
+        batteryLevel: payload.batteryLevel,
+        networkStatus: clampText(payload.networkStatus, 40),
+        lastStatusMessage: clampText(payload.statusMessage, 180),
+        statusWarnings: sanitizeWarnings(payload.warnings),
+        appVersion: payload.appVersion,
+        appVersionCode: payload.appVersionCode
+      }
+    });
+    return { ok: true, item: this.readerResponse(updated), serverTime: new Date().toISOString() };
   }
 
   private async assertAndroidReaderActiveSlotAvailable(tx: Pick<PrismaService, 'deviceReader'> | Prisma.TransactionClient, excludingReaderId?: string | null) {
@@ -267,7 +344,14 @@ export class DeviceReaderService {
             provisionedAt: now,
             provisioningTokenHash: null,
             provisioningExpiresAt: null,
-            lastSeenAt: now
+            lastSeenAt: now,
+            lastHeartbeatAt: now,
+            pendingQueueCount: 0,
+            currentMode: null,
+            batteryLevel: null,
+            networkStatus: null,
+            lastStatusMessage: 'Perangkat berhasil diaktivasi.',
+            statusWarnings: []
           }
         });
         if (claimed.count !== 1) throw new ConflictException('Token provisioning sudah dipakai atau tidak valid.');
@@ -397,7 +481,13 @@ export class DeviceReaderService {
         readerSecretCiphertext: null,
         provisioningTokenHash: null,
         provisioningExpiresAt: null,
-        lastSignedScanAt: null
+        lastSignedScanAt: null,
+        pendingQueueCount: 0,
+        currentMode: null,
+        batteryLevel: null,
+        networkStatus: null,
+        lastStatusMessage: null,
+        statusWarnings: []
       });
     }
     const updated = await this.prisma.$transaction(async (tx) => {

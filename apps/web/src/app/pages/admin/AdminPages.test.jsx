@@ -31,6 +31,52 @@ describe('HP Scanner Android operator UI', () => {
     expect(document.body.textContent).not.toMatch(/HP Guru|HP Siswa|HP Staff|HP Kepala|Scanner Guru|Scanner Siswa/i);
   });
 
+  it('shows offline queue monitoring fields for each HP scanner', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/device-readers')) {
+        return new Response(JSON.stringify({
+          items: [{
+            id: 'reader-monitor-1',
+            type: 'QR_ANDROID',
+            status: 'ACTIVE',
+            deviceId: 'android-1',
+            name: 'HP Scanner 1',
+            locationName: 'Fleksibel',
+            allowedModes: ['GERBANG', 'MUSHOLA'],
+            currentMode: 'MUSHOLA',
+            monitoringStatus: 'OFFLINE',
+            pendingQueueCount: 5,
+            lastHeartbeatAt: '2026-06-20T01:00:00.000Z',
+            lastQueueFlushAt: '2026-06-20T00:45:00.000Z',
+            appVersion: '1.2.3',
+            appVersionCode: 7,
+            batteryLevel: 18,
+            networkStatus: 'OFFLINE',
+            monitorWarnings: ['HEARTBEAT_OFFLINE', 'OFFLINE_QUEUE_PENDING', 'LOW_BATTERY']
+          }],
+          meta: { page: 1, limit: 200, total: 1, totalPages: 1 }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<DevicesPage notify={vi.fn()} />);
+
+    expect(await screen.findByText('Antrean offline')).toBeInTheDocument();
+    const versionCell = await screen.findByText('1.2.3 (7)');
+    const row = versionCell.closest('tr');
+    expect(row).toBeTruthy();
+    expect(within(row).getByText('Offline')).toBeInTheDocument();
+    expect(within(row).getByText('5')).toBeInTheDocument();
+    expect(within(row).getByText('Mushola')).toBeInTheDocument();
+    expect(within(row).getByText('1.2.3 (7)')).toBeInTheDocument();
+    expect(within(row).getByText('18%')).toBeInTheDocument();
+    expect(within(row).getByText('OFFLINE')).toBeInTheDocument();
+    expect(within(row).getByText(/Ada antrean offline/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_|qrCode|schoolhub:qr/i);
+  });
+
   it('shows selected HP-specific activation instructions without exposing scanner secrets in the list', async () => {
     const notify = vi.fn();
     const fetchMock = vi.fn(async (input) => {

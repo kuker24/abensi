@@ -24,6 +24,15 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
 
     data class ProvisionResult(val deviceId: String, val readerId: String?, val readerSecret: String, val allowedModes: List<String>)
     data class ScanResult(val ok: Boolean, val message: String, val color: String, val body: String, val statusCode: Int? = null)
+    data class ReaderStatusPayload(
+        val pendingQueueCount: Int,
+        val currentMode: String? = null,
+        val lastQueueFlushAt: String? = null,
+        val batteryLevel: Int? = null,
+        val networkStatus: String? = null,
+        val statusMessage: String? = null,
+        val warnings: List<String> = emptyList()
+    )
     data class VersionInfo(val latestVersionName: String, val latestVersionCode: Int, val minSupportedVersionCode: Int, val forceUpdate: Boolean, val releaseNotes: String?)
 
     private fun base(): String = baseUrlProvider().trim().removeSuffix("/")
@@ -61,6 +70,26 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
             val modes = obj.optJSONArray("allowedModes")?.toList() ?: emptyList()
             ProvisionResult(obj.getString("deviceId"), obj.optString("readerId"), obj.getString("readerSecret"), modes)
         }
+    }
+
+    suspend fun sendReaderStatus(payload: ReaderStatusPayload, deviceId: String, secret: String): Boolean = withContext(Dispatchers.IO) {
+        val bodyMap = mutableMapOf<String, Any?>(
+            "pendingQueueCount" to payload.pendingQueueCount,
+            "currentMode" to payload.currentMode,
+            "lastQueueFlushAt" to payload.lastQueueFlushAt,
+            "batteryLevel" to payload.batteryLevel,
+            "networkStatus" to payload.networkStatus,
+            "statusMessage" to payload.statusMessage,
+            "appVersion" to BuildConfig.VERSION_NAME,
+            "appVersionCode" to BuildConfig.VERSION_CODE
+        )
+        if (payload.warnings.isNotEmpty()) bodyMap["warnings"] = payload.warnings.take(10)
+        val raw = CanonicalJson.stringify(bodyMap)
+        val path = "/api/v1/device-readers/android/status"
+        val headers = Signer.signedHeaders(deviceId, secret, "POST", path, raw)
+        val requestBuilder = Request.Builder().url("${base()}$path").post(raw.toRequestBody(jsonType))
+        headers.forEach { (key, value) -> requestBuilder.header(key, value) }
+        http.newCall(requestBuilder.build()).execute().use { response -> response.isSuccessful }
     }
 
     suspend fun scanQr(qrCode: String, mode: String, deviceId: String, secret: String): ScanResult = withContext(Dispatchers.IO) {

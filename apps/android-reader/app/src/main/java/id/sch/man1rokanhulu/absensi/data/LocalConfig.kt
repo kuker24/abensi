@@ -52,6 +52,14 @@ class LocalConfig(context: Context) {
         get() = plain.getString("lastScanMode", "GERBANG") ?: "GERBANG"
         set(value) = plain.edit().putString("lastScanMode", value).apply()
 
+    var lastQueueFlushAt: String?
+        get() = plain.getString("lastQueueFlushAt", null)
+        set(value) {
+            val edit = plain.edit()
+            if (value.isNullOrBlank()) edit.remove("lastQueueFlushAt") else edit.putString("lastQueueFlushAt", value)
+            edit.apply()
+        }
+
     var autoOpenScanner: Boolean
         get() = plain.getBoolean("autoOpenScanner", false)
         set(value) = plain.edit().putBoolean("autoOpenScanner", value).apply()
@@ -90,6 +98,7 @@ class LocalConfig(context: Context) {
         plain.edit()
             .remove("allowedModes")
             .remove("locationLabel")
+            .remove("lastQueueFlushAt")
             .apply()
     }
 }

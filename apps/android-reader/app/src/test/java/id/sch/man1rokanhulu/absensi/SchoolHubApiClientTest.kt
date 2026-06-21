@@ -50,6 +50,41 @@ class SchoolHubApiClientTest {
         }
     }
 
+    @Test fun sendReaderStatusPostsSignedMonitoringPayloadWithoutQueuedQr() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "application/json").setBody("{\"ok\":true}"))
+        server.start()
+        try {
+            val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
+            val ok = client.sendReaderStatus(
+                SchoolHubApiClient.ReaderStatusPayload(
+                    pendingQueueCount = 4,
+                    currentMode = "GERBANG",
+                    lastQueueFlushAt = "2026-06-20T01:05:00Z",
+                    batteryLevel = 80,
+                    networkStatus = "WIFI",
+                    statusMessage = "Scanner aktif",
+                    warnings = listOf("OFFLINE_QUEUE_PENDING")
+                ),
+                "android-1",
+                "shrsec_test"
+            )
+            val request = server.takeRequest()
+            val body = request.body.readUtf8()
+
+            assertTrue(ok)
+            assertEquals("/api/v1/device-readers/android/status", request.path)
+            assertTrue(body.contains("\"pendingQueueCount\":4"))
+            assertTrue(body.contains("\"currentMode\":\"GERBANG\""))
+            assertTrue(body.contains("\"appVersionCode\":"))
+            assertFalse(body.contains("qrCode"))
+            assertFalse(body.contains("schoolhub:qr"))
+            assertNotNull(request.getHeader("x-reader-signature"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
     @Test fun scanQrKeepsAuthStatusForRevokedIdentityHandling() = runTest {
         val server = MockWebServer()
         server.enqueue(
