@@ -56,7 +56,7 @@ jobs:
       SCHOOL_TIMEZONE: Asia/Jakarta
       SSO_ENABLED: 'false'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -106,7 +106,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: temurin
@@ -156,15 +156,19 @@ jobs:
       SSO_ENABLED: 'false'
       ADMIN_BOOTSTRAP_ENABLED: 'true'
       ADMIN_USERNAME: admin.tu
-      ADMIN_PASSWORD: TataUsaha#2026Strong!
+      ADMIN_PASSWORD: TestFixtureAdminValue-123!
       ADMIN_FULL_NAME: Admin TU
-      DEFAULT_USER_PASSWORD: User#12345678
+      DEFAULT_USER_PASSWORD: TestFixtureUserValue-123!
       DEVELOPER_BOOTSTRAP_ENABLED: 'false'
-      DEVELOPER_PASSWORD: DeveloperOps#2026Strong!
-      BACKUP_ENCRYPTION_PASSPHRASE: ci-backup-passphrase-with-more-than-thirty-two-characters
+      DEVELOPER_PASSWORD: TestFixtureDeveloperValue-123!
+      BACKUP_ENCRYPTION_PASSPHRASE: test-fixture-backup-passphrase-change-me-not-production
       BACKUP_DIR: artifacts/docker-backups
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Prepare CI production test env fixture
+        run: |
+          cp .env.production.test.example .env.production.test
+          chmod 600 .env.production.test
       - run: docker compose -f docker-compose.production.yml config
       - run: docker compose -f docker-compose.production.yml build
       - run: docker compose -f docker-compose.production.yml up -d
@@ -208,13 +212,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Prepare CI production test env fixture
+        run: |
+          cp .env.production.test.example .env.production.test
+          chmod 600 .env.production.test
       - name: Install shellcheck
         run: |
           sudo apt-get update
@@ -281,7 +289,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: github/codeql-action/init@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
         with:
           languages: javascript-typescript
@@ -324,7 +332,7 @@ jobs:
       READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
       SCHOOL_TIMEZONE: Asia/Jakarta
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -377,7 +385,7 @@ jobs:
       WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
       READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -398,7 +406,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -442,7 +450,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -500,7 +508,7 @@ jobs:
       SCHOOL_TIMEZONE: Asia/Jakarta
       SSO_ENABLED: 'false'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -567,7 +575,7 @@ jobs:
       PERF_MAX_ENDPOINT_MS: '2500'
       PERF_ITERATIONS: '3'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -643,7 +651,7 @@ jobs:
       DEFAULT_USER_PASSWORD: User#12345678
       DEVELOPER_PASSWORD: Dev#12345678
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'
@@ -694,7 +702,7 @@ jobs:
       DEVELOPER_PASSWORD: Dev#12345678
       BACKUP_RESTORE_REQUIRE_SEEDED: 'true'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20.20.2'

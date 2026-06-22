@@ -7,10 +7,10 @@
 BEGIN;
 
 INSERT INTO "User" ("id", "username", "fullName", "passwordHash", "role", "active", "cardStatus", "sessionVersion", "mustChangePassword", "createdAt", "updatedAt") VALUES
-  ('user-admin', 'fixture.admin', 'Fixture Admin', '$2b$10$fixturefixturefixturefixturefixturefixturefixturefixturefix', 'ADMIN_TU', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00'),
-  ('user-teacher', 'fixture.teacher', 'Fixture Teacher', '$2b$10$fixturefixturefixturefixturefixturefixturefixturefixturefix', 'GURU_MAPEL', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00'),
-  ('user-student-1', 'fixture.student1', 'Fixture Student 1', '$2b$10$fixturefixturefixturefixturefixturefixturefixturefixturefix', 'SISWA', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00'),
-  ('user-student-2', 'fixture.student2', 'Fixture Student 2', '$2b$10$fixturefixturefixturefixturefixturefixturefixturefixturefix', 'SISWA', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00')
+  ('user-admin', 'fixture.admin', 'Fixture Admin', 'TEST_ONLY_NOT_A_REAL_PASSWORD_HASH', 'ADMIN_TU', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00'),
+  ('user-teacher', 'fixture.teacher', 'Fixture Teacher', 'TEST_ONLY_NOT_A_REAL_PASSWORD_HASH', 'GURU_MAPEL', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00'),
+  ('user-student-1', 'fixture.student1', 'Fixture Student 1', 'TEST_ONLY_NOT_A_REAL_PASSWORD_HASH', 'SISWA', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00'),
+  ('user-student-2', 'fixture.student2', 'Fixture Student 2', 'TEST_ONLY_NOT_A_REAL_PASSWORD_HASH', 'SISWA', true, 'ACTIVE', 1, false, '2026-06-01 00:00:00', '2026-06-01 00:00:00')
 ON CONFLICT ("id") DO NOTHING;
 
 INSERT INTO "SchoolClass" ("id", "code", "name", "yearLabel", "createdAt") VALUES

@@ -9,6 +9,8 @@ const DEFAULT_NONCE_TTL_MS = Number(process.env.READER_NONCE_TTL_MS || String(5 
 const MAX_READER_IDENTIFIER_LENGTH = 256;
 const READER_LOOKUP_LIMIT = 20;
 const DIGEST_HEX_PATTERN = /^[a-f0-9]{64}$/;
+const AES_GCM_IV_LENGTH_BYTES = 12;
+const AES_GCM_AUTH_TAG_LENGTH_BYTES = 16;
 
 export interface ReaderSignatureHeaders {
   deviceId?: string;
@@ -138,8 +140,8 @@ export class DeviceSignatureService {
   }
 
   encryptSecret(secret: string) {
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);
+    const iv = randomBytes(AES_GCM_IV_LENGTH_BYTES);
+    const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv, { authTagLength: AES_GCM_AUTH_TAG_LENGTH_BYTES });
     const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
     return `v1:${iv.toString('base64url')}:${tag.toString('base64url')}:${ciphertext.toString('base64url')}`;
@@ -149,8 +151,11 @@ export class DeviceSignatureService {
     if (!ciphertext) return null;
     const [version, ivRaw, tagRaw, dataRaw] = ciphertext.split(':');
     if (version !== 'v1' || !ivRaw || !tagRaw || !dataRaw) return null;
-    const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivRaw, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'));
+    const iv = Buffer.from(ivRaw, 'base64url');
+    const tag = Buffer.from(tagRaw, 'base64url');
+    if (iv.length !== AES_GCM_IV_LENGTH_BYTES || tag.length !== AES_GCM_AUTH_TAG_LENGTH_BYTES) return null;
+    const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), iv, { authTagLength: AES_GCM_AUTH_TAG_LENGTH_BYTES });
+    decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(Buffer.from(dataRaw, 'base64url')), decipher.final()]).toString('utf8');
   }
 

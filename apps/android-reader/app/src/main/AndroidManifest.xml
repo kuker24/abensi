@@ -23,7 +23,9 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_provider_paths" />
         </provider>
-        <activity android:name=".MainActivity" android:exported="true">
+        <!-- nosemgrep: java.android.security.exported_activity.exported_activity
+             MainActivity must be exported for the launcher entrypoint only; no deep links or custom intent actions are declared. -->
+        <activity android:name=".MainActivity" android:exported="true"> <!-- nosemgrep: java.android.security.exported_activity.exported_activity -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

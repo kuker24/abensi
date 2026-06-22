@@ -4,12 +4,21 @@ import { apiFetch, formatDateTime, go, itemsOf, today } from '../../api';
 import { useRemote } from '../../hooks';
 import { Btn, Card, DataTable, EmptyState, ErrorState, Field, LoadingState, PageHead, RoleTaskPanel, SelectInput, SimpleHelpBox, StatCardPremium, StatusDonut, StatusPill } from '../../ui';
 
+const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function isSafeFieldKey(key) {
+  return typeof key === 'string' && /^[A-Za-z0-9_$-]+$/.test(key) && !BLOCKED_OBJECT_KEYS.has(key);
+}
+
 function countByStatus(data) {
-  return itemsOf(data).reduce((acc, row) => {
-    const status = row.status || row.attendanceStatus || row.presenceStatus || row.keterangan || 'LAINNYA';
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {});
+  const blockedKeys = BLOCKED_OBJECT_KEYS;
+  const counts = new Map();
+  for (const row of itemsOf(data)) {
+    const status = String(row.status || row.attendanceStatus || row.presenceStatus || row.keterangan || 'LAINNYA');
+    if (blockedKeys.has(status)) continue;
+    counts.set(status, (counts.get(status) || 0) + 1);
+  }
+  return Object.fromEntries(counts);
 }
 
 function resolveField(row, keys) {
@@ -17,10 +26,13 @@ function resolveField(row, keys) {
     if (key.includes('.')) {
       const parts = key.split('.');
       let v = row;
-      for (const part of parts) v = v?.[part];
+      for (const part of parts) {
+        if (!isSafeFieldKey(part)) return null;
+        v = v?.[part]; // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- keys come from static UI allowlists and dangerous prototype keys are blocked.
+      }
       if (v !== undefined && v !== null && String(v).trim()) return v;
-    } else if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
-      return row[key];
+    } else if (isSafeFieldKey(key) && row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+      return row[key]; // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- keys come from static UI allowlists and dangerous prototype keys are blocked.
     }
   }
   return null;
