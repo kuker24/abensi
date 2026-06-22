@@ -156,12 +156,12 @@ jobs:
       SSO_ENABLED: 'false'
       ADMIN_BOOTSTRAP_ENABLED: 'true'
       ADMIN_USERNAME: admin.tu
-      ADMIN_PASSWORD: TataUsaha#2026Strong!
+      ADMIN_PASSWORD: TestFixtureAdminValue-123!
       ADMIN_FULL_NAME: Admin TU
-      DEFAULT_USER_PASSWORD: User#12345678
+      DEFAULT_USER_PASSWORD: TestFixtureUserValue-123!
       DEVELOPER_BOOTSTRAP_ENABLED: 'false'
-      DEVELOPER_PASSWORD: DeveloperOps#2026Strong!
-      BACKUP_ENCRYPTION_PASSPHRASE: ci-backup-passphrase-with-more-than-thirty-two-characters
+      DEVELOPER_PASSWORD: TestFixtureDeveloperValue-123!
+      BACKUP_ENCRYPTION_PASSPHRASE: test-fixture-backup-passphrase-change-me-not-production
       BACKUP_DIR: artifacts/docker-backups
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
