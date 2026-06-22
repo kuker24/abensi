@@ -156,11 +156,11 @@ jobs:
       SSO_ENABLED: 'false'
       ADMIN_BOOTSTRAP_ENABLED: 'true'
       ADMIN_USERNAME: admin.tu
-      ADMIN_PASSWORD: test-fixture-admin-password
+      ADMIN_PASSWORD: TestFixtureAdminValue-123!
       ADMIN_FULL_NAME: Admin TU
-      DEFAULT_USER_PASSWORD: test-fixture-default-user-password
+      DEFAULT_USER_PASSWORD: TestFixtureUserValue-123!
       DEVELOPER_BOOTSTRAP_ENABLED: 'false'
-      DEVELOPER_PASSWORD: test-fixture-developer-password
+      DEVELOPER_PASSWORD: TestFixtureDeveloperValue-123!
       BACKUP_ENCRYPTION_PASSPHRASE: test-fixture-backup-passphrase-change-me-not-production
       BACKUP_DIR: artifacts/docker-backups
     steps:
