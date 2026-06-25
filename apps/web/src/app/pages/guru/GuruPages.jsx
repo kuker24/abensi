@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, Wifi, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
 import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, today } from '../../api';
 import { riskConfirm } from '../../confirm';
 import { BrowserGeoError, captureBrowserGeolocation } from '../../geolocation';
 import { useRemote } from '../../hooks';
-import { Avatar, Btn, Card, DataTable, EmptyState, ErrorState, Field, HorizontalBarList, LoadingState, PageHead, RosterProgress, RoleTaskPanel, SelectInput, SimpleHelpBox, StackedBar, StatCardPremium, StatusDonut, StatusPill, StepGuide, TextInput, statusLabel } from '../../ui';
+import { Avatar, Btn, Card, DataTable, EmptyState, ErrorState, Field, HorizontalBarList, LoadingState, PageHead, Pill, RosterProgress, RoleTaskPanel, SelectInput, SimpleHelpBox, StackedBar, StatCardPremium, StatusDonut, StatusPill, StepGuide, TextInput, statusLabel } from '../../ui';
 import { MyAttendancePage } from '../siswa/MyAttendancePage.jsx';
 
 const STATUS = ['HADIR', 'TELAT', 'IZIN', 'SAKIT', 'ALPA'];
@@ -34,6 +34,20 @@ function GenericTableState({ state }) {
   if (!rows.length) return <EmptyState title="Belum ada data" sub="Data akan muncul setelah tersedia." />;
   const keys = Array.from(new Set(rows.flatMap((r) => Object.keys(r).filter((k) => !['id'].includes(k))))).slice(0, 8);
   return <DataTable rows={rows} columns={keys.map((key) => ({ header: key, render: (r) => typeof r[key] === 'object' ? JSON.stringify(r[key]) : String(r[key] ?? '—') }))} />;
+}
+
+function scanWarningLabels(eligibility) {
+  const reasons = Array.isArray(eligibility?.reasons) ? eligibility.reasons : [];
+  const labels = new Set();
+  for (const reason of reasons) {
+    const text = String(reason || '').toLowerCase();
+    if (!text || text.includes('diizinkan manual')) continue;
+    if (text.includes('gerbang') && (text.includes('pulang') || text.includes('keluar'))) labels.add('Belum scan pulang');
+    else if (text.includes('gerbang') || text.includes('datang') || text.includes('masuk')) labels.add('Belum scan datang');
+    else if (text.includes('sholat') || text.includes('salat') || text.includes('dhuha') || text.includes('dzuhur') || text.includes('ashar')) labels.add('Belum scan sholat');
+    else labels.add('Perlu verifikasi');
+  }
+  return Array.from(labels);
 }
 
 const ATTENDANCE_FRIENDLY = {
@@ -75,24 +89,73 @@ function AttendanceTableState({ state }) {
   }))} />;
 }
 
-export function TeacherDashboard() {
-  const sessions = useRemote(() => apiFetch(`/attendance/class-sessions${qs({ date: today(), page: 1, limit: 50 })}`), []);
-  const mine = useRemote(() => apiFetch('/reports/my-attendance?days=14'), []);
-  const rows = itemsOf(sessions.data);
-  const next = rows.find((s) => s.status === 'OPEN') || rows.find((s) => s.status === 'SCHEDULED') || rows[0];
-  const openCount = rows.filter((s) => s.status === 'OPEN').length;
-  const scheduledCount = rows.filter((s) => s.status === 'SCHEDULED').length;
+function teacherSessionStatusLabel(status) {
+  return ({
+    SCHEDULED: 'Belum mulai',
+    OPEN: 'Sedang berjalan',
+    CLOSED: 'Sudah ditutup',
+    MISSED: 'Terlewat'
+  })[String(status)] || statusLabel(status);
+}
 
-  return <div className="content dashboard-redesign"><PageHead eyebrow="GURU MAPEL" title="Mulai Mengajar" sub="Satu layar untuk memilih sesi, memulai kelas, dan memeriksa riwayat kehadiran pribadi." actions={<Btn variant="primary" onClick={() => go('/guru/presensi')}><CheckSquare size={14} /> Isi Presensi</Btn>} />
-    <RoleTaskPanel title="Aksi cepat guru" tasks={[{ title: 'Isi presensi kelas', desc: 'Buka sesi, tandai siswa, lalu simpan.', icon: <CheckSquare size={18} />, tone: 'ok', onClick: () => go('/guru/presensi') }, { title: 'Perbaiki presensi', desc: 'Jika ada kesalahan, koreksi dengan alasan.', icon: <Save size={18} />, onClick: () => go('/guru/koreksi') }, { title: 'Ajukan izin', desc: 'Kirim izin/sakit/dinas luar ke Admin/TU.', icon: <Clock size={18} />, onClick: () => go('/guru/izin') }]} />
-    {sessions.loading ? <LoadingState /> : sessions.error ? <ErrorState error={sessions.error} /> : <>{next ? <section className="dashboard-hero teacher-hero"><div className="dashboard-hero-copy"><div className="eyebrow"><span className="dot" /> SESI UTAMA · {statusLabel(next.status)}</div><h2>{next.subject?.name || 'Mata pelajaran'} · {next.schoolClass?.code || 'Kelas'}</h2><p>Mulai kelas dari sini. Setelah absen masuk, tandai status siswa di awal pembelajaran dan simpan sebelum absen keluar.</p><div className="row muted dashboard-meta"><span><Clock size={14} /> {formatDateTime(next.startsAt)}</span><span><Users size={14} /> {next.teacher?.fullName || 'Guru mapel'}</span></div><div className="dashboard-hero-actions"><Btn variant="primary" size="lg" onClick={() => go('/guru/presensi')}><ArrowRight size={16} /> Masuk ke sesi</Btn><span className="chip"><MapPin size={12} /> Lokasi sekolah siap</span><span className="chip"><Wifi size={12} /> Server online</span></div></div><div className="dashboard-hero-panel compact"><StatusPill status={next.status} /><div className="hero-kpi-grid vertical"><span><b>{openCount}</b>Sesi berjalan</span><span><b>{scheduledCount}</b>Menunggu mulai</span><span><b>{rows.length}</b>Total sesi</span></div></div></section> : <div className="empty" style={{ marginBottom: 18 }}><b>Tidak ada sesi hari ini</b><span>Semua sesi sudah selesai atau belum dijadwalkan.</span></div>}
-      <div className="grid g-3 chart-summary"><Card title="Status sesi" sub="Ringkasan sesi hari ini."><StackedBar segments={sessionSegments(sessions.data)} /></Card><Card title="Kehadiran saya (14 hari)" sub="Ringkasan status kehadiran guru."><StatusDonut counts={countByStatus(mine.data)} title="Kehadiran saya" /></Card></div><div className="grid g-3" style={{ marginTop: 18 }}><Card title="Jadwal sesi hari ini">{rows.length ? <DataTable rows={rows} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.startsAt) }, { header: 'Kelas', render: (r) => r.schoolClass?.code || '—' }, { header: 'Mapel', render: (r) => r.subject?.name || '—' }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} /> : <EmptyState title="Tidak ada sesi" sub="Belum ada sesi terjadwal hari ini." />}</Card><Card title="Riwayat kehadiran saya" sub="14 hari terakhir" actions={<Btn size="sm" onClick={() => go('/guru/kehadiran-saya')}>Lihat semua</Btn>}><AttendanceTableState state={mine} /></Card></div></>}
+function teacherSessionTone(status) {
+  return ({ SCHEDULED: 'warn', OPEN: 'ok', CLOSED: 'info', MISSED: 'bad' })[String(status)] || '';
+}
+
+function presensiPath(sessionId) {
+  return `/guru/presensi${qs({ sessionId })}`;
+}
+
+function TeacherTodaySessionCard({ item }) {
+  const progressTotal = Math.max(0, Number(item.studentTotal || 0));
+  const filled = Math.max(0, Number(item.attendanceFilledCount || 0));
+  const pending = Math.max(0, Number(item.pendingCount || 0));
+  const warnings = [];
+  if (item.status === 'OPEN') warnings.push('Sesi ini belum ditutup.');
+  if (item.status === 'SCHEDULED') warnings.push('Presensi belum dimulai.');
+  if (item.status === 'MISSED') warnings.push('Sesi ini belum ditutup.');
+  if (pending > 0) warnings.push('Masih ada siswa yang belum diabsen.');
+
+  return <article className={`teacher-session-card ${teacherSessionTone(item.status)}`}>
+    <div className="teacher-session-main">
+      <div className="teacher-session-copy">
+        <div className="teacher-session-kicker"><Clock size={14} /> {item.startTime || '—'}–{item.endTime || '—'} <StatusPill status={item.status} /></div>
+        <h3>{item.className || 'Kelas'} · {item.subjectName || 'Mata pelajaran'}</h3>
+        <div className="teacher-session-meta"><span>{teacherSessionStatusLabel(item.status)}</span><span>{filled}/{progressTotal} siswa</span><span>{pending} belum diabsen</span></div>
+        <div className="teacher-session-progress"><RosterProgress current={filled} total={progressTotal} /></div>
+        {warnings.length > 0 && <div className="teacher-session-warnings">{warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+      </div>
+      <div className="teacher-session-actions" aria-label={`Aksi ${item.className || 'kelas'}`}>
+        {item.actions?.canStart && <Btn variant="primary" onClick={() => go(presensiPath(item.sessionId))}><CheckSquare size={14} /> Mulai Presensi</Btn>}
+        {item.actions?.canContinue && <Btn variant="primary" onClick={() => go(presensiPath(item.sessionId))}><ArrowRight size={14} /> Lanjutkan Presensi</Btn>}
+        {item.actions?.canClose && <Btn onClick={() => go(presensiPath(item.sessionId))}><Check size={14} /> Tutup Sesi</Btn>}
+        {item.actions?.canViewRecap && <Btn onClick={() => go('/guru/rekap')}><BarChart3 size={14} /> Lihat Rekap</Btn>}
+      </div>
+    </div>
+  </article>;
+}
+
+export function TeacherDashboard() {
+  const todayState = useRemote(() => apiFetch('/teacher/today'), []);
+  const data = todayState.data || {};
+  const summary = data.summary || {};
+  const rows = itemsOf(data);
+  const hasUnclosed = Number(summary.unclosed || 0) > 0;
+
+  return <div className="content dashboard-redesign teacher-today-workspace"><PageHead eyebrow="GURU MAPEL" title="Kelas Saya Hari Ini" sub="Pantau jadwal mengajar dan selesaikan presensi kelas tanpa membuka banyak menu." actions={<Btn variant="primary" onClick={() => go('/guru/presensi')}><CheckSquare size={14} /> Mulai Presensi</Btn>} />
+    <RoleTaskPanel title="Aksi cepat guru" tasks={[{ title: 'Isi presensi', desc: 'Buka sesi hari ini dan selesaikan presensi siswa.', icon: <CheckSquare size={18} />, tone: 'ok', onClick: () => go('/guru/presensi') }, { title: 'Perbaiki presensi', desc: 'Koreksi data jika ada kesalahan dengan alasan.', icon: <Save size={18} />, onClick: () => go('/guru/koreksi') }, { title: 'Laporan kelas', desc: 'Lihat rekap kelas yang Anda ajar.', icon: <BarChart3 size={18} />, onClick: () => go('/guru/rekap') }]} />
+    {todayState.loading ? <LoadingState /> : todayState.error ? <ErrorState error={todayState.error} onRetry={todayState.refresh} /> : <>
+      {hasUnclosed && <div className="inline-note warn"><Clock size={14} /> Ada {summary.unclosed} sesi yang belum ditutup. Selesaikan dari tombol Lanjutkan Presensi atau Tutup Sesi.</div>}
+      <div className="grid g-4 teacher-today-kpis"><StatCardPremium icon={<Clock size={18} />} label="Sesi hari ini" value={summary.sessionsToday || 0} sub="Total jadwal mengajar" /><StatCardPremium icon={<Activity size={18} />} label="Sedang berjalan" value={summary.open || 0} sub="Sesi OPEN" tone={summary.open ? 'ok' : ''} /><StatCardPremium icon={<Users size={18} />} label="Belum ditutup" value={summary.unclosed || 0} sub={`${summary.studentsPendingAttendance || 0} siswa belum diabsen`} tone={summary.unclosed ? 'warn' : 'ok'} /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Selesai" value={summary.closed || 0} sub="Sesi sudah ditutup" tone="info" /></div>
+      <Card title="Daftar jadwal/sesi hari ini" sub="Pilih aksi sesuai status sesi.">{rows.length ? <div className="teacher-session-list">{rows.map((item) => <TeacherTodaySessionCard key={item.sessionId} item={item} />)}</div> : <EmptyState title="Tidak ada jadwal mengajar hari ini." sub="Jadwal akan tampil otomatis sesuai data yang diatur admin." action={<Btn onClick={() => go('/guru/kehadiran-saya')}>Lihat Kehadiran Saya</Btn>} />}</Card>
+      <Card title="Status sesi" sub="Ringkasan sesi hari ini."><StackedBar segments={[{ label: 'Belum mulai', value: summary.scheduled || 0, tone: 'warn' }, { label: 'Sedang berjalan', value: summary.open || 0, tone: 'ok' }, { label: 'Sudah ditutup', value: summary.closed || 0, tone: 'info' }, { label: 'Terlewat', value: summary.missed || 0, tone: 'bad' }]} total={summary.sessionsToday || 0} /></Card>
+    </>}
   </div>;
 }
 
 export function ClassInputPage({ notify }) {
   const sessions = useRemote(() => apiFetch(`/attendance/class-sessions${qs({ date: today(), page: 1, limit: 50 })}`), []);
-  const [sessionId, setSessionId] = useState('');
+  const [sessionId, setSessionId] = useState(() => new URLSearchParams(window.location.search).get('sessionId') || '');
   const [earlyReason, setEarlyReason] = useState('Kelas diakhiri lebih awal atas kondisi yang sudah dicatat.');
   const [nowTick, setNowTick] = useState(Date.now());
   const [actionLoading, setActionLoading] = useState('');
@@ -102,9 +165,15 @@ export function ClassInputPage({ notify }) {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    const first = itemsOf(sessions.data).find((s) => s.status === 'OPEN') || itemsOf(sessions.data).find((s) => s.status === 'SCHEDULED') || itemsOf(sessions.data)[0];
+    const rows = itemsOf(sessions.data);
+    const requestedSessionId = new URLSearchParams(window.location.search).get('sessionId') || '';
+    if (requestedSessionId && rows.some((s) => s.id === requestedSessionId)) {
+      if (sessionId !== requestedSessionId) setSessionId(requestedSessionId);
+      return;
+    }
+    const first = rows.find((s) => s.status === 'OPEN') || rows.find((s) => s.status === 'SCHEDULED') || rows[0];
     if (first && !sessionId) setSessionId(first.id);
-  }, [sessions.data]);
+  }, [sessions.data, sessionId]);
   const rosterState = useRemote(() => sessionId ? apiFetch(`/attendance/class-sessions/${sessionId}/roster`) : Promise.resolve({ roster: [] }), [sessionId]);
   const [roster, setRoster] = useState([]);
   useEffect(() => {
@@ -126,7 +195,6 @@ export function ClassInputPage({ notify }) {
   const progressPercent = roster.length ? Math.round((completedCount / roster.length) * 100) : 0;
   const setStatus = (studentId, status) => setRoster((prev) => prev.map((r) => {
     if (r.studentId !== studentId) return r;
-    if (r.eligibility?.locked && ['HADIR', 'TELAT'].includes(status)) return r;
     return { ...r, status, dirty: true, explicitlyConfirmed: true };
   }));
   async function openSession() {
@@ -162,7 +230,7 @@ export function ClassInputPage({ notify }) {
     try {
       const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance/bulk-present`, { method: 'POST' });
       rosterState.refresh();
-      notify(result.message || 'Semua siswa yang memenuhi syarat dikonfirmasi hadir.');
+      notify(result.message || 'Semua siswa default dikonfirmasi hadir.');
     } catch (error) { notify(error.message || 'Gagal konfirmasi hadir massal.', 'bad'); } finally { setActionLoading(''); }
   }
   async function bulkAlpa() {
@@ -196,8 +264,8 @@ export function ClassInputPage({ notify }) {
       notify(message, 'bad');
     } finally { setActionLoading(''); }
   }
-  return <div className="content teacher-attendance-flow"><PageHead eyebrow="ISI PRESENSI KELAS" title={current ? `${current.subject?.name} · ${current.schoolClass?.code}` : 'Pilih sesi'} sub="Ikuti langkah dari kiri ke kanan agar tidak terlewat." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{s.schoolClass?.code} · {s.subject?.name} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
-    <StepGuide title="Urutan kerja guru" steps={['Pilih sesi yang benar.', 'Klik Absen Masuk / Mulai Kelas.', 'Tandai siswa hadir/izin/sakit/telat/alpa.', 'Klik Simpan Presensi Awal.', 'Saat selesai, klik Absen Keluar / Akhiri Kelas.']} />
+  return <div className="content teacher-attendance-flow"><PageHead eyebrow="PRESENSI KELAS" title={current ? `${current.subject?.name} · ${current.schoolClass?.code}` : 'Pilih sesi'} sub="Alur sederhana: Masuk Kelas → Semua Hadir/ubah pengecualian → Simpan → Tutup Sesi." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{s.schoolClass?.code} · {s.subject?.name} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
+    <StepGuide title="Urutan kerja guru" steps={['Pilih sesi yang benar.', 'Klik Masuk Kelas.', 'Klik Semua Hadir bila mayoritas hadir.', 'Ubah pengecualian: Telat, Izin, Sakit, atau Alpa.', 'Klik Simpan, lalu Tutup Sesi.']} />
     <div className="attendance-checkpoint"><div><span className="eyebrow"><span className="dot" /> CHECKPOINT PRESENSI</span><b>{progressPercent}% selesai</b><small>{completedCount}/{roster.length || 0} siswa sudah dikonfirmasi. {defaultedCount ? `${defaultedCount} masih ALPA default.` : ''} {isOpen ? 'Sesi sedang bisa diisi.' : 'Buka sesi terlebih dahulu untuk mengubah status.'}</small></div><RosterProgress current={completedCount} total={roster.length} /></div>
     <div className="grid g-4"><StatCardPremium icon={<Clock size={18} />} label="Jam Mulai" value={startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkInAt ? `Masuk ${formatDateTime(teacherPresence.checkInAt)}` : 'Guru belum absen masuk'} /><StatCardPremium icon={<DoorOpen size={18} />} label="Jam Selesai" value={endsAt ? endsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkOutAt ? `Keluar ${formatDateTime(teacherPresence.checkOutAt)}` : isEarlyCheckout ? 'Belum waktunya keluar' : 'Sudah boleh absen keluar'} tone={isEarlyCheckout ? 'warn' : 'ok'} /><StatCardPremium icon={<Activity size={18} />} label="Status Guru" value={teacherPresence?.status ? statusLabel(teacherPresence.status) : statusLabel(current?.status)} sub="Masuk/keluar kelas" /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Siswa Tercatat" value={roster.length} sub={`${counts.HADIR || 0} hadir · ${counts.ALPA || 0} alpa`} /></div>
     <Card title="Aksi guru" sub="Aksi presensi siswa dipisah dari absen keluar guru agar data awal pembelajaran tidak berubah tanpa sengaja.">
@@ -212,8 +280,11 @@ export function ClassInputPage({ notify }) {
           </div>
           <RosterProgress current={presentLikeCount} total={roster.length} />
         </div>
-      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Absen Masuk / Mulai Kelas</Btn><Btn loading={actionLoading === 'bulk-present'} onClick={bulkPresent} disabled={!isOpen || Boolean(actionLoading)}><Users size={14} /> Konfirmasi semua Hadir</Btn><Btn variant="danger" loading={actionLoading === 'bulk-alpa'} onClick={bulkAlpa} disabled={!isOpen || Boolean(actionLoading)}><X size={14} /> Konfirmasi ALPA Default</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan Presensi Awal</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !isOpen || Boolean(actionLoading)}>Absen Keluar / Akhiri Kelas <ArrowRight size={14} /></Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
-    <div className="grid g-2 chart-summary"><Card title="Presensi siswa awal pembelajaran" sub="Cukup isi di awal kelas. Tandai semua Hadir, lalu ubah siswa yang Telat/Izin/Sakit/Alpa."><StatusDonut counts={counts} title="Status siswa" /></Card><Card title="Ringkasan sebelum absen keluar" sub="Periksa ulang sebelum mengakhiri kelas."><StackedBar segments={STATUS.map((st) => ({ label: statusLabel(st), value: counts[st] || 0, tone: st === 'HADIR' ? 'ok' : st === 'ALPA' ? 'bad' : st === 'TELAT' ? 'warn' : 'info' }))} /></Card></div><div className="dock dock-sticky" aria-label="Ringkasan status presensi"><div className="dock-stats">{STATUS.map((st) => <span className="s" key={st}><span className="k">{statusLabel(st)}</span><span className="v">{counts[st] || 0}</span></span>)}</div>{isOpen && <Btn size="sm" variant="primary" loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || Boolean(actionLoading)}><Save size={13} /> Simpan</Btn>}</div>{rosterState.loading ? <LoadingState /> : rosterState.error ? <ErrorState error={rosterState.error} /> : <div className="roster">{roster.map((s, i) => <div key={s.studentId} className="roster-row"><div className="roster-idx">{String(i + 1).padStart(2, '0')}</div><Avatar name={s.fullName} /><div className="roster-student"><div className="roster-name">{s.fullName}</div><div className="roster-meta">{s.username} · kartu {statusLabel(s.cardStatus)} · {s.eligibility?.locked ? `Terkunci: ${s.eligibility.reasons?.join(', ')}` : 'Syarat scan lengkap/diizinkan'}</div></div><div className="statuspick">{STATUS.map((st) => <button key={st} className={`${s.status === st ? 'on ' : ''}${st.toLowerCase()}`} disabled={!isOpen || Boolean(actionLoading) || (s.eligibility?.locked && ['HADIR', 'TELAT'].includes(st))} title={s.eligibility?.locked && ['HADIR', 'TELAT'].includes(st) ? s.eligibility.reasons?.join(', ') : ''} onClick={() => setStatus(s.studentId, st)}>{statusLabel(st)}</button>)}</div></div>)}</div>}</div>;
+      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Masuk Kelas</Btn><Btn loading={actionLoading === 'bulk-present'} onClick={bulkPresent} disabled={!isOpen || Boolean(actionLoading)}><Users size={14} /> Semua Hadir</Btn><Btn variant="danger" loading={actionLoading === 'bulk-alpa'} onClick={bulkAlpa} disabled={!isOpen || Boolean(actionLoading)}><X size={14} /> Tandai Alpa</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !isOpen || Boolean(actionLoading)}>Tutup Sesi <ArrowRight size={14} /></Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
+    <div className="grid g-2 chart-summary"><Card title="Presensi siswa" sub="Tandai semua Hadir, lalu ubah siswa yang Telat/Izin/Sakit/Alpa."><StatusDonut counts={counts} title="Status siswa" /></Card><Card title="Ringkasan sebelum Tutup Sesi" sub="Periksa ulang sebelum mengakhiri kelas."><StackedBar segments={STATUS.map((st) => ({ label: statusLabel(st), value: counts[st] || 0, tone: st === 'HADIR' ? 'ok' : st === 'ALPA' ? 'bad' : st === 'TELAT' ? 'warn' : 'info' }))} /></Card></div><div className="dock dock-sticky" aria-label="Ringkasan status presensi"><div className="dock-stats">{STATUS.map((st) => <span className="s" key={st}><span className="k">{statusLabel(st)}</span><span className="v">{counts[st] || 0}</span></span>)}</div>{isOpen && <Btn size="sm" variant="primary" loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || Boolean(actionLoading)}><Save size={13} /> Simpan</Btn>}</div>{rosterState.loading ? <LoadingState /> : rosterState.error ? <ErrorState error={rosterState.error} /> : <div className="roster">{roster.map((s, i) => {
+      const warningLabels = scanWarningLabels(s.eligibility);
+      return <div key={s.studentId} className="roster-row"><div className="roster-idx">{String(i + 1).padStart(2, '0')}</div><Avatar name={s.fullName} /><div className="roster-student"><div className="roster-name">{s.fullName}</div><div className="roster-meta">{s.username} · kartu {statusLabel(s.cardStatus)} · {warningLabels.length ? 'Catatan scan perlu dipantau petugas' : 'Tidak ada catatan scan'}</div>{warningLabels.length > 0 && <div className="row-actions" aria-label="Catatan scan siswa">{warningLabels.map((label) => <Pill key={label} tone="warn">{label}</Pill>)}</div>}</div><div className="statuspick">{STATUS.map((st) => <button key={st} className={`${s.status === st ? 'on ' : ''}${st.toLowerCase()}`} disabled={!isOpen || Boolean(actionLoading)} onClick={() => setStatus(s.studentId, st)}>{statusLabel(st)}</button>)}</div></div>;
+    })}</div>}</div>;
 }
 
 export function CorrectionPage({ notify }) {

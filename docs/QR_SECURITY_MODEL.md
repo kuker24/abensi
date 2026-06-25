@@ -57,7 +57,7 @@ Server mengecek:
 1. `deviceId` terdaftar di `DeviceReader`.
 2. Status reader `ACTIVE`, tidak `REVOKED`.
 3. Type reader `QR_ANDROID`.
-4. Mode ada di `allowedModes`.
+4. Runtime `scanMode` valid (`GERBANG`, `MUSHOLA`, atau `CHECK_ONLY`); untuk `QR_ANDROID`, mode tidak lagi mengikat HP fisik secara permanen.
 5. Timestamp tidak melewati skew.
 6. Nonce belum pernah dipakai.
 7. Body hash cocok canonical JSON.
@@ -71,10 +71,11 @@ Server mengecek:
 
 | Mode | Efek |
 |---|---|
-| `GATE_IN` | Membuat `GateLog IN` jika policy valid |
-| `GATE_OUT` | Membuat `GateLog OUT` jika IN ada, Ashar terpenuhi jika wajib |
-| `MUSHOLA` | Server menentukan `DHUHA/DZUHUR/ASHAR` dari waktu server |
+| `GERBANG` | Membuat `GateLog IN` untuk scan pertama hari itu, lalu `GateLog OUT` setelah jeda/policy valid |
+| `MUSHOLA` | Server menentukan `DHUHA/DZUHUR/ASHAR` dari waktu server dan hanya menerima siswa |
 | `CHECK_ONLY` | Validasi user/QR saja, tidak membuat log absensi |
+
+Payload lama `GATE_IN`/`GATE_OUT` tetap diterima sebagai mode gerbang untuk kompatibilitas, tetapi APK baru mengirim `scanMode=GERBANG`.
 
 ## Revocation
 

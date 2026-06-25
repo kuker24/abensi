@@ -3,27 +3,25 @@
 ## Tahap 1 — Beta 1 kelas
 
 1. Generate QR credential untuk 1 kelas pilot.
-2. Provision 1 APK Android mode `GATE_IN/GATE_OUT`.
-3. Provision 1 APK Android mode `MUSHOLA/CHECK_ONLY`.
-4. Uji scan masuk, Dhuha/Dzuhur/Ashar, kelas, dan pulang.
+2. Provision maksimal 2 HP Scanner fleksibel (`GERBANG` + `MUSHOLA`).
+3. Uji kedua HP sama-sama di Mode Gerbang untuk datang/pulang.
+4. Uji kedua HP sama-sama di Mode Mushola untuk Dhuha/Dzuhur/Ashar.
 5. Cek audit, `GateLog`, `PrayerAttendanceLog`, dan `ReconciliationFlag`.
 
 Durasi rekomendasi: 3–5 hari sekolah.
 
 ## Tahap 2 — Pilot gerbang
 
-1. Pasang HP reader di gerbang utama.
-2. Batasi allowed modes hanya `GATE_IN/GATE_OUT`.
-3. Cek duplicate scan window.
-4. Cek OUT tanpa IN dan OUT terlalu cepat.
-5. Review anomali harian oleh Guru Piket/Admin TU.
+1. Pakai salah satu atau kedua HP Scanner di Mode Gerbang.
+2. Cek duplicate scan window.
+3. Cek pulang tanpa datang dan pulang terlalu cepat.
+4. Review anomali harian oleh Guru Piket/Admin TU.
 
 ## Tahap 3 — Pilot mushola
 
-1. Pasang reader Android di mushola.
-2. Allowed modes `MUSHOLA` dan `CHECK_ONLY`.
-3. Server menentukan prayer type dari waktu server.
-4. Validasi Ashar sebelum pulang untuk jadwal sore.
+1. Pakai salah satu atau kedua HP Scanner di Mode Mushola.
+2. Server menentukan prayer type dari waktu server.
+3. Validasi Ashar sebelum pulang untuk jadwal sore.
 
 ## Tahap 4 — Produksi bertahap
 

@@ -20,6 +20,11 @@ const routeHandlers = [
   'recapSubjects',
   'recapTeachers',
   'teacherMonthly',
+  'staffGateAttendance',
+  'teacherSessionActivity',
+  'studentDailyCompleteness',
+  'studentPrayerAttendance',
+  'studentWorshipRecap',
   'auditCoverage',
   'exportReport'
 ] as const;
@@ -53,6 +58,9 @@ describe('ReportingController role/capability contract', () => {
     [Role.SISWA, 'myAttendance', 200],
     [Role.SISWA, 'recapStudents', 403],
     [Role.SISWA, 'dashboard', 403],
+    [Role.KEPALA_SEKOLAH, 'dashboard', 200],
+    [Role.KEPALA_SEKOLAH, 'studentDailyCompleteness', 200],
+    [Role.KEPALA_SEKOLAH, 'exportReport', 403],
     [Role.OPERATOR_IT, 'liveMonitor', 200],
     [Role.OPERATOR_IT, 'streamLiveMonitor', 200],
     [Role.OPERATOR_IT, 'teacherMonthly', 403],
@@ -62,6 +70,7 @@ describe('ReportingController role/capability contract', () => {
     [Role.GURU_PIKET, 'liveMonitor', 200],
     [Role.GURU_PIKET, 'recapClasses', 403],
     [Role.ADMIN_TU, 'classMonthly', 200],
+    [Role.ADMIN_TU, 'studentDailyCompleteness', 200],
     [Role.ADMIN_TU, 'exportReport', 200]
   ] as Array<[Role, ReportingHandler, number]>)('%s -> %s returns expected auth status %s', (role, handler, status) => {
     expect(expectedStatus(role, handler)).toBe(status);

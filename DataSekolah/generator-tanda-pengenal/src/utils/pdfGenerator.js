@@ -84,9 +84,9 @@ const renderCardToCanvas = async (root, container, user, options) => {
 
 export const generatePDF = async (users, options = {}) => {
   const {
-    title = 'Kartu Identitas e-Hadir',
+    title = 'Kartu Identitas SIAB2',
     schoolName = 'MAN 1 Rokan Hulu',
-    programName = 'e-Hadir Absensi',
+    programName = 'SIAB2',
     examPeriod,
     onProgress = () => {},
   } = options;
@@ -215,7 +215,7 @@ const addPageHeader = (pdf, title, schoolName, programName, currentPage, totalPa
 
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(`${schoolName} | ${programName || 'e-Hadir Absensi'}`, A4_WIDTH / 2, 11, { align: 'center' });
+  pdf.text(`${schoolName} | ${programName || 'SIAB2'}`, A4_WIDTH / 2, 11, { align: 'center' });
 
   pdf.setTextColor(100, 116, 139);
   pdf.setFontSize(8);

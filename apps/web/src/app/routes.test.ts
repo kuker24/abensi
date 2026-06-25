@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BRAND } from './branding';
 import { ROUTES, canAccessRoute, navItemsForUser, routeCrumbs, type AppRoutePath } from './SchoolHubApp';
 import type { User } from './types';
 
@@ -23,7 +24,7 @@ describe('typed route registry', () => {
   });
 
   it('drives navigation from the same route guard metadata', () => {
-    for (const role of ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'GURU_MAPEL', 'SISWA', 'DEVELOPER'] as const) {
+    for (const role of ['ADMIN_TU', 'KEPALA_SEKOLAH', 'OPERATOR_IT', 'GURU_PIKET', 'GURU_MAPEL', 'SISWA', 'DEVELOPER'] as const) {
       const currentUser = user(role);
       const nav = navItemsForUser(currentUser);
       expect(nav.length).toBeGreaterThan(0);
@@ -37,12 +38,17 @@ describe('typed route registry', () => {
   it('keeps protected routes out of unauthorized role navigation', () => {
     expect(canAccessRoute('/admin/developer-control', user('ADMIN_TU'))).toBe(false);
     expect(canAccessRoute('/admin/reports', user('SISWA'))).toBe(false);
+    expect(canAccessRoute('/admin/reports', user('KEPALA_SEKOLAH'))).toBe(true);
+    expect(canAccessRoute('/admin/master-data', user('KEPALA_SEKOLAH'))).toBe(false);
+    expect(canAccessRoute('/admin/android-apk-update', user('ADMIN_TU'))).toBe(true);
+    expect(canAccessRoute('/admin/android-apk-update', user('OPERATOR_IT'))).toBe(true);
+    expect(canAccessRoute('/admin/android-apk-update', user('SISWA'))).toBe(false);
     expect(canAccessRoute('/siswa/dashboard', user('SISWA'))).toBe(true);
     expect(canAccessRoute('/guru/presensi', user('GURU_MAPEL'))).toBe(true);
   });
 
   it('returns a safe crumb fallback for unknown paths', () => {
-    expect(routeCrumbs('/unknown')).toEqual(['e-Hadir']);
+    expect(routeCrumbs('/unknown')).toEqual([BRAND.compactName]);
     expect(canAccessRoute('/unknown', user('DEVELOPER'))).toBe(false);
   });
 });

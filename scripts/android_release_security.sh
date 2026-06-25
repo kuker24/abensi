@@ -21,6 +21,14 @@ if grep -RInE 'http://[^/[:space:]]+' app/src/main 2>/dev/null \
   cp /tmp/android-cleartext-url.txt ../../artifacts/android-security/cleartext-url-fail.txt
   exit 1
 fi
+if ! grep -q '<string name="app_name">SIAB2 Reader</string>' app/src/main/res/values/strings.xml; then
+  printf 'Expected Android app label to remain SIAB2 Reader.\n' > ../../artifacts/android-security/branding-fail.txt
+  exit 1
+fi
+if ! grep -q '^SCHOOLHUB_APPLICATION_ID=id\.sch\.man1rokanhulu\.absensi$' gradle.properties; then
+  printf 'Android application ID changed unexpectedly.\n' > ../../artifacts/android-security/package-id-fail.txt
+  exit 1
+fi
 apk=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
 sha256sum "$apk" > ../../artifacts/android-security/debug-apk.sha256
 printf '{"ok":true,"allowBackup":false,"cleartextTraffic":false,"secretPatterns":false,"cleartextUrls":false}\n' > ../../artifacts/android-security/result.json

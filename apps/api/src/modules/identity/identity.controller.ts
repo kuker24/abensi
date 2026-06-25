@@ -107,14 +107,14 @@ export class IdentityController {
   }
 
   @Get('me')
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
   @Capabilities('profile.self.read')
   me(@CurrentUser() user: { sub: string }) {
     return this.identityService.getMe(user.sub);
   }
 
   @Patch('me')
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
   @Capabilities('profile.self.update')
   updateMe(@Body() body: UpdateMeDto, @CurrentUser() user: { sub: string }) {
     return this.identityService.updateMe(user.sub, body);

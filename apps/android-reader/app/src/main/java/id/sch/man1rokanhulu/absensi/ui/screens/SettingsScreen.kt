@@ -39,6 +39,8 @@ fun SettingsScreen(
     queueCount: Int,
     onClearQueue: () -> Unit,
     onRetryQueue: () -> Unit,
+    onCheckUpdate: () -> Unit = {},
+    updateStatus: String? = null,
     onBack: () -> Unit,
     onReprovision: () -> Unit
 ) {
@@ -68,7 +70,7 @@ fun SettingsScreen(
                 InfoRow("Nama HP", config.deviceName)
                 if (config.locationLabel.isNotBlank()) InfoRow("Lokasi", config.locationLabel)
                 InfoRow("Lokasi yang boleh dipakai", config.allowedModes().joinToString { modeLabel(it) }.ifBlank { "—" })
-                InfoRow("Versi aplikasi", BuildConfig.VERSION_NAME)
+                InfoRow("Versi aplikasi", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             }
         }
 
@@ -88,6 +90,19 @@ fun SettingsScreen(
                 ToggleRow("Getaran feedback", "Getar pada hasil scan.", vibrationOn) {
                     vibrationOn = it; config.vibrationEnabled = it
                 }
+            }
+        }
+
+        // APK update section
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Update APK", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    updateStatus ?: "Cek update APK HP Scanner. Install tetap lewat konfirmasi installer Android.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SecondaryActionButton(text = "Cek Update APK", onClick = onCheckUpdate)
             }
         }
 

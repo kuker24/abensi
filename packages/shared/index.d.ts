@@ -1,5 +1,6 @@
 export declare const ROLES: readonly [
   'ADMIN_TU',
+  'KEPALA_SEKOLAH',
   'GURU_MAPEL',
   'GURU_PIKET',
   'SISWA',

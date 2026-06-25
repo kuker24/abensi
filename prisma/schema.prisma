@@ -11,6 +11,7 @@ datasource db {
 
 enum Role {
   ADMIN_TU
+  KEPALA_SEKOLAH
   GURU_MAPEL
   GURU_PIKET
   SISWA
@@ -141,6 +142,7 @@ enum DevicePlatform {
 }
 
 enum AndroidReaderMode {
+  GERBANG
   GATE_IN
   GATE_OUT
   MUSHOLA
@@ -256,6 +258,8 @@ model User {
   authSessions                          AuthSession[]
   tutorialState                         UserTutorialState?          @relation("TutorialStateUser")
   forcedTutorials                       UserTutorialState[]         @relation("TutorialForcedBy")
+  createdAndroidApkReleases             AndroidApkRelease[]         @relation("AndroidApkReleaseCreatedBy")
+  updatedAndroidApkReleases             AndroidApkRelease[]         @relation("AndroidApkReleaseUpdatedBy")
 
   @@index([role, active])
   @@index([active, createdAt])
@@ -602,23 +606,25 @@ model BusinessDateBackfillReport {
 }
 
 model RejectedDeviceScan {
-  id               String         @id @default(cuid())
+  id               String             @id @default(cuid())
   eventId          String?
   cardUid          String?
   direction        GateDirection?
   deviceTimestamp  DateTime?
-  serverReceivedAt DateTime       @default(now())
+  serverReceivedAt DateTime           @default(now())
   readerId         String?
   deviceId         String?
+  scanMode         AndroidReaderMode?
   nonceHash        String?
   bodyHash         String?
   reason           String
-  createdAt        DateTime       @default(now())
+  createdAt        DateTime           @default(now())
 
   reader DeviceReader? @relation(fields: [readerId], references: [id], onDelete: SetNull)
 
   @@index([eventId])
   @@index([readerId, createdAt])
+  @@index([scanMode, createdAt])
   @@index([createdAt])
 }
 
@@ -907,6 +913,14 @@ model DeviceReader {
   locationName           String?
   locationLat            Float?
   locationLng            Float?
+  pendingQueueCount      Int                 @default(0)
+  lastQueueFlushAt       DateTime?
+  lastHeartbeatAt        DateTime?
+  currentMode            AndroidReaderMode?
+  batteryLevel           Int?
+  networkStatus          String?
+  lastStatusMessage      String?
+  statusWarnings         String[]            @default([])
   provisioningTokenHash  String?             @unique
   provisioningExpiresAt  DateTime?
   provisionedAt          DateTime?
@@ -929,6 +943,7 @@ model DeviceReader {
   @@index([type, status])
   @@index([platform, status])
   @@index([status, lastSeenAt])
+  @@index([type, lastHeartbeatAt])
   @@index([keyPrefix])
   @@index([lastSignedScanAt])
 }
@@ -1131,4 +1146,31 @@ model MobileAndroidReaderVersion {
   forceUpdate             Boolean  @default(false)
   updatedById             String?
   updatedAt               DateTime @updatedAt
+}
+
+model AndroidApkRelease {
+  id                      String    @id @default(cuid())
+  versionName             String
+  versionCode             Int       @unique
+  minSupportedVersionCode Int       @default(1)
+  forceUpdate             Boolean   @default(false)
+  releaseNotes            String?
+  apkFileName             String
+  apkPath                 String
+  apkSha256               String
+  apkSizeBytes            Int
+  contentType             String    @default("application/vnd.android.package-archive")
+  isPublished             Boolean   @default(false)
+  publishedAt             DateTime?
+  createdById             String?
+  updatedById             String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  createdBy User? @relation("AndroidApkReleaseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("AndroidApkReleaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([isPublished, versionCode])
+  @@index([createdAt])
+  @@index([createdById, createdAt])
 }

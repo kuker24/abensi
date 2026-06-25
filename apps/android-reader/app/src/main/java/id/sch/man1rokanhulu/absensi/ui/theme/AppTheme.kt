@@ -1,9 +1,12 @@
 package id.sch.man1rokanhulu.absensi.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
@@ -148,7 +151,14 @@ fun AppTheme(content: @Composable () -> Unit) {
             }
         }
     }
-    MaterialTheme(colorScheme = colors, typography = ReaderTypography, content = content)
+    MaterialTheme(colorScheme = colors, typography = ReaderTypography) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colors.background,
+            contentColor = colors.onBackground,
+            content = content
+        )
+    }
 }
 
 private fun Color.toArgb(): Int = android.graphics.Color.argb(

@@ -34,8 +34,8 @@ fun HelpScreen(onBack: () -> Unit) {
         HelpSection(
             "Cara memakai",
             listOf(
-                "Pilih lokasi scan: Gerbang Masuk, Gerbang Keluar, Mushola, atau Cek Saja.",
-                "Tekan Mulai Scan, lalu arahkan QR ke kamera HP.",
+                "Pilih Mode Gerbang untuk datang/pulang atau Mode Mushola untuk sholat siswa.",
+                "Tekan tombol mode, lalu arahkan QR ke kamera HP.",
                 "Tunggu sampai layar berubah hijau (berhasil), merah (ditolak), atau kuning (menunggu internet).",
                 "Setelah hijau, siswa berikutnya bisa langsung scan."
             )
@@ -45,7 +45,7 @@ fun HelpScreen(onBack: () -> Unit) {
             "Jika kamera tidak terbuka",
             listOf(
                 "Tutup aplikasi sepenuhnya, lalu buka kembali.",
-                "Periksa izin kamera di Pengaturan HP > Aplikasi > Absensi MAN 1 Rokan Hulu.",
+                "Periksa izin kamera di Pengaturan HP > Aplikasi > SIAB2 Reader.",
                 "Pastikan kamera tidak sedang dipakai aplikasi lain.",
                 "Jika tetap gelap, restart HP dan buka aplikasi lagi."
             )
@@ -65,7 +65,7 @@ fun HelpScreen(onBack: () -> Unit) {
             "Jika scan gagal atau ditolak",
             listOf(
                 "Pastikan QR siswa terbaca jelas. Bersihkan kotor/goresan pada kartu.",
-                "Coba lokasi scan lain (misal: Cek Saja) untuk memastikan QR terbaca.",
+                "Jika muncul pesan mode tidak cocok, kembali ke layar utama lalu pilih mode yang benar.",
                 "Jika tertulis 'Format QR tidak didukung', QR yang dipakai bukan QR resmi sekolah.",
                 "Jika tertulis 'kadaluarsa' atau 'dicabut', minta admin membuat QR baru untuk siswa tersebut."
             )

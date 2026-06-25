@@ -23,8 +23,26 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     data class ProvisionResult(val deviceId: String, val readerId: String?, val readerSecret: String, val allowedModes: List<String>)
-    data class ScanResult(val ok: Boolean, val message: String, val color: String, val body: String)
-    data class VersionInfo(val latestVersionName: String, val latestVersionCode: Int, val minSupportedVersionCode: Int, val forceUpdate: Boolean, val releaseNotes: String?)
+    data class ScanResult(val ok: Boolean, val message: String, val color: String, val body: String, val statusCode: Int? = null)
+    data class ReaderStatusPayload(
+        val pendingQueueCount: Int,
+        val currentMode: String? = null,
+        val lastQueueFlushAt: String? = null,
+        val batteryLevel: Int? = null,
+        val networkStatus: String? = null,
+        val statusMessage: String? = null,
+        val warnings: List<String> = emptyList()
+    )
+    data class VersionInfo(
+        val latestVersionName: String,
+        val latestVersionCode: Int,
+        val minSupportedVersionCode: Int,
+        val forceUpdate: Boolean,
+        val releaseNotes: String?,
+        val downloadUrl: String? = null,
+        val apkSha256: String? = null,
+        val apkSizeBytes: Long? = null
+    )
 
     private fun base(): String = baseUrlProvider().trim().removeSuffix("/")
 
@@ -63,11 +81,31 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         }
     }
 
+    suspend fun sendReaderStatus(payload: ReaderStatusPayload, deviceId: String, secret: String): Boolean = withContext(Dispatchers.IO) {
+        val bodyMap = mutableMapOf<String, Any?>(
+            "pendingQueueCount" to payload.pendingQueueCount,
+            "currentMode" to payload.currentMode,
+            "lastQueueFlushAt" to payload.lastQueueFlushAt,
+            "batteryLevel" to payload.batteryLevel,
+            "networkStatus" to payload.networkStatus,
+            "statusMessage" to payload.statusMessage,
+            "appVersion" to BuildConfig.VERSION_NAME,
+            "appVersionCode" to BuildConfig.VERSION_CODE
+        )
+        if (payload.warnings.isNotEmpty()) bodyMap["warnings"] = payload.warnings.take(10)
+        val raw = CanonicalJson.stringify(bodyMap)
+        val path = "/api/v1/device-readers/android/status"
+        val headers = Signer.signedHeaders(deviceId, secret, "POST", path, raw)
+        val requestBuilder = Request.Builder().url("${base()}$path").post(raw.toRequestBody(jsonType))
+        headers.forEach { (key, value) -> requestBuilder.header(key, value) }
+        http.newCall(requestBuilder.build()).execute().use { response -> response.isSuccessful }
+    }
+
     suspend fun scanQr(qrCode: String, mode: String, deviceId: String, secret: String): ScanResult = withContext(Dispatchers.IO) {
         val bodyMap = mapOf(
             "credentialType" to "QR",
             "qrCode" to qrCode,
-            "mode" to mode,
+            "scanMode" to mode,
             "clientScannedAt" to Instant.now().toString(),
             "appVersion" to BuildConfig.VERSION_NAME,
             "appVersionCode" to BuildConfig.VERSION_CODE
@@ -79,9 +117,9 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         headers.forEach { (key, value) -> requestBuilder.header(key, value) }
         http.newCall(requestBuilder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext ScanResult(false, errorMessage(text, response.code), "red", text)
+            if (!response.isSuccessful) return@withContext ScanResult(false, errorMessage(text, response.code), "red", text, response.code)
             val obj = JSONObject(text)
-            ScanResult(true, obj.optString("message", "Scan diterima server."), "green", text)
+            ScanResult(true, obj.optString("message", "Scan diterima server."), "green", text, response.code)
         }
     }
 
@@ -90,20 +128,57 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         http.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IOException(errorMessage(text, response.code))
-            val obj = JSONObject(text)
-            VersionInfo(obj.optString("latestVersionName"), obj.optInt("latestVersionCode"), obj.optInt("minSupportedVersionCode"), obj.optBoolean("forceUpdate"), obj.optString("releaseNotes"))
+            parseVersionInfo(text)
         }
     }
 
     private fun JSONArray.toList(): List<String> = (0 until length()).map { optString(it) }
 
-    private fun errorMessage(text: String, code: Int): String = runCatching {
-        val obj = JSONObject(text)
-        val message = obj.opt("message")
-        when (message) {
-            is JSONArray -> (0 until message.length()).joinToString(", ") { message.optString(it) }
-            is String -> message
-            else -> "HTTP $code"
-        }
-    }.getOrDefault("HTTP $code")
+    internal fun parseVersionInfo(text: String): VersionInfo {
+        runCatching {
+            val obj = JSONObject(text)
+            VersionInfo(
+                obj.optString("latestVersionName"),
+                obj.optInt("latestVersionCode"),
+                obj.optInt("minSupportedVersionCode"),
+                obj.optBoolean("forceUpdate"),
+                obj.optString("releaseNotes").ifBlank { null },
+                obj.optString("downloadUrl").ifBlank { null },
+                obj.optString("apkSha256").ifBlank { null },
+                if (obj.has("apkSizeBytes")) obj.optLong("apkSizeBytes") else null
+            )
+        }.getOrNull()?.let { return it }
+        fun stringValue(name: String): String? = Regex("\\\"$name\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"").find(text)?.groupValues?.getOrNull(1)?.ifBlank { null }
+        fun intValue(name: String): Int = Regex("\\\"$name\\\"\\s*:\\s*(-?\\d+)").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        fun longValue(name: String): Long? = Regex("\\\"$name\\\"\\s*:\\s*(-?\\d+)").find(text)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        fun boolValue(name: String): Boolean = Regex("\\\"$name\\\"\\s*:\\s*(true|false)").find(text)?.groupValues?.getOrNull(1)?.toBoolean() ?: false
+        return VersionInfo(
+            stringValue("latestVersionName").orEmpty(),
+            intValue("latestVersionCode"),
+            intValue("minSupportedVersionCode"),
+            boolValue("forceUpdate"),
+            stringValue("releaseNotes"),
+            stringValue("downloadUrl"),
+            stringValue("apkSha256"),
+            longValue("apkSizeBytes")
+        )
+    }
+
+    private fun errorMessage(text: String, code: Int): String {
+        val parsed = runCatching {
+            val obj = JSONObject(text)
+            val message = obj.opt("message")
+            when (message) {
+                is JSONArray -> (0 until message.length()).joinToString(", ") { message.optString(it) }
+                is String -> message
+                else -> null
+            }
+        }.getOrNull()
+        if (!parsed.isNullOrBlank()) return parsed
+
+        val regexMessage = Regex("\"message\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.getOrNull(1)
+        if (!regexMessage.isNullOrBlank()) return regexMessage
+
+        return "HTTP $code"
+    }
 }
