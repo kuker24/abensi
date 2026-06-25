@@ -37,9 +37,11 @@ coverage/
 .playwright/
 playwright-report/
 test-results/
+blob-report/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/playwright-report-*/
+apps/web/blob-report/
 
 # Mutation testing
 .stryker-tmp/
