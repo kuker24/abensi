@@ -19,7 +19,7 @@
     "@nestjs/core": "11.1.19",
     "@nestjs/jwt": "11.0.0",
     "@nestjs/passport": "11.0.3",
-    "@nestjs/platform-express": "11.1.19",
+    "@nestjs/platform-express": "11.1.27",
     "@prisma/client": "5.22.0",
     "@schoolhub/shared": "file:../../packages/shared",
     "bcryptjs": "2.4.3",
