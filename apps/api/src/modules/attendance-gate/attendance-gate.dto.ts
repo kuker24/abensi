@@ -107,8 +107,15 @@ export class QrReaderScanDto {
   @IsString()
   qrCode!: string;
 
+  // Legacy Android builds sent `mode`; current builds send `scanMode` so
+  // physical reader identity and runtime scan mode stay explicitly separated.
+  @IsOptional()
   @IsEnum(AndroidReaderMode)
-  mode!: AndroidReaderMode;
+  mode?: AndroidReaderMode;
+
+  @IsOptional()
+  @IsEnum(AndroidReaderMode)
+  scanMode?: AndroidReaderMode;
 
   @IsOptional()
   @IsDateString()

@@ -4,6 +4,29 @@ import { businessDayBounds } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 
+function serializeJsonSafe(value: unknown): unknown {
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(serializeJsonSafe);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, serializeJsonSafe(item)])
+    );
+  }
+  return value;
+}
+
+function serializeAuditEntry(entry: any) {
+  return {
+    ...entry,
+    sequence: entry.sequence != null ? entry.sequence.toString() : null,
+    actor: entry.actor ?? null,
+    before: serializeJsonSafe(entry.before),
+    after: serializeJsonSafe(entry.after),
+    canonicalPayload: serializeJsonSafe(entry.canonicalPayload)
+  };
+}
+
 @Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
@@ -69,7 +92,7 @@ export class AuditService {
     ]);
 
     return {
-      items,
+      items: items.map(serializeAuditEntry),
       meta: buildPaginationMeta(total, pagination)
     };
   }

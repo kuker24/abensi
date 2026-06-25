@@ -1,20 +1,34 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  DeviceReaderStatus,
+  GateDirection,
+  PrayerType,
+  ReaderType,
   Role,
   SessionStatus,
   StudentAttendanceStatus,
   TeacherSessionStatus,
+  AttendanceReviewState,
   type Prisma
 } from '@prisma/client';
-import ExcelJS from 'exceljs';
 import { createHash } from 'node:crypto';
-import { businessDateKey, businessDayBounds, businessMonthBounds, businessMonthKey } from '../../common/business-time';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { addCalendarDays, businessDateKey, businessDayBounds, businessMonthBounds, businessMonthKey, localMinutesOfDay } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { AuthenticatedUser } from '../../common/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { writeAudit } from '../../common/audit-log';
 import type { RequestMeta } from '../../common/request-meta';
+import {
+  columnsFromRows,
+  renderReportDocument,
+  printDocumentRowLimitViolation,
+  REPORT_TYPE_TITLES,
+  type ExportFormat,
+  type ReportDocumentModel
+} from './report-document-exporter';
 
 const ATTENDANCE_STATUSES: StudentAttendanceStatus[] = [
   StudentAttendanceStatus.HADIR,
@@ -37,6 +51,8 @@ interface RecapFilters {
   teacherId?: string;
   studentId?: string;
   month?: string;
+  status?: string;
+  missingRequirement?: string;
 }
 
 interface MonthlyFilters {
@@ -91,6 +107,49 @@ function createAttendanceCounters(): Record<StudentAttendanceStatus, number> {
   };
 }
 
+const STUDENT_DAILY_STATUS_LABELS = {
+  HADIR_LENGKAP: 'Hadir lengkap',
+  BELUM_SCAN_DATANG: 'Belum scan datang',
+  BELUM_SCAN_PULANG: 'Belum scan pulang',
+  BELUM_ABSEN_KELAS: 'Belum diabsen guru',
+  BELUM_SCAN_SHOLAT: 'Belum scan sholat',
+  PERLU_VERIFIKASI: 'Perlu verifikasi'
+} as const;
+
+type StudentDailyFinalStatus = keyof typeof STUDENT_DAILY_STATUS_LABELS;
+type StudentDailyMissingRequirement = Exclude<StudentDailyFinalStatus, 'HADIR_LENGKAP'>;
+
+const STUDENT_DAILY_MISSING_LABELS: Record<StudentDailyMissingRequirement, string> = {
+  BELUM_SCAN_DATANG: 'Belum scan datang',
+  BELUM_SCAN_PULANG: 'Belum scan pulang',
+  BELUM_ABSEN_KELAS: 'Belum diabsen guru',
+  BELUM_SCAN_SHOLAT: 'Belum scan sholat',
+  PERLU_VERIFIKASI: 'Perlu verifikasi'
+};
+
+const STUDENT_DAILY_STATUS_ORDER: StudentDailyMissingRequirement[] = [
+  'BELUM_SCAN_DATANG',
+  'BELUM_SCAN_PULANG',
+  'BELUM_ABSEN_KELAS',
+  'BELUM_SCAN_SHOLAT',
+  'PERLU_VERIFIKASI'
+];
+
+const PRAYER_ORDER: PrayerType[] = [PrayerType.DHUHA, PrayerType.DZUHUR, PrayerType.ASHAR];
+
+function studentDailyStatusLabel(status: StudentDailyFinalStatus | string | null | undefined) {
+  return STUDENT_DAILY_STATUS_LABELS[status as StudentDailyFinalStatus] ?? String(status || 'Perlu verifikasi');
+}
+
+function parseLocalTimeMinutes(value: string | null | undefined, fallback: number) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || ''));
+  if (!match) return fallback;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+  return hour * 60 + minute;
+}
+
 function asPercent(value: number, total: number) {
   if (total <= 0) return 0;
   return Number(((value / total) * 100).toFixed(2));
@@ -108,6 +167,35 @@ function safeDateInput(value: string, mode: 'start' | 'end') {
   } catch {
     return null;
   }
+}
+
+const REPORT_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'Asia/Jakarta'
+});
+
+const REPORT_MONTH_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC'
+});
+
+function formatReportDate(date: Date) {
+  return REPORT_DATE_FORMATTER.format(date);
+}
+
+function formatReportMonth(monthLabel: string) {
+  const [year, month] = monthLabel.split('-').map((value) => Number(value));
+  if (!year || !month) return monthLabel;
+  return REPORT_MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function formatReportRangeLabel(range: DateRange) {
+  const fromLabel = formatReportDate(range.from);
+  const toLabel = formatReportDate(range.to);
+  return fromLabel === toLabel ? fromLabel : `${fromLabel} sampai ${toLabel}`;
 }
 
 @Injectable()
@@ -232,7 +320,8 @@ export class ReportingService {
     const cached = await this.getCached<Record<string, unknown>>(cacheKey);
     if (cached) return cached;
 
-    const [sessionsToday, closedSessions, openFlags, gateTapToday, teacherPresentToday] = await Promise.all([
+    const staffRoles = [Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER];
+    const [sessionsToday, closedSessions, openSessions, openFlags, gateTapToday, staffPresentToday, teacherPresentToday, prayerDhuhaToday, prayerDzuhurToday, activeAndroidReaders, studentCompleteness] = await Promise.all([
       this.prisma.session.count({
         where: {
           startsAt: { gte: dayStart, lte: dayEnd }
@@ -242,6 +331,12 @@ export class ReportingService {
         where: {
           startsAt: { gte: dayStart, lte: dayEnd },
           status: SessionStatus.CLOSED
+        }
+      }),
+      this.prisma.session.count({
+        where: {
+          startsAt: { gte: dayStart, lte: dayEnd },
+          status: SessionStatus.OPEN
         }
       }),
       this.prisma.reconciliationFlag.count({
@@ -254,6 +349,13 @@ export class ReportingService {
           tappedAt: { gte: dayStart, lte: dayEnd }
         }
       }),
+      this.prisma.gateLog.count({
+        where: {
+          direction: GateDirection.IN,
+          tappedAt: { gte: dayStart, lte: dayEnd },
+          user: { role: { in: staffRoles }, active: true }
+        }
+      }),
       this.prisma.teacherSessionPresence.count({
         where: {
           status: {
@@ -263,19 +365,70 @@ export class ReportingService {
             startsAt: { gte: dayStart, lte: dayEnd }
           }
         }
-      })
+      }),
+      this.prisma.prayerAttendanceLog.count({ where: { attendanceDate: businessDayBounds(dayStart).date, prayerType: PrayerType.DHUHA } }),
+      this.prisma.prayerAttendanceLog.count({ where: { attendanceDate: businessDayBounds(dayStart).date, prayerType: PrayerType.DZUHUR } }),
+      this.prisma.deviceReader.findMany({
+        where: { type: ReaderType.QR_ANDROID, status: DeviceReaderStatus.ACTIVE },
+        select: { id: true, name: true, locationName: true, locationLabel: true, allowedModes: true, lastSeenAt: true, lastSignedScanAt: true, status: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 10
+      }),
+      this.studentDailyCompleteness({ page: 1, limit: 1, skip: 0 }, { from: bounds.key, to: bounds.key })
     ]);
 
     const coverage = sessionsToday === 0 ? 0 : Number(((closedSessions / sessionsToday) * 100).toFixed(2));
+
+    const findReader = (mode: 'gate' | 'mushola') => activeAndroidReaders.find((reader) => {
+      const modes = (reader.allowedModes ?? []).map(String);
+      return mode === 'gate'
+        ? modes.includes('GERBANG') || modes.includes('GATE_IN') || modes.includes('GATE_OUT')
+        : modes.includes('MUSHOLA');
+    }) ?? null;
+    const readerPayload = (reader: typeof activeAndroidReaders[number] | null) => {
+      if (!reader) return null;
+      const lastSeenAt = reader.lastSignedScanAt || reader.lastSeenAt;
+      const online = lastSeenAt ? Date.now() - lastSeenAt.getTime() <= 5 * 60_000 : false;
+      return {
+        id: reader.id,
+        name: reader.name,
+        location: reader.locationName || reader.locationLabel || null,
+        status: reader.status,
+        online,
+        lastSeenAt,
+        allowedModes: reader.allowedModes
+      };
+    };
 
     const result = {
       date: dayStart.toISOString(),
       sessionsToday,
       closedSessions,
+      openSessions,
+      unclosedSessions: openSessions,
       attendanceCoveragePercent: coverage,
       anomalyOpenCount: openFlags,
+      openFlags,
       gateTapToday,
-      teacherPresenceCount: teacherPresentToday
+      gateLogsToday: gateTapToday,
+      staffPresentToday,
+      teacherPresenceCount: teacherPresentToday,
+      teacherTeachingToday: teacherPresentToday,
+      prayerDhuhaToday,
+      prayerDzuhurToday,
+      androidReaders: {
+        activeCount: activeAndroidReaders.length,
+        maxActive: 2,
+        gate: readerPayload(findReader('gate')),
+        mushola: readerPayload(findReader('mushola'))
+      },
+      studentCompleteness: studentCompleteness.summary,
+      studentCompleteCount: studentCompleteness.summary.completeCount,
+      studentMissingArrivalCount: studentCompleteness.summary.missingArrivalCount,
+      studentMissingDepartureCount: studentCompleteness.summary.missingDepartureCount,
+      studentMissingClassAttendanceCount: studentCompleteness.summary.missingClassAttendanceCount,
+      studentMissingPrayerCount: studentCompleteness.summary.missingPrayerCount,
+      studentNeedsVerificationCount: studentCompleteness.summary.needsVerificationCount
     };
 
     await this.setCached(cacheKey, result, date ? 60 : 10);
@@ -1326,9 +1479,418 @@ export class ReportingService {
     };
   }
 
+  async staffGateAttendance(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const staffRoles = [Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER];
+    const logs = await this.prisma.gateLog.findMany({
+      where: {
+        tappedAt: { gte: range.from, lte: range.to },
+        user: { role: { in: staffRoles }, active: true }
+      },
+      include: {
+        user: { select: { id: true, fullName: true, username: true, role: true } }
+      },
+      orderBy: [{ businessDate: 'asc' }, { user: { fullName: 'asc' } }, { tappedAt: 'asc' }]
+    });
+
+    const grouped = new Map<string, { userId: string; fullName: string; username: string; role: Role; date: string; datang: Date | null; pulang: Date | null }>();
+    for (const log of logs) {
+      const date = businessDateKey(log.businessDate ?? log.tappedAt);
+      const key = `${log.userId}:${date}`;
+      const current = grouped.get(key) ?? { userId: log.userId, fullName: log.user.fullName, username: log.user.username, role: log.user.role, date, datang: null, pulang: null };
+      if (log.direction === GateDirection.IN && (!current.datang || log.tappedAt < current.datang)) current.datang = log.tappedAt;
+      if (log.direction === GateDirection.OUT && (!current.pulang || log.tappedAt > current.pulang)) current.pulang = log.tappedAt;
+      grouped.set(key, current);
+    }
+
+    const rows = [...grouped.values()].map((item) => ({
+      userId: item.userId,
+      fullName: item.fullName,
+      username: item.username,
+      role: item.role,
+      date: item.date,
+      datang: item.datang?.toISOString() ?? null,
+      pulang: item.pulang?.toISOString() ?? null,
+      status: item.datang && item.pulang ? 'LENGKAP' : item.datang ? 'DATANG' : 'BELUM_SCAN',
+      note: item.datang && !item.pulang ? 'Belum scan pulang' : ''
+    }));
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
+  async teacherSessionActivity(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const sessions = await this.prisma.session.findMany({
+      where: this.buildSessionWhere(range, filters),
+      include: {
+        schoolClass: { select: { code: true, name: true } },
+        subject: { select: { code: true, name: true } },
+        teacher: { select: { id: true, fullName: true, username: true } },
+        teacherPresence: { select: { teacherId: true, status: true, checkInAt: true, checkOutAt: true } }
+      },
+      orderBy: { startsAt: 'asc' }
+    });
+
+    const rows = sessions.map((session) => {
+      const presence = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
+      return {
+        sessionId: session.id,
+        teacherId: session.teacherId,
+        teacherName: session.teacher.fullName,
+        username: session.teacher.username,
+        schoolClass: session.schoolClass.code,
+        subjectName: session.subject.name,
+        startsAt: session.startsAt.toISOString(),
+        endsAt: session.endsAt.toISOString(),
+        startedAt: presence?.checkInAt?.toISOString() ?? null,
+        closedAt: presence?.checkOutAt?.toISOString() ?? null,
+        status: presence?.status ?? session.status
+      };
+    });
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
+  async studentPrayerAttendance(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const logs = await this.prisma.prayerAttendanceLog.findMany({
+      where: {
+        scannedAt: { gte: range.from, lte: range.to },
+        ...(filters.studentId ? { studentId: filters.studentId } : {})
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            enrollments: { where: { active: true }, include: { schoolClass: { select: { code: true, name: true } } }, take: 1 }
+          }
+        }
+      },
+      orderBy: { scannedAt: 'desc' }
+    });
+    const readerIds = Array.from(new Set(logs.map((log) => log.readerId).filter(Boolean))) as string[];
+    const readers = readerIds.length ? await this.prisma.deviceReader.findMany({ where: { id: { in: readerIds } }, select: { id: true, name: true, locationName: true, locationLabel: true } }) : [];
+    const readerMap = new Map(readers.map((reader) => [reader.id, reader]));
+
+    const rows = logs.map((log) => ({
+      studentId: log.studentId,
+      fullName: log.student.fullName,
+      username: log.student.username,
+      schoolClass: log.student.enrollments[0]?.schoolClass?.code ?? null,
+      prayerType: log.prayerType,
+      date: businessDateKey(log.attendanceDate ?? log.scannedAt),
+      scannedAt: log.scannedAt.toISOString(),
+      reader: (log.readerId ? readerMap.get(log.readerId)?.name : null) ?? log.deviceId ?? '—',
+      scanMode: log.scanMode,
+      scanModeLabel: log.scanMode === 'GERBANG' || log.scanMode === 'GATE_IN' || log.scanMode === 'GATE_OUT' ? 'Gerbang' : 'Mushola',
+      status: 'TERCATAT'
+    }));
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
+  async studentWorshipRecap(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters);
+    const logs = await this.prisma.prayerAttendanceLog.findMany({
+      where: {
+        scannedAt: { gte: range.from, lte: range.to },
+        ...(filters.studentId ? { studentId: filters.studentId } : {})
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            enrollments: { where: { active: true }, include: { schoolClass: { select: { code: true, name: true } } }, take: 1 }
+          }
+        }
+      }
+    });
+
+    const grouped = new Map<string, { studentId: string; fullName: string; username: string; schoolClass: string | null; counters: Record<PrayerType, number> }>();
+    for (const log of logs) {
+      const existing = grouped.get(log.studentId) ?? {
+        studentId: log.studentId,
+        fullName: log.student.fullName,
+        username: log.student.username,
+        schoolClass: log.student.enrollments[0]?.schoolClass?.code ?? null,
+        counters: { DHUHA: 0, DZUHUR: 0, ASHAR: 0 }
+      };
+      existing.counters[log.prayerType] += 1;
+      grouped.set(log.studentId, existing);
+    }
+
+    const rows = [...grouped.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'id')).map((item) => ({
+      studentId: item.studentId,
+      fullName: item.fullName,
+      username: item.username,
+      schoolClass: item.schoolClass,
+      dhuhaCount: item.counters.DHUHA,
+      dzuhurCount: item.counters.DZUHUR,
+      asharCount: item.counters.ASHAR,
+      periodSummary: `${item.counters.DHUHA} Dhuha · ${item.counters.DZUHUR} Dzuhur · ${item.counters.ASHAR} Ashar`
+    }));
+
+    return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, ...this.paginate(rows, pagination) };
+  }
+
+  private businessDaysInRange(range: DateRange) {
+    const days: Array<ReturnType<typeof businessDayBounds>> = [];
+    let key = businessDateKey(range.from);
+    const endKey = businessDateKey(range.to);
+    for (let guard = 0; guard < 370; guard += 1) {
+      days.push(businessDayBounds(key));
+      if (key === endKey) break;
+      key = addCalendarDays(key, 1);
+    }
+    return days;
+  }
+
+  private async getAttendancePolicySnapshot() {
+    const policy = await this.prisma.attendancePolicy.findUnique({ where: { id: 1 } });
+    return {
+      requireStudentDhuha: policy?.requireStudentDhuha ?? true,
+      requireStudentDzuhur: policy?.requireStudentDzuhur ?? true,
+      requireStudentAsharForAfternoon: policy?.requireStudentAsharForAfternoon ?? true,
+      asharRequiredClassEndTime: policy?.asharRequiredClassEndTime ?? '15:00'
+    };
+  }
+
+  async studentDailyCompleteness(pagination: PaginationQuery, filters: RecapFilters) {
+    const range = this.resolveDateRange(filters, 1);
+    const days = this.businessDaysInRange(range);
+    const policy = await this.getAttendancePolicySnapshot();
+    const enrollments = await this.prisma.classEnrollment.findMany({
+      where: {
+        active: true,
+        administrativeStatus: 'ACTIVE',
+        ...(filters.classId ? { classId: filters.classId } : {}),
+        student: {
+          role: Role.SISWA,
+          active: true,
+          ...(filters.studentId ? { id: filters.studentId } : {})
+        }
+      },
+      include: {
+        schoolClass: { select: { id: true, code: true, name: true } },
+        student: { select: { id: true, fullName: true, username: true } }
+      },
+      orderBy: [{ schoolClass: { code: 'asc' } }, { student: { fullName: 'asc' } }]
+    });
+
+    const studentEnrollmentMap = new Map<string, typeof enrollments[number]>();
+    for (const enrollment of enrollments) {
+      if (!studentEnrollmentMap.has(enrollment.studentId)) studentEnrollmentMap.set(enrollment.studentId, enrollment);
+    }
+    const studentEnrollments = [...studentEnrollmentMap.values()];
+    const studentIds = studentEnrollments.map((item) => item.studentId);
+    const classIds = Array.from(new Set(studentEnrollments.map((item) => item.classId)));
+
+    if (!studentIds.length || !days.length) {
+      const emptySummary = {
+        studentCount: 0,
+        rowCount: 0,
+        completeCount: 0,
+        missingArrivalCount: 0,
+        missingDepartureCount: 0,
+        missingClassAttendanceCount: 0,
+        missingPrayerCount: 0,
+        needsVerificationCount: 0,
+        byStatus: Object.fromEntries(Object.keys(STUDENT_DAILY_STATUS_LABELS).map((status) => [status, 0]))
+      };
+      return { range: { from: range.from.toISOString(), to: range.to.toISOString() }, summary: emptySummary, items: [], meta: buildPaginationMeta(0, pagination) };
+    }
+
+    const [sessions, gateLogs, prayerLogs] = await Promise.all([
+      this.prisma.session.findMany({
+        where: {
+          classId: { in: classIds },
+          startsAt: { gte: range.from, lte: range.to }
+        },
+        select: {
+          id: true,
+          classId: true,
+          startsAt: true,
+          endsAt: true,
+          attendances: {
+            where: { studentId: { in: studentIds } },
+            select: { studentId: true, status: true, reviewState: true }
+          }
+        },
+        orderBy: { startsAt: 'asc' }
+      }),
+      this.prisma.gateLog.findMany({
+        where: { userId: { in: studentIds }, tappedAt: { gte: range.from, lte: range.to } },
+        select: { userId: true, direction: true, businessDate: true, tappedAt: true },
+        orderBy: { tappedAt: 'asc' }
+      }),
+      this.prisma.prayerAttendanceLog.findMany({
+        where: { studentId: { in: studentIds }, scannedAt: { gte: range.from, lte: range.to } },
+        select: { studentId: true, prayerType: true, attendanceDate: true, scannedAt: true },
+        orderBy: { scannedAt: 'asc' }
+      })
+    ]);
+
+    const sessionsByClassDate = new Map<string, typeof sessions>();
+    for (const session of sessions) {
+      const key = `${session.classId}:${businessDateKey(session.startsAt)}`;
+      const current = sessionsByClassDate.get(key) ?? [];
+      current.push(session);
+      sessionsByClassDate.set(key, current);
+    }
+
+    const gateByStudentDate = new Map<string, { in: Date | null; out: Date | null }>();
+    for (const log of gateLogs) {
+      const key = `${log.userId}:${businessDateKey(log.businessDate ?? log.tappedAt)}`;
+      const current = gateByStudentDate.get(key) ?? { in: null, out: null };
+      if (log.direction === GateDirection.IN && (!current.in || log.tappedAt < current.in)) current.in = log.tappedAt;
+      if (log.direction === GateDirection.OUT && (!current.out || log.tappedAt > current.out)) current.out = log.tappedAt;
+      gateByStudentDate.set(key, current);
+    }
+
+    const prayersByStudentDate = new Map<string, Set<PrayerType>>();
+    for (const log of prayerLogs) {
+      const key = `${log.studentId}:${businessDateKey(log.attendanceDate ?? log.scannedAt)}`;
+      const current = prayersByStudentDate.get(key) ?? new Set<PrayerType>();
+      current.add(log.prayerType);
+      prayersByStudentDate.set(key, current);
+    }
+
+    const cutoffMinute = parseLocalTimeMinutes(policy.asharRequiredClassEndTime, 15 * 60);
+    const rows = [] as Array<Record<string, unknown>>;
+
+    for (const day of days) {
+      for (const enrollment of studentEnrollments) {
+        const dateKey = day.key;
+        const studentKey = `${enrollment.studentId}:${dateKey}`;
+        const classSessions = sessionsByClassDate.get(`${enrollment.classId}:${dateKey}`) ?? [];
+        const gate = gateByStudentDate.get(studentKey) ?? { in: null, out: null };
+        const completedPrayers = prayersByStudentDate.get(studentKey) ?? new Set<PrayerType>();
+        const requiredPrayers = PRAYER_ORDER.filter((prayerType) => {
+          if (prayerType === PrayerType.DHUHA) return policy.requireStudentDhuha;
+          if (prayerType === PrayerType.DZUHUR) return policy.requireStudentDzuhur;
+          if (prayerType === PrayerType.ASHAR) return policy.requireStudentAsharForAfternoon && classSessions.some((session) => localMinutesOfDay(session.endsAt) >= cutoffMinute);
+          return false;
+        });
+        const requiredPrayerSet = new Set(requiredPrayers);
+        const attendanceRecords = classSessions.flatMap((session) => session.attendances.filter((attendance) => attendance.studentId === enrollment.studentId));
+        const confirmedAttendanceRecords = attendanceRecords.filter((attendance) => attendance.reviewState !== AttendanceReviewState.DEFAULTED);
+        const defaultedAttendanceCount = attendanceRecords.length - confirmedAttendanceRecords.length;
+        const presentCount = confirmedAttendanceRecords.filter((attendance) => attendance.status === StudentAttendanceStatus.HADIR || attendance.status === StudentAttendanceStatus.TELAT).length;
+        const nonPresentCount = confirmedAttendanceRecords.filter((attendance) => attendance.status !== StudentAttendanceStatus.HADIR && attendance.status !== StudentAttendanceStatus.TELAT).length;
+        const scheduledCount = classSessions.length;
+        const missingClassCount = Math.max(0, scheduledCount - confirmedAttendanceRecords.length);
+        const missingPrayerTypes = requiredPrayers.filter((prayerType) => !completedPrayers.has(prayerType));
+        const missingCodes: StudentDailyMissingRequirement[] = [];
+        if (!gate.in) missingCodes.push('BELUM_SCAN_DATANG');
+        if (!gate.out) missingCodes.push('BELUM_SCAN_PULANG');
+        if (missingClassCount > 0) missingCodes.push('BELUM_ABSEN_KELAS');
+        if (missingPrayerTypes.length > 0) missingCodes.push('BELUM_SCAN_SHOLAT');
+        if (nonPresentCount > 0) missingCodes.push('PERLU_VERIFIKASI');
+
+        const finalStatus: StudentDailyFinalStatus = missingCodes.length === 0
+          ? 'HADIR_LENGKAP'
+          : STUDENT_DAILY_STATUS_ORDER.find((status) => missingCodes.includes(status)) ?? 'PERLU_VERIFIKASI';
+        const missingLabels = missingCodes.map((code) => STUDENT_DAILY_MISSING_LABELS[code]);
+        const classAttendanceLabel = scheduledCount === 0
+          ? 'Tidak ada jadwal kelas'
+          : missingClassCount > 0
+            ? 'Belum diabsen guru'
+            : nonPresentCount > 0
+              ? 'Perlu verifikasi'
+              : `${presentCount}/${scheduledCount} hadir`;
+        const prayerAttendanceLabel = requiredPrayers.length === 0
+          ? 'Tidak wajib hari ini'
+          : missingPrayerTypes.length > 0
+            ? 'Belum scan sholat'
+            : `${completedPrayers.size}/${requiredPrayers.length} sholat tercatat`;
+
+        rows.push({
+          studentId: enrollment.studentId,
+          fullName: enrollment.student.fullName,
+          username: enrollment.student.username,
+          classId: enrollment.classId,
+          schoolClass: enrollment.schoolClass.code,
+          schoolClassName: enrollment.schoolClass.name,
+          date: dateKey,
+          gateArrivalAt: gate.in?.toISOString() ?? null,
+          gateDepartureAt: gate.out?.toISOString() ?? null,
+          classAttendanceSummary: {
+            scheduledCount,
+            recordedCount: confirmedAttendanceRecords.length,
+            defaultedCount: defaultedAttendanceCount,
+            presentCount,
+            missingCount: missingClassCount,
+            nonPresentCount
+          },
+          classAttendanceLabel,
+          prayerAttendanceSummary: {
+            required: requiredPrayers,
+            completed: PRAYER_ORDER.filter((prayerType) => requiredPrayerSet.has(prayerType) && completedPrayers.has(prayerType)),
+            missing: missingPrayerTypes,
+            requiredCount: requiredPrayers.length,
+            completedCount: PRAYER_ORDER.filter((prayerType) => requiredPrayerSet.has(prayerType) && completedPrayers.has(prayerType)).length
+          },
+          prayerAttendanceLabel,
+          finalStatus,
+          finalStatusLabel: studentDailyStatusLabel(finalStatus),
+          missingRequirementCodes: missingCodes,
+          missingRequirements: missingLabels,
+          note: missingLabels.length ? missingLabels.join(', ') : 'Hadir lengkap'
+        });
+      }
+    }
+
+    const statusFilter = String(filters.status || '').trim() as StudentDailyFinalStatus | '';
+    const missingFilter = String(filters.missingRequirement || '').trim() as StudentDailyMissingRequirement | '';
+    const filteredRows = rows.filter((row) => {
+      if (statusFilter && row.finalStatus !== statusFilter) return false;
+      if (missingFilter && !(row.missingRequirementCodes as StudentDailyMissingRequirement[]).includes(missingFilter)) return false;
+      return true;
+    });
+    const byStatus = Object.fromEntries(Object.keys(STUDENT_DAILY_STATUS_LABELS).map((status) => [status, filteredRows.filter((row) => row.finalStatus === status).length]));
+    const summary = {
+      studentCount: studentEnrollments.length,
+      rowCount: filteredRows.length,
+      completeCount: filteredRows.filter((row) => row.finalStatus === 'HADIR_LENGKAP').length,
+      missingArrivalCount: filteredRows.filter((row) => (row.missingRequirementCodes as StudentDailyMissingRequirement[]).includes('BELUM_SCAN_DATANG')).length,
+      missingDepartureCount: filteredRows.filter((row) => (row.missingRequirementCodes as StudentDailyMissingRequirement[]).includes('BELUM_SCAN_PULANG')).length,
+      missingClassAttendanceCount: filteredRows.filter((row) => (row.missingRequirementCodes as StudentDailyMissingRequirement[]).includes('BELUM_ABSEN_KELAS')).length,
+      missingPrayerCount: filteredRows.filter((row) => (row.missingRequirementCodes as StudentDailyMissingRequirement[]).includes('BELUM_SCAN_SHOLAT')).length,
+      needsVerificationCount: filteredRows.filter((row) => (row.missingRequirementCodes as StudentDailyMissingRequirement[]).includes('PERLU_VERIFIKASI')).length,
+      byStatus
+    };
+
+    return {
+      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      summary,
+      ...this.paginate(filteredRows, pagination)
+    };
+  }
+
+  private loadReportLogo(): Buffer | null {
+    const candidates = [
+      join(process.cwd(), 'assets', 'logoman1.jpeg'),
+      join(process.cwd(), 'apps', 'api', 'assets', 'logoman1.jpeg')
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) return readFileSync(candidate);
+    }
+    return null;
+  }
+
+  private normalizeExportFormat(format: string): ExportFormat {
+    const normalized = format.trim().toLowerCase();
+    if (normalized === 'csv' || normalized === 'xlsx' || normalized === 'pdf' || normalized === 'docx') return normalized;
+    throw new BadRequestException('format harus csv, xlsx, pdf, atau docx.');
+  }
+
   async exportReport(reportType: string, format: string, filters: RecapFilters, actor?: { sub: string; role: Role }, requestMeta?: RequestMeta): Promise<ExportResult> {
     const normalizedType = reportType.trim().toLowerCase();
-    const normalizedFormat = format.trim().toLowerCase();
+    const normalizedFormat = this.normalizeExportFormat(format);
 
     const supportedTypes = new Set([
       'recap_classes',
@@ -1336,15 +1898,21 @@ export class ReportingService {
       'recap_subjects',
       'recap_teachers',
       'teacher_monthly',
+      'staff_gate_attendance',
+      'teacher_session_activity',
+      'student_prayer_attendance',
+      'student_worship_recap',
+      'student_daily_complete_attendance',
+      'missing_arrival_scan',
+      'missing_departure_scan',
+      'class_present_no_gate_scan',
+      'gate_scan_no_class_attendance',
+      'prayer_recap',
       'audit_coverage'
     ]);
 
     if (!supportedTypes.has(normalizedType)) {
       throw new BadRequestException('reportType tidak didukung.');
-    }
-
-    if (normalizedFormat !== 'csv' && normalizedFormat !== 'xlsx') {
-      throw new BadRequestException('format harus csv atau xlsx.');
     }
 
     const exportPagination: PaginationQuery = {
@@ -1450,6 +2018,98 @@ export class ReportingService {
       }));
     }
 
+    if (normalizedType === 'staff_gate_attendance') {
+      const data = await this.staffGateAttendance(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        full_name: item.fullName,
+        username: item.username,
+        role: item.role,
+        date: item.date,
+        datang: item.datang,
+        pulang: item.pulang,
+        status: item.status,
+        note: item.note
+      }));
+    }
+
+    if (normalizedType === 'teacher_session_activity') {
+      const data = await this.teacherSessionActivity(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        teacher_id: item.teacherId,
+        teacher_name: item.teacherName,
+        username: item.username,
+        school_class: item.schoolClass,
+        subject_name: item.subjectName,
+        starts_at: item.startsAt,
+        ends_at: item.endsAt,
+        started_at: item.startedAt,
+        closed_at: item.closedAt,
+        status: item.status
+      }));
+    }
+
+    if (normalizedType === 'student_prayer_attendance') {
+      const data = await this.studentPrayerAttendance(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        student_id: item.studentId,
+        full_name: item.fullName,
+        username: item.username,
+        school_class: item.schoolClass,
+        prayer_type: item.prayerType,
+        date: item.date,
+        scanned_at: item.scannedAt,
+        reader: item.reader,
+        status: item.status
+      }));
+    }
+
+    if (normalizedType === 'student_worship_recap' || normalizedType === 'prayer_recap') {
+      const data = await this.studentWorshipRecap(exportPagination, filters);
+      rows = data.items.map((item) => ({
+        student_id: item.studentId,
+        full_name: item.fullName,
+        username: item.username,
+        school_class: item.schoolClass,
+        dhuha_count: item.dhuhaCount,
+        dzuhur_count: item.dzuhurCount,
+        ashar_count: item.asharCount,
+        period_summary: item.periodSummary
+      }));
+    }
+
+    if (normalizedType === 'student_daily_complete_attendance' || normalizedType === 'missing_arrival_scan' || normalizedType === 'missing_departure_scan' || normalizedType === 'class_present_no_gate_scan' || normalizedType === 'gate_scan_no_class_attendance') {
+      const missingRequirement = normalizedType === 'missing_arrival_scan'
+        ? 'BELUM_SCAN_DATANG'
+        : normalizedType === 'missing_departure_scan'
+          ? 'BELUM_SCAN_PULANG'
+          : filters.missingRequirement;
+      const data = await this.studentDailyCompleteness(exportPagination, { ...filters, missingRequirement });
+      rows = data.items
+        .filter((item) => {
+          if (normalizedType === 'class_present_no_gate_scan') {
+            const classSummary = item.classAttendanceSummary as { presentCount?: number } | undefined;
+            return Number(classSummary?.presentCount ?? 0) > 0 && (!item.gateArrivalAt || !item.gateDepartureAt);
+          }
+          if (normalizedType === 'gate_scan_no_class_attendance') {
+            return Boolean(item.gateArrivalAt || item.gateDepartureAt) && (item.missingRequirementCodes as string[]).includes('BELUM_ABSEN_KELAS');
+          }
+          return true;
+        })
+        .map((item) => ({
+          student_id: item.studentId,
+          full_name: item.fullName,
+          username: item.username,
+          school_class: item.schoolClass,
+          date: item.date,
+          gate_arrival_at: item.gateArrivalAt,
+          gate_departure_at: item.gateDepartureAt,
+          class_attendance: item.classAttendanceLabel,
+          prayer_attendance: item.prayerAttendanceLabel,
+          final_status: item.finalStatusLabel,
+          note: item.note
+        }));
+    }
+
     if (normalizedType === 'audit_coverage') {
       const data = await this.auditCoverage(exportPagination, filters);
       rows = data.items.map((item) => ({
@@ -1474,74 +2134,47 @@ export class ReportingService {
       this.prisma.attendanceOverride.count({ where: { date: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
       this.prisma.attendanceCorrectionEvent.count({ where: { createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } })
     ]);
+
+    const limitViolation = printDocumentRowLimitViolation(normalizedFormat, rows.length);
+    if (limitViolation) throw new BadRequestException(limitViolation);
+
+    const title = REPORT_TYPE_TITLES[normalizedType] ?? 'Laporan Sekolah';
+    const generatedAt = new Date().toISOString();
+    const rangeLabel = filters.month && 'monthLabel' in rangeForMeta
+      ? `Bulan ${formatReportMonth((rangeForMeta as DateRange & { monthLabel: string }).monthLabel)}`
+      : formatReportRangeLabel(rangeForMeta);
     const metadata = {
-      generatedAt: new Date().toISOString(),
-      generatedBy: actor?.sub ?? 'unknown',
+      generatedAt,
+      generatedBy: actor?.role ?? 'unknown',
       reportType: normalizedType,
       format: normalizedFormat,
-      filters,
+      filters: { ...filters } as Record<string, unknown>,
       warning: openAnomalyCount > 0 ? 'Periode ini masih memiliki anomali OPEN. Laporan belum final tanpa verifikasi.' : null,
-      counts: { overrideCount, openAnomalyCount, resolvedAnomalyCount, correctionCount }
+      counts: { overrideCount, openAnomalyCount, resolvedAnomalyCount, correctionCount },
+      range: {
+        from: rangeForMeta.from.toISOString(),
+        to: rangeForMeta.to.toISOString(),
+        label: rangeLabel
+      }
     };
-    rows = [{ report_metadata: JSON.stringify(metadata) }, ...rows.map((row) => ({ evidence_label: 'normal', ...row }))];
 
-    const timestamp = new Date().toISOString().replaceAll(':', '-').replace('T', '_').slice(0, 19);
-    const filename = `${normalizedType}_${timestamp}.${normalizedFormat}`;
+    const document: ReportDocumentModel = {
+      title,
+      subtitle: 'Dokumen resmi rekapitulasi presensi SIAB2',
+      institution: 'MAN 1 Rokan Hulu',
+      applicationName: 'SIAB2 - Sistem Informasi Akademik Berkarakter',
+      addressLine: 'Dokumen resmi internal madrasah - MAN 1 Rokan Hulu',
+      metadata,
+      columns: columnsFromRows(rows),
+      rows,
+      logo: this.loadReportLogo()
+    };
 
-    if (normalizedFormat === 'csv') {
-      const csvText = this.toCsv(rows);
-      const buffer = Buffer.from(csvText, 'utf-8');
-      const checksum = createHash('sha256').update(buffer).digest('hex');
-      if (actor) await this.prisma.$transaction(async (tx) => {
-        await writeAudit(tx, {
-          actorId: actor.sub,
-          actorRole: actor.role,
-          module: 'reporting',
-          action: 'report.exported',
-          resource: 'report',
-          resourceId: normalizedType,
-          requestIp: requestMeta?.requestIp ?? null,
-          requestDevice: requestMeta?.requestDevice ?? null,
-          after: { ...metadata, checksum, filename } as unknown as Prisma.InputJsonValue
-        });
-      });
-      return { buffer, contentType: 'text/csv; charset=utf-8', filename, checksum };
-    }
+    const rendered = await renderReportDocument(document, normalizedFormat);
+    const checksum = createHash('sha256').update(rendered.buffer).digest('hex');
+    const timestamp = generatedAt.replaceAll(':', '-').replace('T', '_').slice(0, 19);
+    const filename = `${normalizedType}_${timestamp}.${rendered.extension}`;
 
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'SchoolHub e-Hadir';
-    workbook.created = new Date();
-
-    const worksheet = workbook.addWorksheet('report');
-    const exportRows = rows.length > 0 ? rows : [{ message: 'Tidak ada data' }];
-    const columns = Array.from(new Set(exportRows.flatMap((row) => Object.keys(row))));
-
-    worksheet.columns = columns.map((key) => ({
-      header: key,
-      key,
-      width: Math.min(Math.max(key.length + 4, 14), 40)
-    }));
-
-    for (const row of exportRows) {
-      worksheet.addRow(
-        Object.fromEntries(
-          columns.map((key) => {
-            const value = row[key];
-            if (value === null || value === undefined) return [key, ''];
-            if (value instanceof Date) return [key, value.toISOString()];
-            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return [key, value];
-            return [key, JSON.stringify(value)];
-          })
-        )
-      );
-    }
-
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-
-    const raw = await workbook.xlsx.writeBuffer();
-    const buffer = Buffer.from(raw);
-    const checksum = createHash('sha256').update(buffer).digest('hex');
     if (actor) await this.prisma.$transaction(async (tx) => {
       await writeAudit(tx, {
         actorId: actor.sub,
@@ -1557,10 +2190,11 @@ export class ReportingService {
     });
 
     return {
-      buffer,
-      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: rendered.buffer,
+      contentType: rendered.contentType,
       filename,
       checksum
     };
   }
+
 }

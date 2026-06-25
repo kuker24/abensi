@@ -48,7 +48,7 @@ export class ReportingController {
 
   @Get('dashboard')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
   @Capabilities('reports.operational.read')
   dashboard(@Query('date') date?: string) {
     return this.reportingService.dashboard(date);
@@ -56,7 +56,7 @@ export class ReportingController {
 
   @Get('class/:classId/monthly')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
   @Capabilities('reports.school.read')
   classMonthly(@Param('classId') classId: string, @Query('month') month?: string) {
     return this.reportingService.classMonthly(classId, month);
@@ -64,7 +64,7 @@ export class ReportingController {
 
   @Get('trend')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
   @Capabilities('reports.operational.read')
   trend(@Query('days') days?: string) {
     const parsedDays = Number(days ?? '7');
@@ -73,7 +73,7 @@ export class ReportingController {
 
   @Get('live-monitor')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
   @Capabilities('reports.operational.read')
   liveMonitor(@Query('page') page?: string, @Query('limit') limit?: string) {
     const pagination = parsePagination({
@@ -87,7 +87,7 @@ export class ReportingController {
 
   @Sse('live-monitor/stream')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER)
   @Capabilities('reports.operational.read')
   streamLiveMonitor(
     @Query('limit') limit?: string,
@@ -116,7 +116,7 @@ export class ReportingController {
 
       void (async () => {
         const payload = await this.verifyStreamCookie(request);
-        const allowedRoles = new Set<string>([Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
+        const allowedRoles = new Set<string>([Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
         if (!allowedRoles.has(payload.role)) throw new ForbiddenException('Akses live monitor ditolak.');
 
         const perUserLimit = Number(process.env.SSE_MAX_CONNECTIONS_PER_USER ?? '3');
@@ -150,7 +150,7 @@ export class ReportingController {
 
   @Get('my-attendance')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
   @Capabilities('reports.self.read')
   myAttendance(
     @CurrentUser() user: { sub: string; role: string },
@@ -162,7 +162,7 @@ export class ReportingController {
 
   @Get('recap/classes')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
   @Capabilities('reports.school.read')
   recapClasses(
     @Query('from') from?: string,
@@ -185,7 +185,7 @@ export class ReportingController {
 
   @Get('recap/students')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
   @Capabilities('reports.school.read')
   recapStudents(
     @Query('from') from?: string,
@@ -216,7 +216,7 @@ export class ReportingController {
 
   @Get('recap/subjects')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
   @Capabilities('reports.school.read')
   recapSubjects(
     @Query('from') from?: string,
@@ -239,7 +239,7 @@ export class ReportingController {
 
   @Get('recap/teachers')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
   @Capabilities('reports.school.read')
   recapTeachers(
     @Query('from') from?: string,
@@ -262,7 +262,7 @@ export class ReportingController {
 
   @Get('teacher-monthly')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
   @Capabilities('reports.school.read')
   teacherMonthly(
     @Query('month') month?: string,
@@ -280,9 +280,88 @@ export class ReportingController {
     return this.reportingService.teacherMonthly(pagination, { month, teacherId });
   }
 
+  @Get('staff-gate-attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  staffGateAttendance(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.staffGateAttendance(pagination, { from, to });
+  }
+
+  @Get('teacher-session-activity')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  teacherSessionActivity(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.teacherSessionActivity(pagination, { from, to, classId, subjectId, teacherId });
+  }
+
+  @Get('student-daily-completeness')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  studentDailyCompleteness(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('classId') classId?: string,
+    @Query('studentId') studentId?: string,
+    @Query('status') status?: string,
+    @Query('missingRequirement') missingRequirement?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.studentDailyCompleteness(pagination, { from, to, classId, studentId, status, missingRequirement });
+  }
+
+  @Get('student-prayer-attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  studentPrayerAttendance(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('studentId') studentId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.studentPrayerAttendance(pagination, { from, to, studentId });
+  }
+
+  @Get('student-worship-recap')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  studentWorshipRecap(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('studentId') studentId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.studentWorshipRecap(pagination, { from, to, studentId });
+  }
+
   @Get('audit-coverage')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
   @Capabilities('reports.school.read')
   auditCoverage(
     @Query('from') from?: string,
@@ -316,6 +395,8 @@ export class ReportingController {
     @Query('subjectId') subjectId?: string,
     @Query('teacherId') teacherId?: string,
     @Query('studentId') studentId?: string,
+    @Query('status') status?: string,
+    @Query('missingRequirement') missingRequirement?: string,
     @Query('month') month?: string,
     @CurrentUser() user?: { sub: string; role: Role },
     @Req() request?: Request,
@@ -331,6 +412,8 @@ export class ReportingController {
       subjectId,
       teacherId,
       studentId,
+      status,
+      missingRequirement,
       month
     }, user, request ? { requestIp: request.ip, requestDevice: request.headers['user-agent'] || null } : undefined);
 

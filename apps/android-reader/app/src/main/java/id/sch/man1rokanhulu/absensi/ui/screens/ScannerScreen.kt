@@ -12,14 +12,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,15 +55,22 @@ import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
 import id.sch.man1rokanhulu.absensi.scanner.BarcodeAnalyzer
 import id.sch.man1rokanhulu.absensi.scanner.ContinuousScanGate
 import id.sch.man1rokanhulu.absensi.security.QrParser
+import id.sch.man1rokanhulu.absensi.ui.components.ConfirmDialog
 import id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackCard
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackData
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
-import id.sch.man1rokanhulu.absensi.ui.components.ModeChipRow
 import id.sch.man1rokanhulu.absensi.ui.components.StatusBar
-import id.sch.man1rokanhulu.absensi.ui.components.modeLabel
+import id.sch.man1rokanhulu.absensi.ui.friendlyScanMessage
+import id.sch.man1rokanhulu.absensi.ui.friendlyScanTitle
+import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
+import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
+import id.sch.man1rokanhulu.absensi.ui.scanModeHelper
+import id.sch.man1rokanhulu.absensi.ui.scanModeTitle
+import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.io.IOException
 
 data class ScannerCallbacks(
@@ -69,7 +78,8 @@ data class ScannerCallbacks(
     val onModeChange: (String) -> Unit,
     val onBack: () -> Unit,
     val onHelp: () -> Unit,
-    val onRetryQueue: () -> Unit
+    val onRetryQueue: () -> Unit,
+    val onProvisioningLost: () -> Unit = {}
 )
 
 @Composable
@@ -90,11 +100,14 @@ fun ScannerScreen(
     val queue = remember { OfflineQueueRepository(context) }
     val scanGate = remember { ContinuousScanGate(3000) }
     val latestMode by rememberUpdatedState(mode)
-    var feedback by remember { mutableStateOf(FeedbackData("Siap Scan", "Arahkan QR siswa ke kamera. Tahan stabil sampai berbunyi.", FeedbackTone.IDLE)) }
+    val deviceTitle = readerDeviceTitle(allowedModes)
+    val deviceSummary = readerModeSummary(allowedModes)
+    var feedback by remember { mutableStateOf(FeedbackData("Siap Scan", "Arahkan QR ke kamera. Tahan stabil sampai berbunyi.", FeedbackTone.IDLE)) }
     var busy by remember { mutableStateOf(false) }
     var connection by remember { mutableStateOf(ConnectionStatus.CHECKING) }
     var torchOn by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
+    var confirmModeChange by remember { mutableStateOf(false) }
     var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
 
     DisposableEffect(config.keepScreenOn) {
@@ -148,6 +161,8 @@ fun ScannerScreen(
                                     val deviceId = config.deviceId ?: error("HP belum diaktifkan.")
                                     val secret = config.readerSecret ?: error("HP belum diaktifkan.")
                                     val scan = api.scanQr(parsed.qrCode, latestMode, deviceId, secret)
+                                    val friendly = friendlyScanMessage(scan.message)
+                                    val summary = parseServerScanSummary(scan.body)
                                     if (scan.ok) {
                                         historyStore.add(
                                             ScanHistoryEntry(
@@ -155,10 +170,13 @@ fun ScannerScreen(
                                                 mode = latestMode,
                                                 status = ScanHistoryStatus.SENT,
                                                 maskedCode = ScanHistoryStore.maskQr(parsed.opaqueCode),
-                                                message = scan.message.ifBlank { "Scan diterima." }
+                                                message = friendly.ifBlank { "Scan diterima." },
+                                                displayName = summary.displayName,
+                                                displayMeta = summary.displayMeta,
+                                                actionLabel = summary.actionLabel
                                             )
                                         )
-                                        FeedbackData("Berhasil", scan.message.ifBlank { "Scan diterima." }, FeedbackTone.SUCCESS)
+                                        FeedbackData(friendlyScanTitle(true, friendly), friendly.ifBlank { "Scan diterima." }, FeedbackTone.SUCCESS)
                                     } else {
                                         historyStore.add(
                                             ScanHistoryEntry(
@@ -166,10 +184,14 @@ fun ScannerScreen(
                                                 mode = latestMode,
                                                 status = ScanHistoryStatus.REJECTED,
                                                 maskedCode = ScanHistoryStore.maskQr(parsed.opaqueCode),
-                                                message = scan.message.ifBlank { "Ditolak server." }
+                                                message = friendly.ifBlank { "Scan ditolak server." },
+                                                displayName = summary.displayName,
+                                                displayMeta = summary.displayMeta,
+                                                actionLabel = summary.actionLabel
                                             )
                                         )
-                                        FeedbackData("Ditolak", scan.message.ifBlank { "Scan ditolak server." }, FeedbackTone.ERROR)
+                                        if (shouldResetProvisioning(scan.message, scan.statusCode)) callbacks.onProvisioningLost()
+                                        FeedbackData(friendlyScanTitle(false, friendly), friendly.ifBlank { "Scan ditolak server." }, FeedbackTone.ERROR)
                                     }
                                 } catch (e: IOException) {
                                     val saved = runCatching { queue.enqueue(raw, latestMode) }.getOrDefault(false)
@@ -190,7 +212,9 @@ fun ScannerScreen(
                                         FeedbackData("Antrean Penuh", "Scan belum tersimpan. Sambungkan internet lalu coba scan lagi.", FeedbackTone.ERROR)
                                     }
                                 } catch (e: Exception) {
-                                    FeedbackData("Ditolak", e.message ?: "QR tidak bisa dipakai.", FeedbackTone.ERROR)
+                                    val friendly = friendlyScanMessage(e.message)
+                                    if (shouldResetProvisioning(e.message)) callbacks.onProvisioningLost()
+                                    FeedbackData(friendlyScanTitle(false, friendly), friendly, FeedbackTone.ERROR)
                                 }
                                 feedback = nextFeedback
                                 callbacks.onResult(nextFeedback)
@@ -211,44 +235,61 @@ fun ScannerScreen(
             previewView
         }, modifier = Modifier.fillMaxSize())
 
-        // Aiming overlay (visual guide)
-        Box(
-            modifier = Modifier
+        Column(
+            Modifier
                 .fillMaxSize()
-                .padding(60.dp),
-            contentAlignment = Alignment.Center
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            Box(
-                Modifier
-                    .size(240.dp)
-                    .border(width = 2.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), shape = RoundedCornerShape(20.dp))
-                    .semantics { contentDescription = "Area scan QR code" }
-            )
-        }
-
-        Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatusBar(
                     connection = connection,
                     queueCount = queueCount,
-                    locationLabel = config.locationLabel.ifBlank { modeLabel(mode) },
+                    locationLabel = config.locationLabel.ifBlank { "$deviceTitle · $deviceSummary" },
                     compact = true
                 )
-                if (allowedModes.size > 1) {
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .padding(10.dp)
-                    ) {
-                        ModeChipRow(allowedModes, mode, callbacks.onModeChange)
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("MODE AKTIF", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.labelLarge)
+                        Text(scanModeTitle(mode), color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                        Text(scanModeHelper(mode), color = Color.White.copy(alpha = 0.84f), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
 
-            FeedbackCard(feedback)
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 12.dp, bottom = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val availableFrame = minOf(maxWidth - 24.dp, maxHeight - 16.dp, 236.dp)
+                val frameMin = if (maxHeight < 176.dp) 120.dp else 168.dp
+                val frameSize = availableFrame.coerceAtLeast(frameMin)
+                Box(
+                    Modifier
+                        .size(frameSize)
+                        .border(width = 2.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.82f), shape = RoundedCornerShape(20.dp))
+                        .semantics { contentDescription = "Area scan QR code" }
+                )
+            }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                FeedbackCard(feedback)
                 if (paused) {
                     Text(
                         "Scan dijeda. Tekan Mulai Scan untuk melanjutkan.",
@@ -259,39 +300,51 @@ fun ScannerScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = { paused = !paused },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (paused) MaterialTheme.colorScheme.primary else Color(0xFF232529))
-                    ) { Text(if (paused) "Mulai Scan" else "Jeda") }
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        colors = if (paused) scannerPrimaryButtonColors() else scannerDarkButtonColors()
+                    ) { Text(if (paused) "Mulai Scan" else "Jeda Scan") }
                     Button(
                         onClick = {
                             torchOn = !torchOn
                             cameraControl?.enableTorch(torchOn)
                         },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
-                    ) { Text(if (torchOn) "Matikan Lampu" else "Lampu") }
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        colors = scannerDarkButtonColors()
+                    ) { Text(if (torchOn) "Lampu ON" else "Lampu") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     if (queueCount > 0) {
                         Button(
                             onClick = callbacks.onRetryQueue,
-                            modifier = Modifier.weight(1f).height(48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) { Text("Kirim Antrean ($queueCount)") }
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            colors = scannerPrimaryButtonColors()
+                        ) { Text("Kirim ($queueCount)") }
                     }
                     Button(
                         onClick = callbacks.onHelp,
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        colors = scannerDarkButtonColors()
                     ) { Text("Bantuan") }
                     Button(
-                        onClick = callbacks.onBack,
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
-                    ) { Text("Tutup") }
+                        onClick = { confirmModeChange = true },
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        colors = scannerDarkButtonColors()
+                    ) { Text("Ubah Mode") }
                 }
             }
-            Spacer(Modifier.height(0.dp))
+        }
+
+        if (confirmModeChange) {
+            ConfirmDialog(
+                title = "Yakin ubah mode scan?",
+                message = "Scan akan ditutup agar operator memilih Mode Gerbang atau Mode Mushola.",
+                confirmLabel = "Ubah Mode",
+                onConfirm = {
+                    confirmModeChange = false
+                    callbacks.onBack()
+                },
+                onDismiss = { confirmModeChange = false }
+            )
         }
     }
 }
@@ -306,6 +359,8 @@ private fun CameraPermissionRequiredScreen(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -330,25 +385,67 @@ private fun CameraPermissionRequiredScreen(
             Button(
                 onClick = requestCameraPermission,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = scannerPrimaryButtonColors()
             ) { Text("Izinkan Kamera") }
             Button(
                 onClick = openAppSettings,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                colors = scannerDarkButtonColors()
             ) { Text("Buka Pengaturan HP") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = callbacks.onHelp,
                     modifier = Modifier.weight(1f).height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                    colors = scannerDarkButtonColors()
                 ) { Text("Bantuan") }
                 Button(
                     onClick = callbacks.onBack,
                     modifier = Modifier.weight(1f).height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232529))
+                    colors = scannerDarkButtonColors()
                 ) { Text("Kembali") }
             }
         }
     }
 }
+
+@Composable
+private fun scannerPrimaryButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = MaterialTheme.colorScheme.primary,
+    contentColor = MaterialTheme.colorScheme.onPrimary,
+    disabledContainerColor = Color(0xFF1E2025),
+    disabledContentColor = Color.White.copy(alpha = 0.58f)
+)
+
+@Composable
+private fun scannerDarkButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = Color(0xFF232529),
+    contentColor = Color.White,
+    disabledContainerColor = Color(0xFF1E2025),
+    disabledContentColor = Color.White.copy(alpha = 0.58f)
+)
+
+private data class ServerScanSummary(
+    val displayName: String? = null,
+    val displayMeta: String? = null,
+    val actionLabel: String? = null
+)
+
+private fun parseServerScanSummary(body: String): ServerScanSummary = runCatching {
+    val obj = JSONObject(body.ifBlank { "{}" })
+    val user = obj.optJSONObject("user")
+    val item = obj.optJSONObject("item")
+    val name = user?.optString("fullName")?.ifBlank { null }
+    val role = user?.optString("role")?.ifBlank { null }?.replace('_', ' ')
+    val className = user?.optString("className")?.ifBlank { null }
+    val action = obj.optString("action").ifBlank { null }
+    val kind = obj.optString("kind").ifBlank { null }
+    val prayer = item?.optString("prayerType")?.ifBlank { null }
+    val actionLabel = when {
+        !action.isNullOrBlank() -> action
+        kind == "PRAYER" && !prayer.isNullOrBlank() -> prayer.lowercase().replaceFirstChar { it.uppercase() }
+        kind == "CHECK_ONLY" -> "Cek QR"
+        else -> kind
+    }
+    val meta = listOfNotNull(role, className).joinToString(" · ").ifBlank { null }
+    ServerScanSummary(name, meta, actionLabel)
+}.getOrDefault(ServerScanSummary())

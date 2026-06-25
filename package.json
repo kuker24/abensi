@@ -9,6 +9,15 @@
     "prisma:generate": "prisma generate --schema prisma/schema.prisma && npm run prisma:generate --prefix apps/api",
     "prisma:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
+    "typecheck": "npm run typecheck:all",
+    "test:unit": "npm run test:api && npm run test:web && npm run test --prefix apps/worker",
+    "test:coverage": "npm run test --prefix apps/web -- --coverage --reporter=dot",
+    "e2e": "npm run test:e2e",
+    "e2e:ui": "npm run test:e2e:ui",
+    "e2e:report": "npm exec --prefix apps/web -- playwright show-report",
+    "knip": "npx --no-install knip",
+    "quality:ai": "bash scripts/ai-quality-checks.sh",
+    "quality:senior": "bash scripts/ai-senior-checks.sh",
     "build:all": "npm run build --prefix apps/api && npm run build --prefix apps/web",
     "lint:all": "npm run lint --prefix apps/api && npm run lint --prefix apps/web",
     "typecheck:all": "npm run typecheck --prefix apps/api && npm run typecheck --prefix apps/web",
@@ -25,6 +34,9 @@
     "test:a11y": "bash scripts/a11y_smoke.sh",
     "test:visual": "bash scripts/visual_regression.sh",
     "test:https-smoke": "bash scripts/https_smoke.sh",
+    "test:post-deploy-smoke": "bash scripts/test_post_deploy_smoke.sh",
+    "test:post-deploy-smoke:mjs": "node scripts/test_post_deploy_smoke_mjs.mjs",
+    "smoke:post-deploy": "node scripts/post_deploy_smoke.mjs",
     "test:https-ci-fixture": "bash scripts/https_ci_fixture.sh",
     "security:secrets": "bash scripts/secret_scan.sh",
     "security:container-scan": "bash scripts/container_scan.sh",
@@ -46,11 +58,10 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
-    "@cyclonedx/cyclonedx-npm": "^4.2.1",
+    "@cyclonedx/cyclonedx-npm": "^5.0.0",
     "prisma": "^5.22.0",
     "ts-node": "10.9.2",
     "typescript": "5.7.3"

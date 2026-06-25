@@ -45,12 +45,24 @@ class LocalConfig(context: Context) {
         set(value) = plain.edit().putString("deviceName", value).apply()
 
     var allowedModesCsv: String
-        get() = plain.getString("allowedModes", "GATE_IN,GATE_OUT,MUSHOLA,CHECK_ONLY") ?: "GATE_IN,GATE_OUT,MUSHOLA,CHECK_ONLY"
+        get() = plain.getString("allowedModes", "GERBANG,MUSHOLA") ?: "GERBANG,MUSHOLA"
         set(value) = plain.edit().putString("allowedModes", value).apply()
 
     var lastScanMode: String
-        get() = plain.getString("lastScanMode", "GATE_IN") ?: "GATE_IN"
+        get() = plain.getString("lastScanMode", "GERBANG") ?: "GERBANG"
         set(value) = plain.edit().putString("lastScanMode", value).apply()
+
+    var lastQueueFlushAt: String?
+        get() = plain.getString("lastQueueFlushAt", null)
+        set(value) {
+            val edit = plain.edit()
+            if (value.isNullOrBlank()) edit.remove("lastQueueFlushAt") else edit.putString("lastQueueFlushAt", value)
+            edit.apply()
+        }
+
+    var lastUpdateCheckAtMs: Long
+        get() = plain.getLong("lastUpdateCheckAtMs", 0L)
+        set(value) = plain.edit().putLong("lastUpdateCheckAtMs", value).apply()
 
     var autoOpenScanner: Boolean
         get() = plain.getBoolean("autoOpenScanner", false)
@@ -90,6 +102,7 @@ class LocalConfig(context: Context) {
         plain.edit()
             .remove("allowedModes")
             .remove("locationLabel")
+            .remove("lastQueueFlushAt")
             .apply()
     }
 }

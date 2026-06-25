@@ -1,6 +1,6 @@
-# Cara Build APK Android SchoolHub untuk Operator Awam
+# Cara Build APK Android SIAB2 Reader untuk Operator Awam
 
-Panduan ini untuk membuat APK **Absensi MAN 1 Rokan Hulu** tanpa perlu paham Gradle/Android teknis.
+Panduan ini untuk membuat APK **SIAB2 Reader** tanpa perlu paham Gradle/Android teknis.
 
 > Penting: APK dibuat di laptop/komputer operator, **bukan di VPS**. Secret reader tidak masuk APK. Secret dibuat saat provisioning dari web admin.
 
@@ -10,7 +10,7 @@ Panduan ini untuk membuat APK **Absensi MAN 1 Rokan Hulu** tanpa perlu paham Gra
 2. Python 3.11+.
 3. JDK 17 atau 21.
 4. Android Studio / Android SDK.
-5. Source project SchoolHub lengkap di laptop.
+5. Source project aplikasi lengkap di laptop.
 
 Kalau belum yakin laptop sudah siap, tidak apa-apa. Builder punya tombol **CEK KESIAPAN LAPTOP**.
 
@@ -42,7 +42,7 @@ Launcher akan otomatis:
 - memilih JDK 17/21 jika ada di laptop,
 - memilih Android SDK jika ada,
 - membuat environment Python,
-- membuka aplikasi **SchoolHub APK Builder**.
+- membuka aplikasi **SIAB2 APK Builder**.
 
 Di laptop ini JDK yang dipakai otomatis adalah:
 
@@ -64,12 +64,12 @@ Jika semua penting hijau, lanjut. Jika merah:
 - Android SDK harus terdeteksi. Builder akan mencari otomatis di `~/Android/Sdk`.
 - ADB boleh merah; itu hanya untuk install via kabel USB. APK tetap bisa dicopy manual.
 
-## Langkah 2 — Hubungkan ke Web SchoolHub
+## Langkah 2 — Hubungkan ke Web SIAB2
 
-Di tab **2 Hubungkan Web**, isi alamat web aktif, contoh beta:
+Di tab **2 Hubungkan Web**, isi alamat web aktif, contoh:
 
 ```text
-https://serious-hardware-stock-arrived.trycloudflare.com
+https://absensi.man1rokanhulu.cloud
 ```
 
 Klik:
@@ -92,7 +92,7 @@ Di tab **3 Atur APK**:
 
 1. Isi nama aplikasi, contoh:
    ```text
-   Absensi MAN 1 Rokan Hulu
+   SIAB2
    ```
 2. Pilih jenis APK:
    - **APK Percobaan**: untuk uji coba internal.
@@ -158,14 +158,14 @@ Catatan:
 
 1. Buka web admin.
 2. Masuk ke `/admin/devices`.
-3. Buka tab **Android QR Reader**.
-4. Buat QR provisioning.
+3. Buka tab **Aktivasi HP Scanner**.
+4. Pilih **HP Scanner 1** atau **HP Scanner 2**, lalu buat kode aktivasi.
 5. Buka APK di HP.
 6. Isi server URL.
-7. Scan QR provisioning.
-8. Mulai uji dengan mode **CHECK_ONLY** dulu.
+7. Tempel kode aktivasi dari admin.
+8. Mulai uji **Scan Gerbang** dan **Scan Mushola** sesuai kebutuhan operasional.
 
-Jika CHECK_ONLY sudah aman, lanjutkan mode `MUSHOLA`, `GATE_IN`, dan `GATE_OUT` sesuai kebutuhan.
+Kedua HP scanner bersifat fleksibel: saat pagi/pulang keduanya bisa dipakai Mode Gerbang, dan saat sholat keduanya bisa dipakai Mode Mushola.
 
 ## Troubleshooting Singkat
 
@@ -176,4 +176,4 @@ Jika CHECK_ONLY sudah aman, lanjutkan mode `MUSHOLA`, `GATE_IN`, dan `GATE_OUT` 
 | Web gagal dicek | Pastikan URL benar dan web bisa dibuka di browser |
 | APK Resmi gagal karena keystore | Buat/import keystore di Mode Lanjutan |
 | Install USB gagal | Copy APK manual ke HP atau install Android platform-tools |
-| QR provisioning kedaluwarsa | Buat QR provisioning baru dari admin web |
+| Kode aktivasi kedaluwarsa | Buat kode aktivasi baru dari admin web |

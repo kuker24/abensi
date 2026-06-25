@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BookOpen, Check, ChevronRight, PlayCircle, X } from 'lucide-react';
 import { apiFetch, go } from './api';
 import { Btn, IconBtn } from './ui';
+import { BRAND } from './branding';
 import type { User } from './types';
 
 const TUTORIAL_VERSION = '2026.05.03';
@@ -13,7 +14,7 @@ type TutorialStep = {
 };
 
 const COMMON_START: TutorialStep = {
-  title: 'Selamat datang di e-Hadir',
+  title: `Selamat datang di ${BRAND.compactName}`,
   body: 'Tutorial singkat ini membantu Anda mengenali menu penting. Anda bisa menyelesaikannya sekarang atau membukanya lagi dari tombol Panduan di bagian atas.'
 };
 
@@ -24,6 +25,14 @@ function stepsForRole(role?: string): TutorialStep[] {
       { title: 'Pusat Kontrol Developer', body: 'Gunakan halaman ini untuk memantau kesiapan sistem dan mengaktifkan tutorial ulang untuk akun tertentu.', action: { label: 'Buka Pusat Kontrol', path: '/admin/developer-control' } },
       { title: 'Aktifkan tutorial untuk pengguna', body: 'Cari nama pengguna, cek status tutorialnya, lalu klik “Aktifkan Tutorial Lagi”. Pengguna akan melihat panduan saat login berikutnya.' },
       { title: 'Pantau riwayat perubahan dan kesehatan sistem', body: 'Setiap aksi developer tercatat di Riwayat Perubahan. Gunakan catatan ini untuk memastikan perubahan tetap jelas dan bisa ditelusuri.', action: { label: 'Buka Riwayat Perubahan', path: '/admin/audit' } }
+    ];
+  }
+  if (role === 'KEPALA_SEKOLAH') {
+    return [
+      COMMON_START,
+      { title: 'Mulai dari Ringkasan Kepala Sekolah', body: 'Halaman ini berisi indikator hadir, scan gerbang, sesi, dan ibadah siswa dalam mode baca saja.', action: { label: 'Buka Ringkasan', path: '/admin/principal-dashboard' } },
+      { title: 'Baca laporan tanpa mengubah data', body: 'Gunakan menu laporan, kehadiran siswa, sholat siswa, dan aktivitas sekarang untuk memantau kondisi sekolah.' },
+      { title: 'Tindak lanjut melalui petugas', body: 'Jika ada masalah, koordinasikan dengan Admin/TU atau Guru Piket agar perubahan tetap dilakukan oleh petugas berwenang.' }
     ];
   }
   if (role === 'OPERATOR_IT') {

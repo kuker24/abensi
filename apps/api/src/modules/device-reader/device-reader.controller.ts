@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { Role } from '@prisma/client';
 import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
@@ -7,7 +8,7 @@ import { RolesGuard } from '../../common/roles.guard';
 import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AndroidProvisionCompleteDto, AndroidProvisionStartDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
+import { AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
 import { DeviceReaderService } from './device-reader.service';
 
 function pagination(page?: string, limit?: string) {
@@ -101,5 +102,31 @@ export class DeviceReaderProvisionController {
   @Post('complete')
   complete(@Body() body: AndroidProvisionCompleteDto) {
     return this.readerService.completeAndroidProvision(body);
+  }
+}
+
+@Controller('device-readers/android')
+export class DeviceReaderAndroidStatusController {
+  constructor(private readonly readerService: DeviceReaderService) {}
+
+  @Post('status')
+  status(
+    @Body() body: AndroidReaderStatusDto,
+    @Headers('x-reader-device-id') deviceId: string | undefined,
+    @Headers('x-reader-timestamp') timestamp: string | undefined,
+    @Headers('x-reader-nonce') nonce: string | undefined,
+    @Headers('x-reader-body-hash') bodyHash: string | undefined,
+    @Headers('x-reader-signature') signature: string | undefined,
+    @Req() request: Request
+  ) {
+    return this.readerService.recordAndroidStatus(body, {
+      deviceId,
+      timestamp,
+      nonce,
+      bodyHash,
+      signature,
+      method: request.method,
+      path: request.originalUrl.split('?')[0]
+    });
   }
 }

@@ -26,7 +26,11 @@ COPY --from=build /workspace/packages /app/packages
 COPY --from=build /workspace/apps/api/node_modules ./node_modules
 COPY --from=build /workspace/apps/api/dist ./dist
 COPY --from=build /workspace/apps/api/package*.json ./
+COPY --from=build --chown=node:node /workspace/apps/api/assets ./assets
+RUN find ./assets -type d -exec chmod 755 {} + \
+  && find ./assets -type f -exec chmod 644 {} +
 COPY --from=build /workspace/prisma ./prisma
+RUN mkdir -p /app/uploads/android-apk-releases && chown -R node:node /app/uploads
 
 USER node
 EXPOSE 3000

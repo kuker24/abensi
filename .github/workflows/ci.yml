@@ -56,8 +56,8 @@ jobs:
       SCHOOL_TIMEZONE: Asia/Jakarta
       SSO_ENABLED: 'false'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -87,7 +87,7 @@ jobs:
       - run: npx --prefix apps/web playwright install --with-deps chromium
       - run: npm run test:e2e
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: playwright-artifacts
           if-no-files-found: ignore
@@ -106,8 +106,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: temurin
           java-version: '17'
@@ -119,7 +119,7 @@ jobs:
       - name: Android static security, lint, tests, and debug build
         run: bash scripts/android_release_security.sh
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-reader-reports
           if-no-files-found: ignore
@@ -127,7 +127,7 @@ jobs:
             apps/android-reader/app/build/reports/
             apps/android-reader/app/build/test-results/
             artifacts/android-security/
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-reader-debug-apk
           if-no-files-found: error
@@ -156,15 +156,19 @@ jobs:
       SSO_ENABLED: 'false'
       ADMIN_BOOTSTRAP_ENABLED: 'true'
       ADMIN_USERNAME: admin.tu
-      ADMIN_PASSWORD: TataUsaha#2026Strong!
+      ADMIN_PASSWORD: TestFixtureAdminValue-123!
       ADMIN_FULL_NAME: Admin TU
-      DEFAULT_USER_PASSWORD: User#12345678
+      DEFAULT_USER_PASSWORD: TestFixtureUserValue-123!
       DEVELOPER_BOOTSTRAP_ENABLED: 'false'
-      DEVELOPER_PASSWORD: DeveloperOps#2026Strong!
-      BACKUP_ENCRYPTION_PASSPHRASE: ci-backup-passphrase-with-more-than-thirty-two-characters
+      DEVELOPER_PASSWORD: TestFixtureDeveloperValue-123!
+      BACKUP_ENCRYPTION_PASSPHRASE: test-fixture-backup-passphrase-change-me-not-production
       BACKUP_DIR: artifacts/docker-backups
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Prepare CI production test env fixture
+        run: |
+          cp .env.production.test.example .env.production.test
+          chmod 600 .env.production.test
       - run: docker compose -f docker-compose.production.yml config
       - run: docker compose -f docker-compose.production.yml build
       - run: docker compose -f docker-compose.production.yml up -d
@@ -179,6 +183,9 @@ jobs:
           exit 1
       - run: docker compose -f docker-compose.production.yml run --rm --no-deps api node dist/scripts/ensure-admin.js
       - run: |
+          mkdir -p artifacts/perf
+          BENCH_BASE_URL=http://localhost BENCH_OUTPUT=artifacts/perf/docker-http-low-rate.json node scripts/low_rate_http_benchmark.mjs
+      - run: |
           mkdir -p artifacts/docker-backups
           backup_json=$(bash scripts/backup_production.sh .env.production.test --reason ci-docker)
           backup_path=$(jq -r '.path' <<< "$backup_json")
@@ -189,11 +196,13 @@ jobs:
           docker compose -f docker-compose.production.yml ps > docker-diagnostics/compose-ps.txt || true
           docker compose -f docker-compose.production.yml logs --no-color > docker-diagnostics/compose-logs.txt || true
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: docker-diagnostics
           if-no-files-found: ignore
-          path: docker-diagnostics/
+          path: |
+            docker-diagnostics/
+            artifacts/perf/
       - if: always()
         run: docker compose -f docker-compose.production.yml down -v
 
@@ -203,13 +212,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Prepare CI production test env fixture
+        run: |
+          cp .env.production.test.example .env.production.test
+          chmod 600 .env.production.test
       - name: Install shellcheck
         run: |
           sudo apt-get update
@@ -223,17 +236,24 @@ jobs:
             scripts/bootstrap_ubuntu_24_04.sh \
             scripts/uat_smoke.sh \
             scripts/public_https_smoke.sh \
+            scripts/post_deploy_smoke.sh \
+            scripts/test_post_deploy_smoke.sh \
             scripts/https_smoke.sh \
             scripts/https_ci_fixture.sh \
             scripts/backup_production.sh \
             scripts/verify_backup.sh \
-            scripts/restore_backup.sh
-      - name: Compose validation for VPS topology
+            scripts/restore_backup.sh \
+            scripts/profile_vps_capacity.sh \
+            scripts/validate_vps_tuning.sh
+      - name: Compose validation for VPS topology and resource budget
         run: |
           docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config > artifacts-vps-compose.yml
+          docker compose -f docker-compose.production.yml -f docker-compose.vps.yml --env-file .env.production.test config --format json > artifacts-vps-compose.json
           grep -q '127.0.0.1' artifacts-vps-compose.yml
           grep -Eq '^[[:space:]]*published: "?8080"?[[:space:]]*$' artifacts-vps-compose.yml
           ! grep -Eq '^[[:space:]]*published: "?80"?[[:space:]]*$' artifacts-vps-compose.yml
+          node scripts/validate_compose_resources.mjs artifacts-vps-compose.json
+          bash scripts/validate_vps_tuning.sh
       - name: Deployment dry-run and evidence schema
         run: |
           chmod 600 .env.production.test
@@ -250,9 +270,11 @@ jobs:
           fi
       - name: Rollback dry-run
         run: bash scripts/rollback_production.sh --env-file .env.production.test --target-sha "$GITHUB_SHA" --dry-run
+      - name: Post-deploy smoke fixture
+        run: npm run test:post-deploy-smoke
       - name: UAT script has no legacy browser token dependency and uses geolocation contract
         run: |
-          ! grep -R -E 'accessToken|Authorization: Bearer|authorization: Bearer' scripts/uat_smoke.sh
+          ! grep -R -E 'accessToken|Authorization: Bearer|authorization: Bearer' scripts/uat_smoke.sh scripts/post_deploy_smoke.sh
           grep -q 'accuracyMeter' scripts/uat_smoke.sh
           grep -q 'browser_geolocation' scripts/uat_smoke.sh
           ! grep -R -E '"lat"|"lng"' scripts/uat_smoke.sh
@@ -267,11 +289,11 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: github/codeql-action/init@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357
         with:
           languages: javascript-typescript
-      - uses: github/codeql-action/analyze@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
+      - uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357
 
   postgres-integration:
     runs-on: ubuntu-latest
@@ -310,8 +332,8 @@ jobs:
       READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
       SCHOOL_TIMEZONE: Asia/Jakarta
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -331,7 +353,7 @@ jobs:
       - run: npm run audit:verify-chain
       - run: npm run verify:post-migration -- --json=artifacts/preflight/post-migration-verify.json
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: postgres-integration-artifacts
           if-no-files-found: ignore
@@ -363,8 +385,8 @@ jobs:
       WORKER_TOKEN: ci-worker-token-with-more-than-thirty-two-characters
       READER_SECRET_ENCRYPTION_KEY: ci-reader-secret-with-more-than-thirty-two-characters
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -372,7 +394,7 @@ jobs:
       - run: npm ci
       - run: npm run test:upgrade-migrations
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: upgrade-migration-artifacts
           if-no-files-found: ignore
@@ -384,8 +406,8 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -394,7 +416,7 @@ jobs:
             apps/api/package-lock.json
             apps/web/package-lock.json
             apps/worker/package-lock.json
-      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: temurin
           java-version: '17'
@@ -417,7 +439,7 @@ jobs:
           sudo apt-get install -y trivy
       - run: npm run security:container-scan
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: security-supply-chain-artifacts
           if-no-files-found: ignore
@@ -428,8 +450,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -440,7 +462,7 @@ jobs:
       - run: npm run test:a11y
       - run: npm run test:visual
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: web-quality-artifacts
           if-no-files-found: ignore
@@ -486,8 +508,8 @@ jobs:
       SCHOOL_TIMEZONE: Asia/Jakarta
       SSO_ENABLED: 'false'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -499,7 +521,7 @@ jobs:
       - run: npx --prefix apps/web playwright install --with-deps chromium
       - run: npm run test:e2e:full-stack
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: full-stack-e2e-artifacts
           if-no-files-found: ignore
@@ -553,8 +575,8 @@ jobs:
       PERF_MAX_ENDPOINT_MS: '2500'
       PERF_ITERATIONS: '3'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -579,7 +601,7 @@ jobs:
           BASE_URL=http://127.0.0.1:3000/api/v1 PERF_OUTPUT=artifacts/perf/perf-smoke.json npm run test:perf-smoke
           OBSERVABILITY_OUTPUT=artifacts/observability/log-check.json npm run test:observability-logs -- artifacts/observability/api.log
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: performance-observability-artifacts
           if-no-files-found: ignore
@@ -629,8 +651,8 @@ jobs:
       DEFAULT_USER_PASSWORD: User#12345678
       DEVELOPER_PASSWORD: Dev#12345678
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -641,7 +663,7 @@ jobs:
       - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web
       - run: npm run test:https-ci-fixture
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: tls-fixture-artifacts
           if-no-files-found: ignore
@@ -680,8 +702,8 @@ jobs:
       DEVELOPER_PASSWORD: Dev#12345678
       BACKUP_RESTORE_REQUIRE_SEEDED: 'true'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20.20.2'
           cache: npm
@@ -693,7 +715,7 @@ jobs:
       - run: psql postgresql://schoolhub:schoolhub_test_password@localhost:5432/postgres -c 'CREATE DATABASE schoolhub_restore;'
       - run: npm run ops:backup-restore-drill
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: backup-restore-artifacts
           if-no-files-found: ignore

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BookOpen, Building2, Calendar, Check, Clock, Copy, CreditCard, DoorOpen, Download, Eye, FileText, Flag, HelpCircle, KeyRound, ListChecks, Plus, QrCode, Radar, RefreshCw, Save, ShieldCheck, Smartphone, Users, Wifi, Zap, Activity, TrendingUp, AlertOctagon, ScanLine } from 'lucide-react';
-import { apiDownload, apiFetch, formatDateTime, go, itemsOf, metaOf, monthNow, qs, readStoredUser, today } from '../../api';
+import { AlertTriangle, BookOpen, Building2, Calendar, Check, CheckSquare, Clock, Copy, CreditCard, DoorOpen, Download, Eye, FileText, Flag, HelpCircle, KeyRound, ListChecks, Plus, QrCode, Radar, RefreshCw, Save, ShieldCheck, Smartphone, Users, Wifi, Zap, Activity, TrendingUp, AlertOctagon, ScanLine } from 'lucide-react';
+import { apiDownload, apiFetch, formatDateTime, go, itemsOf, metaOf, qs, readStoredUser, today } from '../../api';
+import { BRAND } from '../../branding';
 import { riskConfirm } from '../../confirm';
 import { useForm, useRemote } from '../../hooks';
 import { AsyncTable, Avatar, Btn, Card, DataTable, EmptyState, ErrorState, Field, FriendlyEmptyState, HorizontalBarList, LoadingState, PageHead, Pagination, Pill, ProgressRing, QuickActionCard, RoleTaskPanel, SelectInput, SimpleHelpBox, StackedBar, StatCardPremium, StatusPill, StepGuide, TextInput, TrendChart, statusLabel } from '../../ui';
@@ -58,6 +59,33 @@ function DashboardMiniList({ state, type }) {
   })}</div>;
 }
 
+const STUDENT_DAILY_STATUS_OPTIONS = [
+  { value: '', label: 'Semua status' },
+  { value: 'HADIR_LENGKAP', label: 'Hadir lengkap' },
+  { value: 'BELUM_SCAN_DATANG', label: 'Belum scan datang' },
+  { value: 'BELUM_SCAN_PULANG', label: 'Belum scan pulang' },
+  { value: 'BELUM_ABSEN_KELAS', label: 'Belum diabsen guru' },
+  { value: 'BELUM_SCAN_SHOLAT', label: 'Belum scan sholat' },
+  { value: 'PERLU_VERIFIKASI', label: 'Perlu verifikasi' }
+];
+
+const STUDENT_DAILY_MISSING_OPTIONS = [
+  { value: '', label: 'Semua kebutuhan' },
+  { value: 'BELUM_SCAN_DATANG', label: 'Belum scan datang' },
+  { value: 'BELUM_SCAN_PULANG', label: 'Belum scan pulang' },
+  { value: 'BELUM_ABSEN_KELAS', label: 'Belum diabsen guru' },
+  { value: 'BELUM_SCAN_SHOLAT', label: 'Belum scan sholat' },
+  { value: 'PERLU_VERIFIKASI', label: 'Perlu verifikasi' }
+];
+
+function friendlyDailyStatus(value) {
+  return STUDENT_DAILY_STATUS_OPTIONS.find((option) => option.value === value)?.label || statusLabel(value);
+}
+
+function studentDailySummary(data) {
+  return data?.summary || data?.studentCompleteness || {};
+}
+
 export function AdminDashboard() {
   const dashboard = useRemote(() => apiFetch('/reports/dashboard'), []);
   const trend = useRemote(() => apiFetch('/reports/trend?days=7'), []);
@@ -70,6 +98,7 @@ export function AdminDashboard() {
   const scheduled = Math.max(0, Number(d.scheduledSessions ?? d.sessionsToday ?? 0) - closed - open);
   const openFlags = Number(d.openFlags ?? itemsOf(flags.data).length) || 0;
   const gateScans = Number(d.gateTapCount ?? d.gateLogsToday ?? 0) || 0;
+  const studentSummary = studentDailySummary(d);
 
   return <div className="content dashboard-redesign"><PageHead eyebrow="COMMAND CENTER" title="Ringkasan Admin" sub="Pantau operasi sekolah hari ini dari satu layar: sesi, scan, cakupan, dan masalah aktif." actions={<><Btn onClick={() => go('/admin/reports')}><FileText size={14} /> Buka laporan</Btn><Btn variant="primary" onClick={() => go('/admin/anomaly')}><Flag size={14} /> Cek masalah</Btn></>} />
     <section className="dashboard-hero admin-hero">
@@ -85,16 +114,65 @@ export function AdminDashboard() {
       </div>
     </section>
 
-    <RoleTaskPanel title="Aksi cepat admin" tasks={[{ title: 'Cek sesi kelas', desc: 'Lihat kelas yang berjalan, selesai, atau terlewat.', icon: <Radar size={18} />, onClick: () => go('/admin/sessions') }, { title: 'Cek masalah', desc: 'Tindak data yang belum cocok atau perlu alasan.', icon: <Flag size={18} />, tone: 'warn', onClick: () => go('/admin/anomaly') }, { title: 'Buat akun / data', desc: 'Tambah guru, siswa, kelas, mapel, dan pendaftaran.', icon: <Users size={18} />, onClick: () => go('/admin/master-data') }, { title: 'Aktivasi HP Scanner', desc: 'Buat kode aktivasi untuk HP Android gerbang/mushola.', icon: <Smartphone size={18} />, tone: 'ok', onClick: () => go('/admin/devices') }]} />
+    <RoleTaskPanel title="Aksi cepat operasional" tasks={[{ title: 'Aktifkan HP Scanner', desc: 'Buat kode untuk HP Scanner 1 atau HP Scanner 2.', icon: <Smartphone size={18} />, tone: 'ok', onClick: () => go('/admin/devices') }, { title: 'Kelengkapan Siswa', desc: 'Cek datang, pulang, kelas, dan sholat siswa.', icon: <CheckSquare size={18} />, tone: 'warn', onClick: () => go('/admin/student-completeness') }, { title: 'Lihat Sesi Guru', desc: 'Pantau guru masuk kelas dan sesi belum ditutup.', icon: <Radar size={18} />, onClick: () => go('/admin/sessions') }, { title: 'Lihat Absensi Sholat', desc: 'Ringkasan Dhuha/Dzuhur dan daftar siswa scan.', icon: <Building2 size={18} />, onClick: () => go('/admin/prayer-attendance') }, { title: 'Kepala/Staf Hadir', desc: 'Datang-pulang kepala, TU, staf, guru, dan siswa di Mode Gerbang.', icon: <Users size={18} />, onClick: () => go('/admin/staff-attendance') }, { title: 'Laporan Hari Ini', desc: 'Unduh laporan resmi harian.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }, { title: 'Cetak Kartu QR', desc: 'Siapkan kartu QR siswa/guru.', icon: <CreditCard size={18} />, onClick: () => go('/admin/devices') }]} />
 
     {dashboard.loading ? <LoadingState /> : dashboard.error ? <ErrorState error={dashboard.error} onRetry={dashboard.refresh} /> : <><div className="grid g-4">
-      <StatCardPremium icon={<Activity size={20} />} label="Sesi Hari Ini" value={d.sessionsToday ?? 0} sub={`${closed} selesai · ${open} berjalan`} />
-      <StatCardPremium icon={<TrendingUp size={20} />} label="Cakupan Presensi" value={`${coverage}%`} sub="Presensi yang sudah tercatat" tone="ok" />
-      <StatCardPremium icon={<AlertOctagon size={20} />} label="Masalah Aktif" value={openFlags} sub="Perlu tindak lanjut" tone="bad" />
-      <StatCardPremium icon={<ScanLine size={20} />} label="Scan Gerbang" value={gateScans} sub="Catatan masuk/keluar" />
+      <StatCardPremium icon={<Smartphone size={20} />} label="HP Scanner aktif" value={d.androidReaders?.activeCount ?? 0} sub="Maksimal 2 HP scanner sekolah" tone={(d.androidReaders?.activeCount ?? 0) > 0 ? 'ok' : 'warn'} onClick={() => go('/admin/devices')} />
+      <StatCardPremium icon={<Building2 size={20} />} label="Mode fleksibel" value="Gerbang/Mushola" sub="Dipilih dari aplikasi HP" tone="ok" onClick={() => go('/admin/devices')} />
+      <StatCardPremium icon={<Users size={20} />} label="Kepala/Staf Hadir" value={d.staffPresentToday ?? 0} sub="Scan datang hari ini" onClick={() => go('/admin/staff-attendance')} />
+      <StatCardPremium icon={<CheckSquare size={20} />} label="Siswa hadir lengkap" value={studentSummary.completeCount ?? d.studentCompleteCount ?? 0} sub="Gerbang, kelas, dan sholat lengkap" tone="ok" onClick={() => go('/admin/student-completeness')} />
+      <StatCardPremium icon={<AlertTriangle size={20} />} label="Belum scan pulang" value={studentSummary.missingDepartureCount ?? d.studentMissingDepartureCount ?? 0} sub="Perlu diingatkan sebelum pulang" tone="warn" onClick={() => go('/admin/student-completeness')} />
+      <StatCardPremium icon={<CheckSquare size={20} />} label="Guru Mengajar" value={d.teacherTeachingToday ?? d.teacherPresenceCount ?? 0} sub="Masuk kelas hari ini" onClick={() => go('/admin/sessions')} />
+      <StatCardPremium icon={<Activity size={20} />} label="Sesi Belum Ditutup" value={d.unclosedSessions ?? open} sub={`${closed} selesai · ${open} berjalan`} tone={(d.unclosedSessions ?? open) > 0 ? 'warn' : 'ok'} />
+      <StatCardPremium icon={<Building2 size={20} />} label="Sholat Dhuha/Dzuhur" value={`${d.prayerDhuhaToday ?? 0}/${d.prayerDzuhurToday ?? 0}`} sub="Siswa sudah scan" onClick={() => go('/admin/prayer-attendance')} />
+      <StatCardPremium icon={<AlertOctagon size={20} />} label="Masalah Perlu Dicek" value={openFlags} sub="Perlu tindak lanjut" tone={openFlags > 0 ? 'bad' : 'ok'} onClick={() => go('/admin/anomaly')} />
+      <StatCardPremium icon={<ScanLine size={20} />} label="Scan Gerbang" value={gateScans} sub="Catatan masuk/pulang" />
     </div><div className="grid g-3 chart-summary"><Card title="Cakupan presensi" sub="Semakin penuh lingkaran, semakin lengkap data hari ini."><ProgressRing value={coverage} label="Presensi tercatat" sub={`${coverage}% dari data yang masuk`} /></Card><Card title="Status sesi hari ini" sub="Perbandingan sesi selesai, berjalan, dan terjadwal."><StackedBar segments={[{ label: 'Selesai', value: closed, tone: 'ok' }, { label: 'Berjalan', value: open, tone: 'info' }, { label: 'Terjadwal', value: scheduled, tone: 'warn' }]} total={Math.max(1, Number(d.sessionsToday ?? 0) || closed + open + scheduled)} /></Card><Card title="Kondisi cepat" sub="Masalah dan scan gerbang hari ini."><HorizontalBarList data={[{ label: 'Masalah aktif', value: openFlags }, { label: 'Scan gerbang', value: gateScans }]} labelKeys={['label']} valueKeys={['value']} /></Card></div></>}
 
     <div className="grid g-3" style={{ marginTop: 18 }}><Card title="Masalah terbaru" sub="Cocokkan data gerbang dan kelas" actions={<Btn size="sm" onClick={() => go('/admin/anomaly')}>Cek</Btn>}><DashboardMiniList state={flags} type="anomaly" /></Card><Card title="Aktivitas terbaru" sub="Aktivitas gerbang dan sesi" actions={<Btn size="sm" onClick={() => go('/admin/live-monitor')}>Lihat lengkap</Btn>}><DashboardMiniList state={live} type="activity" /></Card></div>{trend.loading ? <LoadingState label="Memuat tren…" /> : trend.error ? <ErrorState error={trend.error} onRetry={trend.refresh} /> : <Card title="Tren 7 hari" sub="Cakupan presensi per hari"><TrendChart data={trend.data} /></Card>}
+  </div>;
+}
+
+export function PrincipalDashboard() {
+  const dashboard = useRemote(() => apiFetch('/reports/dashboard'), []);
+  const trend = useRemote(() => apiFetch('/reports/trend?days=7'), []);
+  const live = useRemote(() => apiFetch('/reports/live-monitor?page=1&limit=8'), []);
+  const d = dashboard.data || {};
+  const coverage = Number(d.attendanceCoveragePercent ?? d.coveragePercent ?? 0) || 0;
+  const closed = Number(d.closedSessions ?? 0) || 0;
+  const open = Number(d.openSessions ?? 0) || 0;
+  const scheduled = Math.max(0, Number(d.scheduledSessions ?? d.sessionsToday ?? 0) - closed - open);
+  const openFlags = Number(d.openFlags ?? 0) || 0;
+  const gateScans = Number(d.gateTapCount ?? d.gateLogsToday ?? 0) || 0;
+  const studentSummary = studentDailySummary(d);
+
+  return <div className="content dashboard-redesign"><PageHead eyebrow="KEPALA SEKOLAH" title="Ringkasan Kepala Sekolah" sub="Mode baca saja untuk memantau kehadiran, sesi, scan gerbang, dan laporan utama tanpa mengubah data." actions={<><Btn onClick={() => go('/admin/reports')}><FileText size={14} /> Buka laporan</Btn><Btn variant="primary" onClick={() => go('/admin/live-monitor')}><Activity size={14} /> Aktivitas sekarang</Btn></>} />
+    <section className="dashboard-hero admin-hero">
+      <div className="dashboard-hero-copy">
+        <div className="eyebrow"><span className="dot" /> PANTAUAN READ-ONLY</div>
+        <h2>Melihat kondisi sekolah hari ini tanpa akses perubahan data.</h2>
+        <p>Gunakan angka ringkas ini untuk mengambil keputusan, lalu teruskan tindak lanjut ke Admin/TU, Operator IT, atau Guru Piket sesuai kewenangan.</p>
+        <div className="dashboard-hero-actions"><span className="chip"><ShieldCheck size={12} /> Hanya lihat data</span><span className="chip"><Eye size={12} /> Tidak ada tombol mutasi</span></div>
+      </div>
+      <div className="dashboard-hero-panel">
+        <ProgressRing value={coverage} label="Cakupan presensi" sub={`${coverage}% data sudah tercatat`} />
+        <div className="hero-kpi-grid"><span><b>{d.sessionsToday ?? 0}</b>Sesi hari ini</span><span><b>{gateScans}</b>Scan gerbang</span><span><b>{openFlags}</b>Masalah aktif</span></div>
+      </div>
+    </section>
+
+    <RoleTaskPanel title="Pantauan utama" tasks={[{ title: 'Kehadiran lengkap siswa', desc: 'Cek datang, pulang, kelas, dan sholat siswa.', icon: <CheckSquare size={18} />, tone: 'ok', onClick: () => go('/admin/student-completeness') }, { title: 'Sholat siswa', desc: 'Lihat ringkasan Dhuha, Dzuhur, dan Ashar.', icon: <Building2 size={18} />, onClick: () => go('/admin/prayer-attendance') }, { title: 'Kepala/Staf hadir', desc: 'Pantau scan datang-pulang staf dan guru.', icon: <Users size={18} />, onClick: () => go('/admin/staff-attendance') }, { title: 'Laporan sekolah', desc: 'Buka pratinjau laporan dan cetak pratinjau bila perlu.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }]} />
+
+    {dashboard.loading ? <LoadingState /> : dashboard.error ? <ErrorState error={dashboard.error} onRetry={dashboard.refresh} /> : <><div className="grid g-4">
+      <StatCardPremium icon={<Users size={20} />} label="Kepala/Staf Hadir" value={d.staffPresentToday ?? 0} sub="Scan datang hari ini" onClick={() => go('/admin/staff-attendance')} />
+      <StatCardPremium icon={<CheckSquare size={20} />} label="Siswa hadir lengkap" value={studentSummary.completeCount ?? d.studentCompleteCount ?? 0} sub="Gerbang, kelas, dan sholat lengkap" tone="ok" onClick={() => go('/admin/student-completeness')} />
+      <StatCardPremium icon={<AlertTriangle size={20} />} label="Belum scan pulang" value={studentSummary.missingDepartureCount ?? d.studentMissingDepartureCount ?? 0} sub="Perlu tindak lanjut petugas" tone="warn" onClick={() => go('/admin/student-completeness')} />
+      <StatCardPremium icon={<Activity size={20} />} label="Sesi Belum Ditutup" value={d.unclosedSessions ?? open} sub={`${closed} selesai · ${open} berjalan`} tone={(d.unclosedSessions ?? open) > 0 ? 'warn' : 'ok'} />
+      <StatCardPremium icon={<Building2 size={20} />} label="Sholat Dhuha/Dzuhur" value={`${d.prayerDhuhaToday ?? 0}/${d.prayerDzuhurToday ?? 0}`} sub="Siswa sudah scan" onClick={() => go('/admin/prayer-attendance')} />
+      <StatCardPremium icon={<ScanLine size={20} />} label="Scan Gerbang" value={gateScans} sub="Catatan masuk/pulang" />
+    </div><div className="grid g-3 chart-summary"><Card title="Cakupan presensi" sub="Ringkasan kelengkapan hari ini."><ProgressRing value={coverage} label="Presensi tercatat" sub={`${coverage}% dari data yang masuk`} /></Card><Card title="Status sesi hari ini" sub="Selesai, berjalan, dan terjadwal."><StackedBar segments={[{ label: 'Selesai', value: closed, tone: 'ok' }, { label: 'Berjalan', value: open, tone: 'info' }, { label: 'Terjadwal', value: scheduled, tone: 'warn' }]} total={Math.max(1, Number(d.sessionsToday ?? 0) || closed + open + scheduled)} /></Card><Card title="Kondisi cepat" sub="Masalah dan scan gerbang hari ini."><HorizontalBarList data={[{ label: 'Masalah aktif', value: openFlags }, { label: 'Scan gerbang', value: gateScans }]} labelKeys={['label']} valueKeys={['value']} /></Card></div></>}
+
+    <div className="grid g-3" style={{ marginTop: 18 }}><Card title="Aktivitas terbaru" sub="Aktivitas gerbang dan sesi" actions={<Btn size="sm" onClick={() => go('/admin/live-monitor')}>Lihat lengkap</Btn>}><DashboardMiniList state={live} type="activity" /></Card></div>
+    {trend.loading ? <LoadingState label="Memuat tren…" /> : trend.error ? <ErrorState error={trend.error} onRetry={trend.refresh} /> : <Card title="Tren 7 hari" sub="Cakupan presensi per hari"><TrendChart data={trend.data} /></Card>}
   </div>;
 }
 
@@ -112,7 +190,54 @@ export function HistoryPage() {
   const [page, setPage] = useState(1);
   const logs = useRemote(() => apiFetch(`/attendance/gate/logs${qs({ date, page, limit: 50 })}`), [date, page]);
   const prayers = useRemote(() => apiFetch(`/attendance/prayer/logs${qs({ date, page: 1, limit: 50 })}`), [date]);
-  return <div className="content"><PageHead eyebrow="RIWAYAT SCAN" title="Riwayat Scan" sub="Catatan scan gerbang dan mushola. Gunakan untuk mengecek jika ada data yang belum sesuai." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal riwayat scan" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={() => { logs.refresh(); prayers.refresh(); }}><RefreshCw size={14} /> Muat ulang</Btn></>} /><div className="grid g-2"><Card title="Log Gerbang" sub="Lapis 1 — scan masuk/keluar"><AsyncTable state={logs} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.tappedAt) }, { header: 'Nama', render: (r) => r.user?.fullName || r.userId }, { header: 'Peran', render: (r) => <StatusPill status={r.user?.role || '—'} /> }, { header: 'Arah', render: (r) => <StatusPill status={r.direction} /> }, { header: 'Alat', render: (r) => r.deviceId || '—' }]} /><Pagination meta={metaOf(logs.data)} onPage={setPage} /></Card><Card title="Log Mushola" sub="Scan QR Dhuha, Dzuhur, dan Ashar khusus siswa"><AsyncTable state={prayers} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.scannedAt) }, { header: 'Siswa', render: (r) => r.student?.fullName || r.studentId }, { header: 'Sholat', render: (r) => <StatusPill status={r.prayerType} /> }, { header: 'Sumber', render: (r) => <StatusPill status={r.source} /> }, { header: 'Alat', render: (r) => r.deviceId || '—' }]} /></Card></div></div>;
+  return <div className="content"><PageHead eyebrow="RIWAYAT SCAN" title="Riwayat Scan" sub="Catatan scan gerbang dan mushola. Gunakan untuk mengecek jika ada data yang belum sesuai." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal riwayat scan" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={() => { logs.refresh(); prayers.refresh(); }}><RefreshCw size={14} /> Muat ulang</Btn></>} /><div className="grid g-2"><Card title="Log Gerbang" sub="Lapis 1 — scan masuk/keluar"><AsyncTable state={logs} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.tappedAt) }, { header: 'Nama', render: (r) => r.user?.fullName || r.userId }, { header: 'Peran', render: (r) => <StatusPill status={r.user?.role || '—'} /> }, { header: 'Mode scan', render: (r) => r.scanModeLabel || androidLastUsedModeText(r.scanMode) }, { header: 'Device', render: (r) => r.deviceName || r.deviceId || '—' }, { header: 'Hasil', render: (r) => r.resultLabel || (r.direction === 'OUT' ? 'Pulang' : 'Datang') }]} /><Pagination meta={metaOf(logs.data)} onPage={setPage} /></Card><Card title="Log Mushola" sub="Scan QR Dhuha, Dzuhur, dan Ashar khusus siswa"><AsyncTable state={prayers} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.scannedAt) }, { header: 'Nama', render: (r) => r.student?.fullName || r.studentId }, { header: 'Peran', render: (r) => <StatusPill status={r.student?.role || 'SISWA'} /> }, { header: 'Mode scan', render: (r) => r.scanModeLabel || androidLastUsedModeText(r.scanMode) }, { header: 'Device', render: (r) => r.deviceName || r.deviceId || '—' }, { header: 'Hasil', render: (r) => r.resultLabel || 'Sholat' }]} /></Card></div></div>;
+}
+
+export function StaffAttendancePage({ notify }) {
+  const [date, setDate] = useState(today());
+  const canExport = readStoredUser()?.role !== 'KEPALA_SEKOLAH';
+  const state = useRemote(() => apiFetch(`/reports/staff-gate-attendance${qs({ from: date, to: date, page: 1, limit: 200 })}`), [date]);
+  async function exportReport() {
+    await apiDownload(`/reports/export${qs({ reportType: 'staff_gate_attendance', format: 'xlsx', from: date, to: date })}`);
+    notify('Laporan Kepala/Staf berhasil diunduh.');
+  }
+  return <div className="content"><PageHead eyebrow="KEPALA / STAF" title="Datang & Pulang" sub="Tabel sederhana scan Mode Gerbang untuk kepala, TU, dan staf/karyawan." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal staf" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn>{canExport && <Btn variant="primary" onClick={exportReport}><Download size={14} /> Export Laporan</Btn>}</>} /><Card title="Kehadiran Kepala/Staf" sub="Scan pertama = Datang. Scan berikutnya setelah jeda aman = Pulang."><AsyncTable state={state} columns={[{ header: 'Nama', render: (r) => r.fullName || r.username }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Datang', render: (r) => formatDateTime(r.datang) }, { header: 'Pulang', render: (r) => formatDateTime(r.pulang) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Keterangan', render: (r) => r.note || '—' }]} empty="Belum ada scan kepala/staf pada tanggal ini." /></Card></div>;
+}
+
+export function PrayerAttendancePage({ notify }) {
+  const [date, setDate] = useState(today());
+  const logs = useRemote(() => apiFetch(`/reports/student-prayer-attendance${qs({ from: date, to: date, page: 1, limit: 200 })}`), [date]);
+  const recap = useRemote(() => apiFetch(`/reports/student-worship-recap${qs({ from: date, to: date, page: 1, limit: 200 })}`), [date]);
+  const rows = itemsOf(logs.data);
+  const dhuha = rows.filter((r) => r.prayerType === 'DHUHA').length;
+  const dzuhur = rows.filter((r) => r.prayerType === 'DZUHUR').length;
+  async function exportLogs() {
+    await apiDownload(`/reports/export${qs({ reportType: 'student_prayer_attendance', format: 'xlsx', from: date, to: date })}`);
+    notify('Laporan sholat siswa berhasil diunduh.');
+  }
+  async function exportRecap() {
+    await apiDownload(`/reports/export${qs({ reportType: 'student_worship_recap', format: 'xlsx', from: date, to: date })}`);
+    notify('Rekap karakter/ibadah berhasil diunduh.');
+  }
+  return <div className="content"><PageHead eyebrow="SHOLAT SISWA" title="Absensi Sholat" sub="Pantau scan QR siswa di Mode Mushola untuk Dhuha dan Dzuhur." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal sholat" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={() => { logs.refresh(); recap.refresh(); }}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={exportLogs}><Download size={14} /> Export Log</Btn><Btn onClick={exportRecap}><Download size={14} /> Export Rekap</Btn></>} /><div className="grid g-4"><StatCardPremium icon={<Building2 size={18} />} label="Dhuha" value={dhuha} sub="Sudah scan" tone="ok" /><StatCardPremium icon={<Building2 size={18} />} label="Dzuhur" value={dzuhur} sub="Sudah scan" tone="ok" /><StatCardPremium icon={<Users size={18} />} label="Total Scan" value={rows.length} sub="Hari ini" /><StatCardPremium icon={<AlertTriangle size={18} />} label="Belum Scan" value="Lihat rekap" sub="Gunakan export/rekap kelas" tone="warn" /></div><div className="grid g-2" style={{ marginTop: 18 }}><Card title="Log Sholat" sub="Data scan siswa dari Mode Mushola"><AsyncTable state={logs} columns={[{ header: 'Siswa', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Sholat', render: (r) => <StatusPill status={r.prayerType} /> }, { header: 'Waktu', render: (r) => formatDateTime(r.scannedAt) }, { header: 'HP', render: (r) => r.reader || '—' }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} empty="Belum ada scan sholat pada tanggal ini." /></Card><Card title="Rekap Ibadah Siswa" sub="Hitungan Dhuha/Dzuhur per siswa"><AsyncTable state={recap} columns={[{ header: 'Siswa', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Dhuha', render: (r) => r.dhuhaCount ?? 0 }, { header: 'Dzuhur', render: (r) => r.dzuhurCount ?? 0 }, { header: 'Ringkasan', render: (r) => r.periodSummary || '—' }]} empty="Belum ada rekap ibadah pada tanggal ini." /></Card></div></div>;
+}
+
+export function StudentDailyCompletenessPage({ notify }) {
+  const [date, setDate] = useState(today());
+  const [classId, setClassId] = useState('');
+  const [status, setStatus] = useState('');
+  const [missingRequirement, setMissingRequirement] = useState('');
+  const classes = useRemote(() => apiFetch('/academic/classes?page=1&limit=200'), []);
+  const state = useRemote(() => apiFetch(`/reports/student-daily-completeness${qs({ from: date, to: date, classId, status, missingRequirement, page: 1, limit: 200 })}`), [date, classId, status, missingRequirement]);
+  const summary = studentDailySummary(state.data);
+  async function exportReport() {
+    await apiDownload(buildOfficialReportExportPath('student-daily-completeness', 'xlsx', { from: date, to: date, classId, status, missingRequirement }));
+    notify('Rekap Kehadiran Lengkap Siswa berhasil diunduh.');
+  }
+  return <div className="content"><PageHead eyebrow="KELENGKAPAN SISWA" title="Kehadiran Lengkap Siswa" sub="Siswa hadir lengkap jika sudah scan datang, scan pulang, diabsen guru, dan scan sholat saat wajib." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal kelengkapan siswa" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><SelectInput aria-label="Filter kelas" value={classId} onChange={(e) => setClassId(e.target.value)}><option value="">Semua kelas</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</SelectInput><SelectInput aria-label="Filter status akhir" value={status} onChange={(e) => setStatus(e.target.value)}>{STUDENT_DAILY_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><SelectInput aria-label="Filter kebutuhan kurang" value={missingRequirement} onChange={(e) => setMissingRequirement(e.target.value)}>{STUDENT_DAILY_MISSING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={exportReport}><Download size={14} /> Export</Btn></>} />
+    <div className="grid g-4"><StatCardPremium icon={<CheckSquare size={18} />} label="Siswa hadir lengkap" value={summary.completeCount ?? 0} sub="Semua syarat selesai" tone="ok" /><StatCardPremium icon={<AlertTriangle size={18} />} label="Belum scan datang" value={summary.missingArrivalCount ?? 0} sub="Cek Mode Gerbang pagi" tone="warn" /><StatCardPremium icon={<DoorOpen size={18} />} label="Belum scan pulang" value={summary.missingDepartureCount ?? 0} sub="Cek Mode Gerbang pulang" tone="warn" /><StatCardPremium icon={<Users size={18} />} label="Belum absen kelas" value={summary.missingClassAttendanceCount ?? 0} sub="Belum diabsen guru" tone="warn" /><StatCardPremium icon={<Building2 size={18} />} label="Belum scan sholat" value={summary.missingPrayerCount ?? 0} sub="Cek Mode Mushola" tone="warn" /><StatCardPremium icon={<Flag size={18} />} label="Perlu verifikasi" value={summary.needsVerificationCount ?? 0} sub="Butuh cek petugas" tone="bad" /></div>
+    <Card title="Rekap Harian Siswa" sub="Gerbang, kelas, dan sholat tetap menjadi bukti terpisah. Scan gerbang tidak otomatis mengisi presensi kelas."><AsyncTable state={state} empty="Belum ada data siswa pada filter ini." columns={[{ header: 'Nama', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Datang gerbang', render: (r) => r.gateArrivalAt ? formatDateTime(r.gateArrivalAt) : 'Belum scan datang' }, { header: 'Pulang gerbang', render: (r) => r.gateDepartureAt ? formatDateTime(r.gateDepartureAt) : 'Belum scan pulang' }, { header: 'Absensi kelas', render: (r) => r.classAttendanceLabel || 'Belum diabsen guru' }, { header: 'Sholat', render: (r) => r.prayerAttendanceLabel || 'Belum scan sholat' }, { header: 'Status akhir', render: (r) => <StatusPill status={r.finalStatus} /> }, { header: 'Keterangan', render: (r) => r.note || friendlyDailyStatus(r.finalStatus) }]} /></Card>
+  </div>;
 }
 
 export function AnomalyPage({ notify }) {
@@ -252,7 +377,7 @@ function TabBar({ value, onChange, groups, options }) {
 function UsersPanel({ notify }) {
   const currentUser = readStoredUser();
   const isDeveloper = currentUser?.role === 'DEVELOPER';
-  const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
+  const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
   const state = useRemote(() => apiFetch('/identity/users?page=1&limit=200'), []);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [roleFilter, setRoleFilter] = useState('ALL');
@@ -430,7 +555,7 @@ function StudentImportPanel({ notify }) {
       const data = await apiFetch('/academic/students/import/file/commit', { method: 'POST', body: formData() });
       setResult(data);
       if (data.committed) {
-        const qr = await apiFetch('/qr-credentials/bulk-generate', { method: 'POST', body: JSON.stringify({ label: 'QR Absensi SchoolHub', onlyMissing: true }) });
+        const qr = await apiFetch('/qr-credentials/bulk-generate', { method: 'POST', body: JSON.stringify({ label: 'QR SIAB2', onlyMissing: true }) });
         setResult({ ...data, qr });
         downloadAccounts(data.credentialRows);
         notify(`Import siswa selesai. ${data.result?.createdUsers || 0} akun baru, ${qr.count || 0} QR baru.`);
@@ -439,7 +564,7 @@ function StudentImportPanel({ notify }) {
       }
     } finally { setLoading(false); }
   }
-  return <Card title="Import Siswa Massal" sub="Upload CSV sederhana. Username/password boleh kosong, sistem akan membuat otomatis."><div className="form-grid"><Field label="File CSV/XLSX siswa"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }} /></Field><Btn type="button" variant="ghost" onClick={downloadTemplate}><Download size={14} /> Download Template</Btn><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Periksa File</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Simpan & Siapkan QR</Btn></div><SimpleHelpBox title="Format paling simpel" items={['Kolom wajib: Nama Lengkap dan Kelas/Jabatan.', 'Username boleh kosong; sistem membuat otomatis.', 'Password boleh kosong; sistem membuat password sementara dan mengunduh daftar akun.']} />{preview && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {preview.summary?.valid ?? 0}</Pill><Pill tone="bad">Error {preview.summary?.invalid ?? 0}</Pill><Pill>Akun baru {preview.summary?.newUsers ?? 0}</Pill><Pill>Kelas baru {preview.summary?.newClasses ?? 0}</Pill><Pill>Username otomatis {preview.summary?.generatedUsernames ?? 0}</Pill><Pill>Password otomatis {preview.summary?.generatedPasswords ?? 0}</Pill></div><DataTable rows={preview.rows || []} columns={[{ header: 'Baris', key: 'index' }, { header: 'Nama', key: 'fullName' }, { header: 'Username', key: 'username' }, { header: 'Kelas', key: 'classCode' }, { header: 'Status', render: (r) => r.existingUser ? 'Akun sudah ada' : 'Akun baru' }, { header: 'Kesalahan', render: (r) => r.errors?.join(', ') || 'Aman' }]} /></div>}{result?.committed && <div style={{ marginTop: 16 }}><SimpleHelpBox title="Import selesai" items={[`${result.result?.createdUsers || 0} akun siswa baru dibuat.`, `${result.result?.existingUsers || 0} akun lama dipakai ulang.`, `${result.result?.enrollments || 0} pendaftaran kelas dipastikan.`, `${result.qr?.count || 0} QR baru dibuat untuk yang belum punya.`]} /><Btn type="button" onClick={() => downloadAccounts(result.credentialRows)}><Download size={14} /> Download Ulang Daftar Akun</Btn></div>}</Card>;
+  return <Card title="Import Siswa Massal" sub="Upload CSV sederhana. Username/password boleh kosong, sistem akan membuat otomatis."><div className="import-upload-grid"><Field label="File CSV/XLSX siswa"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }} /></Field><div className="import-action-row"><Btn type="button" variant="ghost" onClick={downloadTemplate}><Download size={14} /> Download Template</Btn><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Periksa File</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Simpan & Siapkan QR</Btn></div></div><SimpleHelpBox title="Format paling simpel" items={['Kolom wajib: Nama Lengkap dan Kelas/Jabatan.', 'Username boleh kosong; sistem membuat otomatis.', 'Password boleh kosong; sistem membuat password sementara dan mengunduh daftar akun.']} />{preview && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {preview.summary?.valid ?? 0}</Pill><Pill tone="bad">Error {preview.summary?.invalid ?? 0}</Pill><Pill>Akun baru {preview.summary?.newUsers ?? 0}</Pill><Pill>Kelas baru {preview.summary?.newClasses ?? 0}</Pill><Pill>Username otomatis {preview.summary?.generatedUsernames ?? 0}</Pill><Pill>Password otomatis {preview.summary?.generatedPasswords ?? 0}</Pill></div><DataTable rows={preview.rows || []} columns={[{ header: 'Baris', key: 'index' }, { header: 'Nama', key: 'fullName' }, { header: 'Username', key: 'username' }, { header: 'Kelas', key: 'classCode' }, { header: 'Status', render: (r) => r.existingUser ? 'Akun sudah ada' : 'Akun baru' }, { header: 'Kesalahan', render: (r) => r.errors?.join(', ') || 'Aman' }]} /></div>}{result?.committed && <div style={{ marginTop: 16 }}><SimpleHelpBox title="Import selesai" items={[`${result.result?.createdUsers || 0} akun siswa baru dibuat.`, `${result.result?.existingUsers || 0} akun lama dipakai ulang.`, `${result.result?.enrollments || 0} pendaftaran kelas dipastikan.`, `${result.qr?.count || 0} QR baru dibuat untuk yang belum punya.`]} /><Btn type="button" onClick={() => downloadAccounts(result.credentialRows)}><Download size={14} /> Download Ulang Daftar Akun</Btn></div>}</Card>;
 }
 
 function ImportPanel({ notify }) {
@@ -463,7 +588,7 @@ function ImportPanel({ notify }) {
       notify(data.committed === false ? 'Impor belum dijalankan karena masih ada kesalahan.' : 'Impor berhasil disimpan.');
     } finally { setLoading(false); }
   }
-  return <Card title="Impor CSV/XLSX" sub="Unggah file, periksa hasilnya, lalu simpan. Kolom file pengguna: username (nama akun), fullName (nama lengkap), role (peran), password (kata sandi). Kolom akademik: type, code, name, yearLabel, username, classCode."><div className="form-grid"><Field label="Target"><SelectInput value={target} onChange={(e) => { setTarget(e.target.value); setFile(null); setPreview(null); }}><option value="users">Pengguna</option><option value="academic">Kelas/Mapel/Pendaftaran</option></SelectInput></Field><Field label="File CSV/XLSX"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); }} /></Field><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Periksa</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Simpan impor</Btn></div>{preview && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10 }}><Pill tone="ok">Valid {preview.summary?.valid ?? 0}</Pill><Pill tone="bad">Kesalahan {preview.summary?.invalid ?? 0}</Pill><Pill>Total {preview.summary?.total ?? 0}</Pill></div><DataTable rows={preview.rows || preview.items || []} columns={[{ header: 'Baris', key: 'index' }, { header: 'Data', render: (r) => r.username || r.code || r.classCode || '—' }, { header: 'Kesalahan', render: (r) => r.errors?.join(', ') || 'Aman' }]} /></div>}</Card>;
+  return <Card title="Impor CSV/XLSX" sub="Unggah file, periksa hasilnya, lalu simpan. Kolom file pengguna: username (nama akun), fullName (nama lengkap), role (peran), password (kata sandi). Kolom akademik: type, code, name, yearLabel, username, classCode."><div className="import-upload-grid import-upload-grid-advanced"><Field label="Target"><SelectInput value={target} onChange={(e) => { setTarget(e.target.value); setFile(null); setPreview(null); }}><option value="users">Pengguna</option><option value="academic">Kelas/Mapel/Pendaftaran</option></SelectInput></Field><Field label="File CSV/XLSX"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); }} /></Field><div className="import-action-row"><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Periksa</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Simpan impor</Btn></div></div>{preview && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {preview.summary?.valid ?? 0}</Pill><Pill tone="bad">Kesalahan {preview.summary?.invalid ?? 0}</Pill><Pill>Total {preview.summary?.total ?? 0}</Pill></div><DataTable rows={preview.rows || preview.items || []} columns={[{ header: 'Baris', key: 'index' }, { header: 'Data', render: (r) => r.username || r.code || r.classCode || '—' }, { header: 'Kesalahan', render: (r) => r.errors?.join(', ') || 'Aman' }]} /></div>}</Card>;
 }
 
 export function SchedulePage({ notify }) {
@@ -483,11 +608,15 @@ export function SchedulePage({ notify }) {
 }
 export function DevicesPage({ notify }) {
   const [tab, setTab] = useState('android');
-  const options = [['android', 'Aktivasi HP Scanner'], ['qr', 'Cetak Kartu'], ['version', 'Versi Aplikasi HP'], ['cards', 'Kartu RFID'], ['readers', 'Alat Lama'], ['scan', 'Input Manual Cadangan']];
+  const options = [['android', 'Aktivasi HP Scanner'], ['qr', 'Cetak Kartu'], ['apk', 'APK Update Center'], ['version', 'Versi Manual'], ['cards', 'Kartu RFID'], ['readers', 'Alat Lama'], ['scan', 'Input Manual Cadangan']];
   const pageCopy = tab === 'qr'
-    ? { title: 'Cetak Kartu e-Hadir', sub: 'Pilih kelas, sistem melengkapi QR resmi, lalu cetak kartu siap pakai.' }
-    : { title: 'Aktivasi HP Scanner', sub: 'Buat kode aktivasi untuk HP Android. Admin cukup pilih tempat HP dipakai, lalu salin kodenya ke aplikasi HP.' };
-  return <div className="content"><PageHead eyebrow="PERANGKAT ABSENSI" title={pageCopy.title} sub={pageCopy.sub} /><TabBar value={tab} onChange={setTab} options={options} />{tab === 'android' && <AndroidReaderPanel notify={notify} />}{tab === 'qr' && <QrCredentialPanel notify={notify} />}{tab === 'version' && <MobileVersionPanel notify={notify} />}{tab === 'cards' && <CardsPanel notify={notify} />}{tab === 'readers' && <ReadersPanel notify={notify} />}{tab === 'scan' && <ManualQrScanPanel notify={notify} />}</div>;
+    ? { title: 'Cetak Kartu SIAB2', sub: 'Pilih kelas, sistem melengkapi QR resmi, lalu cetak kartu siap pakai.' }
+    : { title: 'HP Scanner & Kartu', sub: 'Kelola 2 HP scanner sekolah yang bisa dipakai untuk Mode Gerbang atau Mode Mushola.' };
+  return <div className="content"><PageHead eyebrow="PERANGKAT ABSENSI" title={pageCopy.title} sub={pageCopy.sub} /><TabBar value={tab} onChange={setTab} options={options} />{tab === 'android' && <AndroidReaderPanel notify={notify} />}{tab === 'qr' && <QrCredentialPanel notify={notify} />}{tab === 'apk' && <AndroidApkUpdatePanel notify={notify} />}{tab === 'version' && <MobileVersionPanel notify={notify} />}{tab === 'cards' && <CardsPanel notify={notify} />}{tab === 'readers' && <ReadersPanel notify={notify} />}{tab === 'scan' && <ManualQrScanPanel notify={notify} />}</div>;
+}
+
+export function AndroidApkUpdatePage({ notify }) {
+  return <div className="content"><PageHead eyebrow="APK UPDATE CENTER" title="APK Update Center" sub="Upload, publish, dan pantau rilis APK HP Scanner. Tes di 1 HP dulu sebelum rollout production." actions={<Btn onClick={() => go('/admin/devices')}><Smartphone size={14} /> HP Scanner & Kartu</Btn>} /><AndroidApkUpdatePanel notify={notify} /></div>;
 }
 
 
@@ -496,7 +625,7 @@ function QrCredentialPanel({ notify }) {
   const classes = useRemote(() => apiFetch('/academic/classes?page=1&limit=200'), []);
   const [result, setResult] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [form, set, reset] = useForm({ userId: '', classId: '', label: 'QR Absensi SchoolHub', expiresAt: '', revokeReason: 'Kartu QR dicabut oleh admin karena kartu hilang atau diganti.' });
+  const [form, set, reset] = useForm({ userId: '', classId: '', label: 'QR SIAB2', expiresAt: '', revokeReason: 'Kartu QR dicabut oleh admin karena kartu hilang atau diganti.' });
   const credentials = useRemote(() => form.userId ? apiFetch(`/qr-credentials/users/${form.userId}?page=1&limit=20`) : Promise.resolve({ items: [] }), [form.userId]);
   const readiness = useRemote(() => apiFetch(`/qr-credentials/readiness${qs({ classId: form.classId })}`), [form.classId]);
 
@@ -562,7 +691,7 @@ function QrCredentialPanel({ notify }) {
   const status = readiness.data || {};
   const classStatus = form.classId ? status.classes?.find((item) => item.id === form.classId) : null;
 
-  return <div className="grid g-3"><Card title="Cetak Kartu e-Hadir" sub="Pilih kelas, lalu klik Cetak. Sistem otomatis melengkapi QR yang belum ada."><div className="user-preset-grid"><QuickActionCard title="Data Siswa" desc="Import atau rapikan akun siswa dulu jika data belum lengkap." icon={<Users size={18} />} actionLabel="Buka Data Siswa" onClick={() => go('/admin/master-data')} /><QuickActionCard title="Cetak Kartu" desc="Cetak semua kartu atau per kelas dengan QR resmi." icon={<CreditCard size={18} />} actionLabel="Cetak Sekarang" onClick={() => preparePrint(true)} tone="ok" /><QuickActionCard title="Kartu Hilang" desc="Cabut QR lama, buat QR baru, lalu cetak ulang satu kartu." icon={<RefreshCw size={18} />} actionLabel="Ganti QR" onClick={rotateLostCard} /></div><div className="form-grid" style={{ marginTop: 16 }}><Field label="Kelas"><SelectInput value={form.classId} onChange={(e) => set('classId', e.target.value)}><option value="">Semua siswa/guru aktif</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</SelectInput></Field><Field label="Cari siswa/guru untuk cetak ulang"><SelectInput value={form.userId} onChange={(e) => set('userId', e.target.value)}><option value="">Pilih hanya jika kartu hilang/cetak ulang</option>{itemsOf(users.data).map((u) => <option key={u.id} value={u.id}>{u.fullName} · {statusLabel(u.role)}</option>)}</SelectInput></Field><Btn variant="primary" type="button" onClick={() => preparePrint(true)}><CreditCard size={14} /> Cetak Kartu {selectedClass ? selectedClass.code : 'Semua'}</Btn><Btn type="button" onClick={exportCards}><Download size={14} /> Download Data Kartu</Btn><Btn type="button" variant="ghost" onClick={rotateLostCard}><RefreshCw size={14} /> Kartu Hilang / Ganti QR</Btn><Btn type="button" variant="ghost" onClick={() => window.open(generatorExportUrl({ autoPdf: '0' }), '_blank', 'noopener,noreferrer')}><Eye size={14} /> Buka Preview Generator</Btn></div><SimpleHelpBox title="Alur paling mudah" items={[`Pilih kelas ${selectedClass ? selectedClass.code : 'atau kosongkan untuk semua'}.`, 'Klik Cetak Kartu. QR yang belum ada dibuat otomatis.', 'Generator terbuka dan PDF akan disiapkan. Cetak jika indikator QR fallback = 0.']} /></Card><Card title="Kesiapan Kartu" sub={form.classId ? `Status kelas ${selectedClass?.code || ''}` : 'Status semua akun aktif'} actions={<Btn size="sm" onClick={readiness.refresh}><RefreshCw size={14} /> Cek ulang</Btn>}><div className="grid g-2 cards-grid"><ReadinessStat label="Target" value={status.totalTargetUsers ?? 0} /><ReadinessStat label="QR Resmi" value={status.activeQrCount ?? 0} tone="ok" /><ReadinessStat label="Belum QR" value={status.missingQrCount ?? 0} tone={(status.missingQrCount || 0) > 0 ? 'bad' : 'ok'} /><ReadinessStat label="Siswa Tanpa Kelas" value={status.studentsWithoutClass ?? 0} tone={(status.studentsWithoutClass || 0) > 0 ? 'bad' : 'ok'} /></div>{classStatus && <p className="muted" style={{ marginTop: 12 }}>{classStatus.ready ? 'Kelas ini siap cetak.' : `${classStatus.missingQrCount} siswa di kelas ini belum punya QR aktif.`}</p>}</Card><Card title="Pengaturan Lanjutan" sub="Hanya dipakai untuk kasus khusus seperti rotasi massal atau pencabutan QR." actions={<Btn size="sm" variant="ghost" onClick={() => setShowAdvanced((value) => !value)}>{showAdvanced ? 'Sembunyikan' : 'Tampilkan'}</Btn>}>{showAdvanced ? <div className="form-grid"><Field label="Label QR"><TextInput value={form.label} onChange={(e) => set('label', e.target.value)} /></Field><Field label="Kedaluwarsa opsional"><TextInput type="datetime-local" value={form.expiresAt} onChange={(e) => set('expiresAt', e.target.value)} /></Field><Btn type="button" onClick={generate}><Plus size={14} /> Buat untuk Pengguna</Btn><Btn type="button" onClick={rotate}><RefreshCw size={14} /> Ganti QR Pengguna</Btn><Btn type="button" variant="danger" onClick={bulkReplace}>Ganti Semua QR</Btn><Btn type="button" variant="ghost" onClick={() => { reset({ userId: '', classId: '', label: 'QR Absensi SchoolHub', expiresAt: '', revokeReason: 'Kartu QR dicabut oleh admin karena kartu hilang atau diganti.' }); setResult(null); }}>Reset</Btn></div> : <p className="muted">Tombol berisiko disembunyikan agar operator tidak salah mengganti QR massal.</p>}</Card>{form.userId && <Card title="Riwayat QR Pengguna"><AsyncTable state={credentials} columns={[{ header: 'Label', render: (r) => r.label || 'QR Absensi' }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Kode Pendek', render: (r) => r.shortCode || '—' }, { header: 'Terbit', render: (r) => formatDateTime(r.issuedAt) }, { header: 'Terakhir Dipakai', render: (r) => formatDateTime(r.lastUsedAt) }]} onRow={(r) => <div className="row"><Btn size="sm" variant="danger" onClick={() => revoke(r)}>Cabut</Btn></div>} /></Card>}<Card title="Hasil Aman" sub="Payload QR asli tidak ditampilkan di layar."><pre className="codeblock">{result ? JSON.stringify(result, null, 2) : 'Belum ada hasil.'}</pre></Card></div>;
+  return <div className="grid g-3"><Card title="Cetak Kartu SIAB2" sub="Pilih kelas, lalu klik Cetak. Sistem otomatis melengkapi QR yang belum ada."><div className="user-preset-grid"><QuickActionCard title="Data Siswa" desc="Import atau rapikan akun siswa dulu jika data belum lengkap." icon={<Users size={18} />} actionLabel="Buka Data Siswa" onClick={() => go('/admin/master-data')} /><QuickActionCard title="Cetak Kartu" desc="Cetak semua kartu atau per kelas dengan QR resmi." icon={<CreditCard size={18} />} actionLabel="Cetak Sekarang" onClick={() => preparePrint(true)} tone="ok" /><QuickActionCard title="Kartu Hilang" desc="Cabut QR lama, buat QR baru, lalu cetak ulang satu kartu." icon={<RefreshCw size={18} />} actionLabel="Ganti QR" onClick={rotateLostCard} /></div><div className="form-grid" style={{ marginTop: 16 }}><Field label="Kelas"><SelectInput value={form.classId} onChange={(e) => set('classId', e.target.value)}><option value="">Semua siswa/guru aktif</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</SelectInput></Field><Field label="Cari siswa/guru untuk cetak ulang"><SelectInput value={form.userId} onChange={(e) => set('userId', e.target.value)}><option value="">Pilih hanya jika kartu hilang/cetak ulang</option>{itemsOf(users.data).map((u) => <option key={u.id} value={u.id}>{u.fullName} · {statusLabel(u.role)}</option>)}</SelectInput></Field><Btn variant="primary" type="button" onClick={() => preparePrint(true)}><CreditCard size={14} /> Cetak Kartu {selectedClass ? selectedClass.code : 'Semua'}</Btn><Btn type="button" onClick={exportCards}><Download size={14} /> Download Data Kartu</Btn><Btn type="button" variant="ghost" onClick={rotateLostCard}><RefreshCw size={14} /> Kartu Hilang / Ganti QR</Btn><Btn type="button" variant="ghost" onClick={() => window.open(generatorExportUrl({ autoPdf: '0' }), '_blank', 'noopener,noreferrer')}><Eye size={14} /> Buka Preview Generator</Btn></div><SimpleHelpBox title="Alur paling mudah" items={[`Pilih kelas ${selectedClass ? selectedClass.code : 'atau kosongkan untuk semua'}.`, 'Klik Cetak Kartu. QR yang belum ada dibuat otomatis.', 'Generator terbuka dan PDF akan disiapkan. Cetak jika indikator QR fallback = 0.']} /></Card><Card title="Kesiapan Kartu" sub={form.classId ? `Status kelas ${selectedClass?.code || ''}` : 'Status semua akun aktif'} actions={<Btn size="sm" onClick={readiness.refresh}><RefreshCw size={14} /> Cek ulang</Btn>}><div className="grid g-2 cards-grid"><ReadinessStat label="Target" value={status.totalTargetUsers ?? 0} /><ReadinessStat label="QR Resmi" value={status.activeQrCount ?? 0} tone="ok" /><ReadinessStat label="Belum QR" value={status.missingQrCount ?? 0} tone={(status.missingQrCount || 0) > 0 ? 'bad' : 'ok'} /><ReadinessStat label="Siswa Tanpa Kelas" value={status.studentsWithoutClass ?? 0} tone={(status.studentsWithoutClass || 0) > 0 ? 'bad' : 'ok'} /></div>{classStatus && <p className="muted" style={{ marginTop: 12 }}>{classStatus.ready ? 'Kelas ini siap cetak.' : `${classStatus.missingQrCount} siswa di kelas ini belum punya QR aktif.`}</p>}</Card><Card title="Pengaturan Lanjutan" sub="Hanya dipakai untuk kasus khusus seperti rotasi massal atau pencabutan QR." actions={<Btn size="sm" variant="ghost" onClick={() => setShowAdvanced((value) => !value)}>{showAdvanced ? 'Sembunyikan' : 'Tampilkan'}</Btn>}>{showAdvanced ? <div className="form-grid"><Field label="Label QR"><TextInput value={form.label} onChange={(e) => set('label', e.target.value)} /></Field><Field label="Kedaluwarsa opsional"><TextInput type="datetime-local" value={form.expiresAt} onChange={(e) => set('expiresAt', e.target.value)} /></Field><Btn type="button" onClick={generate}><Plus size={14} /> Buat untuk Pengguna</Btn><Btn type="button" onClick={rotate}><RefreshCw size={14} /> Ganti QR Pengguna</Btn><Btn type="button" variant="danger" onClick={bulkReplace}>Ganti Semua QR</Btn><Btn type="button" variant="ghost" onClick={() => { reset({ userId: '', classId: '', label: 'QR SIAB2', expiresAt: '', revokeReason: 'Kartu QR dicabut oleh admin karena kartu hilang atau diganti.' }); setResult(null); }}>Reset</Btn></div> : <p className="muted">Tombol berisiko disembunyikan agar operator tidak salah mengganti QR massal.</p>}</Card>{form.userId && <Card title="Riwayat QR Pengguna"><AsyncTable state={credentials} columns={[{ header: 'Label', render: (r) => r.label || 'QR Absensi' }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Kode Pendek', render: (r) => r.shortCode || '—' }, { header: 'Terbit', render: (r) => formatDateTime(r.issuedAt) }, { header: 'Terakhir Dipakai', render: (r) => formatDateTime(r.lastUsedAt) }]} onRow={(r) => <div className="row"><Btn size="sm" variant="danger" onClick={() => revoke(r)}>Cabut</Btn></div>} /></Card>}<Card title="Hasil Aman" sub="Payload QR asli tidak ditampilkan di layar."><pre className="codeblock">{result ? JSON.stringify(result, null, 2) : 'Belum ada hasil.'}</pre></Card></div>;
 }
 
 function ReadinessStat({ label, value, tone = '' }) {
@@ -570,18 +699,18 @@ function ReadinessStat({ label, value, tone = '' }) {
 }
 
 const ANDROID_MODE_LABELS = {
-  GATE_IN: 'Gerbang Masuk',
-  GATE_OUT: 'Gerbang Keluar',
+  GERBANG: 'Gerbang',
+  GATE_IN: 'Gerbang',
+  GATE_OUT: 'Gerbang',
   MUSHOLA: 'Mushola',
-  CHECK_ONLY: 'Coba Dulu / Cek Saja'
+  CHECK_ONLY: 'Cek Saja'
 };
 
+const FLEXIBLE_ANDROID_MODES = ['GERBANG', 'MUSHOLA'];
+
 const ANDROID_READER_PRESETS = [
-  { key: 'gate-in', icon: <CreditCard size={26} />, title: 'Gerbang Masuk', desc: 'HP dipakai saat siswa/guru masuk sekolah.', name: 'HP Gerbang Masuk', locationName: 'Gerbang Masuk', allowedModes: ['GATE_IN'] },
-  { key: 'gate-out', icon: <DoorOpen size={26} />, title: 'Gerbang Keluar', desc: 'HP dipakai saat siswa/guru keluar/pulang.', name: 'HP Gerbang Keluar', locationName: 'Gerbang Keluar', allowedModes: ['GATE_OUT'] },
-  { key: 'gate-both', icon: <RefreshCw size={26} />, title: 'Gerbang Masuk & Keluar', desc: 'Satu HP bisa dipakai untuk masuk dan keluar.', name: 'HP Gerbang Utama', locationName: 'Gerbang Utama', allowedModes: ['GATE_IN', 'GATE_OUT'] },
-  { key: 'mushola', icon: <Building2 size={26} />, title: 'Mushola', desc: 'HP khusus scan kehadiran mushola.', name: 'HP Mushola', locationName: 'Mushola', allowedModes: ['MUSHOLA'] },
-  { key: 'check-only', icon: <Check size={26} />, title: 'Coba Dulu / Cek Saja', desc: 'Untuk latihan. QR dicek, tapi tidak mencatat hadir.', name: 'HP Uji Coba Scanner', locationName: 'Uji Coba', allowedModes: ['CHECK_ONLY'] }
+  { key: 'scanner-1', icon: <Smartphone size={26} />, title: 'HP Scanner 1', desc: 'HP fisik pertama. Mode Gerbang/Mushola dipilih dari aplikasi.', name: 'HP Scanner 1', locationName: 'Fleksibel', allowedModes: FLEXIBLE_ANDROID_MODES },
+  { key: 'scanner-2', icon: <Smartphone size={26} />, title: 'HP Scanner 2', desc: 'HP fisik kedua. Mode Gerbang/Mushola dipilih dari aplikasi.', name: 'HP Scanner 2', locationName: 'Fleksibel', allowedModes: FLEXIBLE_ANDROID_MODES }
 ];
 
 function androidModeLabel(mode) {
@@ -589,7 +718,18 @@ function androidModeLabel(mode) {
 }
 
 function androidModesText(modes = []) {
-  return (modes || []).map(androidModeLabel).join(', ') || 'Belum dipilih';
+  const normalized = modes || [];
+  const hasGerbang = normalized.includes('GERBANG') || normalized.includes('GATE_IN') || normalized.includes('GATE_OUT');
+  const hasMushola = normalized.includes('MUSHOLA');
+  if (hasGerbang && hasMushola) return 'Gerbang & Mushola';
+  if (hasGerbang) return 'Gerbang';
+  if (hasMushola) return 'Mushola';
+  return normalized.map(androidModeLabel).join(', ') || 'Gerbang & Mushola';
+}
+
+function androidLastUsedModeText(mode) {
+  if (!mode) return 'Belum pernah scan';
+  return androidModeLabel(mode);
 }
 
 function activationCodeOf(result) {
@@ -604,12 +744,54 @@ function formatRemaining(ms) {
   return `${minutes} menit ${String(seconds).padStart(2, '0')} detik lagi`;
 }
 
+function isPendingAndroidReader(reader) {
+  return reader?.type === 'QR_ANDROID' && !reader?.deviceId && reader?.status !== 'REVOKED';
+}
+
+function AndroidReaderStatusBadge({ reader }) {
+  if (isPendingAndroidReader(reader)) return <Pill tone="warn">Menunggu aktivasi HP</Pill>;
+  return <StatusPill status={reader?.status === 'INACTIVE' && !reader?.deviceId ? 'PENDING' : reader?.status} />;
+}
+
+function androidMonitorStatus(reader) {
+  if (reader?.monitoringStatus) return reader.monitoringStatus;
+  if (isPendingAndroidReader(reader)) return 'PENDING';
+  if (reader?.status === 'REVOKED') return 'REVOKED';
+  if (reader?.status !== 'ACTIVE') return 'INACTIVE';
+  const heartbeat = reader?.lastHeartbeatAt ? new Date(reader.lastHeartbeatAt).getTime() : 0;
+  return heartbeat && Date.now() - heartbeat <= 2 * 60_000 ? 'ONLINE' : 'OFFLINE';
+}
+
+function androidMonitorTone(status) {
+  if (status === 'ONLINE') return 'ok';
+  if (status === 'PENDING' || status === 'INACTIVE') return 'warn';
+  if (status === 'OFFLINE') return 'bad';
+  return '';
+}
+
+function androidMonitorLabel(status) {
+  return ({ ONLINE: 'Online', OFFLINE: 'Offline', PENDING: 'Menunggu aktivasi', INACTIVE: 'Nonaktif', REVOKED: 'Dicabut' })[status] || statusLabel(status);
+}
+
+function androidWarningText(reader) {
+  const warnings = new Set(reader?.monitorWarnings || reader?.statusWarnings || []);
+  if ((reader?.pendingQueueCount || 0) > 0) warnings.add('OFFLINE_QUEUE_PENDING');
+  if (reader?.batteryLevel != null && Number(reader.batteryLevel) <= 20) warnings.add('LOW_BATTERY');
+  if (reader?.networkStatus === 'OFFLINE') warnings.add('NETWORK_OFFLINE');
+  return [...warnings].map((warning) => ({
+    OFFLINE_QUEUE_PENDING: 'Ada antrean offline',
+    HEARTBEAT_OFFLINE: 'Heartbeat terputus',
+    LOW_BATTERY: 'Baterai rendah',
+    NETWORK_OFFLINE: 'Jaringan offline'
+  })[warning] || statusLabel(warning)).join(' · ');
+}
+
 function AndroidReaderPanel({ notify }) {
   const readers = useRemote(() => apiFetch('/device-readers?page=1&limit=200'), []);
   const [result, setResult] = useState(null);
-  const [selectedPreset, setSelectedPreset] = useState('gate-both');
+  const [selectedPreset, setSelectedPreset] = useState('scanner-1');
   const [now, setNow] = useState(Date.now());
-  const [form, set, reset] = useForm({ name: 'HP Gerbang Utama', locationName: 'Gerbang Utama', allowedModes: ['GATE_IN', 'GATE_OUT'], expiresInMinutes: 15, revokeReason: 'HP scanner dicabut oleh admin.' });
+  const [form, set, reset] = useForm({ name: 'HP Scanner 1', locationName: 'Fleksibel', allowedModes: FLEXIBLE_ANDROID_MODES, expiresInMinutes: 15, revokeReason: 'HP scanner dicabut oleh admin.' });
 
   useEffect(() => {
     if (!result?.expiresAt) return;
@@ -624,8 +806,8 @@ function AndroidReaderPanel({ notify }) {
   }
 
   async function startProvision() {
-    if (!form.allowedModes.length) return notify('Pilih tempat HP dipakai dulu.', 'bad');
-    const data = await apiFetch('/device-readers/android/provision/start', { method: 'POST', body: JSON.stringify({ name: form.name, locationName: form.locationName, allowedModes: form.allowedModes, expiresInMinutes: Number(form.expiresInMinutes) || 15 }) });
+    if (activeAndroidCount >= MAX_ACTIVE_ANDROID_READERS) return notify('Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.', 'warn');
+    const data = await apiFetch('/device-readers/android/provision/start', { method: 'POST', body: JSON.stringify({ name: form.name, locationName: form.locationName, expiresInMinutes: Number(form.expiresInMinutes) || 15 }) });
     setResult(data); readers.refresh(); notify('Kode aktivasi HP berhasil dibuat. Salin kode ke aplikasi HP.');
   }
 
@@ -642,6 +824,20 @@ function AndroidReaderPanel({ notify }) {
     readers.refresh(); notify('HP scanner dicabut.');
   }
 
+  async function replacePendingProvision(row) {
+    if (!await riskConfirm('Buat kode aktivasi baru untuk HP ini? Kode lama akan dicabut agar operator tidak bingung.')) return;
+    await apiFetch(`/device-readers/${row.id}/revoke`, { method: 'POST', body: JSON.stringify({ reason: 'Kode aktivasi lama diganti oleh admin.' }) });
+    const data = await apiFetch('/device-readers/android/provision/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: row.name || 'HP Scanner',
+        locationName: row.locationName || row.locationLabel || '',
+        expiresInMinutes: Number(form.expiresInMinutes) || 15
+      })
+    });
+    setResult(data); readers.refresh(); notify('Kode aktivasi baru dibuat. Salin kode ke aplikasi HP.');
+  }
+
   async function status(row, value) {
     await apiFetch(`/devices/readers/${row.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: value }) });
     readers.refresh(); notify(value === 'ACTIVE' ? 'HP scanner diaktifkan lagi.' : 'HP scanner dinonaktifkan.');
@@ -650,9 +846,95 @@ function AndroidReaderPanel({ notify }) {
   const activationCode = activationCodeOf(result);
   const remainingMs = result?.expiresAt ? new Date(result.expiresAt).getTime() - now : 0;
   const expired = Boolean(result?.expiresAt && remainingMs <= 0);
-  const androidRows = { ...readers, data: { ...(readers.data || {}), items: itemsOf(readers.data).filter((row) => row.type === 'QR_ANDROID') } };
+  const androidItems = itemsOf(readers.data).filter((row) => row.type === 'QR_ANDROID');
+  const activeAndroidCount = androidItems.filter((row) => row.status === 'ACTIVE').length;
+  const onlineAndroidCount = androidItems.filter((row) => androidMonitorStatus(row) === 'ONLINE').length;
+  const offlineAndroidCount = androidItems.filter((row) => androidMonitorStatus(row) === 'OFFLINE').length;
+  const pendingQueueTotal = androidItems.reduce((sum, row) => sum + (Number(row.pendingQueueCount) || 0), 0);
+  const MAX_ACTIVE_ANDROID_READERS = 2;
+  const limitReached = activeAndroidCount >= MAX_ACTIVE_ANDROID_READERS;
+  const selectedScannerName = ANDROID_READER_PRESETS.find((preset) => preset.key === selectedPreset)?.title || form.name || 'HP Scanner';
+  const androidRows = { ...readers, data: { ...(readers.data || {}), items: androidItems } };
 
-  return <div className="android-activation-page"><div className="activation-hero"><div><Pill tone="ok"><Smartphone size={13} /> Mode mudah</Pill><h2>Aktifkan HP Scanner Android</h2><p>Pilih tempat HP dipakai, klik buat kode, lalu tempel kodenya ke aplikasi HP. Tidak perlu paham mode teknis.</p></div><div className="activation-safe"><ShieldCheck size={20} /><span>Kunci rahasia tidak ditampilkan di web dan tidak masuk aplikasi HP.</span></div></div><div className="wizard-steps"><div className="wizard-step active"><b>1</b><span>Pilih tempat HP dipakai</span></div><div className={`wizard-step ${form.allowedModes.length ? 'active' : ''}`}><b>2</b><span>Buat kode aktivasi</span></div><div className={`wizard-step ${activationCode ? 'active' : ''}`}><b>3</b><span>Tempel kode di aplikasi HP</span></div></div><div className="grid activation-grid"><Card title="1. Pilih tempat HP dipakai" sub="Klik salah satu kartu. Web otomatis mengatur nama, lokasi, dan mode yang benar."><div className="preset-grid">{ANDROID_READER_PRESETS.map((preset) => <button key={preset.key} type="button" className={`preset-card ${selectedPreset === preset.key ? 'selected' : ''}`} onClick={() => applyPreset(preset)}><span className="preset-icon">{preset.icon}</span><b>{preset.title}</b><small>{preset.desc}</small></button>)}</div><div className="simple-summary"><div><span>Nama HP</span><b>{form.name}</b></div><div><span>Lokasi</span><b>{form.locationName}</b></div><div><span>Dipakai untuk</span><b>{androidModesText(form.allowedModes)}</b></div></div></Card><Card title="2. Buat kode aktivasi" sub="Kode ini berlaku sebentar dan hanya untuk mengaktifkan satu HP scanner."><div className="activation-form-simple"><Field label="Nama HP / Lokasi"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} /></Field><Field label="Tempat HP dipasang"><TextInput value={form.locationName} onChange={(e) => set('locationName', e.target.value)} /></Field><Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field><Btn variant="primary" type="button" onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn></div><div className="security-note"><AlertTriangle size={16} /><span>Jangan kirim kode ini ke grup umum. Kode hanya untuk mengaktifkan 1 HP scanner.</span></div></Card>{activationCode && <Card title="3. Masukkan kode di aplikasi HP" sub="Salin kode ini, lalu tempel di kolom Kode Aktivasi dari Admin pada aplikasi Android."><div className={`activation-code-card ${expired ? 'expired' : ''}`}><div className="activation-code-label"><Clock size={15} /> {formatRemaining(remainingMs)}</div><div className="activation-code-value">{activationCode}</div><div className="copy-actions"><Btn type="button" variant="primary" onClick={copyActivationCode} disabled={expired}><Copy size={15} /> Salin Kode</Btn><Btn type="button" onClick={startProvision}><RefreshCw size={15} /> Buat Kode Baru</Btn></div></div><ol className="activation-instructions"><li>Buka aplikasi <b>Absensi MAN 1 Rokan Hulu</b> di HP.</li><li>Isi alamat web jika diminta.</li><li>Tempel kode ini ke kolom <b>Kode Aktivasi dari Admin</b>.</li><li>Tekan <b>Aktifkan HP Ini</b>, lalu mulai scan.</li></ol></Card>}</div><div className="activation-help-grid"><Card title="Kapan pilih Gerbang Masuk?"><p>Untuk HP yang dipakai saat siswa/guru masuk sekolah.</p></Card><Card title="Kapan pilih Mushola?"><p>Untuk HP yang ditempel di area mushola dan dipakai scan kehadiran sholat.</p></Card><Card title="Apa itu Coba Dulu?"><p>Mode latihan. QR dicek ke server, tetapi tidak mencatat hadir. Aman untuk uji coba awal.</p></Card></div><Card title="HP Scanner yang sudah dibuat" sub="Daftar ini sengaja disederhanakan. Detail teknis disembunyikan agar tidak membingungkan operator."><AsyncTable state={androidRows} empty="Belum ada HP scanner Android" columns={[{ header: 'Nama HP', render: (r) => r.name || 'HP Scanner' }, { header: 'Lokasi', render: (r) => r.locationName || r.locationLabel || '—' }, { header: 'Status', render: (r) => <StatusPill status={r.status === 'INACTIVE' && !r.deviceId ? 'PENDING' : r.status} /> }, { header: 'Dipakai untuk', render: (r) => androidModesText(r.allowedModes || []) }, { header: 'Terakhir dipakai', render: (r) => formatDateTime(r.lastSignedScanAt || r.lastSeenAt) }]} onRow={(r) => <div className="row"><Btn size="sm" onClick={() => status(r, r.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')}>{r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan lagi'}</Btn><Btn size="sm" variant="danger" onClick={() => revoke(r)}>Cabut</Btn></div>} /></Card></div>;
+  function renderAndroidReaderActions(r) {
+    if (r.status === 'REVOKED') return <span className="muted">Sudah dicabut</span>;
+    if (isPendingAndroidReader(r)) return <div className="row"><Btn size="sm" onClick={() => replacePendingProvision(r)}>Buat kode baru</Btn><Btn size="sm" variant="danger" onClick={() => revoke(r)}>Cabut</Btn></div>;
+    return <div className="row"><Btn size="sm" onClick={() => status(r, r.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')}>{r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan lagi'}</Btn><Btn size="sm" variant="danger" onClick={() => revoke(r)}>Cabut</Btn></div>;
+  }
+
+  return <div className="android-activation-page"><div className="activation-hero"><div><Pill tone="ok"><Smartphone size={13} /> Mode fleksibel</Pill><h2>2 HP scanner fleksibel</h2><p>Kedua HP bisa dipakai untuk Mode Gerbang atau Mode Mushola sesuai kebutuhan. Saat pagi/pulang, dua HP dapat sama-sama dipakai untuk scan gerbang. Saat sholat, dua HP dapat sama-sama dipakai untuk scan mushola.</p></div><div className="activation-safe"><ShieldCheck size={20} /><span>Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.</span></div></div><div className="wizard-steps"><div className="wizard-step active"><b>1</b><span>Pilih HP fisik</span></div><div className="wizard-step active"><b>2</b><span>Buat kode aktivasi</span></div><div className={`wizard-step ${activationCode ? 'active' : ''}`}><b>3</b><span>Tempel kode di aplikasi HP</span></div></div><div className="grid activation-grid"><Card title={`1. Pilih HP Scanner (${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS} aktif)`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Pilih HP Scanner 1 atau HP Scanner 2. Mode Gerbang/Mushola dipilih nanti dari aplikasi HP.'}><div className="preset-grid">{ANDROID_READER_PRESETS.map((preset) => <button key={preset.key} type="button" className={`preset-card ${selectedPreset === preset.key ? 'selected' : ''}`} onClick={() => applyPreset(preset)}><span className="preset-icon">{preset.icon}</span><b>{preset.title}</b><small>{preset.desc}</small></button>)}</div><div className="simple-summary scanner-summary"><div><span>Nama HP</span><b>{form.name}</b></div><div><span>Lokasi</span><b>{form.locationName}</b></div><div><span>Mode tersedia</span><b>{androidModesText(form.allowedModes)}</b></div></div></Card><Card title="2. Buat kode aktivasi" sub="Kode ini berlaku sebentar dan hanya untuk mengaktifkan satu HP scanner."><div className="activation-form-simple"><Field label="Nama HP"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} /></Field><Field label="Label lokasi opsional"><TextInput value={form.locationName} onChange={(e) => set('locationName', e.target.value)} /></Field><Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field><Btn variant="primary" type="button" disabled={limitReached} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn></div><div className="security-note"><AlertTriangle size={16} /><span>Jangan kirim kode ini ke grup umum. Kode hanya untuk mengaktifkan 1 HP scanner.</span></div></Card>{activationCode && <Card title="3. Masukkan kode di aplikasi HP" sub="Salin kode ini, lalu tempel di kolom Kode Aktivasi dari Admin pada aplikasi Android."><div className={`activation-code-card ${expired ? 'expired' : ''}`}><div className="activation-code-label"><Clock size={15} /> {formatRemaining(remainingMs)}</div><div className="activation-code-value">{activationCode}</div><div className="copy-actions"><Btn type="button" variant="primary" onClick={copyActivationCode} disabled={expired}><Copy size={15} /> Salin Kode</Btn><Btn type="button" onClick={startProvision}><RefreshCw size={15} /> Buat Kode Baru</Btn></div></div><ol className="activation-instructions"><li>Install aplikasi <b>{BRAND.androidReaderLabel}</b> di {selectedScannerName}, lalu masukkan kode aktivasi.</li><li>Isi alamat web jika diminta.</li><li>Tempel kode ini ke kolom <b>Kode Aktivasi dari Admin</b>.</li><li>Tekan <b>Aktifkan HP Ini</b>. Setelah aktif, pilih <b>Mode Gerbang</b> atau <b>Mode Mushola</b> dari aplikasi.</li></ol></Card>}</div><div className="activation-help-grid"><Card title="Mode Gerbang"><p>Untuk datang/pulang siswa, guru, staf, dan kepala. Scan pertama hari itu menjadi Datang, scan berikutnya menjadi Pulang.</p></Card><Card title="Mode Mushola"><p>Untuk scan sholat/ibadah siswa. Non-siswa ditolak aman.</p></Card><Card title="2 HP scanner sekolah"><p>Kedua HP dapat memilih mode yang sama pada waktu yang sama. Jika mengganti HP fisik, klik Cabut pada HP lama lalu buat kode aktivasi baru.</p></Card></div><div className="grid g-4 reader-monitor-summary"><StatCardPremium icon={<Wifi size={18} />} label="HP online" value={`${onlineAndroidCount}/${activeAndroidCount}`} sub="Heartbeat ±2 menit terakhir" tone={onlineAndroidCount === activeAndroidCount && activeAndroidCount > 0 ? 'ok' : 'warn'} /><StatCardPremium icon={<AlertTriangle size={18} />} label="HP offline" value={offlineAndroidCount} sub="Perlu cek internet/aplikasi" tone={offlineAndroidCount > 0 ? 'bad' : 'ok'} /><StatCardPremium icon={<ListChecks size={18} />} label="Antrean offline" value={pendingQueueTotal} sub="Scan tersimpan di HP" tone={pendingQueueTotal > 0 ? 'warn' : 'ok'} /></div><Card title={`HP Scanner Aktif: ${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS}`} sub={limitReached ? 'Batas HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Pantau online/offline, antrean offline, heartbeat, versi app, baterai, jaringan, dan mode terakhir tiap HP.'}><div className="android-reader-table"><AsyncTable state={androidRows} empty="Belum ada HP scanner Android" columns={[{ header: 'Nama HP', render: (r) => r.name || 'HP Scanner' }, { header: 'Status HP', render: (r) => <div className="reader-monitor-cell"><Pill tone={androidMonitorTone(androidMonitorStatus(r))}>{androidMonitorLabel(androidMonitorStatus(r))}</Pill><AndroidReaderStatusBadge reader={r} /></div> }, { header: 'Antrean', render: (r) => <span className={(r.pendingQueueCount || 0) > 0 ? 'reader-queue-warn' : ''}>{r.pendingQueueCount ?? 0}</span> }, { header: 'Mode terakhir', render: (r) => androidLastUsedModeText(r.currentMode || r.lastUsedMode) }, { header: 'Heartbeat / Flush', render: (r) => <div className="reader-monitor-cell"><span>{formatDateTime(r.lastHeartbeatAt || r.lastSeenAt)}</span><small>Flush: {formatDateTime(r.lastQueueFlushAt)}</small></div> }, { header: 'Versi', render: (r) => r.appVersion ? `${r.appVersion}${r.appVersionCode ? ` (${r.appVersionCode})` : ''}` : '—' }, { header: 'Baterai/Jaringan', render: (r) => <div className="reader-monitor-cell"><span>{r.batteryLevel == null ? 'Baterai —' : `${r.batteryLevel}%`}</span><small>{r.networkStatus || 'Jaringan —'}</small></div> }, { header: 'Peringatan', render: (r) => androidWarningText(r) || 'Aman' }]} onRow={(r) => renderAndroidReaderActions(r)} /></div></Card></div>;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return '—';
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function shortHash(hash) {
+  const normalized = String(hash || '');
+  return normalized.length > 16 ? `${normalized.slice(0, 12)}…${normalized.slice(-8)}` : normalized || '—';
+}
+
+function AndroidApkUpdatePanel({ notify }) {
+  const releases = useRemote(() => apiFetch('/admin/android-apk-releases?page=1&limit=50'), []);
+  const latest = itemsOf(releases.data).filter((item) => item.isPublished).sort((a, b) => Number(b.versionCode) - Number(a.versionCode))[0] || null;
+  const [file, setFile] = useState(null);
+  const [form, set, reset] = useForm({ versionName: '1.2.0', versionCode: '4', minSupportedVersionCode: '1', forceUpdate: false, releaseNotes: 'Update APK HP Scanner.' });
+  const [busy, setBusy] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editForm, setEditForm] = useState({ minSupportedVersionCode: '', forceUpdate: false, releaseNotes: '' });
+
+  async function createRelease(event) {
+    event.preventDefault();
+    if (!file) return notify('Pilih file APK terlebih dahulu.', 'warn');
+    if (!String(file.name || '').toLowerCase().endsWith('.apk')) return notify('File harus berekstensi .apk.', 'bad');
+    if (latest && Number(form.versionCode) <= Number(latest.versionCode)) return notify('Version code harus lebih tinggi dari latest published.', 'warn');
+    const data = new FormData();
+    data.append('apk', file);
+    data.append('versionName', form.versionName);
+    data.append('versionCode', String(form.versionCode));
+    data.append('minSupportedVersionCode', String(form.minSupportedVersionCode || 1));
+    data.append('forceUpdate', String(Boolean(form.forceUpdate)));
+    data.append('releaseNotes', form.releaseNotes || '');
+    setBusy(true);
+    try {
+      await apiFetch('/admin/android-apk-releases', { method: 'POST', body: data });
+      reset({ versionName: '1.2.0', versionCode: String(Math.max(4, Number(form.versionCode) + 1)), minSupportedVersionCode: '1', forceUpdate: false, releaseNotes: 'Update APK HP Scanner.' });
+      setFile(null);
+      releases.refresh();
+      notify('Release APK berhasil dibuat. Publish setelah dites di 1 HP.', 'ok');
+    } finally { setBusy(false); }
+  }
+
+  async function publish(row) {
+    await apiFetch(`/admin/android-apk-releases/${row.id}/publish`, { method: 'POST', body: JSON.stringify({}) });
+    releases.refresh(); notify(`APK v${row.versionName} dipublish. Tes fisik tetap wajib sebelum rollout.`, 'ok');
+  }
+
+  async function unpublish(row) {
+    if (!await riskConfirm(`Unpublish APK v${row.versionName}? Android lama tidak akan melihat rilis ini lagi.`)) return;
+    await apiFetch(`/admin/android-apk-releases/${row.id}/unpublish`, { method: 'POST', body: JSON.stringify({}) });
+    releases.refresh(); notify('Release APK di-unpublish.');
+  }
+
+  async function saveEdit(row) {
+    await apiFetch(`/admin/android-apk-releases/${row.id}`, { method: 'PATCH', body: JSON.stringify({ ...editForm, minSupportedVersionCode: Number(editForm.minSupportedVersionCode), forceUpdate: Boolean(editForm.forceUpdate) }) });
+    setEditId(''); releases.refresh(); notify('Metadata release APK disimpan.');
+  }
+
+  async function download(row) {
+    await apiDownload(`/mobile/android-reader/releases/${row.id}/download`, row.apkFileName || `android-reader-v${row.versionCode}.apk`);
+    notify('APK diunduh untuk test install.');
+  }
+
+  function startEdit(row) {
+    setEditId(row.id);
+    setEditForm({ minSupportedVersionCode: String(row.minSupportedVersionCode || 1), forceUpdate: Boolean(row.forceUpdate), releaseNotes: row.releaseNotes || '' });
+  }
+
+  return <div className="apk-update-center"><div className="grid g-3"><Card title="Latest Published APK" sub="Dipakai endpoint versi Android reader."><div className="grid g-2 cards-grid"><ReadinessStat label="Version name" value={latest?.versionName || 'Belum ada'} tone={latest ? 'ok' : 'bad'} /><ReadinessStat label="Version code" value={latest?.versionCode ?? '—'} tone={latest ? 'ok' : ''} /><ReadinessStat label="Minimum" value={latest?.minSupportedVersionCode ?? '—'} /><ReadinessStat label="Force update" value={latest?.forceUpdate ? 'Ya' : 'Tidak'} tone={latest?.forceUpdate ? 'warn' : 'ok'} /></div>{latest && <SimpleHelpBox title="Metadata aman" items={[`Ukuran ${formatBytes(latest.apkSizeBytes)}`, `SHA256 ${shortHash(latest.apkSha256)}`, `Published ${formatDateTime(latest.publishedAt)}`]} />}</Card><Card title="Safety rollout" sub="Jangan langsung sebar APK ke HP production."><SimpleHelpBox title="Wajib sebelum rollout" items={['Upload APK debug/release yang sudah dibuild dari source resmi.', 'Publish hanya setelah test install di 1 HP.', 'Android akan memverifikasi SHA256 sebelum membuka installer.', 'Tidak ada silent install; operator tetap konfirmasi installer Android.']} /></Card><Card title="Endpoint Android" sub="Android reader membaca metadata ini."><pre className="codeblock">GET /api/v1/mobile/android-reader/version{latest ? `\nDownload: ${latest.downloadUrl}` : ''}</pre></Card></div><Card title="Upload APK Release" sub="Hash dihitung server. Jangan upload signing key/keystore."><form className="form-grid" onSubmit={createRelease}><Field label="File APK"><TextInput type="file" accept=".apk,application/vnd.android.package-archive" onChange={(event) => setFile(event.target.files?.[0] || null)} /></Field><Field label="Version name"><TextInput value={form.versionName} onChange={(event) => set('versionName', event.target.value)} required /></Field><Field label="Version code"><TextInput type="number" min="1" value={form.versionCode} onChange={(event) => set('versionCode', event.target.value)} required /></Field><Field label="Min supported version"><TextInput type="number" min="1" value={form.minSupportedVersionCode} onChange={(event) => set('minSupportedVersionCode', event.target.value)} required /></Field><label className="checkline"><input type="checkbox" checked={Boolean(form.forceUpdate)} onChange={(event) => set('forceUpdate', event.target.checked)} /> Paksa update untuk versi lama</label><Field label="Release notes"><TextInput type="textarea" rows={3} value={form.releaseNotes} onChange={(event) => set('releaseNotes', event.target.value)} /></Field>{latest && Number(form.versionCode) <= Number(latest.versionCode) && <div className="inline-error"><AlertTriangle size={14} /> Version code tidak lebih tinggi dari latest published.</div>}<Btn variant="primary" loading={busy} disabled={!file}><Download size={14} /> Upload Release</Btn></form></Card><Card title="Daftar APK Release" sub="Publish/unpublish rilis. Hanya release published tertinggi yang menjadi latest."><AsyncTable state={releases} empty="Belum ada release APK." columns={[{ header: 'Versi', render: (row) => <div><b>{row.versionName}</b><br /><span className="muted">code {row.versionCode}</span></div> }, { header: 'Minimum', render: (row) => row.minSupportedVersionCode }, { header: 'Status', render: (row) => <StatusPill status={row.isPublished ? 'PUBLISHED' : 'DRAFT'} /> }, { header: 'Force', render: (row) => row.forceUpdate ? <Pill tone="warn">Force update</Pill> : 'Opsional' }, { header: 'APK', render: (row) => <div><span>{formatBytes(row.apkSizeBytes)}</span><br /><span className="mono">{shortHash(row.apkSha256)}</span></div> }, { header: 'Published', render: (row) => formatDateTime(row.publishedAt) }]} onRow={(row) => <div className="row">{editId === row.id ? <><TextInput type="number" min="1" value={editForm.minSupportedVersionCode} onChange={(event) => setEditForm({ ...editForm, minSupportedVersionCode: event.target.value })} /><label className="checkline"><input type="checkbox" checked={Boolean(editForm.forceUpdate)} onChange={(event) => setEditForm({ ...editForm, forceUpdate: event.target.checked })} /> Force</label><Btn size="sm" onClick={() => saveEdit(row)}>Simpan</Btn><Btn size="sm" variant="ghost" onClick={() => setEditId('')}>Batal</Btn></> : <><Btn size="sm" onClick={() => download(row)}>Download test</Btn>{row.isPublished ? <Btn size="sm" variant="danger" onClick={() => unpublish(row)}>Unpublish</Btn> : <Btn size="sm" variant="primary" onClick={() => publish(row)}>Publish</Btn>}<Btn size="sm" onClick={() => startEdit(row)}>Edit</Btn></>}</div>} /></Card></div>;
 }
 
 function MobileVersionPanel({ notify }) {
@@ -712,6 +994,10 @@ function ManualQrScanPanel({ notify }) {
   return <div className="grid g-2"><Card title="Input Manual Cadangan" sub="Admin bisa mencatat scan gerbang, mushola, atau verifikasi kelas secara cadangan dengan alasan."><form className="form-grid" onSubmit={submit}><Field label="Kode QR/kartu"><TextInput value={form.cardUid} placeholder="Kosongkan jika memilih pengguna manual" onChange={(e) => set('cardUid', e.target.value)} /></Field><Field label="Pilih orang"><SelectInput value={form.userId} onChange={(e) => set('userId', e.target.value)}><option value="">Pilih jika tidak pakai UID</option>{itemsOf(users.data).map((u) => <option key={u.id} value={u.id}>{u.fullName} · {statusLabel(u.role)}</option>)}</SelectInput></Field><Field label="Alat pembaca"><SelectInput value={form.readerId} onChange={(e) => set('readerId', e.target.value)}><option value="">Tanpa alat / manual</option>{itemsOf(readers.data).map((r) => <option key={r.id} value={r.id}>{r.name} · {statusLabel(r.type || 'GATE')}</option>)}</SelectInput></Field><Field label="Jenis catatan"><SelectInput value={form.readerType} onChange={(e) => set('readerType', e.target.value)}><option value="GATE">Gerbang</option><option value="MUSHOLA">Mushola</option><option value="CLASS">Verifikasi kelas siswa</option><option value="MANUAL">Pengecualian siswa</option></SelectInput></Field>{form.readerType === 'GATE' && <Field label="Arah"><SelectInput value={form.direction} onChange={(e) => set('direction', e.target.value)}><option value="IN">Masuk</option><option value="OUT">Keluar</option></SelectInput></Field>}{form.readerType === 'MUSHOLA' && <Field label="Sholat"><SelectInput value={form.prayerType} onChange={(e) => set('prayerType', e.target.value)}><option value="DHUHA">Dhuha</option><option value="DZUHUR">Dzuhur</option><option value="ASHAR">Ashar</option></SelectInput></Field>}{form.readerType === 'MANUAL' && <Field label="Jenis pengecualian"><SelectInput value={form.overrideScope} onChange={(e) => set('overrideScope', e.target.value)}><option value="CLASS_ELIGIBILITY">Syarat presensi kelas</option><option value="ASHAR_CHECKOUT">Pulang tanpa scan Ashar</option><option value="ALL">Semua syarat hari ini</option></SelectInput></Field>}<Field label="Alasan input cadangan" hint={`${form.manualReason.trim().length}/10+`}><TextInput type="textarea" rows={3} value={form.manualReason} onChange={(e) => set('manualReason', e.target.value)} /></Field><Btn variant="primary" disabled={!form.cardUid && !form.userId}><Wifi size={14} /> Simpan Catatan</Btn><Btn type="button" variant="ghost" onClick={() => { reset({ cardUid: '', userId: '', readerId: '', readerType: 'GATE', direction: 'IN', prayerType: 'DHUHA', overrideScope: 'CLASS_ELIGIBILITY', manualReason: 'Input manual oleh petugas karena scan QR perlu diverifikasi.' }); setResult(null); }}>Reset</Btn></form></Card><Card title="Hasil terakhir" sub="Status penyimpanan scan"><pre className="codeblock">{result ? JSON.stringify(result, null, 2) : 'Belum ada catatan.'}</pre></Card></div>;
 }
 
+function SettingCheckRow({ checked, onChange, title, helper }) {
+  return <label className="setting-check-row"><input type="checkbox" checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} /><span><b>{title}</b>{helper && <small>{helper}</small>}</span></label>;
+}
+
 export function SettingsPage({ notify }) {
   const policy = useRemote(() => apiFetch('/access/geofence'), []);
   const attendancePolicy = useRemote(() => apiFetch('/attendance/policy'), []);
@@ -721,7 +1007,117 @@ export function SettingsPage({ notify }) {
   useEffect(() => { if (attendancePolicy.data && !attendanceForm) setAttendanceForm(attendancePolicy.data); }, [attendancePolicy.data]);
   async function submit(e) { e.preventDefault(); if (!await riskConfirm('Simpan perubahan lokasi sekolah dan aturan presensi?')) return; await apiFetch('/access/geofence', { method: 'PUT', body: JSON.stringify({ ...form, centerLat: Number(form.centerLat), centerLng: Number(form.centerLng), radiusMeter: Number(form.radiusMeter), arrivalGraceMinutes: Number(form.arrivalGraceMinutes), autoMissedGraceMinutes: Number(form.autoMissedGraceMinutes) }) }); notify('Pengaturan lokasi sekolah tersimpan.'); policy.refresh(); }
   async function submitAttendance(e) { e.preventDefault(); if (!await riskConfirm('Simpan aturan absensi gerbang, mushola, dan kelas?')) return; await apiFetch('/attendance/policy', { method: 'PUT', body: JSON.stringify({ ...attendanceForm, duplicateScanWindowMinutes: Number(attendanceForm.duplicateScanWindowMinutes) || 0 }) }); notify('Aturan absensi tersimpan.'); attendancePolicy.refresh(); }
-  return <div className="content"><PageHead eyebrow="ATURAN ABSENSI" title="Aturan Absensi" sub="Atur aturan siswa, guru, mushola, dan HP scanner. Bagian angka/lokasi adalah pengaturan lanjutan." /><SimpleHelpBox title="Pakai pengaturan ini dengan hati-hati" items={['Untuk uji coba, biarkan input QR manual cadangan tetap aktif.', 'Aktifkan aplikasi HP Android sebagai jalur utama jika HP scanner sudah berhasil dipakai.', 'Jangan ubah lokasi sekolah tanpa konfirmasi operator.']} />{policy.loading || !form ? <LoadingState /> : policy.error ? <ErrorState error={policy.error} onRetry={policy.refresh} /> : <Card title="Kebijakan Lokasi"><form className="form-grid" onSubmit={submit}>{[['centerLat', 'Lintang lokasi'], ['centerLng', 'Bujur lokasi'], ['radiusMeter', 'Jarak aman (meter)'], ['arrivalGraceMinutes', 'Toleransi terlambat (menit)'], ['autoMissedGraceMinutes', 'Otomatis ditandai terlewat (menit)']].map(([k, l]) => <Field key={k} label={l}><TextInput type="number" placeholder="Isi angka" value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></Field>)}{[['enforceSessionOpen', 'Wajib berada di area sekolah saat buka sesi'], ['requireGateTapForOpen', 'Guru wajib scan gerbang sebelum buka sesi'], ['allowPicketOverride', 'Guru piket boleh memberi pengecualian']].map(([k, l]) => <label className="checkline" key={k}><input type="checkbox" checked={Boolean(form[k])} onChange={(e) => setForm({ ...form, [k]: e.target.checked })} /> {l}</label>)}<Btn variant="primary"><Save size={14} /> Simpan lokasi</Btn></form></Card>}{attendancePolicy.loading || !attendanceForm ? <LoadingState label="Memuat aturan absensi…" /> : attendancePolicy.error ? <ErrorState error={attendancePolicy.error} onRetry={attendancePolicy.refresh} /> : <Card title="Aturan Absensi" sub="Admin bisa menyalakan atau mematikan syarat scan sesuai aturan sekolah."><form className="form-grid" onSubmit={submitAttendance}>{[['requireStudentGateInBeforeClass', 'Siswa wajib scan gerbang sebelum presensi kelas'], ['requireStudentDhuha', 'Siswa wajib scan Dhuha'], ['requireStudentDzuhur', 'Siswa wajib scan Dzuhur'], ['requireStudentAsharForAfternoon', 'Siswa wajib scan Ashar sebelum pulang jika jadwal sampai sore'], ['requireStudentClassEligibility', 'Kunci presensi kelas jika syarat belum lengkap'], ['requireTeacherGateIn', 'Guru wajib scan gerbang masuk'], ['requireTeacherGateOut', 'Guru wajib scan gerbang keluar'], ['requireStaffGateIn', 'Karyawan/TU/operator wajib scan masuk'], ['requireStaffGateOut', 'Karyawan/TU/operator wajib scan keluar'], ['allowManualOverride', 'Admin/Guru piket boleh verifikasi manual dengan alasan'], ['allowStudentAsharCheckoutOverride', 'Petugas boleh memberi pengecualian pulang tanpa scan Ashar'], ['preferOfficialQrReader', 'Jadikan aplikasi HP Android sebagai jalur utama'], ['legacyQrScanEnabled', 'Izinkan input QR manual cadangan']].map(([k, l]) => <label className="checkline" key={k}><input type="checkbox" checked={Boolean(attendanceForm[k])} onChange={(e) => setAttendanceForm({ ...attendanceForm, [k]: e.target.checked })} /> {l}</label>)}{[['dhuhaStartTime', 'Mulai Dhuha'], ['dhuhaEndTime', 'Selesai Dhuha'], ['dzuhurStartTime', 'Mulai Dzuhur'], ['dzuhurEndTime', 'Selesai Dzuhur'], ['asharStartTime', 'Mulai Ashar'], ['asharEndTime', 'Selesai Ashar'], ['asharRequiredClassEndTime', 'Batas disebut jadwal sore']].map(([k, l]) => <Field key={k} label={l}><TextInput type="time" value={attendanceForm[k]} onChange={(e) => setAttendanceForm({ ...attendanceForm, [k]: e.target.value })} /></Field>)}<Field label="Jeda scan ganda (menit)"><TextInput type="number" value={attendanceForm.duplicateScanWindowMinutes} onChange={(e) => setAttendanceForm({ ...attendanceForm, duplicateScanWindowMinutes: e.target.value })} /></Field><Btn variant="primary"><Save size={14} /> Simpan aturan absensi</Btn></form></Card>}</div>;
+  const setPolicyFlag = (key, value) => setForm({ ...form, [key]: value });
+  const setAttendanceFlag = (key, value) => setAttendanceForm({ ...attendanceForm, [key]: value });
+  const locationFlags = [
+    ['enforceSessionOpen', 'Wajib berada di area sekolah saat buka sesi', 'Guru membuka sesi dari area sekolah yang sudah ditentukan.'],
+    ['requireGateTapForOpen', 'Guru wajib scan gerbang sebelum buka sesi', 'Mencegah sesi dibuka sebelum guru hadir di sekolah.'],
+    ['allowPicketOverride', 'Guru piket boleh memberi pengecualian', 'Dipakai untuk kasus jaringan, izin, atau kondisi khusus.']
+  ];
+  const groupedRules = [
+    ['Aturan Siswa', [
+      ['requireStudentGateInBeforeClass', 'Siswa wajib scan gerbang sebelum presensi kelas', 'Presensi kelas dikunci sampai siswa tercatat datang.'],
+      ['requireStudentDhuha', 'Siswa wajib scan Dhuha', 'Aktifkan jika sekolah mewajibkan scan ibadah Dhuha.'],
+      ['requireStudentDzuhur', 'Siswa wajib scan Dzuhur', 'Aktifkan jika sekolah mewajibkan scan Dzuhur.'],
+      ['requireStudentAsharForAfternoon', 'Siswa wajib scan Ashar sebelum pulang jika jadwal sampai sore', 'Berlaku untuk siswa dengan jadwal melewati batas sore.'],
+      ['requireStudentClassEligibility', 'Kunci presensi kelas jika syarat belum lengkap', 'Guru tidak bisa menandai hadir kelas sebelum syarat terpenuhi.']
+    ]],
+    ['Aturan Guru', [
+      ['requireTeacherGateIn', 'Guru wajib scan gerbang masuk', 'Mencatat kedatangan guru sebelum aktivitas mengajar.'],
+      ['requireTeacherGateOut', 'Guru wajib scan gerbang keluar', 'Mencatat kepulangan guru saat meninggalkan sekolah.']
+    ]],
+    ['Aturan Staff/TU', [
+      ['requireStaffGateIn', 'Karyawan/TU/operator wajib scan masuk', 'Mencatat kehadiran staff dan operator.'],
+      ['requireStaffGateOut', 'Karyawan/TU/operator wajib scan keluar', 'Mencatat kepulangan staff dan operator.']
+    ]],
+    ['Input Manual Cadangan', [
+      ['allowManualOverride', 'Admin/Guru piket boleh verifikasi manual dengan alasan', 'Tetap wajib menulis alasan agar audit jelas.'],
+      ['allowStudentAsharCheckoutOverride', 'Petugas boleh memberi pengecualian pulang tanpa scan Ashar', 'Hanya untuk kondisi yang sudah diverifikasi.'],
+      ['preferOfficialQrReader', 'Jadikan aplikasi HP Android sebagai jalur utama', 'Dorong operator memakai HP scanner resmi.'],
+      ['legacyQrScanEnabled', 'Izinkan input QR manual cadangan', 'Biarkan aktif selama masa transisi dan uji coba.']
+    ]]
+  ];
+  const prayerTimes = [['dhuhaStartTime', 'Mulai Dhuha'], ['dhuhaEndTime', 'Selesai Dhuha'], ['dzuhurStartTime', 'Mulai Dzuhur'], ['dzuhurEndTime', 'Selesai Dzuhur'], ['asharStartTime', 'Mulai Ashar'], ['asharEndTime', 'Selesai Ashar'], ['asharRequiredClassEndTime', 'Batas disebut jadwal sore']];
+  return <div className="content"><PageHead eyebrow="ATURAN ABSENSI" title="Aturan Absensi" sub="Atur aturan siswa, guru, mushola, dan HP scanner. Bagian angka/lokasi adalah pengaturan lanjutan." /><SimpleHelpBox title="Pakai pengaturan ini dengan hati-hati" items={['Untuk uji coba, biarkan input QR manual cadangan tetap aktif.', 'Aktifkan aplikasi HP Android sebagai jalur utama jika HP scanner sudah berhasil dipakai.', 'Jangan ubah lokasi sekolah tanpa konfirmasi operator.']} />{policy.loading || !form ? <LoadingState /> : policy.error ? <ErrorState error={policy.error} onRetry={policy.refresh} /> : <Card title="Kebijakan Lokasi" sub="Koordinat dan radius sekolah untuk validasi buka sesi."><form className="settings-form" onSubmit={submit}><div className="policy-field-grid">{[['centerLat', 'Lintang lokasi'], ['centerLng', 'Bujur lokasi'], ['radiusMeter', 'Jarak aman (meter)'], ['arrivalGraceMinutes', 'Toleransi terlambat (menit)'], ['autoMissedGraceMinutes', 'Otomatis ditandai terlewat (menit)']].map(([k, l]) => <Field key={k} label={l}><TextInput type="number" placeholder="Isi angka" value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></Field>)}</div><section className="policy-section"><h3>Kebijakan Lokasi</h3><div className="setting-list">{locationFlags.map(([key, title, helper]) => <SettingCheckRow key={key} checked={form[key]} title={title} helper={helper} onChange={(value) => setPolicyFlag(key, value)} />)}</div></section><div className="policy-save-row"><Btn variant="primary"><Save size={14} /> Simpan lokasi</Btn></div></form></Card>}{attendancePolicy.loading || !attendanceForm ? <LoadingState label="Memuat aturan absensi…" /> : attendancePolicy.error ? <ErrorState error={attendancePolicy.error} onRetry={attendancePolicy.refresh} /> : <Card title="Aturan Absensi" sub="Admin bisa menyalakan atau mematikan syarat scan sesuai aturan sekolah."><form className="settings-form" onSubmit={submitAttendance}>{groupedRules.map(([sectionTitle, rows]) => <section className="policy-section" key={sectionTitle}><h3>{sectionTitle}</h3><div className="setting-list">{rows.map(([key, title, helper]) => <SettingCheckRow key={key} checked={attendanceForm[key]} title={title} helper={helper} onChange={(value) => setAttendanceFlag(key, value)} />)}</div></section>)}<section className="policy-section"><h3>Pengaturan Sholat</h3><div className="policy-time-grid">{prayerTimes.map(([k, l]) => <Field key={k} label={l}><TextInput type="time" value={attendanceForm[k]} onChange={(e) => setAttendanceForm({ ...attendanceForm, [k]: e.target.value })} /></Field>)}<Field label="Jeda scan ganda (menit)"><TextInput type="number" value={attendanceForm.duplicateScanWindowMinutes} onChange={(e) => setAttendanceForm({ ...attendanceForm, duplicateScanWindowMinutes: e.target.value })} /></Field></div></section><div className="policy-save-row"><Btn variant="primary"><Save size={14} /> Simpan aturan absensi</Btn></div></form></Card>}</div>;
+}
+
+export const REPORT_FORMAT_OPTIONS = [
+  { value: 'csv', label: 'CSV Data (.csv)' },
+  { value: 'xlsx', label: 'Excel Resmi (.xlsx)' },
+  { value: 'pdf', label: 'PDF Resmi (.pdf)' },
+  { value: 'docx', label: 'Word Resmi (.docx)' }
+];
+
+const REPORT_EXPORT_TYPES = {
+  'recap/classes': 'recap_classes',
+  'recap/students': 'recap_students',
+  'recap/subjects': 'recap_subjects',
+  'recap/teachers': 'recap_teachers',
+  'teacher-monthly': 'teacher_monthly',
+  'staff-gate-attendance': 'staff_gate_attendance',
+  'teacher-session-activity': 'teacher_session_activity',
+  'student-prayer-attendance': 'student_prayer_attendance',
+  'student-worship-recap': 'student_worship_recap',
+  'student-daily-completeness': 'student_daily_complete_attendance',
+  'missing-arrival-scan': 'missing_arrival_scan',
+  'missing-departure-scan': 'missing_departure_scan',
+  'class-present-no-gate-scan': 'class_present_no_gate_scan',
+  'gate-scan-no-class-attendance': 'gate_scan_no_class_attendance',
+  'prayer-recap': 'prayer_recap',
+  'audit-coverage': 'audit_coverage'
+};
+
+const REPORT_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC'
+});
+
+export function formatReportDisplayDate(value) {
+  const [year, month, day] = String(value || '').slice(0, 10).split('-').map((part) => Number(part));
+  if (!year || !month || !day) return value || '—';
+  return REPORT_DATE_FORMATTER.format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+export function formatReportPeriod(from, to) {
+  const fromLabel = formatReportDisplayDate(from);
+  const toLabel = formatReportDisplayDate(to);
+  return fromLabel === toLabel ? fromLabel : `${fromLabel} sampai ${toLabel}`;
+}
+
+function monthFromDate(value) {
+  return /^\d{4}-\d{2}/.test(String(value || '')) ? String(value).slice(0, 7) : today().slice(0, 7);
+}
+
+export function buildOfficialReportExportPath(type, format, filters = {}) {
+  const params = {
+    reportType: REPORT_EXPORT_TYPES[type] || type.replace('/', '_'),
+    format
+  };
+  if (type === 'teacher-monthly') {
+    params.month = filters.month || monthFromDate(filters.from);
+  } else {
+    params.from = filters.from;
+    params.to = filters.to;
+  }
+  ['classId', 'subjectId', 'teacherId', 'studentId', 'status', 'missingRequirement'].forEach((key) => {
+    if (filters[key]) params[key] = filters[key];
+  });
+  return `/reports/export${qs(params)}`;
+}
+
+function buildReportPreviewPath(type, filters = {}) {
+  if (type === 'teacher-monthly') {
+    return `/reports/${type}${qs({ month: filters.month || monthFromDate(filters.from), page: 1, limit: 100 })}`;
+  }
+  const dailyCompletenessTypes = new Set(['student-daily-completeness', 'missing-arrival-scan', 'missing-departure-scan', 'class-present-no-gate-scan', 'gate-scan-no-class-attendance']);
+  if (dailyCompletenessTypes.has(type)) {
+    const missingRequirement = type === 'missing-arrival-scan' ? 'BELUM_SCAN_DATANG' : type === 'missing-departure-scan' ? 'BELUM_SCAN_PULANG' : filters.missingRequirement;
+    return `/reports/student-daily-completeness${qs({ from: filters.from, to: filters.to, missingRequirement, page: 1, limit: 100 })}`;
+  }
+  if (type === 'prayer-recap') return `/reports/student-worship-recap${qs({ from: filters.from, to: filters.to, page: 1, limit: 100 })}`;
+  return `/reports/${type}${qs({ from: filters.from, to: filters.to, page: 1, limit: 100 })}`;
 }
 
 export function ReportsPage({ notify }) {
@@ -729,11 +1125,46 @@ export function ReportsPage({ notify }) {
   const [format, setFormat] = useState('xlsx');
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
-  const state = useRemote(() => apiFetch(`/reports/${type}${qs({ from, to, page: 1, limit: 100 })}`), [type, from, to]);
+  const previewPath = buildReportPreviewPath(type, { from, to });
+  const state = useRemote(() => apiFetch(previewPath), [previewPath]);
   const [exporting, setExporting] = useState(false);
-  const exportMap = { 'recap/classes': 'recap_classes', 'recap/students': 'recap_students', 'recap/subjects': 'recap_subjects', 'recap/teachers': 'recap_teachers', 'teacher-monthly': 'teacher_monthly', 'audit-coverage': 'audit_coverage' };
-  async function exportNow() { setExporting(true); try { await apiDownload(`/reports/export${qs({ reportType: exportMap[type], format, from, to, month: monthNow() })}`); notify('Berkas laporan berhasil diunduh.'); } catch (error) { notify(error.message || 'Unduhan gagal.', 'bad'); } finally { setExporting(false); } }
-  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub="Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh Excel." actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label><SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}><option value="xlsx">XLSX</option><option value="csv">CSV</option></SelectInput><Btn onClick={() => window.print()}><FileText size={14} /> Cetak</Btn><Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Download'}</Btn></>} /><StepGuide title="Cara membuat laporan" steps={['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Klik Cetak atau Download.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>MAN 1 Rokan Hulu</b><span>Laporan e-Hadir · Periode {from} sampai {to}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
+  const canExport = readStoredUser()?.role !== 'KEPALA_SEKOLAH';
+  const periodLabel = formatReportPeriod(from, to);
+  async function exportNow() {
+    setExporting(true);
+    try {
+      await apiDownload(buildOfficialReportExportPath(type, format, { from, to }));
+      notify('Laporan resmi berhasil diunduh.');
+    } catch {
+      notify('Laporan belum bisa diunduh. Coba persempit periode atau hubungi admin.', 'bad');
+    } finally {
+      setExporting(false);
+    }
+  }
+  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub={canExport ? 'Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi.' : 'Pilih jenis laporan dan tanggal untuk pratinjau baca saja.'} actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="staff-gate-attendance">Kepala/Staf Datang-Pulang</option><option value="teacher-session-activity">Guru Masuk Mengajar</option><option value="student-daily-completeness">Rekap Kehadiran Lengkap Siswa</option><option value="missing-arrival-scan">Belum Scan Datang</option><option value="missing-departure-scan">Belum Scan Pulang</option><option value="class-present-no-gate-scan">Hadir Kelas Tanpa Scan Gerbang</option><option value="gate-scan-no-class-attendance">Scan Gerbang Tanpa Absensi Kelas</option><option value="student-prayer-attendance">Sholat Siswa</option><option value="student-worship-recap">Rekap Ibadah Siswa</option><option value="prayer-recap">Rekap Sholat Siswa</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>{canExport && <SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput>}<Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn>{canExport && <Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn>}</>} /><StepGuide title="Cara membuat laporan" steps={canExport ? ['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.'] : ['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau baca saja.', 'Gunakan Cetak Pratinjau bila perlu.', 'Minta Admin/TU jika membutuhkan file resmi.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
+}
+
+const REPORT_PREVIEW_LABELS = {
+  fullName: 'Nama',
+  username: 'Nama akun',
+  schoolClass: 'Kelas',
+  date: 'Tanggal',
+  gateArrivalAt: 'Datang gerbang',
+  gateDepartureAt: 'Pulang gerbang',
+  classAttendanceLabel: 'Absensi kelas',
+  prayerAttendanceLabel: 'Sholat',
+  finalStatus: 'Status akhir',
+  finalStatusLabel: 'Status akhir',
+  note: 'Keterangan'
+};
+
+function reportPreviewValue(row, key) {
+  const value = row[key];
+  if (key === 'finalStatus') return friendlyDailyStatus(value);
+  if (key === 'gateArrivalAt' || key === 'gateDepartureAt') return value ? formatDateTime(value) : '—';
+  if (Array.isArray(value)) return value.map((item) => statusLabel(item)).join(', ');
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return value !== undefined && value !== null ? String(value) : '—';
 }
 
 function GenericTableState({ state }) {
@@ -741,15 +1172,16 @@ function GenericTableState({ state }) {
   if (state.error) return <ErrorState error={state.error} onRetry={state.refresh} />;
   const rows = itemsOf(state.data);
   if (!rows.length) return <FriendlyEmptyState title="Belum ada data laporan" sub="Coba ubah jenis laporan atau rentang tanggal." />;
-  const keys = Array.from(new Set(rows.flatMap((r) => Object.keys(r).filter((k) => !['id'].includes(k))))).slice(0, 8);
-  return <DataTable rows={rows} columns={keys.map((key) => ({ header: key, render: (r) => typeof r[key] === 'object' ? JSON.stringify(r[key]) : String(r[key] ?? '—') }))} />;
+  const hiddenKeys = new Set(['id', 'studentId', 'userId', 'classId', 'classAttendanceSummary', 'prayerAttendanceSummary', 'missingRequirementCodes', 'missingRequirements']);
+  const keys = Array.from(new Set(rows.flatMap((r) => Object.keys(r).filter((k) => !hiddenKeys.has(k))))).slice(0, 8);
+  return <DataTable rows={rows} columns={keys.map((key) => ({ header: REPORT_PREVIEW_LABELS[key] || key, render: (r) => reportPreviewValue(r, key) }))} />;
 }
 
 export function AuditPage() {
   const [page, setPage] = useState(1);
   const [module, setModule] = useState('');
   const audit = useRemote(() => apiFetch(`/audit${qs({ page, limit: 50, module })}`), [page, module]);
-  return <div className="content"><PageHead eyebrow="RIWAYAT PERUBAHAN" title="Riwayat Perubahan" sub="Catatan resmi sistem: siapa mengubah apa, kapan, dan alasannya." actions={<><SelectInput value={module} onChange={(e) => setModule(e.target.value)}><option value="">Semua modul</option><option value="attendance">Presensi</option><option value="identity">Pengguna</option><option value="academic">Akademik</option><option value="scheduling">Jadwal</option><option value="device">Perangkat</option><option value="access">Akses lokasi</option><option value="picket">Catatan piket</option></SelectInput><Btn onClick={audit.refresh}><RefreshCw size={14} /> Muat ulang</Btn></>} /><Card><AsyncTable state={audit} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.createdAt) }, { header: 'Aksi', key: 'action' }, { header: 'Modul', key: 'module' }, { header: 'Pelaku', render: (r) => r.actor?.fullName || r.actorId || 'sistem' }, { header: 'Data', render: (r) => `${r.resource}:${r.resourceId}` }, { header: 'Alasan', render: (r) => r.reason || r.after?.reason || '—' }]} /><Pagination meta={metaOf(audit.data)} onPage={setPage} /></Card></div>;
+  return <div className="content"><PageHead eyebrow="RIWAYAT PERUBAHAN" title="Riwayat Perubahan" sub="Catatan resmi sistem: siapa mengubah apa, kapan, dan alasannya." actions={<><SelectInput value={module} onChange={(e) => setModule(e.target.value)}><option value="">Semua modul</option><option value="attendance">Presensi</option><option value="identity">Pengguna</option><option value="academic">Akademik</option><option value="scheduling">Jadwal</option><option value="device">Perangkat</option><option value="access">Akses lokasi</option><option value="picket">Catatan piket</option></SelectInput><Btn onClick={audit.refresh}><RefreshCw size={14} /> Muat ulang</Btn></>} /><Card><AsyncTable state={audit} empty={{ title: 'Belum ada riwayat perubahan', sub: 'Setelah admin mengubah data, catatan akan muncul di sini.' }} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.createdAt) }, { header: 'Aksi', key: 'action' }, { header: 'Modul', key: 'module' }, { header: 'Pelaku', render: (r) => r.actor?.fullName || r.actorId || 'sistem' }, { header: 'Data', render: (r) => `${r.resource}:${r.resourceId}` }, { header: 'Alasan', render: (r) => r.reason || r.after?.reason || '—' }]} /><Pagination meta={metaOf(audit.data)} onPage={setPage} /></Card></div>;
 }
 
 export function PicketBookPage({ notify }) {
@@ -885,7 +1317,7 @@ export function DeveloperControlPage({ notify }) {
     users.refresh();
     notify(`Tutorial diaktifkan untuk ${result.activatedCount || 0} akun ${statusLabel(role)}.`);
   }
-  const roleChoices = [['', 'Semua peran'], ['ADMIN_TU', 'Admin/TU'], ['OPERATOR_IT', 'Operator IT'], ['GURU_PIKET', 'Guru Piket'], ['GURU_MAPEL', 'Guru Mapel'], ['SISWA', 'Siswa'], ['DEVELOPER', 'Developer']];
+  const roleChoices = [['', 'Semua peran'], ['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_PIKET', 'Guru Piket'], ['GURU_MAPEL', 'Guru Mapel'], ['SISWA', 'Siswa'], ['DEVELOPER', 'Developer']];
   return <div className="content"><PageHead eyebrow="DEVELOPER" title="Pusat Kontrol Developer" sub="Kontrol tutorial, bersihkan data aman, dan cek kesehatan sistem." /><TabBar value={tab} onChange={setTab} options={[["tutorial", "Kontrol Tutorial"], ["cleanup", "Bersihkan Data"], ["health", "Kesehatan Sistem"]]} /><RoleTaskPanel tasks={[{ title: 'Cek kesehatan sistem', desc: 'Pastikan aplikasi dan database siap.', icon: <ShieldCheck size={18} />, onClick: () => setTab('health') }, { title: 'Aktifkan tutorial', desc: 'Bantu pengguna yang masih bingung.', icon: <BookOpen size={18} />, onClick: () => setTab('tutorial') }, { title: 'Bersihkan data aman', desc: 'Lihat pratinjau sebelum membersihkan data sementara.', icon: <Zap size={18} />, tone: 'warn', onClick: () => setTab('cleanup') }, { title: 'Riwayat perubahan', desc: 'Telusuri aksi penting.', icon: <FileText size={18} />, onClick: () => go('/admin/audit') }]} /><div className="smart-help"><b>Prinsip aman:</b><span>Nonaktifkan akun untuk data bersejarah.</span><span>Hapus permanen hanya untuk akun test kosong.</span><span>Bersihkan data selalu lihat pratinjau dulu.</span></div>{tab === 'tutorial' && <div className="grid g-3"><Card title="Kontrol Tutorial" sub="Aktifkan tutorial ulang tanpa mengubah data absensi." actions={<><Btn onClick={() => users.refresh()}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={activateRole}><Zap size={14} /> Aktifkan per peran</Btn></>}><div className="form-grid"><Field label="Cari pengguna"><TextInput value={search} placeholder="Nama atau nama akun" onChange={(e) => setSearch(e.target.value)} /></Field><Field label="Filter peran"><SelectInput value={role} onChange={(e) => setRole(e.target.value)}>{roleChoices.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field><Field label="Alasan perubahan" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field></div><AsyncTable state={users} columns={[{ header: 'Pengguna', render: (r) => <span className="row"><Avatar name={r.fullName} size="sm" /> {r.fullName}</span> }, { header: 'Nama akun', key: 'username' }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Status tutorial', render: (r) => r.tutorial?.shouldShow ? <StatusPill status="PENDING" /> : r.tutorial?.completedAt ? <StatusPill status="RESOLVED" /> : <StatusPill status="IN_REVIEW" /> }, { header: 'Terakhir tampil', render: (r) => formatDateTime(r.tutorial?.lastSeenAt) }]} onRow={(r) => <Btn size="sm" disabled={reason.trim().length < 10} onClick={() => activateUser(r)}><BookOpen size={13} /> Aktifkan Tutorial Lagi</Btn>} /></Card></div>}{tab === 'cleanup' && <CleanupPanel notify={notify} />}{tab === 'health' && <Card title="Kesehatan Sistem" sub="Ringkasan status aplikasi agar siap dipakai.">{health.loading ? <LoadingState /> : health.error ? <ErrorState error={health.error} onRetry={health.refresh} /> : <pre className="codeblock">{JSON.stringify(health.data, null, 2)}</pre>}</Card>}</div>;
 }
 
@@ -899,6 +1331,15 @@ export function HelpPage({ role = 'ADMIN_TU' }) {
         { title: 'Riwayat perubahan', desc: 'Telusuri aksi penting.', icon: <FileText size={18} />, onClick: () => go('/admin/audit') }
       ],
       steps: ['Gunakan akun developer hanya untuk kontrol sistem.', 'Cek kesehatan sistem sebelum perubahan besar.', 'Pantau Riwayat Perubahan setelah perubahan.']
+    },
+    KEPALA_SEKOLAH: {
+      title: 'Panduan Kepala Sekolah',
+      tasks: [
+        { title: 'Ringkasan Kepala Sekolah', desc: 'Pantau kondisi hari ini dalam mode baca saja.', icon: <Eye size={18} />, onClick: () => go('/admin/principal-dashboard') },
+        { title: 'Kehadiran lengkap siswa', desc: 'Cek kelengkapan gerbang, kelas, dan sholat.', icon: <CheckSquare size={18} />, onClick: () => go('/admin/student-completeness') },
+        { title: 'Laporan sekolah', desc: 'Buka pratinjau laporan.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }
+      ],
+      steps: ['Buka Ringkasan Kepala Sekolah.', 'Cek indikator yang perlu perhatian.', 'Koordinasikan tindak lanjut ke Admin/TU, Operator IT, atau Guru Piket.']
     },
     OPERATOR_IT: {
       title: 'Panduan Operator IT',

@@ -1,0 +1,20 @@
+title = "SchoolHub local Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "False positives: internal API URLs and Node built-in crypto imports are not secrets."
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''^docker-compose\.(production|supabase)\.yml$''',
+  '''^apps/worker/src/index\.js$'''
+]
+regexes = [
+  '''API_RECONCILE_URL:\s*http://api:[0-9]+/api/v1/internal/reconciliation/run''',
+  '''process\.env\.API_URL.*http://api:[0-9]+/api/v1''',
+  '''require\(['"]node:crypto['"]\)'''
+]
+

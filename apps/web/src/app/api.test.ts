@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_EXPIRED_EVENT, USER_KEY, apiFetch, formatDateTime, today } from './api';
+import { AUTH_EXPIRED_EVENT, USER_KEY, apiDownload, apiFetch, formatDateTime, today } from './api';
 
 function mockStorage() {
   const map = new Map<string, string>();
@@ -15,6 +15,7 @@ function mockStorage() {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -26,6 +27,34 @@ describe('Jakarta date helpers', () => {
 
     expect(today()).toBe('2027-01-01');
     expect(formatDateTime('2026-06-14T00:15:00.000Z')).toContain('07.15');
+  });
+});
+
+describe('apiDownload official report downloads', () => {
+  it('downloads server Blob responses using Content-Disposition filename and server Content-Type', async () => {
+    const createObjectURL = vi.fn(() => 'blob:report-download');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('PK official workbook', {
+      status: 200,
+      headers: {
+        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-disposition': 'attachment; filename="recap_classes_resmi.xlsx"'
+      }
+    })));
+
+    const result = await apiDownload('/reports/export?reportType=recap_classes&format=xlsx', 'fallback.xlsx');
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/reports/export?reportType=recap_classes&format=xlsx', expect.objectContaining({
+      credentials: 'include',
+      headers: { accept: '*/*' }
+    }));
+    expect(result.filename).toBe('recap_classes_resmi.xlsx');
+    expect(result.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:report-download');
   });
 });
 

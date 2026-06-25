@@ -11,6 +11,7 @@ import {
   Clock,
   CreditCard,
   Database,
+  Download,
   Edit3,
   Eye,
   EyeOff,
@@ -21,7 +22,6 @@ import {
   ListChecks,
   Lock,
   LogOut,
-  MapPin,
   Menu,
   Radar,
   RefreshCw,
@@ -38,6 +38,7 @@ import { ConfirmDialog, riskConfirm, setRiskConfirmHandler } from './confirm';
 import { Avatar, Btn, Card, EmptyState, Field, IconBtn, PageHead, TextInput, ToastHost } from './ui';
 import type { ConfirmDialogState, Role, ToastMessage, User } from './types';
 import { WorkOSLoginHandler, WorkOSSSOButton } from './workos-auth';
+import { BRAND } from './branding';
 import { hasCapability, type Capability } from './capabilities';
 
 const SSO_ENABLED = import.meta.env.VITE_SSO_ENABLED === 'true' && Boolean(import.meta.env.VITE_WORKOS_CLIENT_ID);
@@ -47,7 +48,7 @@ type Notify = (message: string, type?: string) => void;
 type LoginRole = 'guru' | 'admin' | 'siswa';
 type NavIcon = typeof Home;
 type NavItem = readonly [section: string, url: AppRoutePath, label: string, icon: NavIcon];
-type NavKey = 'admin' | 'operator' | 'picket' | 'guru' | 'siswa' | 'developer';
+type NavKey = 'admin' | 'principal' | 'operator' | 'picket' | 'guru' | 'siswa' | 'developer';
 type ConnectionStatus = 'checking' | 'online' | 'offline';
 export const NOTIFICATION_REFRESH_EVENT = 'schoolhub_notifications_refresh';
 
@@ -67,6 +68,7 @@ const loadSiswaPages = () => import('./pages/siswa/MyAttendancePage.jsx');
 const AdminDashboard = lazyPage(loadAdminPages, 'AdminDashboard');
 const AnomalyPage = lazyPage(loadAdminPages, 'AnomalyPage');
 const AuditPage = lazyPage(loadAdminPages, 'AuditPage');
+const AndroidApkUpdatePage = lazyPage(loadAdminPages, 'AndroidApkUpdatePage');
 const DeveloperControlPage = lazyPage(loadAdminPages, 'DeveloperControlPage');
 const DevicesPage = lazyPage(loadAdminPages, 'DevicesPage');
 const HelpPage = lazyPage(loadAdminPages, 'HelpPage');
@@ -77,10 +79,14 @@ const MasterDataPage = lazyPage(loadAdminPages, 'MasterDataPage');
 const NotificationsPage = lazyPage(loadAdminPages, 'NotificationsPage');
 const PicketBookPage = lazyPage(loadAdminPages, 'PicketBookPage');
 const PicketDashboardPage = lazyPage(loadAdminPages, 'PicketDashboardPage');
+const PrincipalDashboard = lazyPage(loadAdminPages, 'PrincipalDashboard');
+const PrayerAttendancePage = lazyPage(loadAdminPages, 'PrayerAttendancePage');
 const ReportsPage = lazyPage(loadAdminPages, 'ReportsPage');
 const SchedulePage = lazyPage(loadAdminPages, 'SchedulePage');
 const SessionsPage = lazyPage(loadAdminPages, 'SessionsPage');
 const SettingsPage = lazyPage(loadAdminPages, 'SettingsPage');
+const StaffAttendancePage = lazyPage(loadAdminPages, 'StaffAttendancePage');
+const StudentDailyCompletenessPage = lazyPage(loadAdminPages, 'StudentDailyCompletenessPage');
 const TeacherLeavesPage = lazyPage(loadAdminPages, 'TeacherLeavesPage');
 const ClassInputPage = lazyPage(loadGuruPages, 'ClassInputPage');
 const CorrectionPage = lazyPage(loadGuruPages, 'CorrectionPage');
@@ -108,12 +114,13 @@ const LiveClock = memo(function LiveClock() {
 
 const ROLE_PRESETS: Record<LoginRole, { id: string; idLabel: string }> = {
   guru: { id: '', idLabel: 'Nama akun Guru' },
-  admin: { id: '', idLabel: 'Nama akun Admin/TU, Operator, atau Developer' },
+  admin: { id: '', idLabel: 'Nama akun Admin/TU, Kepala Sekolah, Operator, atau Developer' },
   siswa: { id: '', idLabel: 'Nama akun Siswa' }
 };
 
 const ROLE_LABEL: Record<Role, string> = {
   ADMIN_TU: 'Admin/TU',
+  KEPALA_SEKOLAH: 'Kepala Sekolah',
   OPERATOR_IT: 'Operator IT',
   GURU_MAPEL: 'Guru Mapel',
   GURU_PIKET: 'Guru Piket',
@@ -134,23 +141,28 @@ type AppRouteDefinition = {
 
 export const ROUTES = [
   { path: '/admin/dashboard', area: 'Admin/TU', title: 'Mulai Hari Ini', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <AdminDashboard /> },
+  { path: '/admin/principal-dashboard', area: 'Kepala Sekolah', title: 'Ringkasan Kepala Sekolah', roles: ['KEPALA_SEKOLAH', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <PrincipalDashboard /> },
   { path: '/admin/it-dashboard', area: 'Operator IT', title: 'Cek Sistem', roles: ['OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: () => <ItDashboardPage /> },
   { path: '/admin/picket-dashboard', area: 'Guru Piket', title: 'Tugas Piket Hari Ini', roles: ['GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: () => <PicketDashboardPage /> },
   { path: '/admin/sessions', area: 'Admin/TU', title: 'Sesi Hari Ini', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['classAttendance.read'], render: () => <SessionsPage admin /> },
   { path: '/admin/history', area: 'Admin/TU', title: 'Riwayat Scan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['gateAttendance.read'], render: () => <HistoryPage /> },
+  { path: '/admin/staff-attendance', area: 'Admin/TU', title: 'Kepala/Staf Hadir', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <StaffAttendancePage notify={notify} /> },
+  { path: '/admin/student-completeness', area: 'Admin/TU', title: 'Kehadiran Lengkap Siswa', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <StudentDailyCompletenessPage notify={notify} /> },
+  { path: '/admin/prayer-attendance', area: 'Admin/TU', title: 'Sholat Siswa', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <PrayerAttendancePage notify={notify} /> },
   { path: '/admin/anomaly', area: 'Admin/TU', title: 'Masalah yang Perlu Dicek', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <AnomalyPage notify={notify} /> },
   { path: '/admin/picket', area: 'Admin/TU', title: 'Catatan Piket', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <PicketBookPage notify={notify} /> },
   { path: '/admin/master-data', area: 'Admin/TU', title: 'Akun & Data Sekolah', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['users.read', 'academic.read'], render: ({ notify }) => <MasterDataPage notify={notify} /> },
   { path: '/admin/schedule', area: 'Admin/TU', title: 'Jadwal Kelas', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <SchedulePage notify={notify} /> },
   { path: '/admin/devices', area: 'Admin/TU', title: 'HP Scanner & Kartu', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: ({ notify }) => <DevicesPage notify={notify} /> },
-  { path: '/admin/reports', area: 'Admin/TU', title: 'Laporan Sekolah', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <ReportsPage notify={notify} /> },
-  { path: '/admin/live-monitor', area: 'Admin/TU', title: 'Aktivitas Sekarang', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <LiveMonitorPage /> },
+  { path: '/admin/android-apk-update', area: 'Admin/TU', title: 'APK Update Center', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.manage'], render: ({ notify }) => <AndroidApkUpdatePage notify={notify} /> },
+  { path: '/admin/reports', area: 'Admin/TU', title: 'Laporan Sekolah', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <ReportsPage notify={notify} /> },
+  { path: '/admin/live-monitor', area: 'Admin/TU', title: 'Aktivitas Sekarang', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <LiveMonitorPage /> },
   { path: '/admin/settings', area: 'Admin/TU', title: 'Aturan Absensi', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['settings.read'], render: ({ notify }) => <SettingsPage notify={notify} /> },
   { path: '/admin/audit', area: 'Admin/TU', title: 'Riwayat Perubahan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['audit.read'], render: () => <AuditPage /> },
   { path: '/admin/teacher-leaves', area: 'Admin/TU', title: 'Pengajuan Guru', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <TeacherLeavesPage notify={notify} /> },
-  { path: '/admin/notifications', area: 'Sistem', title: 'Tugas / Notifikasi', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
+  { path: '/admin/notifications', area: 'Sistem', title: 'Tugas / Notifikasi', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: () => <NotificationsPage /> },
   { path: '/admin/developer-control', area: 'Developer', title: 'Pusat Kontrol', roles: ['DEVELOPER'], capabilities: ['settings.manage'], render: ({ notify }) => <DeveloperControlPage notify={notify} /> },
-  { path: '/admin/help', area: 'Bantuan', title: 'Panduan', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> },
+  { path: '/admin/help', area: 'Bantuan', title: 'Panduan', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['profile.self.read'], render: ({ user }) => <HelpPage role={String(user.role)} /> },
   { path: '/guru/dashboard', area: 'Guru', title: 'Mulai Mengajar', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.read'], render: () => <TeacherDashboard /> },
   { path: '/guru/presensi', area: 'Guru', title: 'Isi Presensi Kelas', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.record'], render: ({ notify }) => <ClassInputPage notify={notify} /> },
   { path: '/guru/koreksi', area: 'Guru', title: 'Perbaiki Presensi', roles: ['GURU_MAPEL'], capabilities: ['classAttendance.correct'], render: ({ notify }) => <CorrectionPage notify={notify} /> },
@@ -179,15 +191,18 @@ function navItem(section: string, path: AppRoutePath, icon: NavIcon, label = ROU
 const NAV_ITEMS_BY_ROLE: Record<NavKey, NavItem[]> = {
   admin: [
     navItem('MULAI HARI INI', '/admin/dashboard', LayoutDashboard, 'Ringkasan Hari Ini'), navItem('MULAI HARI INI', '/admin/sessions', Radar, 'Cek Sesi Kelas'), navItem('MULAI HARI INI', '/admin/anomaly', Flag, 'Cek Masalah'), navItem('MULAI HARI INI', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
-    navItem('KERJA HARIAN', '/admin/history', BookOpen, 'Riwayat Scan'), navItem('KERJA HARIAN', '/admin/picket', ListChecks, 'Catatan Piket'), navItem('KERJA HARIAN', '/admin/teacher-leaves', CheckSquare, 'Izin Guru'), navItem('DATA SEKOLAH', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA SEKOLAH', '/admin/schedule', Calendar, 'Jadwal Kelas'),
-    navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN & SISTEM', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN & SISTEM', '/admin/help', BookOpen, 'Panduan'), navItem('BANTUAN & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('BANTUAN & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan')
+    navItem('KERJA HARIAN', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('KERJA HARIAN', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('KERJA HARIAN', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('KERJA HARIAN', '/admin/history', BookOpen, 'Riwayat Scan'), navItem('KERJA HARIAN', '/admin/picket', ListChecks, 'Catatan Piket'), navItem('KERJA HARIAN', '/admin/teacher-leaves', CheckSquare, 'Izin Guru'), navItem('DATA SEKOLAH', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA SEKOLAH', '/admin/schedule', Calendar, 'Jadwal Kelas'),
+    navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN & SISTEM', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN & SISTEM', '/admin/help', BookOpen, 'Panduan'), navItem('BANTUAN & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('BANTUAN & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan')
+  ],
+  principal: [
+    navItem('PANTAUAN', '/admin/principal-dashboard', LayoutDashboard, 'Ringkasan Kepala Sekolah'), navItem('PANTAUAN', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('PANTAUAN', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('PANTAUAN', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('PANTAUAN', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Kepala Sekolah')
   ],
   operator: [
-    navItem('MULAI HARI INI', '/admin/it-dashboard', LayoutDashboard, 'Cek Sistem'), navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('CEK KEAMANAN', '/admin/audit', Database, 'Riwayat Perubahan'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Operator')
+    navItem('MULAI HARI INI', '/admin/it-dashboard', LayoutDashboard, 'Cek Sistem'), navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('PERANGKAT', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('CEK KEAMANAN', '/admin/audit', Database, 'Riwayat Perubahan'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Operator')
   ],
   developer: [
     navItem('KONTROL', '/admin/developer-control', Shield, 'Pusat Kontrol'), navItem('KONTROL', '/admin/dashboard', LayoutDashboard, 'Ringkasan Admin'), navItem('KONTROL', '/admin/it-dashboard', Radar, 'Cek Sistem'), navItem('KONTROL', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
-    navItem('DATA & SISTEM', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA & SISTEM', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('DATA & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('DATA & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan'),
+    navItem('DATA & SISTEM', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA & SISTEM', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('DATA & SISTEM', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('DATA & SISTEM', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('DATA & SISTEM', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('DATA & SISTEM', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('DATA & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('DATA & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan'),
     navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Developer')
   ],
   picket: [
@@ -199,6 +214,7 @@ const NAV_ITEMS_BY_ROLE: Record<NavKey, NavItem[]> = {
 
 function navKeyForRole(role?: string): NavKey {
   if (role === 'DEVELOPER') return 'developer';
+  if (role === 'KEPALA_SEKOLAH') return 'principal';
   if (role === 'OPERATOR_IT') return 'operator';
   if (role === 'GURU_PIKET') return 'picket';
   if (role === 'GURU_MAPEL') return 'guru';
@@ -216,9 +232,9 @@ export function navItemsForUser(user: User | null): NavItem[] {
   return NAV_ITEMS_BY_ROLE[role].filter(([, url]) => canAccessRoute(url, user));
 }
 
-export function routeCrumbs(path: string): [string, string] | ['e-Hadir'] {
+export function routeCrumbs(path: string): [string, string] | [typeof BRAND.compactName] {
   const route = routeForPath(path);
-  return route ? [route.area, route.title] : ['e-Hadir'];
+  return route ? [route.area, route.title] : [BRAND.compactName];
 }
 
 function roleLabel(role?: string): string {
@@ -228,7 +244,7 @@ function roleLabel(role?: string): string {
 function loginAreaForRole(role?: string): LoginRole | null {
   if (role === 'GURU_MAPEL') return 'guru';
   if (role === 'SISWA') return 'siswa';
-  if (role === 'ADMIN_TU' || role === 'OPERATOR_IT' || role === 'GURU_PIKET' || role === 'DEVELOPER') return 'admin';
+  if (role === 'ADMIN_TU' || role === 'KEPALA_SEKOLAH' || role === 'OPERATOR_IT' || role === 'GURU_PIKET' || role === 'DEVELOPER') return 'admin';
   return null;
 }
 
@@ -252,7 +268,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode; resetKey: string
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('SchoolHub UI error boundary', error, info);
+    console.error('SIAB2 UI error boundary', error, info);
   }
 
   componentDidUpdate(prevProps: { resetKey: string }) {
@@ -322,41 +338,41 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
     <div className="login login-v2">
       <div className="login-left">
         <div className="login-left-overlay" />
-        <div className="login-left-content" tabIndex={0} aria-label="Informasi e-Hadir MAN 1 Rokan Hulu">
+        <div className="login-left-content" tabIndex={0} aria-label={`Informasi ${BRAND.description}`}>
           <div className="login-topbar">
             <div className="row" style={{ gap: 12 }}>
               <div className="brand-mark login-brand-mark">
                 <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
               </div>
               <div>
-                <div className="login-brand-name">e-Hadir</div>
-                <div className="login-brand-sub">MAN 1 ROKAN HULU</div>
+                <div className="login-brand-name login-brand-name-long">{BRAND.shortName}</div>
+                <div className="login-brand-sub">{BRAND.fullName} · {BRAND.institution}</div>
               </div>
             </div>
           </div>
           <div className="login-hero">
-            <div className="eyebrow"><span className="dot" /> ABSENSI SEKOLAH DIGITAL</div>
-            <h1>Tempel kartu di gerbang.<br />Dicek lagi di kelas.<br /><span className="grad">Lebih rapi dan aman.</span></h1>
-            <p>Sistem ini membantu sekolah mencatat kehadiran siswa dari gerbang dan kelas. Jika ada siswa belum tempel kartu, tidak masuk kelas, atau data tidak sesuai, petugas akan lebih mudah mengetahuinya.</p>
+            <div className="eyebrow"><span className="dot" /> SIAB2</div>
+            <h1>Presensi sekolah lebih rapi dalam <span className="grad">satu sistem.</span></h1>
+            <p>Kelola kehadiran dari gerbang, kelas, dan mushola dengan data yang mudah dipantau oleh guru, admin, dan petugas sekolah.</p>
             <div className="row" style={{ gap: 8, marginTop: 22, flexWrap: 'wrap' }}>
-              <span className="chip chip-light"><Shield size={12} /> Semua perubahan tercatat</span>
-              <span className="chip chip-light"><MapPin size={12} /> Hanya di area sekolah</span>
-              <span className="chip chip-light"><Zap size={12} /> Cepat dan ringan</span>
+              <span className="chip chip-light"><Shield size={12} /> Perubahan tercatat</span>
+              <span className="chip chip-light"><Activity size={12} /> Data mudah dipantau</span>
+              <span className="chip chip-light"><Zap size={12} /> Operasional cepat</span>
             </div>
           </div>
           <div className="login-divider" />
           <div className="login-specs">
             <div className="login-spec">
-              <span className="k">DI GERBANG</span>
-              <span className="v">Tempel kartu siswa</span>
+              <span className="k">GERBANG</span>
+              <span className="v">Scan datang dan pulang</span>
             </div>
             <div className="login-spec">
-              <span className="k">DI KELAS</span>
-              <span className="v">Dicek oleh guru</span>
+              <span className="k">KELAS</span>
+              <span className="v">Guru mencatat kehadiran</span>
             </div>
             <div className="login-spec">
-              <span className="k">PENGECEKAN DATA</span>
-              <span className="v">Dibantu otomatis</span>
+              <span className="k">LAPORAN</span>
+              <span className="v">Admin memantau data</span>
             </div>
           </div>
         </div>
@@ -420,7 +436,7 @@ function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
       setLoading(false);
     }
   }
-  return <div className="login-page"><div className="login-card"><form onSubmit={submit} className="login-form"><PageHead eyebrow="PASSWORD WAJIB DIGANTI" title="Buat password baru" sub="Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai e-Hadir." />
+  return <div className="login-page"><div className="login-card"><form onSubmit={submit} className="login-form"><PageHead eyebrow="PASSWORD WAJIB DIGANTI" title="Buat password baru" sub={`Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai ${BRAND.compactName}.`} />
     <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
     <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
     {error && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
@@ -442,8 +458,8 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
           <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
         </div>
         <div className="brand-text">
-          <div className="brand-name">e-Hadir</div>
-          <div className="brand-sub">MAN 1 ROHUL</div>
+          <div className="brand-name">{BRAND.shortName}</div>
+          <div className="brand-sub">{BRAND.fullName} · {BRAND.institution}</div>
         </div>
         <button className="btn icon ghost hamburger" aria-label="Tutup navigasi" onClick={onClose}><X size={16} /></button>
       </div>
@@ -653,7 +669,7 @@ function Unauthorized({ user }: { user: User | null }) {
 }
 
 function NotFound({ user }: { user: User | null }) {
-  return <div className="content"><PageHead eyebrow="HALAMAN TIDAK DITEMUKAN" title="Menu ini belum tersedia" sub="Alamat yang dibuka tidak terdaftar di e-Hadir. Pilih menu yang tersedia untuk peran Anda." actions={<Btn onClick={() => go(defaultPathFor(user))}><Home size={14} /> Kembali ke dasbor</Btn>} /><Card title="Menu yang bisa Anda buka" sub="Gunakan daftar ini bila bingung mencari halaman."><div className="quick-route-list">{navItemsForUser(user).map(([, url, label, Ico]) => <button key={url} type="button" onClick={() => go(url)}><Ico size={15} /><span>{label}</span><ChevronRight size={13} /></button>)}</div></Card></div>;
+  return <div className="content"><PageHead eyebrow="HALAMAN TIDAK DITEMUKAN" title="Menu ini belum tersedia" sub={`Alamat yang dibuka tidak terdaftar di ${BRAND.compactName}. Pilih menu yang tersedia untuk peran Anda.`} actions={<Btn onClick={() => go(defaultPathFor(user))}><Home size={14} /> Kembali ke dasbor</Btn>} /><Card title="Menu yang bisa Anda buka" sub="Gunakan daftar ini bila bingung mencari halaman."><div className="quick-route-list">{navItemsForUser(user).map(([, url, label, Ico]) => <button key={url} type="button" onClick={() => go(url)}><Ico size={15} /><span>{label}</span><ChevronRight size={13} /></button>)}</div></Card></div>;
 }
 
 function App() {
@@ -754,7 +770,9 @@ function App() {
       const message = err instanceof Error ? err.message : 'Login gagal. Periksa koneksi atau kredensial Anda.';
       const friendlyMessage = message.includes('tidak sesuai pilihan peran')
         ? `Akun ini bukan akun ${loginAreaLabel(selectedRole)}. Pilih tab yang sesuai atau gunakan akun ${loginAreaLabel(selectedRole)}.`
-        : message;
+        : message.includes('Username atau password salah')
+          ? 'Nama akun atau kata sandi salah.'
+          : message;
       notify(friendlyMessage, 'bad');
       throw new Error(friendlyMessage);
     }

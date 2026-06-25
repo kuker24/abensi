@@ -1,7 +1,7 @@
-# Absensi MAN 1 Rokan Hulu — Android QR Reader
+# SIAB2 Reader — Android QR Reader
 
-Aplikasi resmi sekolah berbasis Kotlin/Jetpack Compose untuk SchoolHub e-Hadir.
-Dipakai operator gerbang/mushola/kelas untuk scan QR siswa/guru.
+Aplikasi resmi sekolah berbasis Kotlin/Jetpack Compose untuk Sistem Informasi Akademik Berkarakter.
+Dipakai operator sekolah untuk scan QR siswa/guru dengan 2 HP scanner fisik yang fleksibel: tiap HP dapat memilih **Mode Gerbang** atau **Mode Mushola** saat dipakai.
 
 ## Fitur Operator
 
@@ -10,10 +10,10 @@ Dipakai operator gerbang/mushola/kelas untuk scan QR siswa/guru.
 - **Aktivasi HP Scanner** dengan langkah bernomor: Alamat Server → Nama HP → Kode Aktivasi.
 - **Tes Sambungan** sebelum simpan, dengan pesan kesalahan manusiawi.
 - **Kode Aktivasi Rahasia** disembunyikan saat diketik/tempel, dengan tombol lihat/sembunyikan.
-- **Layar Utama** menampilkan: status koneksi aktual, jumlah antrean kirim, lokasi, scan terakhir, versi aplikasi.
-- **Mode Scan** kamera besar dengan overlay bingkai bidik, status di atas, feedback besar di bawah.
+- **Layar Utama** menampilkan: status koneksi aktual, jumlah antrean kirim, lokasi, scan terakhir, versi aplikasi, dan pilihan **Scan Gerbang** / **Scan Mushola**.
+- **Mode Scan** kamera besar dengan overlay bingkai bidik, status di atas, feedback besar di bawah, serta tombol **Ubah Mode** untuk kembali memilih mode.
 - **Izin kamera aman**: jika izin kamera ditolak, aplikasi menampilkan panduan dan tombol buka pengaturan HP.
-- **Tombol cepat**: Mulai Scan, Jeda, Lampu, Kirim Ulang Antrean, Tutup.
+- **Tombol cepat**: Scan Gerbang, Scan Mushola, Jeda, Lampu, Kirim Ulang Antrean, dan Ubah Mode.
 - **Riwayat Scan** menampilkan 20 scan terakhir tanpa membocorkan kode QR penuh atau secret.
 - **Pengaturan**: toggle bunyi, getaran, layar tetap menyala, langsung buka scanner. Kosongkan/kirim ulang antrean. Tes sambungan ulang. Reset aktivasi dengan dialog konfirmasi kuat.
 - **Bantuan** dengan topik troubleshooting: cara memakai, kamera tidak terbuka, server tidak tersambung, scan gagal, antrean offline, hubungi Operator IT.
@@ -32,20 +32,20 @@ Dipakai operator gerbang/mushola/kelas untuk scan QR siswa/guru.
 
 1. **Pertama kali**: buka aplikasi — splash muncul singkat, lalu layar **Aktivasi HP Scanner** terbuka.
 2. Isi:
-   - **Alamat Server** (contoh: `https://ehadir.man1rokanhulu.sch.id`)
-   - **Nama HP Scanner** (contoh: `HP Gerbang Utama`)
-   - **Lokasi** (opsional, contoh: `Gerbang depan`)
+   - **Alamat Server** (contoh: `https://absensi.man1rokanhulu.cloud`)
+   - **Nama HP Scanner** (contoh: `HP Scanner 1`)
+   - **Lokasi** (opsional, contoh: `Fleksibel`)
    - **Kode Aktivasi Rahasia** dari admin sekolah. Kode ini disembunyikan otomatis di layar.
 3. Tekan **Tes Sambungan** untuk memastikan server bisa dihubungi.
 4. Tekan **Simpan & Mulai Scan** — HP akan diaktifkan dan masuk ke layar utama.
-5. **Layar utama** menampilkan status, lokasi scan aktif, dan tombol **Mulai Scan** besar.
-6. Pilih lokasi scan (Gerbang Masuk, Gerbang Keluar, Mushola, atau Cek Saja) dengan filter chip.
-7. Tekan **Mulai Scan** — kamera terbuka, arahkan QR siswa.
+5. **Layar utama** menampilkan status, lokasi, dan pilihan mode scan.
+6. Pilih **Scan Gerbang** untuk datang/pulang atau **Scan Mushola** untuk sholat siswa.
+7. Kamera terbuka, arahkan QR siswa/guru sesuai mode yang dipilih.
 8. Tunggu sampai feedback berubah:
    - **Hijau**: scan berhasil, langsung scan siswa berikutnya.
    - **Merah**: ditolak server (alasan ditampilkan).
    - **Kuning**: internet bermasalah, scan masuk antrean otomatis.
-9. Tekan **Tutup** untuk kembali ke layar utama, atau **Kirim Ulang Antrean** kalau ada antrean offline.
+9. Tekan **Ubah Mode** untuk kembali ke layar utama, atau **Kirim Ulang Antrean** kalau ada antrean offline.
 10. Buka **Riwayat** untuk melihat 20 scan terakhir.
 11. Buka **Pengaturan** untuk toggle bunyi/getaran, kelola antrean, atau reset aktivasi (dengan konfirmasi).
 
