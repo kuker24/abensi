@@ -25,6 +25,8 @@ Endpoint legacy `/api/v1/attendance/qr-scan` tetap tersedia untuk input manual a
 
 Dokumentasi:
 
+- `docs/deployment/vps-production-runbook.md` — runbook deployment VPS production terkini
+- `docs/deployment/post-deploy-checklist.md` — checklist monitoring setelah deploy
 - `docs/ADR_ANDROID_QR_READER_ENDPOINT.md`
 - `docs/ANDROID_QR_READER.md`
 - `docs/APK_BUILDER_GUI.md`

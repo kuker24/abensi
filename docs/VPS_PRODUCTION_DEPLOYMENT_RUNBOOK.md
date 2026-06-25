@@ -1,5 +1,7 @@
 # SIAB2 VPS Production Deployment Runbook
 
+> Current production deployment facts and the latest safe deploy procedure live in `docs/deployment/vps-production-runbook.md`. Archive notes that mention `157.15.40.21:9103` are stale; the active VPS endpoint is `103.93.133.212:22` with user `schoolhub`.
+
 Target: dedicated VPS for SIAB2, Ubuntu Server 24.04 LTS 64-bit, single-node Docker Compose, ~300 school users.
 
 ## 1. Owner-controlled prerequisites
