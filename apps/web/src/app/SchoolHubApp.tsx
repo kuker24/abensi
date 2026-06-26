@@ -124,6 +124,12 @@ const ROLE_PRESETS: Record<LoginRole, { id: string; idLabel: string }> = {
   siswa: { id: '', idLabel: 'Nama akun Siswa' }
 };
 
+const LOGIN_ROLE_COPY: Record<LoginRole, { tab: string; note: string }> = {
+  guru: { tab: 'Guru Mapel', note: 'Untuk guru pengampu kelas, presensi pembelajaran, jurnal, dan rekap mengajar.' },
+  admin: { tab: 'Admin/TU', note: 'Termasuk Kepala Madrasah, Operator IT, Guru Piket, dan Developer sesuai hak akses akun.' },
+  siswa: { tab: 'Siswa', note: 'Untuk melihat kehadiran pribadi, notifikasi, dan ringkasan akademik siswa.' }
+};
+
 const ROLE_LABEL: Record<Role, string> = {
   ADMIN_TU: 'Admin/TU',
   KEPALA_SEKOLAH: 'Kepala Sekolah',
@@ -341,7 +347,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
     }
   };
   return (
-    <div className="login login-v2">
+    <div className="login login-v2 siab2-login">
       <div className="login-left">
         <div className="login-left-overlay" />
         <div className="login-left-content" tabIndex={0} aria-label={`Informasi ${BRAND.description}`}>
@@ -355,44 +361,57 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
                 <div className="login-brand-sub">{BRAND.fullName} · {BRAND.institution}</div>
               </div>
             </div>
+            <a className="siab2-login-preview-link" href="/siab2-preview">Lihat preview SIAB2</a>
           </div>
           <div className="login-hero">
-            <div className="eyebrow"><span className="dot" /> SIAB2</div>
+            <div className="eyebrow"><span className="dot" /> {BRAND.shortName}</div>
             <h1>Presensi sekolah lebih rapi dalam <span className="grad">satu sistem.</span></h1>
-            <p>Kelola kehadiran dari gerbang, kelas, dan mushola dengan data yang mudah dipantau oleh guru, admin, dan petugas sekolah.</p>
-            <div className="row" style={{ gap: 8, marginTop: 22, flexWrap: 'wrap' }}>
-              <span className="chip chip-light"><Shield size={12} /> Perubahan tercatat</span>
-              <span className="chip chip-light"><Activity size={12} /> Data mudah dipantau</span>
-              <span className="chip chip-light"><Zap size={12} /> Operasional cepat</span>
+            <p>Masuk sesuai peran untuk mengelola data akademik, kehadiran, jadwal, jurnal, dan laporan madrasah.</p>
+            <div className="row siab2-login-chip-row">
+              <span className="chip chip-light"><Shield size={12} /> Akademik aman</span>
+              <span className="chip chip-light"><Activity size={12} /> Kehadiran terpadu</span>
+              <span className="chip chip-light"><Zap size={12} /> Laporan cepat</span>
             </div>
           </div>
           <div className="login-divider" />
           <div className="login-specs">
             <div className="login-spec">
-              <span className="k">GERBANG</span>
-              <span className="v">Scan datang dan pulang</span>
+              <span className="k">JADWAL</span>
+              <span className="v">Kelas dan agenda akademik</span>
             </div>
             <div className="login-spec">
-              <span className="k">KELAS</span>
-              <span className="v">Guru mencatat kehadiran</span>
+              <span className="k">JURNAL</span>
+              <span className="v">Catatan pembelajaran guru</span>
             </div>
             <div className="login-spec">
               <span className="k">LAPORAN</span>
-              <span className="v">Admin memantau data</span>
+              <span className="v">Rekap madrasah siap dipantau</span>
             </div>
           </div>
         </div>
       </div>
       <div className="login-right">
-        <form className="login-card" onSubmit={submit}>
-          <div className="login-role-label">MASUK SEBAGAI</div>
-          <div className="row login-role-tabs" style={{ gap: 6, margin: '10px 0 22px' }} role="tablist" aria-label="Pilih jenis akun">
+        <form className="login-card siab2-login-card" onSubmit={submit}>
+          <div className="siab2-login-card-head">
+            <div className="brand-mark siab2-login-card-logo">
+              <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
+            </div>
+            <div>
+              <div className="siab2-login-kicker">{BRAND.institution}</div>
+              <h2>Masuk ke {BRAND.shortName}</h2>
+              <p>{BRAND.fullName}</p>
+            </div>
+          </div>
+          <p className="siab2-login-card-copy">Masuk sesuai peran untuk mengelola data akademik, kehadiran, jadwal, jurnal, dan laporan madrasah.</p>
+          <div className="login-role-label">PILIH PERAN AKUN</div>
+          <div className="row login-role-tabs siab2-login-role-tabs" role="tablist" aria-label="Pilih jenis akun">
             {(['guru', 'admin', 'siswa'] as LoginRole[]).map((v) => (
-              <button type="button" key={v} className={`btn sm login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} style={{ flex: 1 }} role="tab" aria-selected={role === v}>
-                {v === 'guru' ? 'Guru' : v === 'admin' ? 'Admin/TU' : 'Siswa'}
+              <button type="button" key={v} className={`btn sm login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} role="tab" aria-selected={role === v}>
+                {LOGIN_ROLE_COPY[v].tab}
               </button>
             ))}
           </div>
+          <p className="siab2-login-role-note">{LOGIN_ROLE_COPY[role].note}</p>
           <Field label={ROLE_PRESETS[role].idLabel}>
             <TextInput icon={<UserIcon size={14} />} value={id} placeholder="Masukkan nama akun" autoComplete="username" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setId(e.target.value)} />
           </Field>
@@ -403,13 +422,14 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
             </div>
           </Field>
           {err && <div className="inline-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
-          <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Masuk <ArrowRight size={14} /></Btn>
+          <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Masuk ke SIAB2 <ArrowRight size={14} /></Btn>
           {showSso && <>
             <div className="hline" style={{ margin: '20px 0 16px' }} />
             <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
             <WorkOSSSOButton returnTo={defaultPathFor(null)} />
           </>}
           <div className="hline" style={{ margin: '20px 0 16px' }} />
+          <a className="siab2-login-card-preview-link" href="/siab2-preview">Lihat preview SIAB2</a>
           <div className="login-footer">
             <div className="login-footer-line" />
             <div className="login-footer-text">
