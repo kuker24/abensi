@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 /* ================================================================
    AKADEMIK BERKARAKTER v4 — Dark Nocturne
    Single dark theme with amber/gold accents,
@@ -1273,8 +1271,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   --siab2p-dim: rgba(247, 247, 247, 0.48);
   --siab2p-accent-1: #89AACC;
   --siab2p-accent-2: #4E85BF;
-  --siab2p-font-body: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --siab2p-font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --siab2p-font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --siab2p-font-display: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   min-height: 100dvh;
   width: 100%;
   max-width: 100vw;
