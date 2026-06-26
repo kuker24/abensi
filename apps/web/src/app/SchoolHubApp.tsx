@@ -341,84 +341,104 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
     }
   };
   return (
-    <div className="login login-v2">
-      <div className="login-left">
-        <div className="login-left-overlay" />
-        <div className="login-left-content" tabIndex={0} aria-label={`Informasi ${BRAND.description}`}>
-          <div className="login-topbar">
-            <div className="row" style={{ gap: 12 }}>
-              <div className="brand-mark login-brand-mark">
-                <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
+    <div className="login login-v2 siab2-login-page" data-siab2-auth="login">
+      <div className="siab2-login-ambient" aria-hidden="true" />
+      <div className="siab2-login-shell">
+        <section className="login-left siab2-login-visual" aria-label={`Informasi ${BRAND.description}`}>
+          <div className="siab2-login-grid" aria-hidden="true" />
+          <div className="siab2-login-orbit siab2-login-orbit-one" aria-hidden="true" />
+          <div className="siab2-login-orbit siab2-login-orbit-two" aria-hidden="true" />
+          <div className="login-left-content siab2-login-visual-content" tabIndex={0}>
+            <div className="login-topbar siab2-login-brandbar">
+              <div className="siab2-login-brand-lockup">
+                <div className="brand-mark login-brand-mark siab2-login-logo-frame">
+                  <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
+                </div>
+                <div>
+                  <div className="login-brand-name login-brand-name-long siab2-login-brand-name">{BRAND.shortName}</div>
+                  <div className="login-brand-sub siab2-login-brand-sub">{BRAND.fullName}</div>
+                </div>
               </div>
-              <div>
-                <div className="login-brand-name login-brand-name-long">{BRAND.shortName}</div>
-                <div className="login-brand-sub">{BRAND.fullName} · {BRAND.institution}</div>
+              <a className="siab2-login-preview-link" href="/siab2-preview">Lihat preview ↗</a>
+            </div>
+
+            <div className="login-hero siab2-login-hero">
+              <div className="eyebrow siab2-login-eyebrow"><span className="dot" /> MAN 1 ROKAN HULU</div>
+              <h1 aria-label="Presensi sekolah lebih rapi dalam satu sistem. Masuk ke SIAB2 untuk mengelola akademik madrasah.">Masuk ke <span>SIAB2</span> untuk mengelola akademik madrasah.</h1>
+              <p>Sistem Informasi Akademik Berkarakter untuk presensi, kelas, laporan, dan koordinasi operasional sekolah dalam satu ruang kerja resmi.</p>
+              <div className="siab2-login-trust-row" aria-label="Fitur utama SIAB2">
+                <span><Shield size={13} /> Akses berbasis peran</span>
+                <span><Activity size={13} /> Data operasional harian</span>
+                <span><BookOpen size={13} /> Akademik & presensi</span>
+              </div>
+            </div>
+
+            <div className="login-specs siab2-login-specs" aria-label="Ringkasan modul SIAB2">
+              <div className="login-spec siab2-login-spec">
+                <span className="k">GERBANG</span>
+                <span className="v">Datang dan pulang tercatat</span>
+              </div>
+              <div className="login-spec siab2-login-spec">
+                <span className="k">KELAS</span>
+                <span className="v">Presensi mengajar dan siswa</span>
+              </div>
+              <div className="login-spec siab2-login-spec">
+                <span className="k">LAPORAN</span>
+                <span className="v">Rekap untuk pimpinan madrasah</span>
               </div>
             </div>
           </div>
-          <div className="login-hero">
-            <div className="eyebrow"><span className="dot" /> SIAB2</div>
-            <h1>Presensi sekolah lebih rapi dalam <span className="grad">satu sistem.</span></h1>
-            <p>Kelola kehadiran dari gerbang, kelas, dan mushola dengan data yang mudah dipantau oleh guru, admin, dan petugas sekolah.</p>
-            <div className="row" style={{ gap: 8, marginTop: 22, flexWrap: 'wrap' }}>
-              <span className="chip chip-light"><Shield size={12} /> Perubahan tercatat</span>
-              <span className="chip chip-light"><Activity size={12} /> Data mudah dipantau</span>
-              <span className="chip chip-light"><Zap size={12} /> Operasional cepat</span>
+        </section>
+
+        <section className="login-right siab2-login-panel" aria-label="Form masuk SIAB2">
+          <form className="login-card siab2-login-card" onSubmit={submit}>
+            <div className="siab2-login-card-header">
+              <div className="siab2-login-card-kicker">PORTAL RESMI</div>
+              <h2>Masuk ke SIAB2</h2>
+              <p>{BRAND.fullName}</p>
             </div>
-          </div>
-          <div className="login-divider" />
-          <div className="login-specs">
-            <div className="login-spec">
-              <span className="k">GERBANG</span>
-              <span className="v">Scan datang dan pulang</span>
+
+            <div className="login-role-label siab2-login-role-label">Pilih area akun</div>
+            <div className="row login-role-tabs siab2-login-role-tabs" role="tablist" aria-label="Pilih jenis akun">
+              {(['guru', 'admin', 'siswa'] as LoginRole[]).map((v) => (
+                <button type="button" key={v} className={`btn sm login-role-option siab2-login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} role="tab" aria-selected={role === v}>
+                  {v === 'guru' ? 'Guru' : v === 'admin' ? 'Admin/TU' : 'Siswa'}
+                </button>
+              ))}
             </div>
-            <div className="login-spec">
-              <span className="k">KELAS</span>
-              <span className="v">Guru mencatat kehadiran</span>
+
+            <div className="siab2-login-form-fields">
+              <Field label={ROLE_PRESETS[role].idLabel}>
+                <TextInput icon={<UserIcon size={14} />} value={id} placeholder="Masukkan nama akun" autoComplete="username" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setId(e.target.value)} aria-describedby={err ? 'login-error' : undefined} />
+              </Field>
+              <Field label="Kata Sandi">
+                <div className="login-password-wrap siab2-login-password-wrap">
+                  <TextInput icon={<Lock size={14} />} type={showPw ? 'text' : 'password'} value={pw} placeholder="Masukkan kata sandi" autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPw(e.target.value)} aria-describedby={err ? 'login-error' : undefined} />
+                  <button type="button" className="login-pw-toggle siab2-login-pw-toggle" onClick={() => setShowPw(!showPw)} aria-label={showPw ? 'Sembunyikan kata sandi' : 'Lihat kata sandi'}>{showPw ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+                </div>
+              </Field>
             </div>
-            <div className="login-spec">
-              <span className="k">LAPORAN</span>
-              <span className="v">Admin memantau data</span>
+
+            {err && <div className="inline-error siab2-login-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
+            <Btn variant="primary" size="lg" loading={loading} type="submit" aria-label="Masuk" style={{ width: '100%' }}>Masuk ke SIAB2 <ArrowRight size={14} /></Btn>
+
+            {showSso && <>
+              <div className="hline siab2-login-divider" />
+              <div className="siab2-login-alt-label">atau masuk dengan SSO</div>
+              <WorkOSSSOButton className="siab2-login-sso" returnTo={defaultPathFor(null)} />
+            </>}
+
+            <div className="hline siab2-login-divider" />
+            <div className="login-footer siab2-login-footer">
+              <div className="login-footer-line" />
+              <div className="login-footer-text">
+                <span className="login-footer-brand">{BRAND.institution}</span>
+                <span className="login-footer-dot" />
+                <span className="login-footer-tag">Kementerian Agama RI</span>
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
-      <div className="login-right">
-        <form className="login-card" onSubmit={submit}>
-          <div className="login-role-label">MASUK SEBAGAI</div>
-          <div className="row login-role-tabs" style={{ gap: 6, margin: '10px 0 22px' }} role="tablist" aria-label="Pilih jenis akun">
-            {(['guru', 'admin', 'siswa'] as LoginRole[]).map((v) => (
-              <button type="button" key={v} className={`btn sm login-role-option ${role === v ? 'primary' : 'ghost'}`} onClick={() => setRole(v)} style={{ flex: 1 }} role="tab" aria-selected={role === v}>
-                {v === 'guru' ? 'Guru' : v === 'admin' ? 'Admin/TU' : 'Siswa'}
-              </button>
-            ))}
-          </div>
-          <Field label={ROLE_PRESETS[role].idLabel}>
-            <TextInput icon={<UserIcon size={14} />} value={id} placeholder="Masukkan nama akun" autoComplete="username" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setId(e.target.value)} />
-          </Field>
-          <Field label="Kata Sandi">
-            <div className="login-password-wrap">
-              <TextInput icon={<Lock size={14} />} type={showPw ? 'text' : 'password'} value={pw} placeholder="Masukkan kata sandi" autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPw(e.target.value)} />
-              <button type="button" className="login-pw-toggle" onClick={() => setShowPw(!showPw)} aria-label={showPw ? 'Sembunyikan kata sandi' : 'Lihat kata sandi'}>{showPw ? <EyeOff size={14} /> : <Eye size={14} />}</button>
-            </div>
-          </Field>
-          {err && <div className="inline-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
-          <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Masuk <ArrowRight size={14} /></Btn>
-          {showSso && <>
-            <div className="hline" style={{ margin: '20px 0 16px' }} />
-            <div style={{ textAlign: 'center', color: 'var(--fg-faint)', fontSize: '12px', marginBottom: '12px' }}>atau masuk dengan</div>
-            <WorkOSSSOButton returnTo={defaultPathFor(null)} />
-          </>}
-          <div className="hline" style={{ margin: '20px 0 16px' }} />
-          <div className="login-footer">
-            <div className="login-footer-line" />
-            <div className="login-footer-text">
-              <span className="login-footer-brand">MAN 1 Rokan Hulu</span>
-              <span className="login-footer-dot" />
-              <span className="login-footer-tag">Madrasah Berbasis Riset</span>
-            </div>
-          </div>
-        </form>
+          </form>
+        </section>
       </div>
     </div>
   );
@@ -442,12 +462,35 @@ function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
       setLoading(false);
     }
   }
-  return <div className="login-page"><div className="login-card"><form onSubmit={submit} className="login-form"><PageHead eyebrow="PASSWORD WAJIB DIGANTI" title="Buat password baru" sub={`Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai ${BRAND.compactName}.`} />
-    <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
-    <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
-    {error && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
-    <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Simpan password baru</Btn>
-  </form></div></div>;
+  return (
+    <div className="login login-v2 siab2-login-page siab2-login-page-compact" data-siab2-auth="password-change">
+      <div className="siab2-login-ambient" aria-hidden="true" />
+      <div className="siab2-login-password-shell">
+        <div className="siab2-login-card siab2-login-card-password">
+          <div className="siab2-login-brand-lockup siab2-login-password-brand">
+            <div className="brand-mark login-brand-mark siab2-login-logo-frame">
+              <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
+            </div>
+            <div>
+              <div className="login-brand-name login-brand-name-long siab2-login-brand-name">{BRAND.shortName}</div>
+              <div className="login-brand-sub siab2-login-brand-sub">{BRAND.fullName}</div>
+            </div>
+          </div>
+          <form onSubmit={submit} className="login-form siab2-login-password-form">
+            <div className="siab2-login-card-header">
+              <div className="siab2-login-card-kicker">PASSWORD WAJIB DIGANTI</div>
+              <h2>Buat password baru</h2>
+              <p>Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai {BRAND.compactName}.</p>
+            </div>
+            <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
+            <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
+            {error && <div className="inline-error siab2-login-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
+            <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Simpan password baru</Btn>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: string; onLogout: () => void; isOpen?: boolean; onClose?: () => void }) {

@@ -1251,6 +1251,734 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .login-form > button[type="submit"], .login-form > .btn { margin-top: 10px !important; }
 
 /* ================================================================
+   SIAB2 Pass 3 auth surface — scoped login redesign only.
+   Safe namespace: .siab2-login-* under .siab2-login-page.
+   ================================================================ */
+.siab2-login-page {
+  --siab2-login-bg: #050505;
+  --siab2-login-bg-soft: #0a0d11;
+  --siab2-login-surface: rgba(14, 17, 22, 0.78);
+  --siab2-login-surface-strong: rgba(18, 23, 30, 0.92);
+  --siab2-login-stroke: rgba(255,255,255,0.11);
+  --siab2-login-stroke-strong: rgba(137,170,204,0.36);
+  --siab2-login-text: #f7f7f7;
+  --siab2-login-muted: rgba(247,247,247,0.72);
+  --siab2-login-dim: rgba(247,247,247,0.48);
+  --siab2-login-accent-1: #89AACC;
+  --siab2-login-accent-2: #4E85BF;
+  --siab2-login-accent-soft: rgba(137,170,204,0.16);
+  --siab2-login-accent-glow: rgba(78,133,191,0.28);
+  --siab2-login-gradient: linear-gradient(135deg, #89AACC 0%, #4E85BF 100%);
+  position: relative;
+  display: block;
+  min-height: 100dvh;
+  overflow: hidden;
+  color: var(--siab2-login-text);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(137,170,204,0.18), transparent 32%),
+    radial-gradient(circle at 82% 76%, rgba(78,133,191,0.18), transparent 34%),
+    linear-gradient(145deg, #050505 0%, #080b0f 48%, #050505 100%);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.siab2-login-page::before,
+.siab2-login-page::after,
+.siab2-login-ambient,
+.siab2-login-grid,
+.siab2-login-orbit {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.siab2-login-page::before {
+  inset: 0;
+  opacity: 0.16;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 58px 58px;
+  mask-image: radial-gradient(circle at 44% 42%, black, transparent 72%);
+}
+
+.siab2-login-page::after {
+  inset: auto 6vw 7vh auto;
+  width: min(42vw, 620px);
+  height: min(42vw, 620px);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(78,133,191,0.12), transparent 66%);
+  filter: blur(16px);
+}
+
+.siab2-login-ambient {
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(115deg, rgba(255,255,255,0.035), transparent 32%, rgba(137,170,204,0.06) 56%, transparent 78%),
+    radial-gradient(circle at 52% 0%, rgba(137,170,204,0.10), transparent 40%);
+  opacity: 0.9;
+}
+
+.siab2-login-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+  min-height: 100dvh;
+}
+
+.siab2-login-visual,
+.siab2-login-panel {
+  position: relative;
+  min-width: 0;
+}
+
+.siab2-login-visual {
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    linear-gradient(115deg, rgba(5,5,5,0.54), rgba(5,7,10,0.88)),
+    url('/images/man1-gedung.png') center/cover no-repeat;
+}
+
+.siab2-login-visual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 22% 22%, rgba(137,170,204,0.24), transparent 28%),
+    linear-gradient(90deg, rgba(5,5,5,0.58) 0%, rgba(5,5,5,0.16) 46%, rgba(5,5,5,0.72) 100%);
+}
+
+.siab2-login-visual::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.54));
+}
+
+.siab2-login-grid {
+  z-index: 1;
+  inset: 0;
+  opacity: 0.12;
+  background-image:
+    linear-gradient(rgba(137,170,204,0.28) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137,170,204,0.18) 1px, transparent 1px);
+  background-size: 86px 86px;
+}
+
+.siab2-login-orbit-one {
+  z-index: 1;
+  right: clamp(28px, 6vw, 92px);
+  top: clamp(100px, 14vw, 190px);
+  width: 220px;
+  height: 220px;
+  border: 1px solid rgba(137,170,204,0.22);
+  border-radius: 999px;
+  box-shadow: inset 0 0 44px rgba(78,133,191,0.08), 0 0 70px rgba(78,133,191,0.08);
+}
+
+.siab2-login-orbit-two {
+  z-index: 1;
+  right: clamp(70px, 12vw, 180px);
+  bottom: clamp(62px, 8vw, 120px);
+  width: 132px;
+  height: 132px;
+  border-radius: 999px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  opacity: 0.72;
+}
+
+.siab2-login-visual-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: clamp(32px, 5vw, 70px);
+  min-height: 100dvh;
+  padding: clamp(28px, 4vw, 64px);
+  overflow: visible;
+}
+
+.siab2-login-brandbar,
+.siab2-login-brand-lockup,
+.siab2-login-trust-row,
+.siab2-login-footer .login-footer-text {
+  display: flex;
+  align-items: center;
+}
+
+.siab2-login-brandbar {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.siab2-login-brand-lockup {
+  gap: 12px;
+  min-width: 0;
+}
+
+.siab2-login-logo-frame {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border-color: rgba(255,255,255,0.30);
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(137,170,204,0.12), 0 18px 42px rgba(0,0,0,0.36), 0 0 30px rgba(78,133,191,0.16);
+}
+
+.siab2-login-brand-name {
+  max-width: 340px;
+  color: var(--siab2-login-text);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.siab2-login-brand-sub {
+  max-width: 360px;
+  color: var(--siab2-login-muted);
+  font-family: var(--font-sans);
+  letter-spacing: 0.08em;
+}
+
+.siab2-login-preview-link {
+  flex: 0 0 auto;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(137,170,204,0.30);
+  border-radius: 999px;
+  padding: 0 16px;
+  color: var(--siab2-login-text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+  background: rgba(8,12,17,0.56);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  transition: transform 180ms var(--ease-out), border-color 180ms var(--ease-out), background 180ms var(--ease-out);
+}
+
+.siab2-login-preview-link:hover,
+.siab2-login-preview-link:focus-visible {
+  border-color: rgba(137,170,204,0.72);
+  background: rgba(78,133,191,0.24);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.siab2-login-hero {
+  max-width: min(760px, 100%);
+  margin: auto 0;
+  gap: 18px;
+}
+
+.siab2-login-eyebrow {
+  color: var(--siab2-login-accent-1);
+  letter-spacing: 0.24em;
+}
+
+.siab2-login-page .siab2-login-eyebrow .dot {
+  background: var(--siab2-login-accent-1);
+  box-shadow: 0 0 14px var(--siab2-login-accent-glow);
+}
+
+.siab2-login-hero h1 {
+  max-width: 760px;
+  color: var(--siab2-login-text);
+  font-family: var(--font-sans);
+  font-size: clamp(42px, 5.35vw, 82px);
+  font-weight: 800;
+  line-height: 0.93;
+  letter-spacing: -0.065em;
+  text-shadow: 0 24px 70px rgba(0,0,0,0.58);
+}
+
+.siab2-login-hero h1 span {
+  color: var(--siab2-login-accent-1);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.035em;
+}
+
+.siab2-login-hero p {
+  max-width: 650px;
+  color: var(--siab2-login-muted);
+  font-size: clamp(15px, 1.1vw, 18px);
+  line-height: 1.72;
+}
+
+.siab2-login-trust-row {
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.siab2-login-trust-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  padding: 0 13px;
+  color: rgba(247,247,247,0.82);
+  font-size: 12px;
+  font-weight: 650;
+  background: rgba(8,12,17,0.46);
+  backdrop-filter: blur(12px);
+}
+
+.siab2-login-trust-row svg {
+  color: var(--siab2-login-accent-1);
+}
+
+.siab2-login-specs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 830px;
+}
+
+.siab2-login-spec {
+  min-height: 88px;
+  border-color: rgba(255,255,255,0.13);
+  background: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.siab2-login-spec .k {
+  color: var(--siab2-login-accent-1);
+}
+
+.siab2-login-spec .v {
+  color: rgba(247,247,247,0.68);
+}
+
+.siab2-login-panel {
+  display: grid;
+  place-items: center;
+  padding: clamp(22px, 3vw, 48px);
+  background:
+    radial-gradient(circle at 80% 10%, rgba(137,170,204,0.16), transparent 30%),
+    linear-gradient(180deg, rgba(5,5,5,0.34), rgba(5,5,5,0.78));
+}
+
+.siab2-login-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 420px);
+  border: 1px solid var(--siab2-login-stroke);
+  border-radius: 30px;
+  padding: 30px;
+  background: linear-gradient(180deg, rgba(19,23,29,0.84), rgba(9,12,16,0.78));
+  box-shadow: 0 32px 92px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px rgba(137,170,204,0.045);
+  backdrop-filter: blur(30px) saturate(1.12);
+  -webkit-backdrop-filter: blur(30px) saturate(1.12);
+  animation: scaleIn .42s var(--ease-out);
+}
+
+.siab2-login-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(137,170,204,0.58), rgba(255,255,255,0.04), rgba(78,133,191,0.38));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.siab2-login-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 26px;
+  right: 26px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--siab2-login-accent-1), var(--siab2-login-accent-2), transparent);
+  opacity: 0.8;
+}
+
+.siab2-login-card-header {
+  margin-bottom: 22px;
+}
+
+.siab2-login-card-kicker,
+.siab2-login-role-label,
+.siab2-login-alt-label {
+  color: var(--siab2-login-accent-1);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.siab2-login-card-header h2 {
+  margin: 8px 0 0;
+  color: var(--siab2-login-text);
+  font-size: clamp(27px, 2.2vw, 34px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.siab2-login-card-header p {
+  margin: 10px 0 0;
+  color: var(--siab2-login-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.siab2-login-role-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0 22px;
+  padding: 5px;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.035);
+}
+
+.siab2-login-role-option {
+  min-height: 40px;
+  border-radius: 14px;
+  color: var(--siab2-login-muted);
+  box-shadow: none;
+}
+
+.siab2-login-page .siab2-login-role-option.primary {
+  border-color: rgba(137,170,204,0.40);
+  background: linear-gradient(135deg, rgba(137,170,204,0.96), rgba(78,133,191,0.96));
+  color: #06111b;
+  box-shadow: 0 12px 26px rgba(78,133,191,0.22), inset 0 1px 0 rgba(255,255,255,0.28);
+}
+
+.siab2-login-page .siab2-login-role-option.ghost:hover,
+.siab2-login-page .siab2-login-role-option.ghost:focus-visible {
+  color: var(--siab2-login-text);
+  border-color: rgba(137,170,204,0.24);
+  background: rgba(137,170,204,0.12);
+}
+
+.siab2-login-form-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.siab2-login-page .field-label {
+  color: var(--siab2-login-muted);
+}
+
+.siab2-login-page .input {
+  min-height: 50px;
+  border-color: rgba(255,255,255,0.11);
+  background: rgba(3,7,12,0.46);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+}
+
+.siab2-login-page .input:hover {
+  border-color: rgba(137,170,204,0.26);
+}
+
+.siab2-login-page .input:focus-within {
+  border-color: rgba(137,170,204,0.72);
+  background: rgba(6,10,15,0.68);
+  box-shadow: 0 0 0 3px rgba(137,170,204,0.16), 0 0 28px rgba(78,133,191,0.10), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.siab2-login-page .input:has(input:valid:not(:placeholder-shown)) {
+  border-color: rgba(137,170,204,0.30);
+}
+
+.siab2-login-page .input:has(input:valid:not(:placeholder-shown)) > svg:first-child,
+.siab2-login-page .input:focus-within > svg:first-child,
+.siab2-login-page .login-pw-toggle:hover {
+  color: var(--siab2-login-accent-1);
+}
+
+.siab2-login-password-wrap {
+  margin-bottom: 0;
+}
+
+.siab2-login-pw-toggle {
+  color: var(--siab2-login-muted);
+}
+
+.siab2-login-pw-toggle:hover,
+.siab2-login-pw-toggle:focus-visible {
+  background: rgba(137,170,204,0.12);
+  outline: none;
+}
+
+.siab2-login-error {
+  margin: 18px 0 0;
+  border-color: rgba(244,63,94,0.28);
+  background: rgba(244,63,94,0.10);
+  color: #fecdd3;
+}
+
+.siab2-login-page .btn.primary {
+  min-height: 48px;
+  border-color: rgba(137,170,204,0.46);
+  background: var(--siab2-login-gradient);
+  color: #06111b;
+  font-weight: 800;
+  box-shadow: 0 18px 42px rgba(78,133,191,0.22), inset 0 1px 0 rgba(255,255,255,0.24);
+}
+
+.siab2-login-page .btn.primary:hover,
+.siab2-login-page .btn.primary:focus-visible {
+  border-color: rgba(171,204,229,0.72);
+  filter: none;
+  transform: translateY(-1px);
+  box-shadow: 0 22px 52px rgba(78,133,191,0.30), 0 0 0 3px rgba(137,170,204,0.14), inset 0 1px 0 rgba(255,255,255,0.26);
+}
+
+.siab2-login-page .btn.primary:disabled {
+  border-color: rgba(137,170,204,0.28);
+  background: linear-gradient(135deg, rgba(137,170,204,0.62), rgba(78,133,191,0.62));
+  color: rgba(6,17,27,0.78);
+}
+
+.siab2-login-divider {
+  margin: 20px 0 16px;
+  background: linear-gradient(90deg, transparent, rgba(137,170,204,0.26), transparent);
+}
+
+.siab2-login-alt-label {
+  margin-bottom: 12px;
+  text-align: center;
+  color: var(--siab2-login-dim);
+}
+
+.siab2-login-page .siab2-login-sso.btn.primary {
+  border-color: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.055);
+  color: var(--siab2-login-text);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.siab2-login-page .siab2-login-sso.btn.primary:hover,
+.siab2-login-page .siab2-login-sso.btn.primary:focus-visible {
+  border-color: rgba(137,170,204,0.34);
+  background: rgba(137,170,204,0.12);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.22), 0 0 0 3px rgba(137,170,204,0.11);
+}
+
+.siab2-login-footer {
+  margin-top: 0;
+}
+
+.siab2-login-footer .login-footer-line {
+  background: linear-gradient(90deg, transparent, rgba(137,170,204,0.46), transparent);
+}
+
+.siab2-login-footer .login-footer-text {
+  justify-content: center;
+  gap: 8px;
+  color: var(--siab2-login-dim);
+}
+
+.siab2-login-footer .login-footer-brand {
+  color: rgba(247,247,247,0.86);
+}
+
+.siab2-login-footer .login-footer-tag {
+  color: var(--siab2-login-dim);
+}
+
+.siab2-login-page-compact {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.siab2-login-password-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: min(100%, 480px);
+}
+
+.siab2-login-card-password {
+  width: min(100%, 460px);
+}
+
+.siab2-login-password-brand {
+  margin-bottom: 24px;
+}
+
+.siab2-login-password-form {
+  margin: 0;
+}
+
+.siab2-login-password-form .field {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1080px) {
+  .siab2-login-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(350px, 410px);
+  }
+
+  .siab2-login-visual-content {
+    padding: clamp(26px, 3.6vw, 46px);
+  }
+
+  .siab2-login-hero h1 {
+    font-size: clamp(40px, 6vw, 66px);
+  }
+}
+
+@media (max-width: 900px) {
+  .siab2-login-page {
+    overflow-y: auto;
+  }
+
+  .siab2-login-shell {
+    grid-template-columns: 1fr;
+    min-height: 100dvh;
+  }
+
+  .siab2-login-visual {
+    min-height: 320px;
+  }
+
+  .siab2-login-visual-content {
+    min-height: 320px;
+    padding: 22px 20px 28px;
+    gap: 24px;
+  }
+
+  .siab2-login-brandbar {
+    display: flex;
+  }
+
+  .siab2-login-preview-link {
+    min-height: 38px;
+    padding-inline: 12px;
+    font-size: 10px;
+  }
+
+  .siab2-login-hero {
+    margin: 12px 0 0;
+  }
+
+  .siab2-login-hero h1 {
+    font-size: clamp(34px, 9.5vw, 48px);
+    max-width: 620px;
+  }
+
+  .siab2-login-hero p {
+    display: block;
+    font-size: 14px;
+    line-height: 1.62;
+  }
+
+  .siab2-login-trust-row {
+    display: none;
+  }
+
+  .siab2-login-specs {
+    display: none;
+  }
+
+  .siab2-login-panel {
+    padding: 20px;
+    align-items: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .siab2-login-page {
+    background:
+      radial-gradient(circle at 28% 4%, rgba(137,170,204,0.18), transparent 36%),
+      linear-gradient(145deg, #050505 0%, #080b0f 60%, #050505 100%);
+  }
+
+  .siab2-login-visual {
+    min-height: 276px;
+  }
+
+  .siab2-login-visual-content {
+    min-height: 276px;
+    padding: 18px 16px 22px;
+  }
+
+  .siab2-login-brand-sub,
+  .siab2-login-preview-link {
+    display: none;
+  }
+
+  .siab2-login-logo-frame {
+    width: 40px;
+    height: 40px;
+  }
+
+  .siab2-login-hero h1 {
+    font-size: clamp(32px, 10.6vw, 42px);
+    letter-spacing: -0.055em;
+  }
+
+  .siab2-login-hero p {
+    font-size: 13px;
+  }
+
+  .siab2-login-panel {
+    padding: 16px 14px 22px;
+  }
+
+  .siab2-login-card {
+    width: 100%;
+    border-radius: 24px;
+    padding: 24px 20px;
+  }
+
+  .siab2-login-card-header h2 {
+    font-size: 28px;
+  }
+
+  .siab2-login-role-tabs {
+    gap: 5px;
+    padding: 4px;
+  }
+
+  .siab2-login-role-option {
+    min-height: 42px;
+    padding-inline: 7px;
+    font-size: 12px;
+  }
+
+  .siab2-login-page .input {
+    min-height: 48px;
+  }
+
+  .siab2-login-page-compact {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .siab2-login-page *,
+  .siab2-login-page *::before,
+  .siab2-login-page *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ================================================================
    SIAB2 scoped public preview landing — Visual Finalization Pass 3 port.
    Safe namespace: .siab2-preview / .siab2p-* only.
    ================================================================ */
