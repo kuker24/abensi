@@ -72,7 +72,7 @@ describe('PRD v2.2 UI shell', () => {
     fireEvent.click(screen.getAllByText('Admin/TU')[0]);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk ke SIAB2$/i }));
     await waitFor(() => expect(window.location.pathname).toBe('/admin/dashboard'));
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({
       body: JSON.stringify({ username: 'admin', password: 'sandi-test-aman', expectedRole: 'admin' })
@@ -96,7 +96,7 @@ describe('PRD v2.2 UI shell', () => {
     render(<App />);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk ke SIAB2$/i }));
 
     await waitFor(() => expect(screen.getByText(/terdaftar sebagai Admin\/TU, bukan Guru/i)).toBeInTheDocument());
     expect(window.location.pathname).toBe('/login');
@@ -114,7 +114,7 @@ describe('PRD v2.2 UI shell', () => {
     render(<App />);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk ke SIAB2$/i }));
 
     await waitFor(() => expect(screen.getByText(/Akun ini bukan akun Guru/i)).toBeInTheDocument());
     expect(window.location.pathname).toBe('/login');
@@ -132,7 +132,7 @@ describe('PRD v2.2 UI shell', () => {
     render(<App />);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'akun-salah' } });
     fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-salah' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk ke SIAB2$/i }));
 
     await waitFor(() => expect(screen.getByText('Nama akun atau kata sandi salah.')).toBeInTheDocument());
     expect(screen.queryByText(/401|Unauthorized|stack|JSON/i)).not.toBeInTheDocument();
