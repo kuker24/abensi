@@ -343,11 +343,13 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
   return (
     <div className="login login-v2 siab2-login-page" data-siab2-auth="login">
       <div className="siab2-login-ambient" aria-hidden="true" />
+      <div className="siab2-login-constellation" aria-hidden="true" />
       <div className="siab2-login-shell">
         <section className="login-left siab2-login-visual" aria-label={`Informasi ${BRAND.description}`}>
           <div className="siab2-login-grid" aria-hidden="true" />
           <div className="siab2-login-orbit siab2-login-orbit-one" aria-hidden="true" />
           <div className="siab2-login-orbit siab2-login-orbit-two" aria-hidden="true" />
+          <div className="siab2-login-orbit siab2-login-orbit-three" aria-hidden="true" />
           <div className="login-left-content siab2-login-visual-content" tabIndex={0}>
             <div className="login-topbar siab2-login-brandbar">
               <div className="siab2-login-brand-lockup">
@@ -362,39 +364,70 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
               <a className="siab2-login-preview-link" href="/siab2-preview">Lihat preview ↗</a>
             </div>
 
-            <div className="login-hero siab2-login-hero">
-              <div className="eyebrow siab2-login-eyebrow"><span className="dot" /> MAN 1 ROKAN HULU</div>
-              <h1 aria-label="Presensi sekolah lebih rapi dalam satu sistem. Masuk ke SIAB2 untuk mengelola akademik madrasah.">Masuk ke <span>SIAB2</span> untuk mengelola akademik madrasah.</h1>
-              <p>Sistem Informasi Akademik Berkarakter untuk presensi, kelas, laporan, dan koordinasi operasional sekolah dalam satu ruang kerja resmi.</p>
-              <div className="siab2-login-trust-row" aria-label="Fitur utama SIAB2">
-                <span><Shield size={13} /> Akses berbasis peran</span>
-                <span><Activity size={13} /> Data operasional harian</span>
-                <span><BookOpen size={13} /> Akademik & presensi</span>
+            <div className="siab2-login-visual-main">
+              <div className="login-hero siab2-login-hero">
+                <div className="eyebrow siab2-login-eyebrow"><span className="dot" /> MAN 1 ROKAN HULU · PORTAL AKADEMIK</div>
+                <h1 aria-label="Presensi sekolah lebih rapi dalam satu sistem. SIAB2 Sistem Informasi Akademik Berkarakter."><span>SIAB2</span><em>Sistem Informasi Akademik Berkarakter</em></h1>
+                <p className="siab2-login-role-line">
+                  Untuk <strong>{role === 'guru' ? 'Guru' : role === 'admin' ? 'Admin/TU' : 'Siswa'}</strong>: ruang kerja akademik yang rapi untuk presensi, kelas, laporan, dan koordinasi madrasah.
+                </p>
+                <p className="siab2-login-hero-description">Masuk ke portal resmi dengan tampilan gelap sinematik, status operasional, dan modul akademik yang dirancang satu keluarga dengan preview SIAB2 Pass 3.</p>
+                <div className="siab2-login-trust-row" aria-label="Fitur utama SIAB2">
+                  <span><Shield size={13} /> Akses berbasis peran</span>
+                  <span><Activity size={13} /> Status harian</span>
+                  <span><BookOpen size={13} /> Modul akademik</span>
+                </div>
               </div>
+
+              <aside className="siab2-login-status-card" aria-label="Status Portal SIAB2">
+                <div className="siab2-login-status-orb" aria-hidden="true" />
+                <div className="siab2-login-status-head">
+                  <div><span /><strong>Status Portal SIAB2</strong></div>
+                  <em>Data Contoh</em>
+                </div>
+                <div className="siab2-login-metric-grid">
+                  <div className="siab2-login-metric"><Calendar size={15} /><span>Tahun Ajaran</span><strong>2026/2027</strong></div>
+                  <div className="siab2-login-metric"><Clock size={15} /><span>Semester</span><strong>Genap</strong></div>
+                  <div className="siab2-login-metric siab2-login-metric-wide">
+                    <div><CheckSquare size={16} /><span>Presensi Hari Ini</span></div>
+                    <strong>97.4% Hadir</strong>
+                    <i><b /> Preview operasional harian</i>
+                  </div>
+                  <div className="siab2-login-metric"><Users size={15} /><span>Kelas Aktif</span><strong>24 Rombel</strong></div>
+                  <div className="siab2-login-metric"><Database size={15} /><span>Ledger Akademik</span><strong>Tersusun</strong></div>
+                </div>
+                <div className="siab2-login-progress-track"><span /></div>
+              </aside>
             </div>
 
-            <div className="login-specs siab2-login-specs" aria-label="Ringkasan modul SIAB2">
-              <div className="login-spec siab2-login-spec">
-                <span className="k">GERBANG</span>
-                <span className="v">Datang dan pulang tercatat</span>
+            <div className="siab2-login-academic-layer" role="group" aria-label="Ringkasan akademik SIAB2">
+              <div className="siab2-login-module-deck">
+                <div className="siab2-login-module-chip"><Radar size={14} /><span>Gerbang</span><strong>Datang & pulang</strong></div>
+                <div className="siab2-login-module-chip"><ListChecks size={14} /><span>Jurnal</span><strong>KBM harian</strong></div>
+                <div className="siab2-login-module-chip"><FileText size={14} /><span>Laporan</span><strong>Rekap pimpinan</strong></div>
               </div>
-              <div className="login-spec siab2-login-spec">
-                <span className="k">KELAS</span>
-                <span className="v">Presensi mengajar dan siswa</span>
+              <div className="login-specs siab2-login-specs">
+                <div className="login-spec siab2-login-spec"><span className="k">MODUL AKTIF</span><span className="v">Presensi · Kelas · Laporan</span></div>
+                <div className="login-spec siab2-login-spec"><span className="k">AKSES</span><span className="v">Guru · Admin/TU · Siswa</span></div>
+                <div className="login-spec siab2-login-spec"><span className="k">PORTAL</span><span className="v">MAN 1 Rokan Hulu</span></div>
               </div>
-              <div className="login-spec siab2-login-spec">
-                <span className="k">LAPORAN</span>
-                <span className="v">Rekap untuk pimpinan madrasah</span>
+              <div className="siab2-login-ledger-card">
+                <div className="siab2-login-ledger-head"><LayoutDashboard size={15} /><strong>Mini Dashboard</strong><span>Live Preview</span></div>
+                <div className="siab2-login-ledger-row"><span>Presensi guru</span><strong>Terpantau</strong></div>
+                <div className="siab2-login-ledger-row"><span>Jurnal kelas</span><strong>Siap input</strong></div>
+                <div className="siab2-login-ledger-row"><span>Notifikasi</span><strong>Ringkas</strong></div>
               </div>
             </div>
           </div>
         </section>
 
         <section className="login-right siab2-login-panel" aria-label="Form masuk SIAB2">
+          <div className="siab2-login-panel-orbit" aria-hidden="true" />
           <form className="login-card siab2-login-card" onSubmit={submit}>
+            <div className="siab2-login-card-status"><span /> Portal aman · {role === 'guru' ? 'Guru' : role === 'admin' ? 'Admin/TU' : 'Siswa'}</div>
             <div className="siab2-login-card-header">
-              <div className="siab2-login-card-kicker">PORTAL RESMI</div>
-              <h2>Masuk ke SIAB2</h2>
+              <div className="siab2-login-card-kicker">AKSES RESMI SIAB2</div>
+              <h2>Masuk ke portal</h2>
               <p>{BRAND.fullName}</p>
             </div>
 
@@ -438,6 +471,10 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
               </div>
             </div>
           </form>
+          <div className="siab2-login-form-ledger" aria-hidden="true">
+            <span><Bell size={13} /> Notifikasi rapi</span>
+            <span><Zap size={13} /> Akses cepat</span>
+          </div>
         </section>
       </div>
     </div>
@@ -465,8 +502,11 @@ function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
   return (
     <div className="login login-v2 siab2-login-page siab2-login-page-compact" data-siab2-auth="password-change">
       <div className="siab2-login-ambient" aria-hidden="true" />
+      <div className="siab2-login-constellation" aria-hidden="true" />
       <div className="siab2-login-password-shell">
-        <div className="siab2-login-card siab2-login-card-password">
+        <section className="siab2-login-password-context" aria-label={`Konteks keamanan ${BRAND.compactName}`}>
+          <div className="siab2-login-grid" aria-hidden="true" />
+          <div className="siab2-login-orbit siab2-login-orbit-one" aria-hidden="true" />
           <div className="siab2-login-brand-lockup siab2-login-password-brand">
             <div className="brand-mark login-brand-mark siab2-login-logo-frame">
               <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
@@ -476,18 +516,30 @@ function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
               <div className="login-brand-sub siab2-login-brand-sub">{BRAND.fullName}</div>
             </div>
           </div>
-          <form onSubmit={submit} className="login-form siab2-login-password-form">
-            <div className="siab2-login-card-header">
-              <div className="siab2-login-card-kicker">PASSWORD WAJIB DIGANTI</div>
-              <h2>Buat password baru</h2>
-              <p>Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai {BRAND.compactName}.</p>
-            </div>
-            <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
-            <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
-            {error && <div className="inline-error siab2-login-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
-            <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Simpan password baru</Btn>
-          </form>
-        </div>
+          <div className="siab2-login-password-copy">
+            <div className="eyebrow siab2-login-eyebrow"><span className="dot" /> PROTEKSI AKUN</div>
+            <h1><span>SIAB2</span><em>Pengamanan akses pertama</em></h1>
+            <p>Lengkapi pergantian password sebelum masuk ke ruang kerja akademik. Status portal, modul, dan ledger tetap memakai visual Pass 3 yang sama.</p>
+          </div>
+          <div className="siab2-login-module-deck siab2-login-password-modules">
+            <div className="siab2-login-module-chip"><Shield size={14} /><span>Akun</span><strong>Diverifikasi</strong></div>
+            <div className="siab2-login-module-chip"><Lock size={14} /><span>Password</span><strong>Diperbarui</strong></div>
+            <div className="siab2-login-module-chip"><LayoutDashboard size={14} /><span>Portal</span><strong>Siap akses</strong></div>
+          </div>
+        </section>
+
+        <form onSubmit={submit} className="login-form login-card siab2-login-card siab2-login-card-password siab2-login-password-form">
+          <div className="siab2-login-card-status"><span /> Sesi awal · wajib ganti password</div>
+          <div className="siab2-login-card-header">
+            <div className="siab2-login-card-kicker">PASSWORD WAJIB DIGANTI</div>
+            <h2>Buat password baru</h2>
+            <p>Akun baru atau akun yang di-reset wajib mengganti password sebelum memakai {BRAND.compactName}.</p>
+          </div>
+          <Field label="Password saat ini"><TextInput type="password" value={currentPassword} autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)} /></Field>
+          <Field label="Password baru"><TextInput type="password" value={newPassword} autoComplete="new-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)} /></Field>
+          {error && <div className="inline-error siab2-login-error" role="alert"><AlertTriangle size={14} /> {error}</div>}
+          <Btn variant="primary" size="lg" loading={loading} type="submit" style={{ width: '100%' }}>Simpan password baru</Btn>
+        </form>
       </div>
     </div>
   );
