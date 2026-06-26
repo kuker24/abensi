@@ -94,7 +94,13 @@ const TeacherDashboard = lazyPage(loadGuruPages, 'TeacherDashboard');
 const TeacherLeavePage = lazyPage(loadGuruPages, 'TeacherLeavePage');
 const TeacherRecapPage = lazyPage(loadGuruPages, 'TeacherRecapPage');
 const MyAttendancePage = lazyPage(loadSiswaPages, 'MyAttendancePage');
+const SIAB2PreviewLanding = lazy(() => import('./pages/SIAB2PreviewLanding'));
 const OnboardingTour = lazyPage(() => import('./tutorial'), 'OnboardingTour');
+const PUBLIC_ROUTE_PATHS = new Set(['/siab2-preview']);
+
+function isPublicRoutePath(path: string) {
+  return PUBLIC_ROUTE_PATHS.has(path);
+}
 
 /** Isolated clock — updates every second but re-renders only itself */
 const LiveClock = memo(function LiveClock() {
@@ -710,7 +716,7 @@ function App() {
       setUser(null);
       setSessionChecked(true);
       notify('Sesi masuk habis. Silakan masuk ulang.', 'bad');
-      go('/login');
+      if (!isPublicRoutePath(window.location.pathname)) go('/login');
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -735,7 +741,7 @@ function App() {
         if (cancelled) return;
         localStorage.removeItem(USER_KEY);
         setUser(null);
-        if (window.location.pathname !== '/login') go('/login');
+        if (window.location.pathname !== '/login' && !isPublicRoutePath(window.location.pathname)) go('/login');
       })
       .finally(() => {
         if (!cancelled) setSessionChecked(true);
@@ -749,7 +755,7 @@ function App() {
       if (stored) setUser(stored);
     }
   }, [path, user]);
-  useEffect(() => { if (sessionChecked && !readStoredUser() && path !== '/login') go('/login'); }, [path, sessionChecked]);
+  useEffect(() => { if (sessionChecked && !readStoredUser() && path !== '/login' && !isPublicRoutePath(path)) go('/login'); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     try {
       localStorage.removeItem(USER_KEY);
@@ -788,6 +794,7 @@ function App() {
   }
   const confirmLayer = <ConfirmDialog dialog={confirmDialog} onCancel={() => { confirmDialog?.resolve(false); setConfirmDialog(null); }} onConfirm={() => { confirmDialog?.resolve(true); setConfirmDialog(null); }} />;
 
+  if (isPublicRoutePath(path)) return <><Suspense fallback={<PageLoading />}><SIAB2PreviewLanding /></Suspense><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : '/login'), 0); return null; }
   if (!sessionChecked && path !== '/login') return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (path === '/login') return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
