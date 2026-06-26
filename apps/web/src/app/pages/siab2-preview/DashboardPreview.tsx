@@ -134,7 +134,7 @@ export default function DashboardPreview() {
           ))}
         </div>
         <div className="siab2p-dashboard-list-block">
-          <p>Validasi & Pengesahan Digital</p>
+          <p>Validasi & Tinjauan Laporan</p>
           <div className="siab2p-dashboard-list">
             {siab2Data.dashboardMock.kepala.approvals.map((approval) => (
               <div className="siab2p-dashboard-list-row" key={approval.name}>
@@ -143,7 +143,7 @@ export default function DashboardPreview() {
                   <strong>{approval.name}</strong>
                   <small>{approval.detail}</small>
                 </div>
-                <span className="siab2p-small-action">Setujui</span>
+                <span className="siab2p-small-action">Tinjau</span>
                 <StatusBadge type={approval.status} />
               </div>
             ))}
@@ -164,7 +164,7 @@ export default function DashboardPreview() {
             </h2>
           </div>
           <p>
-            Antarmuka workspace interaktif yang menyajikan rekapitulasi data krusial secara real-time tanpa visual yang membingungkan.
+            Preview workspace interaktif yang membantu menampilkan rekapitulasi data contoh secara jelas tanpa visual yang membingungkan.
           </p>
         </div>
 
@@ -173,7 +173,7 @@ export default function DashboardPreview() {
           <div className="siab2p-browser-header">
             <div className="siab2p-window-dots"><span /><span /><span /></div>
             <div className="siab2p-address-pill">Portal SIAB2 — MAN 1 Rokan Hulu</div>
-            <div className="siab2p-connected"><span /> <strong>Tersambung</strong></div>
+            <div className="siab2p-connected"><span /> <strong>Mode Preview</strong></div>
           </div>
 
           <div className="siab2p-dashboard-tabs" role="tablist" aria-label="Preview role dashboard SIAB2">
@@ -193,8 +193,8 @@ export default function DashboardPreview() {
 
           <div className="siab2p-browser-content">{renderContent()}</div>
           <div className="siab2p-browser-status">
-            <span>SIAB2 v2.0.4 — Preview Statis</span>
-            <strong><i />Server Tersambung</strong>
+            <span>Preview Build — Data Contoh</span>
+            <strong><i />Simulasi Tampilan</strong>
           </div>
         </div>
       </div>

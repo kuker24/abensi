@@ -96,8 +96,8 @@ export const roleDetails = [
   { role: 'Admin', text: 'kelola data, rombel, dan akun dalam satu ruang kerja.' },
   { role: 'Guru', text: 'jadwal, absensi, dan jurnal dalam satu ruang kerja.' },
   { role: 'Siswa', text: 'pantau jadwal, presensi, dan rapor dalam satu ruang kerja.' },
-  { role: 'Operator Akademik', text: 'sinkronisasi EMIS, data, dan jadwal dalam satu ruang kerja.' },
-  { role: 'Kepala Madrasah', text: 'validasi laporan, presensi, dan jurnal dalam satu ruang kerja.' }
+  { role: 'Operator Akademik', text: 'menyusun struktur data, jadwal, dan validasi akademik dalam satu ruang kerja.' },
+  { role: 'Kepala Madrasah', text: 'meninjau laporan, presensi, dan jurnal dalam satu ruang kerja.' }
 ] as const;
 
 export const ledgerItems = [
@@ -106,7 +106,7 @@ export const ledgerItems = [
   { label: 'Kelas Aktif', value: '24' },
   { label: 'Siswa Terdata', value: '683' },
   { label: 'Guru Aktif', value: '42' },
-  { label: 'Rekap Hari Ini', value: 'Tersusun', good: true }
+  { label: 'Rekap Hari Ini', value: 'Preview', good: true }
 ] as const;
 
 export const siab2Data: Siab2DataType = {
@@ -132,7 +132,7 @@ export const siab2Data: Siab2DataType = {
       id: 'kehadiran',
       title: 'Kehadiran Harian',
       tag: 'Pencatatan Karakter',
-      desc: 'Pemantauan presensi harian siswa secara real-time dengan status kehadiran detail (Hadir, Izin, Sakit, Alfa, Terlambat).',
+      desc: 'Membantu memantau presensi harian siswa dengan status kehadiran detail (Hadir, Izin, Sakit, Alfa, Terlambat).',
       previewType: 'chart'
     },
     {
@@ -146,22 +146,22 @@ export const siab2Data: Siab2DataType = {
       id: 'laporan',
       title: 'Laporan Kepala Madrasah',
       tag: 'Hasil Validasi',
-      desc: 'Rekapitulasi otomatis presensi, jurnal, dan laporan berkala untuk mempermudah audit pimpinan secara berkala.',
+      desc: 'Membantu menyusun rekap presensi, jurnal, dan laporan berkala untuk mempermudah tinjauan pimpinan.',
       previewType: 'signature'
     }
   ],
   roles: [
     {
       name: 'Admin Madrasah',
-      desc: 'Mengendalikan infrastruktur data secara terpusat, mengelola akun guru/siswa, konfigurasi kelas, dan hak akses utama.',
+      desc: 'Mendukung pengelolaan data secara terpusat, akun pengguna, konfigurasi kelas, dan hak akses utama.',
       badge: 'Akses Penuh',
-      features: ['Pembagian Rombel & Kelas', 'Verifikasi Data Induk Emis', 'Audit Log Aktivitas']
+      features: ['Pembagian Rombel & Kelas', 'Validasi Data Induk Akademik', 'Audit Log Aktivitas']
     },
     {
       name: 'Guru',
-      desc: 'Pengisian agenda mengajar harian, pencatatan absensi siswa per jam pelajaran, serta pengunggahan rapor karakter berakhlak.',
+      desc: 'Membantu pengisian agenda mengajar harian, pencatatan absensi siswa per jam pelajaran, serta catatan karakter.',
       badge: 'Akademik & Karakter',
-      features: ['Jurnal Mengajar Elektronik', 'Presensi Kehadiran Real-time', 'Evaluasi Karakter Siswa']
+      features: ['Jurnal Mengajar Elektronik', 'Presensi Kehadiran Terstruktur', 'Evaluasi Karakter Siswa']
     },
     {
       name: 'Siswa',
@@ -171,27 +171,27 @@ export const siab2Data: Siab2DataType = {
     },
     {
       name: 'Operator Akademik',
-      desc: 'Sinkronisasi berkala dengan data pusat kementerian, verifikasi data guru dan siswa, serta menyusun jadwal pelajaran makro.',
-      badge: 'Sistem & Integrasi',
-      features: ['Sinkronisasi EMIS Kemenag', 'Penyusunan Jadwal Rinci', 'Manajemen NISN & NUPTK']
+      desc: 'Mendukung penyiapan struktur data akademik, verifikasi data guru dan siswa, serta penyusunan jadwal pelajaran makro.',
+      badge: 'Data & Struktur',
+      features: ['Siap Integrasi Data', 'Penyusunan Jadwal Rinci', 'Manajemen NISN & NUPTK']
     },
     {
       name: 'Kepala Madrasah',
-      desc: 'Memantau performa mengajar guru, rekapitulasi kehadiran siswa bulanan, serta menyetujui pengesahan laporan secara digital.',
+      desc: 'Membantu meninjau performa mengajar guru, rekapitulasi kehadiran siswa bulanan, serta alur verifikasi laporan.',
       badge: 'Pengawasan Mutu',
-      features: ['Validasi Laporan Digital', 'Grafik Kinerja Guru & Kelas', 'Persetujuan Hasil Bulanan']
+      features: ['Validasi Laporan Berkala', 'Grafik Kinerja Guru & Kelas', 'Tinjauan Hasil Bulanan']
     }
   ],
   dashboardMock: {
     admin: {
       metrics: [
         { label: 'Siswa Terdata', value: '683', change: 'Aktif', status: 'Hadir' },
-        { label: 'Guru Aktif', value: '42', change: '2 Baru Terverifikasi', status: 'Aktif' },
+        { label: 'Guru Aktif', value: '42', change: 'Siap Verifikasi', status: 'Aktif' },
         { label: 'Kelas Aktif', value: '24', change: 'Semester Genap', status: 'Izin' }
       ],
       alerts: [
-        { name: 'Siswa Belum Diabsen', detail: 'Kelas XII MIPA 1 (Farida Nurhaliza, S.Pd.)', status: 'Terlambat' },
-        { name: 'Jurnal Belum Lengkap', detail: 'Kelas XI IPS 2 (Ahmad Hidayat)', status: 'Pending' },
+        { name: 'Siswa Belum Diabsen', detail: 'Kelas XII MIPA 1 (Guru Mapel 01)', status: 'Terlambat' },
+        { name: 'Jurnal Belum Lengkap', detail: 'Kelas XI IPS 2 (Guru Mapel 02)', status: 'Pending' },
         { name: 'Data Siswa Belum Lengkap', detail: '5 Siswa di Kelas X Agama', status: 'Nonaktif' }
       ]
     },
@@ -201,15 +201,15 @@ export const siab2Data: Siab2DataType = {
         { time: '09.15 - 10.45', subject: 'Fisika Umum', class: 'XI IPS 2', status: 'Pending' }
       ],
       alerts: [
-        { name: 'Absensi Perlu Diisi', detail: 'Kelas XII MIPA 1 belum diverifikasi hari ini', status: 'Terlambat' },
+        { name: 'Absensi Perlu Diisi', detail: 'Kelas XII MIPA 1 siap diverifikasi hari ini', status: 'Terlambat' },
         { name: 'Input Jurnal Mingguan', detail: 'Batas pengisian tanggal 28/06/2026', status: 'Pending' }
       ]
     },
     siswa: {
       schedule: [
-        { time: '07.30 - 09.00', subject: 'Kimia', teacher: 'Farida Nurhaliza, S.Pd.', status: 'Hadir' },
-        { time: '09.15 - 10.45', subject: 'Matematika Wajib', teacher: 'Ahmad Hidayat', status: 'Hadir' },
-        { time: '11.00 - 12.30', subject: 'Bahasa Inggris', teacher: 'Dewi Rahmawati', status: 'Terlambat' }
+        { time: '07.30 - 09.00', subject: 'Kimia', teacher: 'Guru Mapel 01', status: 'Hadir' },
+        { time: '09.15 - 10.45', subject: 'Matematika Wajib', teacher: 'Guru Mapel 02', status: 'Hadir' },
+        { time: '11.00 - 12.30', subject: 'Bahasa Inggris', teacher: 'Guru Mapel 03', status: 'Terlambat' }
       ],
       attendance: [
         { label: 'Hadir', count: '142 Hari', status: 'Hadir' },
@@ -225,7 +225,7 @@ export const siab2Data: Siab2DataType = {
       ],
       approvals: [
         { name: 'Laporan Kehadiran Bulanan - Mei', detail: 'Diajukan oleh Operator (25/06/2026)', status: 'Pending' },
-        { name: 'Jurnal Mengajar Semester Genap', detail: 'Diajukan oleh Farida Nurhaliza, S.Pd.', status: 'Aktif' }
+        { name: 'Jurnal Mengajar Semester Genap', detail: 'Diajukan oleh Guru Mapel 01', status: 'Aktif' }
       ]
     }
   }

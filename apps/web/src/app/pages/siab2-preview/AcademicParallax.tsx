@@ -9,15 +9,15 @@ interface ParallaxCard {
 }
 
 const studentRows = [
-  { nisn: '0092834710', name: 'Ahmad Hidayat', status: 'Aktif' },
-  { nisn: '0093847291', name: 'Dewi Rahmawati', status: 'Aktif' },
-  { nisn: '0083948291', name: 'Aditya Maulana', status: 'Aktif' }
+  { nisn: '********10', name: 'Siswa XII-01', status: 'Contoh' },
+  { nisn: '********21', name: 'Siswa XI-02', status: 'Contoh' },
+  { nisn: '********31', name: 'Siswa X-03', status: 'Contoh' }
 ] as const;
 
 function BukuIndukPreview() {
   return (
     <div className="siab2p-parallax-mini-table">
-      <div><span>NISN</span><span>Nama Siswa</span><span>Status</span></div>
+      <div><span>NISN Demo</span><span>Data Contoh</span><span>Status</span></div>
       {studentRows.map((row) => (
         <p key={row.nisn}><span>{row.nisn}</span><strong>{row.name}</strong><em>{row.status}</em></p>
       ))}
@@ -39,7 +39,7 @@ function PresensiPreview() {
           <i><b className={row.color} style={{ width: `${row.pct}%` }} /></i>
         </div>
       ))}
-      <small>Kelas XII MIPA 1 · Hari Ini</small>
+      <small>Kelas XII MIPA 1 · Data Contoh</small>
     </div>
   );
 }
@@ -65,7 +65,7 @@ function JurnalPreview() {
       {rows.map((row) => (
         <p key={row.label} className={row.done ? 'siab2p-check-done' : ''}><span>{row.done ? '✓' : '○'}</span>{row.label}</p>
       ))}
-      <small>Farida Nurhaliza, S.Pd.</small>
+      <small>Guru Mapel 01</small>
     </div>
   );
 }
@@ -90,7 +90,7 @@ function LaporanPreview() {
       <span>Laporan Rekap Lintas Kelas</span>
       <p><em>Rasio Kehadiran</em><b>96.8%</b></p>
       <p><em>Jurnal Terisi</em><b>92.4%</b></p>
-      <i>Digital Signed ✓</i>
+      <i>Siap Verifikasi ✓</i>
     </div>
   );
 }
@@ -99,44 +99,44 @@ const cards: ParallaxCard[] = [
   {
     id: 1,
     title: 'Buku Induk Siswa',
-    detail: 'Daftar NISN, data keluarga, dan mutasi akademik dalam sistem.',
+    detail: 'Contoh daftar NISN tersamarkan, data keluarga, dan mutasi akademik dalam sistem.',
     preview: <BukuIndukPreview />,
-    benefit: 'Mencegah duplikasi data & integrasi EMIS'
+    benefit: 'Merapikan struktur data akademik'
   },
   {
     id: 2,
     title: 'Presensi Harian',
-    detail: 'Rekapitulasi otomatis presensi berbasis aplikasi harian guru.',
+    detail: 'Contoh rekapitulasi presensi untuk membantu kerja harian guru.',
     preview: <PresensiPreview />,
-    benefit: 'Notifikasi absensi cepat ke pimpinan'
+    benefit: 'Mendukung tinjauan absensi pimpinan'
   },
   {
     id: 3,
     title: 'Jadwal Mengajar',
     detail: 'Distribusi KBM mingguan terhindar dari bentrokan jadwal guru.',
     preview: <JadwalPreview />,
-    benefit: 'Deteksi bentrok jam mengajar cerdas'
+    benefit: 'Membantu deteksi bentrok jam mengajar'
   },
   {
     id: 4,
     title: 'Jurnal Mengajar Guru',
     detail: 'Pencatatan materi pelajaran dan kendala kelas secara langsung.',
     preview: <JurnalPreview />,
-    benefit: 'Monitoring KBM transparan per hari'
+    benefit: 'Mendukung monitoring KBM per hari'
   },
   {
     id: 5,
     title: 'Rekap Bulanan',
-    detail: 'Statistik visual kehadiran dan jurnal bulanan siap unduh.',
+    detail: 'Statistik visual kehadiran dan jurnal bulanan untuk bahan tinjauan.',
     preview: <RekapPreview />,
-    benefit: 'Ekspor rekapitulasi data satu klik'
+    benefit: 'Merapikan bahan rekapitulasi data'
   },
   {
     id: 6,
     title: 'Laporan Madrasah',
-    detail: 'Pelaporan kinerja digital komprehensif bagi pimpinan.',
+    detail: 'Preview pelaporan kinerja akademik untuk bahan tinjauan pimpinan.',
     preview: <LaporanPreview />,
-    benefit: 'Akurasi data akreditasi 100%'
+    benefit: 'Merapikan bahan pendukung akreditasi'
   }
 ];
 
@@ -152,7 +152,7 @@ export default function AcademicParallax() {
             Buku induk <em>digital</em> madrasah
           </h2>
           <p>
-            Semua instrumen KBM dan administrasi tersusun dalam alur kerja sistem terintegrasi demi mewujudkan madrasah berkarakter.
+            Semua instrumen KBM dan administrasi disusun dalam alur kerja yang rapi untuk mendukung madrasah berkarakter.
           </p>
         </div>
 
@@ -185,7 +185,7 @@ export default function AcademicParallax() {
             <h3>{focusedCard.title}</h3>
             <p>{focusedCard.detail}</p>
             {focusedCard.preview}
-            <div className="siab2p-lightbox-status"><i />Modul Aktif & Terintegrasi</div>
+            <div className="siab2p-lightbox-status"><i />Preview UI · Siap Verifikasi</div>
           </div>
         </div>
       ) : null}

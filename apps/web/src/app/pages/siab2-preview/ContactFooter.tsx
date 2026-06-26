@@ -32,12 +32,12 @@ export default function ContactFooter() {
             </div>
           </div>
           <p>
-            SIAB2 (Sistem Informasi Akademik Berkarakter) adalah platform ruang kerja digital untuk tata kelola madrasah modern. Dikembangkan untuk MAN 1 Rokan Hulu, Kementerian Agama RI.
+            SIAB2 (Sistem Informasi Akademik Berkarakter) adalah preview tampilan ruang kerja digital untuk mendukung tata kelola madrasah modern di MAN 1 Rokan Hulu.
           </p>
           <div className="siab2p-footer-chips">
-            <span><i />Sistem Aktif</span>
+            <span><i />Mode Preview</span>
             <span>TA 2026/2027</span>
-            <span>EMIS Integrated</span>
+            <span>Siap Integrasi Data</span>
           </div>
         </div>
 
@@ -53,22 +53,22 @@ export default function ContactFooter() {
         <div className="siab2p-footer-contact">
           <h4>Hubungi Operator</h4>
           <p>
-            Untuk pertanyaan terkait aktivasi akun madrasah, integrasi EMIS, atau akses data akademik—silakan hubungi tim IT operator SIAB2.
+            Untuk pertanyaan terkait aktivasi akun madrasah atau akses data akademik, silakan hubungi admin/operator MAN 1 Rokan Hulu melalui kanal resmi madrasah.
           </p>
           <div className="siab2p-contact-card">
-            <a href="mailto:operator@man1rokanhulu.sch.id"><span>📧</span>operator@man1rokanhulu.sch.id</a>
-            <span><i>📍</i>Jl. D.I. Panjaitan, Ujung Batu, Rokan Hulu, Riau</span>
+            <span><i>👤</i>Kontak operator madrasah</span>
+            <span><i>📍</i>Rokan Hulu, Riau</span>
           </div>
           <div className="siab2p-footer-actions">
             <a className="siab2p-footer-primary" href="/login">Masuk ke SIAB2 ↗</a>
-            <a className="siab2p-footer-secondary" href="mailto:operator@man1rokanhulu.sch.id">Hubungi Operator</a>
+            <a className="siab2p-footer-secondary" href="#kontak">Hubungi Operator</a>
           </div>
         </div>
       </div>
 
       <div className="siab2p-container siab2p-footer-bottom">
         <span>© 2026 MAN 1 Rokan Hulu – Kementerian Agama RI. Hak Cipta Dilindungi.</span>
-        <strong><i />SIAB2 v2.0.4 <em>·</em> Preview Build</strong>
+        <strong><i />Preview UI <em>·</em> Preview Build</strong>
       </div>
     </footer>
   );

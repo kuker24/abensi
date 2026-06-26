@@ -1,17 +1,17 @@
 import { siab2Data, type AcademicModule } from './data';
 
 const studentRows = [
-  { nisn: '0092834710', name: 'Ahmad Hidayat', kelas: 'XII MIPA 1' },
-  { nisn: '0093847291', name: 'Dewi Rahmawati', kelas: 'XI IPS 2' },
-  { nisn: '0083948291', name: 'Aditya Maulana', kelas: 'X Agama' }
+  { nisn: '********10', name: 'Siswa XII-01', kelas: 'XII MIPA 1' },
+  { nisn: '********21', name: 'Siswa XI-02', kelas: 'XI IPS 2' },
+  { nisn: '********31', name: 'Siswa X-03', kelas: 'X Agama' }
 ] as const;
 
 function TablePreview() {
   return (
     <div className="siab2p-mini-table">
       <div className="siab2p-mini-table-head">
-        <span>NISN</span>
-        <span>Nama Siswa</span>
+        <span>NISN Demo</span>
+        <span>Data Contoh</span>
         <span>Kelas</span>
         <span>Status</span>
       </div>
@@ -39,8 +39,8 @@ function ChartPreview() {
   return (
     <div className="siab2p-module-chart">
       <div className="siab2p-module-chart-title">
-        <strong>Presensi Harian — Hari Ini</strong>
-        <em>Terverifikasi</em>
+        <strong>Presensi Harian — Data Contoh</strong>
+        <em>Preview UI</em>
       </div>
       {rows.map((row) => (
         <div className="siab2p-chart-line" key={row.label}>
@@ -66,14 +66,14 @@ function TimelinePreview() {
       <div className="siab2p-timeline-entry siab2p-timeline-entry-green">
         <div>
           <strong>Fisika Peminatan</strong>
-          <span>Farida Nurhaliza, S.Pd.</span>
+          <span>Guru Mapel 01</span>
         </div>
         <em>XII MIPA 1</em>
       </div>
       <div className="siab2p-timeline-entry siab2p-timeline-entry-blue">
         <div>
           <strong>Jurnal KBM Terisi</strong>
-          <span>Ahmad Hidayat</span>
+          <span>Guru Mapel 02</span>
         </div>
         <em>XI IPS 2</em>
       </div>
@@ -100,11 +100,11 @@ function SignaturePreview() {
         <div className="siab2p-signature-footer">
           <div>
             <span>26 Juni 2026</span>
-            <small>Sistem SIAB2</small>
+            <small>Preview SIAB2</small>
           </div>
           <div>
             <span>Kepala Madrasah</span>
-            <em>Digital Signed ✓</em>
+            <em>Siap Verifikasi ✓</em>
           </div>
         </div>
       </div>
@@ -137,7 +137,7 @@ export default function AcademicModules() {
             </h2>
           </div>
           <p>
-            SIAB2 menyatukan data siswa, guru, kehadiran, jadwal, jurnal mengajar, dan laporan madrasah dalam tampilan yang rapi dan mudah digunakan.
+            SIAB2 dirancang untuk membantu menyusun data siswa, guru, kehadiran, jadwal, jurnal mengajar, dan laporan madrasah dalam tampilan yang rapi dan mudah digunakan.
           </p>
         </div>
 

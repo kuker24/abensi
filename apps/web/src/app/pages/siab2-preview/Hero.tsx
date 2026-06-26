@@ -30,7 +30,7 @@ function AcademicPreviewCard() {
               <span>Status Presensi Hari Ini</span>
               <strong>97.4% Hadir</strong>
             </div>
-            <i>Tersusun</i>
+            <i>Data Contoh</i>
           </div>
           <div className="siab2p-progress-track">
             <div className="siab2p-progress-fill" />
@@ -47,7 +47,7 @@ function AcademicPreviewCard() {
       </div>
 
       <div className="siab2p-card-footer-note">
-        <span>Portal SIAB2 Terintegrasi</span>
+        <span>Preview UI SIAB2</span>
         <strong>MAN 1 Rokan Hulu</strong>
       </div>
     </aside>
@@ -70,7 +70,7 @@ export default function Hero() {
 
   return (
     <section id="beranda" className="siab2p-hero" aria-labelledby="siab2-preview-title">
-      <VideoBackground src="https://stream.mux.com/Aa02T7oM1wH5Mk5EEVDYhbZ1ChcdhRsS2m1NYyx4Ua1g.m3u8" />
+      <VideoBackground />
 
       <div className="siab2p-hero-inner">
         <div className="siab2p-hero-grid">
@@ -89,7 +89,7 @@ export default function Hero() {
               Untuk <strong>{roleDetails[roleIndex].role}</strong>: {roleDetails[roleIndex].text}
             </p>
             <p className="siab2p-hero-description">
-              Kelola data siswa, kehadiran harian, jadwal pelajaran, jurnal mengajar, dan laporan madrasah dalam satu ruang kerja digital yang rapi, aman, dan mudah dipahami.
+              Dirancang untuk membantu menyusun data siswa, kehadiran harian, jadwal pelajaran, jurnal mengajar, dan laporan madrasah dalam satu ruang kerja digital yang rapi, aman, dan mudah dipahami.
             </p>
 
             <div className="siab2p-hero-actions">
