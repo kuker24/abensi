@@ -5633,12 +5633,67 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .siab2-preview .siab2p-card-metric strong,
 .siab2-preview .siab2p-ledger-item strong,
 .siab2-preview .siab2p-stat-item strong,
-.siab2-preview .siab2p-stat-item span {
+.siab2-preview .siab2p-stat-label {
   overflow-wrap: anywhere;
+}
+
+.siab2-preview .siab2p-stat-item {
+  min-width: 0;
 }
 
 .siab2-preview .siab2p-stat-item strong {
   font-size: clamp(28px, 4vw, 52px);
+}
+
+.siab2-preview .siab2p-stat-label-email {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
+  column-gap: 0;
+  row-gap: 2px;
+  color: rgba(247,247,247,0.84);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(10px, 0.72vw, 12px);
+  letter-spacing: 0.015em;
+  line-height: 1.25;
+  overflow-wrap: normal;
+  text-transform: none;
+  white-space: normal;
+  word-break: normal;
+}
+
+.siab2-preview .siab2p-stat-label-email span {
+  display: inline;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.siab2-preview .siab2p-footer-nav {
+  align-items: flex-start;
+  gap: 0;
+}
+
+.siab2-preview .siab2p-footer-nav h4 {
+  margin: 0 0 20px;
+}
+
+.siab2-preview .siab2p-footer-nav button {
+  justify-content: flex-start;
+  gap: 0;
+  min-height: 32px;
+  padding: 0;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.siab2-preview .siab2p-footer-nav button span {
+  display: none;
 }
 
 .siab2-preview .siab2p-contact-card strong {
