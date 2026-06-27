@@ -66,7 +66,7 @@ export default function Navbar() {
           </div>
 
           <div className="siab2p-nav-actions">
-            <a className="siab2p-nav-cta" href="/login">
+            <a className="siab2p-nav-cta" href="/siab2/login">
               <span>Masuk SIAB2 ↗</span>
             </a>
             <button

@@ -47,7 +47,7 @@ function AcademicPreviewCard() {
       </div>
 
       <div className="siab2p-card-footer-note">
-        <span>Preview UI SIAB2</span>
+        <span>Portal SIAB2</span>
         <strong>MAN 1 Rokan Hulu</strong>
       </div>
     </aside>
