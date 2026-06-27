@@ -46,10 +46,12 @@ describe('PRD v2.2 UI shell', () => {
     expect(manifest.description).toContain('Sistem Informasi Akademik Berkarakter');
   });
 
-  it('renders the SIAB2 login screen without prefilling the password', () => {
+  it('redirects legacy /login to the canonical scoped SIAB2 login without prefilling the password', async () => {
     mockStorage();
     window.history.replaceState({}, '', '/login');
-    render(<App />);
+    const { container } = render(<App />);
+    await waitFor(() => expect(window.location.pathname).toBe('/siab2/login'));
+    expect(container.querySelector('.login-left')).not.toBeInTheDocument();
     expect(screen.getAllByText(/SIAB2/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Sistem Informasi Akademik Berkarakter/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/SchoolHub|e-Hadir|School Hub/i)).not.toBeInTheDocument();
@@ -110,7 +112,7 @@ describe('PRD v2.2 UI shell', () => {
 
   it('logs in admin and routes to dashboard', async () => {
     mockStorage();
-    window.history.replaceState({}, '', '/login');
+    window.history.replaceState({}, '', '/siab2/login');
     globalThis.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
         status: 200,
@@ -131,7 +133,7 @@ describe('PRD v2.2 UI shell', () => {
 
   it('rejects login when selected tab does not match the account role', async () => {
     mockStorage();
-    window.history.replaceState({}, '', '/login');
+    window.history.replaceState({}, '', '/siab2/login');
     globalThis.fetch = vi.fn(async (input) => {
       const url = String(input);
       if (url.endsWith('/auth/logout')) {
@@ -149,13 +151,13 @@ describe('PRD v2.2 UI shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
 
     await waitFor(() => expect(screen.getByText(/terdaftar sebagai Admin\/TU, bukan Guru/i)).toBeInTheDocument());
-    expect(window.location.pathname).toBe('/login');
+    expect(window.location.pathname).toBe('/siab2/login');
     expect(window.localStorage.getItem('schoolhub_user')).toBeNull();
   });
 
   it('shows a friendly role mismatch message when the backend rejects expectedRole', async () => {
     mockStorage();
-    window.history.replaceState({}, '', '/login');
+    window.history.replaceState({}, '', '/siab2/login');
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ message: 'Akun tidak sesuai pilihan peran.' }), {
       status: 401,
       headers: { 'content-type': 'application/json' }
@@ -167,13 +169,13 @@ describe('PRD v2.2 UI shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
 
     await waitFor(() => expect(screen.getByText(/Akun ini bukan akun Guru/i)).toBeInTheDocument());
-    expect(window.location.pathname).toBe('/login');
+    expect(window.location.pathname).toBe('/siab2/login');
     expect(window.localStorage.getItem('schoolhub_user')).toBeNull();
   });
 
   it('maps invalid login credentials to operator-friendly Indonesian copy', async () => {
     mockStorage();
-    window.history.replaceState({}, '', '/login');
+    window.history.replaceState({}, '', '/siab2/login');
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ message: 'Username atau password salah.' }), {
       status: 401,
       headers: { 'content-type': 'application/json' }
@@ -186,7 +188,7 @@ describe('PRD v2.2 UI shell', () => {
 
     await waitFor(() => expect(screen.getByText('Nama akun atau kata sandi salah.')).toBeInTheDocument());
     expect(screen.queryByText(/401|Unauthorized|stack|JSON/i)).not.toBeInTheDocument();
-    expect(window.location.pathname).toBe('/login');
+    expect(window.location.pathname).toBe('/siab2/login');
   });
 
   it('keeps student attendance read-only and does not expose a self check-in route', async () => {

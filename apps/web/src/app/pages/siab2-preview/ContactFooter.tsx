@@ -48,7 +48,7 @@ export default function ContactFooter() {
         <div className="siab2p-footer-contact">
           <h4>Kontak Resmi</h4>
           <p>
-            Data kontak mengikuti informasi resmi MAN 1 Rokan Hulu.
+            Kontak resmi MAN 1 Rokan Hulu.
           </p>
           <div className="siab2p-contact-card">
             <span><strong>Profil</strong> Madrasah Berbasis Riset</span>

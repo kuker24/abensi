@@ -15,7 +15,7 @@ async function seedAuth(page: Page, user: { id: string; username: string; fullNa
 async function setStoredAuth(page: Page, user: { id: string; username: string; fullName: string; role: string }) {
   await page.unroute('**/api/v1/auth/me').catch(() => undefined);
   await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user }) }));
-  await page.goto('/login');
+  await page.goto('/siab2/login');
   await page.evaluate(
     ([storedUser, userKey]) => {
       window.localStorage.setItem(userKey, JSON.stringify(storedUser));
@@ -73,7 +73,7 @@ async function routeCommonApi(page: Page) {
 test.describe('SIAB2 PRD v2.2 flows', () => {
   test('form login memberi jarak lega antara kata sandi dan tombol masuk', async ({ page }) => {
     await page.setViewportSize({ width: 377, height: 457 });
-    await page.goto('/login');
+    await page.goto('/siab2/login');
     const passwordBox = await page.getByPlaceholder('Masukkan kata sandi').locator('xpath=ancestor::label[contains(@class,"input")]').boundingBox();
     const submitBox = await page.getByRole('button', { name: /^Masuk/ }).boundingBox();
     expect(passwordBox).not.toBeNull();
@@ -691,7 +691,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     expect(pageOverflow).toBe(false);
 
-    await page.goto('/login');
+    await page.goto('/siab2/login');
     const submitBtn = await page.getByRole('button', { name: /^Masuk/ }).boundingBox();
     expect(submitBtn).not.toBeNull();
     expect((submitBtn?.width ?? 0)).toBeGreaterThan(100);

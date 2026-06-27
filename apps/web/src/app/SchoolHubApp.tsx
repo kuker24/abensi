@@ -596,15 +596,10 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
         </div>
         <button className="btn icon ghost hamburger siab2-sidebar-close" aria-label="Tutup navigasi" onClick={onClose}><X size={16} /></button>
       </div>
-      <div className="siab2-sidebar-status" aria-label={`Konteks peran ${currentRoleLabel}`}>
-        <span className="siab2-sidebar-status-orb" aria-hidden="true" />
-        <span>Ruang kerja akademik</span>
-        <strong>{currentRoleLabel}</strong>
-      </div>
       <nav className="nav-body siab2-sidebar-nav" aria-label="Menu navigasi">
         {Object.entries(grouped).map(([section, items]) => (
           <div key={section} className="nav-block siab2-sidebar-nav-block">
-            <div className="nav-section siab2-sidebar-nav-section" aria-hidden="true"><span>{section}</span><em>{items.length}</em></div>
+            <div className="nav-section siab2-sidebar-nav-section" aria-hidden="true"><span>{section}</span></div>
             {items.map(([, url, label, Ico]) => {
               const active = path === url;
               return (
@@ -903,7 +898,10 @@ function App() {
   };
   const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
   useEffect(() => { const onPop = () => setPath(window.location.pathname === '/' ? '' : window.location.pathname); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
-  useEffect(() => { if (isLegacySiab2RoutePath(path)) go(CANONICAL_SIAB2_PATH); }, [path]);
+  useEffect(() => {
+    if (isLegacySiab2RoutePath(path)) go(CANONICAL_SIAB2_PATH);
+    if (path === LOGIN_PATH) go(SIAB2_LOGIN_PATH);
+  }, [path]);
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark'); }, []);
   useEffect(() => {
     if (!SSO_ENABLED) return;
@@ -923,7 +921,7 @@ function App() {
       setUser(null);
       setSessionChecked(true);
       notify('Sesi masuk habis. Silakan masuk ulang.', 'bad');
-      if (!isPublicRoutePath(window.location.pathname) && !isLegacySiab2RoutePath(window.location.pathname) && !isLoginRoutePath(window.location.pathname)) go(LOGIN_PATH);
+      if (!isPublicRoutePath(window.location.pathname) && !isLegacySiab2RoutePath(window.location.pathname) && !isLoginRoutePath(window.location.pathname)) go(SIAB2_LOGIN_PATH);
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -942,13 +940,13 @@ function App() {
         if (cancelled) return;
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         setUser(response.user);
-        // Keep /login stable for explicit re-authentication and E2E/visual checks.
+        // Keep the canonical SIAB2 login route stable for explicit re-authentication and E2E/visual checks.
       })
       .catch(() => {
         if (cancelled) return;
         localStorage.removeItem(USER_KEY);
         setUser(null);
-        if (!isLoginRoutePath(window.location.pathname) && !isPublicRoutePath(window.location.pathname) && !isLegacySiab2RoutePath(window.location.pathname)) go(LOGIN_PATH);
+        if (!isLoginRoutePath(window.location.pathname) && !isPublicRoutePath(window.location.pathname) && !isLegacySiab2RoutePath(window.location.pathname)) go(SIAB2_LOGIN_PATH);
       })
       .finally(() => {
         if (!cancelled) setSessionChecked(true);
@@ -962,7 +960,7 @@ function App() {
       if (stored) setUser(stored);
     }
   }, [path, user]);
-  useEffect(() => { if (sessionChecked && !readStoredUser() && !isLoginRoutePath(path) && !isPublicRoutePath(path) && !isLegacySiab2RoutePath(path)) go(LOGIN_PATH); }, [path, sessionChecked]);
+  useEffect(() => { if (sessionChecked && !readStoredUser() && !isLoginRoutePath(path) && !isPublicRoutePath(path) && !isLegacySiab2RoutePath(path)) go(SIAB2_LOGIN_PATH); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     try {
       localStorage.removeItem(USER_KEY);
@@ -991,23 +989,24 @@ function App() {
     }
   }
   async function logout() {
-    if (!await riskConfirm('Anda akan keluar dari akun ini. Lanjutkan?', 'Keluar dari akun')) return;
+    if (!await riskConfirm('Anda akan keluar dari sesi SIAB2. Lanjutkan?', 'Keluar dari akun')) return;
     try { await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }); } catch { /* tetap keluar lokal jika server tidak bisa dihubungi */ }
     localStorage.removeItem(USER_KEY);
     setSessionChecked(true);
     setUser(null);
 
-    go('/login');
+    go(SIAB2_LOGIN_PATH);
   }
   const confirmLayer = <ConfirmDialog dialog={confirmDialog} onCancel={() => { confirmDialog?.resolve(false); setConfirmDialog(null); }} onConfirm={() => { confirmDialog?.resolve(true); setConfirmDialog(null); }} />;
 
   if (isLegacySiab2RoutePath(path)) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (path === LOGIN_PATH) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (isPublicRoutePath(path)) return <><Suspense fallback={<PageLoading />}><SIAB2PreviewLanding /></Suspense><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : LOGIN_PATH), 0); return null; }
+  if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : SIAB2_LOGIN_PATH), 0); return null; }
   if (!sessionChecked && !isLoginRoutePath(path)) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (isLoginRoutePath(path)) return <>{path === LOGIN_PATH && SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} mode={path === SIAB2_LOGIN_PATH ? 'scoped' : 'default'} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (!user) return <LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} />;
-  if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { localStorage.removeItem(USER_KEY); setSessionChecked(true); setUser(null); notify('Password berhasil diganti. Silakan masuk kembali.', 'ok'); go('/login'); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (path === SIAB2_LOGIN_PATH) return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} mode="scoped" /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (!user) { setTimeout(() => go(SIAB2_LOGIN_PATH), 0); return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>; }
+  if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { localStorage.removeItem(USER_KEY); setSessionChecked(true); setUser(null); notify('Password berhasil diganti. Silakan masuk kembali.', 'ok'); go(SIAB2_LOGIN_PATH); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   const route = routeForPath(path);
   const exists = Boolean(route);
   const allowed = exists && canAccessRoute(path, user);
