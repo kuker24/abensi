@@ -3683,7 +3683,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   border-color: var(--siab2p-accent-2) !important;
   background: rgba(20,20,20,0.82) !important;
   box-shadow: 0 0 24px rgba(78,133,191,0.14);
-  transform: scale(1.015);
 }
 .siab2p-role-list-icon,
 .siab2p-role-detail-title span {
@@ -5513,39 +5512,104 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 /* SIAB2 official public-route cleanup */
 .siab2-preview .siab2p-role-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.96fr) minmax(380px, 1.04fr);
-  gap: clamp(24px, 4vw, 46px);
-  align-items: start;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: clamp(32px, 4.5vw, 60px);
+  align-items: stretch;
+}
+
+.siab2-preview .siab2p-role-list,
+.siab2-preview .siab2p-role-detail {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .siab2-preview .siab2p-role-list {
   position: relative;
   z-index: 1;
   display: grid;
+  grid-column: 1;
   gap: 12px;
-  min-width: 0;
+  overflow: hidden;
+  isolation: isolate;
 }
 
 .siab2-preview .siab2p-role-list-item {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  align-items: flex-start;
+  overflow: hidden;
   background: linear-gradient(180deg, rgba(18, 22, 28, 0.86), rgba(8, 12, 17, 0.78));
+  transform: none !important;
+}
+
+.siab2-preview .siab2p-role-list-item-active {
+  transform: none !important;
+  box-shadow: inset 3px 0 0 var(--siab2p-accent-2), 0 16px 32px rgba(78,133,191,0.12);
+}
+
+.siab2-preview .siab2p-role-list-copy,
+.siab2-preview .siab2p-role-list-copy > span {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.siab2-preview .siab2p-role-list-copy > span {
+  align-items: flex-start;
+}
+
+.siab2-preview .siab2p-role-list-copy strong,
+.siab2-preview .siab2p-role-list-copy em,
+.siab2-preview .siab2p-role-list-copy small {
+  max-width: 100%;
+}
+
+.siab2-preview .siab2p-role-list-copy small {
+  display: -webkit-box;
+  white-space: normal;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .siab2-preview .siab2p-role-detail {
   position: relative;
-  z-index: 2;
-  min-width: 0;
+  z-index: 1;
+  grid-column: 2;
+  width: 100%;
+  min-height: 100%;
   margin: 0 !important;
   transform: none !important;
-  border-color: rgba(137, 170, 204, 0.28);
-  background: linear-gradient(180deg, rgba(16, 20, 27, 0.96), rgba(8, 12, 18, 0.94)) !important;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255,255,255,0.08);
-  backdrop-filter: blur(22px) saturate(1.1);
-  -webkit-backdrop-filter: blur(22px) saturate(1.1);
+  border-color: rgba(137, 170, 204, 0.32);
+  background: linear-gradient(180deg, #10151d 0%, #080d14 100%) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(255,255,255,0.08);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   overflow: hidden;
+  isolation: isolate;
 }
 
+.siab2-preview .siab2p-role-detail-meta,
 .siab2-preview .siab2p-role-detail .siab2p-card-hover-wash {
-  opacity: 0.18;
+  display: none !important;
+}
+
+.siab2-preview .siab2p-role-detail-title {
+  align-items: flex-start;
+}
+
+.siab2-preview .siab2p-role-detail-title h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.siab2-preview .siab2p-role-detail > p {
+  max-width: none;
+}
+
+.siab2-preview .siab2p-role-features {
+  margin-top: 34px;
 }
 
 .siab2-preview .siab2p-role-features span::before {
@@ -5553,6 +5617,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .siab2-preview .siab2p-role-features span {
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: rgba(255,255,255,0.045);
 }
 
@@ -5598,12 +5664,18 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 @media (max-width: 1024px) {
   .siab2-preview .siab2p-role-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 22px;
   }
 
+  .siab2-preview .siab2p-role-list,
   .siab2-preview .siab2p-role-detail {
+    grid-column: 1;
     width: 100%;
+  }
+
+  .siab2-preview .siab2p-role-detail {
+    min-height: auto;
   }
 }
 
