@@ -4,7 +4,7 @@ const navLinks = [
   { id: 'peran', label: 'Hak Akses Peran' },
   { id: 'preview', label: 'Tampilan Portal' },
   { id: 'alur', label: 'Buku Induk Digital' },
-  { id: 'kontak', label: 'Hubungi Operator' }
+  { id: 'kontak', label: 'Kontak Resmi' }
 ] as const;
 
 export default function ContactFooter() {
@@ -32,13 +32,8 @@ export default function ContactFooter() {
             </div>
           </div>
           <p>
-            SIAB2 (Sistem Informasi Akademik Berkarakter) adalah portal ruang kerja digital untuk mendukung tata kelola madrasah modern di MAN 1 Rokan Hulu.
+            SIAB2 (Sistem Informasi Akademik Berkarakter) adalah ruang kerja digital akademik untuk mendukung tata kelola MAN 1 Rokan Hulu.
           </p>
-          <div className="siab2p-footer-chips">
-            <span><i />Portal Resmi</span>
-            <span>TA 2026/2027</span>
-            <span>Siap Integrasi Data</span>
-          </div>
         </div>
 
         <nav className="siab2p-footer-nav" aria-label="Navigasi footer SIAB2">
@@ -51,24 +46,26 @@ export default function ContactFooter() {
         </nav>
 
         <div className="siab2p-footer-contact">
-          <h4>Hubungi Operator</h4>
+          <h4>Kontak Resmi</h4>
           <p>
-            Untuk pertanyaan terkait aktivasi akun madrasah atau akses data akademik, silakan hubungi admin/operator MAN 1 Rokan Hulu melalui kanal resmi madrasah.
+            Data kontak mengikuti informasi resmi MAN 1 Rokan Hulu.
           </p>
           <div className="siab2p-contact-card">
-            <span><i>👤</i>Kontak operator madrasah</span>
-            <span><i>📍</i>Rokan Hulu, Riau</span>
+            <span><strong>Profil</strong> Madrasah Berbasis Riset</span>
+            <span><strong>Alamat</strong> JL.TUANKU TAMBUSAI NO.183</span>
+            <span><strong>Telepon</strong> <a href="tel:07627393218">07627393218</a></span>
+            <span><strong>Email</strong> <a href="mailto:manpasir675027@yahoo.co.id">manpasir675027@yahoo.co.id</a></span>
           </div>
           <div className="siab2p-footer-actions">
             <a className="siab2p-footer-primary" href="/siab2/login">Masuk ke SIAB2 ↗</a>
-            <a className="siab2p-footer-secondary" href="#kontak">Hubungi Operator</a>
+            <a className="siab2p-footer-secondary" href="mailto:manpasir675027@yahoo.co.id">Email Madrasah</a>
           </div>
         </div>
       </div>
 
       <div className="siab2p-container siab2p-footer-bottom">
         <span>© 2026 MAN 1 Rokan Hulu – Kementerian Agama RI. Hak Cipta Dilindungi.</span>
-        <strong><i />Portal SIAB2 <em>·</em> Data Contoh</strong>
+        <strong>Madrasah Berbasis Riset</strong>
       </div>
     </footer>
   );

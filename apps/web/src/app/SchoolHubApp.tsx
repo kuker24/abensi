@@ -100,11 +100,15 @@ const LOGIN_PATH = '/login';
 const CANONICAL_SIAB2_PATH = '/siab2';
 const SIAB2_PREVIEW_COMPAT_PATH = '/siab2-preview';
 const SIAB2_LOGIN_PATH = '/siab2/login';
-const PUBLIC_ROUTE_PATHS = new Set([CANONICAL_SIAB2_PATH, SIAB2_PREVIEW_COMPAT_PATH]);
+const PUBLIC_ROUTE_PATHS = new Set([CANONICAL_SIAB2_PATH]);
 const LOGIN_ROUTE_PATHS = new Set([LOGIN_PATH, SIAB2_LOGIN_PATH]);
 
 function isPublicRoutePath(path: string) {
   return PUBLIC_ROUTE_PATHS.has(path);
+}
+
+function isLegacySiab2RoutePath(path: string) {
+  return path === SIAB2_PREVIEW_COMPAT_PATH;
 }
 
 function isLoginRoutePath(path: string) {
@@ -446,7 +450,7 @@ function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: 
                 <a className="siab2-scoped-login-link" href={CANONICAL_SIAB2_PATH}>Tentang SIAB2 ↗</a>
               </div>
             )}
-            <div className="siab2-login-card-status"><span /> Portal aman · {role === 'guru' ? 'Guru' : role === 'admin' ? 'Admin/TU' : 'Siswa'}</div>
+            <div className="siab2-login-card-status">{!isScoped && <span />} Portal aman · {role === 'guru' ? 'Guru' : role === 'admin' ? 'Admin/TU' : 'Siswa'}</div>
             <div className="siab2-login-card-header">
               <div className="siab2-login-card-kicker">AKSES RESMI SIAB2</div>
               <h2>Masuk ke portal</h2>
@@ -493,11 +497,13 @@ function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: 
               </div>
             </div>
           </form>
-          <div className="siab2-login-form-ledger" aria-hidden="true">
-            <span><Bell size={13} /> Notifikasi rapi</span>
-            <span><Zap size={13} /> Akses cepat</span>
-            <span><Database size={13} /> Data akademik terkelola</span>
-          </div>
+          {!isScoped && (
+            <div className="siab2-login-form-ledger" aria-hidden="true">
+              <span><Bell size={13} /> Notifikasi rapi</span>
+              <span><Zap size={13} /> Akses cepat</span>
+              <span><Database size={13} /> Data akademik terkelola</span>
+            </div>
+          )}
         </section>
       </div>
     </div>
@@ -897,6 +903,7 @@ function App() {
   };
   const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
   useEffect(() => { const onPop = () => setPath(window.location.pathname === '/' ? '' : window.location.pathname); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
+  useEffect(() => { if (isLegacySiab2RoutePath(path)) go(CANONICAL_SIAB2_PATH); }, [path]);
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark'); }, []);
   useEffect(() => {
     if (!SSO_ENABLED) return;
@@ -916,7 +923,7 @@ function App() {
       setUser(null);
       setSessionChecked(true);
       notify('Sesi masuk habis. Silakan masuk ulang.', 'bad');
-      if (!isPublicRoutePath(window.location.pathname) && !isLoginRoutePath(window.location.pathname)) go(LOGIN_PATH);
+      if (!isPublicRoutePath(window.location.pathname) && !isLegacySiab2RoutePath(window.location.pathname) && !isLoginRoutePath(window.location.pathname)) go(LOGIN_PATH);
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -941,7 +948,7 @@ function App() {
         if (cancelled) return;
         localStorage.removeItem(USER_KEY);
         setUser(null);
-        if (!isLoginRoutePath(window.location.pathname) && !isPublicRoutePath(window.location.pathname)) go(LOGIN_PATH);
+        if (!isLoginRoutePath(window.location.pathname) && !isPublicRoutePath(window.location.pathname) && !isLegacySiab2RoutePath(window.location.pathname)) go(LOGIN_PATH);
       })
       .finally(() => {
         if (!cancelled) setSessionChecked(true);
@@ -955,7 +962,7 @@ function App() {
       if (stored) setUser(stored);
     }
   }, [path, user]);
-  useEffect(() => { if (sessionChecked && !readStoredUser() && !isLoginRoutePath(path) && !isPublicRoutePath(path)) go(LOGIN_PATH); }, [path, sessionChecked]);
+  useEffect(() => { if (sessionChecked && !readStoredUser() && !isLoginRoutePath(path) && !isPublicRoutePath(path) && !isLegacySiab2RoutePath(path)) go(LOGIN_PATH); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     try {
       localStorage.removeItem(USER_KEY);
@@ -994,6 +1001,7 @@ function App() {
   }
   const confirmLayer = <ConfirmDialog dialog={confirmDialog} onCancel={() => { confirmDialog?.resolve(false); setConfirmDialog(null); }} onConfirm={() => { confirmDialog?.resolve(true); setConfirmDialog(null); }} />;
 
+  if (isLegacySiab2RoutePath(path)) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (isPublicRoutePath(path)) return <><Suspense fallback={<PageLoading />}><SIAB2PreviewLanding /></Suspense><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : LOGIN_PATH), 0); return null; }
   if (!sessionChecked && !isLoginRoutePath(path)) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;

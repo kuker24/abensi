@@ -1,27 +1,27 @@
 import { siab2Data, type AcademicModule } from './data';
 
 const studentRows = [
-  { nisn: '********10', name: 'Siswa XII-01', kelas: 'XII MIPA 1' },
-  { nisn: '********21', name: 'Siswa XI-02', kelas: 'XI IPS 2' },
-  { nisn: '********31', name: 'Siswa X-03', kelas: 'X Agama' }
+  { code: 'Identitas', name: 'Data Siswa', detail: 'Tersusun' },
+  { code: 'Rombel', name: 'Data Kelas', detail: 'Terkelola' },
+  { code: 'Riwayat', name: 'Data Akademik', detail: 'Tercatat' }
 ] as const;
 
 function TablePreview() {
   return (
     <div className="siab2p-mini-table">
       <div className="siab2p-mini-table-head">
-        <span>NISN Demo</span>
-        <span>Data Contoh</span>
-        <span>Kelas</span>
+        <span>Area</span>
+        <span>Data</span>
+        <span>Keterangan</span>
         <span>Status</span>
       </div>
       <div className="siab2p-mini-table-body">
         {studentRows.map((row) => (
-          <div className="siab2p-mini-table-row" key={row.nisn}>
-            <span>{row.nisn}</span>
+          <div className="siab2p-mini-table-row" key={row.code}>
+            <span>{row.code}</span>
             <strong>{row.name}</strong>
-            <span>{row.kelas}</span>
-            <em>Aktif</em>
+            <span>{row.detail}</span>
+            <em>Siap</em>
           </div>
         ))}
       </div>
@@ -31,24 +31,24 @@ function TablePreview() {
 
 function ChartPreview() {
   const rows = [
-    { label: 'Hadir', pct: 93.7, className: 'siab2p-bar-emerald' },
-    { label: 'Izin / Sakit', pct: 5.5, className: 'siab2p-bar-sky' },
-    { label: 'Terlambat', pct: 0.8, className: 'siab2p-bar-orange' }
+    { label: 'Hadir', width: '82%', status: 'Tercatat', className: 'siab2p-bar-emerald' },
+    { label: 'Izin / Sakit', width: '52%', status: 'Tercatat', className: 'siab2p-bar-sky' },
+    { label: 'Terlambat', width: '24%', status: 'Perlu Tinjauan', className: 'siab2p-bar-orange' }
   ] as const;
 
   return (
     <div className="siab2p-module-chart">
       <div className="siab2p-module-chart-title">
-        <strong>Presensi Harian — Data Contoh</strong>
+        <strong>Presensi Harian</strong>
         <em>Tampilan UI</em>
       </div>
       {rows.map((row) => (
         <div className="siab2p-chart-line" key={row.label}>
           <div>
             <span>{row.label}</span>
-            <strong className={row.className}>{row.pct}%</strong>
+            <strong className={row.className}>{row.status}</strong>
           </div>
-          <i><b className={row.className} style={{ width: `${row.pct}%` }} /></i>
+          <i><b className={row.className} style={{ width: row.width }} /></i>
         </div>
       ))}
     </div>
@@ -65,17 +65,17 @@ function TimelinePreview() {
       </div>
       <div className="siab2p-timeline-entry siab2p-timeline-entry-green">
         <div>
-          <strong>Fisika Peminatan</strong>
-          <span>Guru Mapel 01</span>
+          <strong>Jadwal Pelajaran</strong>
+          <span>Guru Pengampu</span>
         </div>
-        <em>XII MIPA 1</em>
+        <em>Kelas Aktif</em>
       </div>
       <div className="siab2p-timeline-entry siab2p-timeline-entry-blue">
         <div>
           <strong>Jurnal KBM Terisi</strong>
-          <span>Guru Mapel 02</span>
+          <span>Catatan Guru</span>
         </div>
-        <em>XI IPS 2</em>
+        <em>Arsip Akademik</em>
       </div>
     </div>
   );
@@ -90,17 +90,17 @@ function SignaturePreview() {
           <span>Laporan Rekap Bulanan Madrasah</span>
         </div>
         <div className="siab2p-signature-row">
-          <span>Rasio Kehadiran Siswa:</span>
-          <strong>96.8%</strong>
+          <span>Rekap Kehadiran:</span>
+          <strong>Tersedia</strong>
         </div>
         <div className="siab2p-signature-row">
-          <span>Keterisian Jurnal:</span>
-          <strong className="siab2p-text-accent">92.4%</strong>
+          <span>Jurnal Mengajar:</span>
+          <strong className="siab2p-text-accent">Tertata</strong>
         </div>
         <div className="siab2p-signature-footer">
           <div>
-            <span>26 Juni 2026</span>
-            <small>Portal SIAB2</small>
+            <span>MAN 1 Rokan Hulu</span>
+            <small>SIAB2</small>
           </div>
           <div>
             <span>Kepala Madrasah</span>
@@ -160,7 +160,7 @@ export default function AcademicModules() {
 
         <div className="siab2p-section-center-action">
           <button type="button" onClick={() => document.getElementById('preview')?.scrollIntoView({ behavior: 'smooth' })}>
-            Lihat Simulasi Portal <span>↓</span>
+            Lihat Tampilan SIAB2 <span>↓</span>
           </button>
         </div>
       </div>

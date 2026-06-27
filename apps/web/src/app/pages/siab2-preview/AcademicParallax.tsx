@@ -9,17 +9,17 @@ interface ParallaxCard {
 }
 
 const studentRows = [
-  { nisn: '********10', name: 'Siswa XII-01', status: 'Contoh' },
-  { nisn: '********21', name: 'Siswa XI-02', status: 'Contoh' },
-  { nisn: '********31', name: 'Siswa X-03', status: 'Contoh' }
+  { area: 'Identitas', name: 'Data Siswa', status: 'Tersusun' },
+  { area: 'Rombel', name: 'Data Kelas', status: 'Terkelola' },
+  { area: 'Riwayat', name: 'Data Akademik', status: 'Tercatat' }
 ] as const;
 
 function BukuIndukPreview() {
   return (
     <div className="siab2p-parallax-mini-table">
-      <div><span>NISN Demo</span><span>Data Contoh</span><span>Status</span></div>
+      <div><span>Area</span><span>Data</span><span>Status</span></div>
       {studentRows.map((row) => (
-        <p key={row.nisn}><span>{row.nisn}</span><strong>{row.name}</strong><em>{row.status}</em></p>
+        <p key={row.area}><span>{row.area}</span><strong>{row.name}</strong><em>{row.status}</em></p>
       ))}
     </div>
   );
@@ -27,19 +27,19 @@ function BukuIndukPreview() {
 
 function PresensiPreview() {
   const rows = [
-    { label: 'Hadir', pct: 93.7, color: 'siab2p-bar-emerald' },
-    { label: 'Izin', pct: 4.2, color: 'siab2p-bar-sky' },
-    { label: 'Alfa', pct: 2.1, color: 'siab2p-bar-rose' }
+    { label: 'Hadir', width: '82%', status: 'Tercatat', color: 'siab2p-bar-emerald' },
+    { label: 'Izin', width: '48%', status: 'Tercatat', color: 'siab2p-bar-sky' },
+    { label: 'Alfa', width: '24%', status: 'Perlu Tinjauan', color: 'siab2p-bar-rose' }
   ] as const;
   return (
     <div className="siab2p-parallax-progress">
       {rows.map((row) => (
         <div key={row.label}>
-          <p><span>{row.label}</span><strong className={row.color}>{row.pct}%</strong></p>
-          <i><b className={row.color} style={{ width: `${row.pct}%` }} /></i>
+          <p><span>{row.label}</span><strong className={row.color}>{row.status}</strong></p>
+          <i><b className={row.color} style={{ width: row.width }} /></i>
         </div>
       ))}
-      <small>Kelas XII MIPA 1 · Data Contoh</small>
+      <small>Ringkasan presensi kelas</small>
     </div>
   );
 }
@@ -47,8 +47,8 @@ function PresensiPreview() {
 function JadwalPreview() {
   return (
     <div className="siab2p-parallax-schedule">
-      <p><time>07.30</time><span><strong>Fisika Peminatan</strong><em>XII MIPA 1</em></span></p>
-      <p><time>09.15</time><span><strong>Fisika Umum</strong><em>XI IPS 2</em></span></p>
+      <p><time>Jadwal</time><span><strong>Pelajaran</strong><em>Kelas aktif</em></span></p>
+      <p><time>Jurnal</time><span><strong>Catatan KBM</strong><em>Guru pengampu</em></span></p>
     </div>
   );
 }
@@ -65,7 +65,7 @@ function JurnalPreview() {
       {rows.map((row) => (
         <p key={row.label} className={row.done ? 'siab2p-check-done' : ''}><span>{row.done ? '✓' : '○'}</span>{row.label}</p>
       ))}
-      <small>Guru Mapel 01</small>
+      <small>Catatan guru</small>
     </div>
   );
 }
@@ -74,8 +74,8 @@ function RekapPreview() {
   return (
     <div className="siab2p-parallax-bars">
       <div>
-        {[78, 92, 88, 95, 90, 97].map((value, index) => (
-          <p key={value + index}><i style={{ height: `${(value / 100) * 52}px` }} /><span>{['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'][index]}</span></p>
+        {[32, 42, 38, 48, 44, 52].map((value, index) => (
+          <p key={value + index}><i style={{ height: `${value}px` }} /><span>{['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'][index]}</span></p>
         ))}
       </div>
       <small>Kehadiran Bulanan (%)</small>
@@ -88,9 +88,9 @@ function LaporanPreview() {
     <div className="siab2p-parallax-report">
       <strong>MAN 1 Rokan Hulu</strong>
       <span>Laporan Rekap Lintas Kelas</span>
-      <p><em>Rasio Kehadiran</em><b>96.8%</b></p>
-      <p><em>Jurnal Terisi</em><b>92.4%</b></p>
-      <i>Siap Verifikasi ✓</i>
+      <p><em>Rekap Kehadiran</em><b>Tersedia</b></p>
+      <p><em>Jurnal Mengajar</em><b>Tertata</b></p>
+      <i>Siap ditinjau</i>
     </div>
   );
 }
@@ -99,14 +99,14 @@ const cards: ParallaxCard[] = [
   {
     id: 1,
     title: 'Buku Induk Siswa',
-    detail: 'Contoh daftar NISN tersamarkan, data keluarga, dan mutasi akademik dalam sistem.',
+    detail: 'Struktur data siswa, kelas, dan riwayat akademik disusun dalam satu alur kerja.',
     preview: <BukuIndukPreview />,
     benefit: 'Merapikan struktur data akademik'
   },
   {
     id: 2,
     title: 'Presensi Harian',
-    detail: 'Contoh rekapitulasi presensi untuk membantu kerja harian guru.',
+    detail: 'Rekapitulasi presensi membantu kerja harian guru dan petugas madrasah.',
     preview: <PresensiPreview />,
     benefit: 'Mendukung tinjauan absensi pimpinan'
   },
@@ -169,7 +169,7 @@ export default function AcademicParallax() {
               </div>
               <div className="siab2p-parallax-preview">{card.preview}</div>
               <p>{card.detail}</p>
-              <div className="siab2p-benefit-line"><i />{card.benefit}</div>
+              <div className="siab2p-benefit-line">{card.benefit}</div>
             </button>
           ))}
         </div>
@@ -185,7 +185,7 @@ export default function AcademicParallax() {
             <h3>{focusedCard.title}</h3>
             <p>{focusedCard.detail}</p>
             {focusedCard.preview}
-            <div className="siab2p-lightbox-status"><i />Tampilan UI · Siap Verifikasi</div>
+            <div className="siab2p-lightbox-status">Tampilan UI · Siap ditinjau</div>
           </div>
         </div>
       ) : null}
