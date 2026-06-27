@@ -5183,3 +5183,211 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Fix1: responsive table/card safety for mobile and tablet content pages. */
+@media (min-width: 721px) and (max-width: 1180px) {
+  .siab2-shell .siab2-shell-page-wrap .master-data-layout,
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-list-panel,
+  .siab2-shell .siab2-shell-page-wrap .master-data-form-panel,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-toolbar {
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) minmax(160px, 220px);
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .data-table {
+    min-width: 680px;
+  }
+}
+
+@media (max-width: 720px) {
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table-wrap,
+  .siab2-shell .siab2-shell-page-wrap .table-wrap,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .table-wrap,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .data-table,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .data-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12.5px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table thead,
+  .siab2-shell .siab2-shell-page-wrap .data-table thead {
+    display: none;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tr,
+  .siab2-shell .siab2-shell-page-wrap .data-table tr {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    gap: 0;
+    padding: 12px;
+    border: 1px solid rgba(137, 170, 204, 0.16);
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(13, 25, 39, 0.78), rgba(5, 11, 19, 0.72));
+    box-shadow: 0 12px 24px rgba(0,0,0,0.22), 0 1px 0 rgba(255,255,255,0.04) inset;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:hover,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody tr:hover {
+    box-shadow: 0 12px 24px rgba(0,0,0,0.22), inset 3px 0 0 #89AACC;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:nth-child(even) td,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody tr:nth-child(even) td,
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:hover td,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table td,
+  .siab2-shell .siab2-shell-page-wrap .data-table td {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    min-width: 0;
+    width: 100%;
+    padding: 9px 0;
+    border: 0;
+    border-bottom: 1px solid rgba(137, 170, 204, 0.075);
+    color: rgba(244, 249, 255, 0.92);
+    text-align: left;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table td:last-child,
+  .siab2-shell .siab2-shell-page-wrap .data-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table td::before,
+  .siab2-shell .siab2-shell-page-wrap .data-table td::before {
+    content: attr(data-label) ':';
+    min-width: 0;
+    max-width: 100%;
+    flex: none;
+    color: rgba(190, 213, 235, 0.72);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.115em;
+    line-height: 1.35;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table .cell-wrap,
+  .siab2-shell .siab2-shell-page-wrap .data-table .cell-wrap,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap {
+    display: flex;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 7px;
+    color: rgba(248, 251, 255, 0.94);
+    line-height: 1.45;
+    text-align: left;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap > .row,
+  .siab2-shell .siab2-shell-page-wrap .cell-actions .row,
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-cell,
+  .siab2-shell .siab2-shell-page-wrap .master-data-action-row {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-cell {
+    align-items: center;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-cell span:last-child,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap .mono,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap b,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap small {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table .cell-actions,
+  .siab2-shell .siab2-shell-page-wrap .data-table .cell-actions {
+    display: grid;
+    gap: 8px;
+    padding-top: 12px;
+    margin-top: 3px;
+    border-top: 1px solid rgba(137, 170, 204, 0.12);
+    text-align: left;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-table-actions,
+  .siab2-shell .siab2-shell-page-wrap .table-actions,
+  .siab2-shell .siab2-shell-page-wrap .master-data-action-row {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .cell-actions .siab2-action-button,
+  .siab2-shell .siab2-shell-page-wrap .cell-actions .btn,
+  .siab2-shell .siab2-shell-page-wrap .master-data-action-row .btn {
+    flex: 1 1 128px;
+    min-width: min(128px, 100%);
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-status-pill,
+  .siab2-shell .siab2-shell-page-wrap .pill {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+}
