@@ -4055,7 +4055,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .siab2-shell .siab2-shell-main {
   position: relative;
   width: 100%;
-  max-width: 100%;
+  max-width: calc(100vw - 304px);
   min-width: 0;
   overflow-x: hidden;
   background: transparent;
@@ -4073,7 +4073,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .siab2-shell .content {
   min-width: 0;
   max-width: 1500px;
-  overflow-x: clip;
+  overflow-x: hidden;
   padding: clamp(18px, 2vw, 30px) clamp(18px, 2.2vw, 34px) 48px;
 }
 
@@ -4569,6 +4569,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   max-width: 100%;
 }
 
+.siab2-shell .role-task-grid,
+.siab2-shell .cards-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+}
+
 .siab2-shell .table-wrap {
   max-width: 100%;
 }
@@ -4599,6 +4604,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   .siab2-sidebar {
     width: 286px;
     min-width: 286px;
+  }
+
+  .siab2-shell .siab2-shell-main {
+    max-width: calc(100vw - 286px);
   }
 }
 
@@ -4633,6 +4642,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   .siab2-shell .siab2-sidebar-open {
     left: 0;
     transform: translateX(0);
+  }
+
+  .siab2-shell .siab2-shell-main {
+    max-width: 100vw;
   }
 
   .siab2-shell .siab2-shell-backdrop.side-open,
