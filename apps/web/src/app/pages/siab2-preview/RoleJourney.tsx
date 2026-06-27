@@ -37,6 +37,7 @@ export default function RoleJourney() {
                 key={role.name}
                 type="button"
                 className={activeIndex === index ? 'siab2p-role-list-item siab2p-role-list-item-active' : 'siab2p-role-list-item'}
+                aria-pressed={activeIndex === index}
                 onClick={() => setActiveIndex(index)}
               >
                 <span className="siab2p-role-list-icon"><RoleIcon /></span>
@@ -52,11 +53,6 @@ export default function RoleJourney() {
           </div>
 
           <article className="siab2p-role-detail">
-            <div className="siab2p-card-hover-wash" />
-            <div className="siab2p-role-detail-meta">
-              <span>Detail Workspace</span>
-              <strong>{activeRole.badge}</strong>
-            </div>
             <div className="siab2p-role-detail-title">
               <span><RoleIcon /></span>
               <h3>Ruang Kerja {activeRole.name}</h3>
