@@ -94,7 +94,8 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
   });
 
   test('browser form login starts unauthenticated and uses server cookies, not pre-seeded localStorage', async ({ page, context }) => {
-    await page.goto('/login');
+    await page.goto('/siab2/login');
+    await expect(page).toHaveURL(/\/siab2\/login$/);
     await expect(page.getByRole('button', { name: 'Masuk' })).toBeVisible();
     await expect(page.evaluate(() => window.localStorage.getItem('schoolhub_user'))).resolves.toBeNull();
 
