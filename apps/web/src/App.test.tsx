@@ -58,6 +58,51 @@ describe('PRD v2.2 UI shell', () => {
     expect(screen.queryByText(/password admin|password guru|password siswa/i)).not.toBeInTheDocument();
   });
 
+  it('renders /siab2 as the canonical SIAB2 landing with a scoped login CTA', async () => {
+    mockStorage();
+    window.history.replaceState({}, '', '/siab2');
+    render(<App />);
+
+    expect(await screen.findByRole('main', { name: /SIAB2 Sistem Informasi Akademik Berkarakter/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Masuk SIAB2/i })).toHaveAttribute('href', '/siab2/login');
+    expect(screen.queryByText(/Mode Preview|Preview Build/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps /siab2-preview as a safe compatibility landing route', async () => {
+    mockStorage();
+    window.history.replaceState({}, '', '/siab2-preview');
+    render(<App />);
+
+    expect(await screen.findByRole('main', { name: /SIAB2 Sistem Informasi Akademik Berkarakter/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Masuk SIAB2/i })).toHaveAttribute('href', '/siab2/login');
+  });
+
+  it('renders /siab2/login as focused scoped login while preserving auth payload', async () => {
+    mockStorage();
+    window.history.replaceState({}, '', '/siab2/login');
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    ) as any;
+
+    const { container } = render(<App />);
+    expect(container.querySelector('.login-left')).not.toBeInTheDocument();
+    expect(container.querySelector('.login-card')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Tentang SIAB2/i })).toHaveAttribute('href', '/siab2');
+
+    fireEvent.click(screen.getAllByText('Admin/TU')[0]);
+    fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
+
+    await waitFor(() => expect(window.location.pathname).toBe('/admin/dashboard'));
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({
+      body: JSON.stringify({ username: 'admin', password: 'sandi-test-aman', expectedRole: 'admin' })
+    }));
+  });
+
   it('logs in admin and routes to dashboard', async () => {
     mockStorage();
     window.history.replaceState({}, '', '/login');

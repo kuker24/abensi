@@ -106,7 +106,7 @@ export const ledgerItems = [
   { label: 'Kelas Aktif', value: '24' },
   { label: 'Siswa Terdata', value: '683' },
   { label: 'Guru Aktif', value: '42' },
-  { label: 'Rekap Hari Ini', value: 'Preview', good: true }
+  { label: 'Rekap Hari Ini', value: 'Aktif', good: true }
 ] as const;
 
 export const siab2Data: Siab2DataType = {

@@ -134,7 +134,7 @@ const cards: ParallaxCard[] = [
   {
     id: 6,
     title: 'Laporan Madrasah',
-    detail: 'Preview pelaporan kinerja akademik untuk bahan tinjauan pimpinan.',
+    detail: 'Tampilan pelaporan kinerja akademik untuk bahan tinjauan pimpinan.',
     preview: <LaporanPreview />,
     benefit: 'Merapikan bahan pendukung akreditasi'
   }
@@ -185,7 +185,7 @@ export default function AcademicParallax() {
             <h3>{focusedCard.title}</h3>
             <p>{focusedCard.detail}</p>
             {focusedCard.preview}
-            <div className="siab2p-lightbox-status"><i />Preview UI · Siap Verifikasi</div>
+            <div className="siab2p-lightbox-status"><i />Tampilan UI · Siap Verifikasi</div>
           </div>
         </div>
       ) : null}

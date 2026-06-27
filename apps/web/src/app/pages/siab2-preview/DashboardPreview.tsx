@@ -158,13 +158,13 @@ export default function DashboardPreview() {
       <div className="siab2p-container">
         <div className="siab2p-section-head siab2p-section-head-split">
           <div>
-            <span className="siab2p-eyebrow">Preview Portal SIAB2</span>
+            <span className="siab2p-eyebrow">Portal SIAB2</span>
             <h2 id="siab2-dashboard-title">
               Dashboard <em>akademik</em> mudah dipahami
             </h2>
           </div>
           <p>
-            Preview workspace interaktif yang membantu menampilkan rekapitulasi data contoh secara jelas tanpa visual yang membingungkan.
+            Tampilan workspace interaktif yang membantu menampilkan rekapitulasi data contoh secara jelas tanpa visual yang membingungkan.
           </p>
         </div>
 
@@ -173,10 +173,10 @@ export default function DashboardPreview() {
           <div className="siab2p-browser-header">
             <div className="siab2p-window-dots"><span /><span /><span /></div>
             <div className="siab2p-address-pill">Portal SIAB2 — MAN 1 Rokan Hulu</div>
-            <div className="siab2p-connected"><span /> <strong>Mode Preview</strong></div>
+            <div className="siab2p-connected"><span /> <strong>Mode Portal</strong></div>
           </div>
 
-          <div className="siab2p-dashboard-tabs" role="tablist" aria-label="Preview role dashboard SIAB2">
+          <div className="siab2p-dashboard-tabs" role="tablist" aria-label="Tampilan role dashboard SIAB2">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -193,7 +193,7 @@ export default function DashboardPreview() {
 
           <div className="siab2p-browser-content">{renderContent()}</div>
           <div className="siab2p-browser-status">
-            <span>Preview Build — Data Contoh</span>
+            <span>Portal SIAB2 — Data Contoh</span>
             <strong><i />Simulasi Tampilan</strong>
           </div>
         </div>

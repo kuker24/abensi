@@ -40,7 +40,7 @@ function ChartPreview() {
     <div className="siab2p-module-chart">
       <div className="siab2p-module-chart-title">
         <strong>Presensi Harian — Data Contoh</strong>
-        <em>Preview UI</em>
+        <em>Tampilan UI</em>
       </div>
       {rows.map((row) => (
         <div className="siab2p-chart-line" key={row.label}>
@@ -100,7 +100,7 @@ function SignaturePreview() {
         <div className="siab2p-signature-footer">
           <div>
             <span>26 Juni 2026</span>
-            <small>Preview SIAB2</small>
+            <small>Portal SIAB2</small>
           </div>
           <div>
             <span>Kepala Madrasah</span>

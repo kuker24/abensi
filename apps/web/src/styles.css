@@ -2385,6 +2385,124 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   }
 }
 
+.siab2-login-page-scoped .siab2-login-shell,
+.siab2-login-shell-scoped {
+  grid-template-columns: minmax(0, 460px);
+  justify-content: center;
+  align-items: center;
+  width: min(calc(100% - 32px), 520px);
+  min-height: 100dvh;
+  padding: clamp(24px, 5vw, 56px) 0;
+}
+
+.siab2-login-page-scoped .siab2-login-panel {
+  width: 100%;
+  max-width: 460px;
+  margin-inline: auto;
+  align-items: stretch;
+}
+
+.siab2-login-page-scoped .siab2-login-card,
+.siab2-login-page-scoped .siab2-login-form-ledger {
+  width: 100%;
+  max-width: 460px;
+}
+
+.siab2-login-page-scoped .siab2-login-card {
+  padding-top: clamp(22px, 4vw, 30px);
+}
+
+.siab2-login-page-scoped .siab2-login-panel-orbit {
+  opacity: 0.52;
+}
+
+.siab2-login-page-scoped .siab2-login-form-ledger {
+  justify-content: center;
+  text-align: center;
+}
+
+.siab2-scoped-login-lockup {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+
+.siab2-scoped-login-logo {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 6px;
+  border: 1px solid rgba(137,170,204,0.34);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+
+.siab2-scoped-login-logo img {
+  width: 100%;
+  height: 100%;
+  border-radius: 11px;
+  object-fit: cover;
+}
+
+.siab2-scoped-login-brand {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.siab2-scoped-login-brand strong {
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0.16em;
+}
+
+.siab2-scoped-login-brand small {
+  overflow: hidden;
+  color: var(--siab2-login-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.siab2-scoped-login-link {
+  color: rgba(247,247,247,0.68);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.siab2-scoped-login-link:hover,
+.siab2-scoped-login-link:focus-visible {
+  color: var(--siab2-login-accent-1);
+}
+
+@media (max-width: 520px) {
+  .siab2-login-page-scoped .siab2-login-shell,
+  .siab2-login-shell-scoped {
+    width: min(calc(100% - 24px), 460px);
+    padding: 16px 0 18px;
+  }
+
+  .siab2-scoped-login-lockup {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .siab2-scoped-login-link {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ================================================================
    SIAB2 scoped public preview landing — Visual Finalization Pass 3 port.
    Safe namespace: .siab2-preview / .siab2p-* only.

@@ -32,10 +32,10 @@ export default function ContactFooter() {
             </div>
           </div>
           <p>
-            SIAB2 (Sistem Informasi Akademik Berkarakter) adalah preview tampilan ruang kerja digital untuk mendukung tata kelola madrasah modern di MAN 1 Rokan Hulu.
+            SIAB2 (Sistem Informasi Akademik Berkarakter) adalah portal ruang kerja digital untuk mendukung tata kelola madrasah modern di MAN 1 Rokan Hulu.
           </p>
           <div className="siab2p-footer-chips">
-            <span><i />Mode Preview</span>
+            <span><i />Portal Resmi</span>
             <span>TA 2026/2027</span>
             <span>Siap Integrasi Data</span>
           </div>
@@ -60,7 +60,7 @@ export default function ContactFooter() {
             <span><i>📍</i>Rokan Hulu, Riau</span>
           </div>
           <div className="siab2p-footer-actions">
-            <a className="siab2p-footer-primary" href="/login">Masuk ke SIAB2 ↗</a>
+            <a className="siab2p-footer-primary" href="/siab2/login">Masuk ke SIAB2 ↗</a>
             <a className="siab2p-footer-secondary" href="#kontak">Hubungi Operator</a>
           </div>
         </div>
@@ -68,7 +68,7 @@ export default function ContactFooter() {
 
       <div className="siab2p-container siab2p-footer-bottom">
         <span>© 2026 MAN 1 Rokan Hulu – Kementerian Agama RI. Hak Cipta Dilindungi.</span>
-        <strong><i />Preview UI <em>·</em> Preview Build</strong>
+        <strong><i />Portal SIAB2 <em>·</em> Data Contoh</strong>
       </div>
     </footer>
   );

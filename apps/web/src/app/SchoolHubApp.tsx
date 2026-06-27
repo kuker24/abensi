@@ -96,10 +96,19 @@ const TeacherRecapPage = lazyPage(loadGuruPages, 'TeacherRecapPage');
 const MyAttendancePage = lazyPage(loadSiswaPages, 'MyAttendancePage');
 const SIAB2PreviewLanding = lazy(() => import('./pages/SIAB2PreviewLanding'));
 const OnboardingTour = lazyPage(() => import('./tutorial'), 'OnboardingTour');
-const PUBLIC_ROUTE_PATHS = new Set(['/siab2-preview']);
+const LOGIN_PATH = '/login';
+const CANONICAL_SIAB2_PATH = '/siab2';
+const SIAB2_PREVIEW_COMPAT_PATH = '/siab2-preview';
+const SIAB2_LOGIN_PATH = '/siab2/login';
+const PUBLIC_ROUTE_PATHS = new Set([CANONICAL_SIAB2_PATH, SIAB2_PREVIEW_COMPAT_PATH]);
+const LOGIN_ROUTE_PATHS = new Set([LOGIN_PATH, SIAB2_LOGIN_PATH]);
 
 function isPublicRoutePath(path: string) {
   return PUBLIC_ROUTE_PATHS.has(path);
+}
+
+function isLoginRoutePath(path: string) {
+  return LOGIN_ROUTE_PATHS.has(path);
 }
 
 /** Isolated clock — updates every second but re-renders only itself */
@@ -314,13 +323,16 @@ class AppErrorBoundary extends Component<{ children: ReactNode; resetKey: string
   }
 }
 
-function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: LoginRole, username: string, password: string) => Promise<void>; showSso?: boolean }) {
+type LoginScreenMode = 'default' | 'scoped';
+
+function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: (selectedRole: LoginRole, username: string, password: string) => Promise<void>; showSso?: boolean; mode?: LoginScreenMode }) {
   const [role, setRoleState] = useState<LoginRole>('guru');
   const [id, setId] = useState(ROLE_PRESETS.guru.id);
   const [pw, setPw] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
+  const isScoped = mode === 'scoped';
   const setRole = (nextRole: LoginRole) => {
     setRoleState(nextRole);
     setId(ROLE_PRESETS[nextRole].id);
@@ -341,10 +353,11 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
     }
   };
   return (
-    <div className="login login-v2 siab2-login-page" data-siab2-auth="login">
+    <div className={`login login-v2 siab2-login-page ${isScoped ? 'siab2-login-page-scoped' : ''}`} data-siab2-auth={isScoped ? 'siab2-scoped-login' : 'login'}>
       <div className="siab2-login-ambient" aria-hidden="true" />
       <div className="siab2-login-constellation" aria-hidden="true" />
-      <div className="siab2-login-shell">
+      <div className={`siab2-login-shell ${isScoped ? 'siab2-login-shell-scoped' : ''}`}>
+        {!isScoped && (
         <section className="login-left siab2-login-visual" aria-label={`Informasi ${BRAND.description}`}>
           <div className="siab2-login-grid" aria-hidden="true" />
           <div className="siab2-login-orbit siab2-login-orbit-one" aria-hidden="true" />
@@ -361,7 +374,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
                   <div className="login-brand-sub siab2-login-brand-sub">{BRAND.fullName}</div>
                 </div>
               </div>
-              <a className="siab2-login-official-link" href="/siab2-preview">Tentang SIAB2 ↗</a>
+              <a className="siab2-login-official-link" href={CANONICAL_SIAB2_PATH}>Tentang SIAB2 ↗</a>
             </div>
 
             <div className="siab2-login-visual-main">
@@ -421,10 +434,18 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
             </div>
           </div>
         </section>
+        )}
 
         <section className="login-right siab2-login-panel" aria-label="Form masuk SIAB2">
           <div className="siab2-login-panel-orbit" aria-hidden="true" />
           <form className="login-card siab2-login-card" onSubmit={submit}>
+            {isScoped && (
+              <div className="siab2-scoped-login-lockup">
+                <span className="siab2-scoped-login-logo"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /></span>
+                <span className="siab2-scoped-login-brand"><strong>SIAB2</strong><small>MAN 1 Rokan Hulu</small></span>
+                <a className="siab2-scoped-login-link" href={CANONICAL_SIAB2_PATH}>Tentang SIAB2 ↗</a>
+              </div>
+            )}
             <div className="siab2-login-card-status"><span /> Portal aman · {role === 'guru' ? 'Guru' : role === 'admin' ? 'Admin/TU' : 'Siswa'}</div>
             <div className="siab2-login-card-header">
               <div className="siab2-login-card-kicker">AKSES RESMI SIAB2</div>
@@ -895,7 +916,7 @@ function App() {
       setUser(null);
       setSessionChecked(true);
       notify('Sesi masuk habis. Silakan masuk ulang.', 'bad');
-      if (!isPublicRoutePath(window.location.pathname)) go('/login');
+      if (!isPublicRoutePath(window.location.pathname) && !isLoginRoutePath(window.location.pathname)) go(LOGIN_PATH);
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -920,7 +941,7 @@ function App() {
         if (cancelled) return;
         localStorage.removeItem(USER_KEY);
         setUser(null);
-        if (window.location.pathname !== '/login' && !isPublicRoutePath(window.location.pathname)) go('/login');
+        if (!isLoginRoutePath(window.location.pathname) && !isPublicRoutePath(window.location.pathname)) go(LOGIN_PATH);
       })
       .finally(() => {
         if (!cancelled) setSessionChecked(true);
@@ -934,7 +955,7 @@ function App() {
       if (stored) setUser(stored);
     }
   }, [path, user]);
-  useEffect(() => { if (sessionChecked && !readStoredUser() && path !== '/login' && !isPublicRoutePath(path)) go('/login'); }, [path, sessionChecked]);
+  useEffect(() => { if (sessionChecked && !readStoredUser() && !isLoginRoutePath(path) && !isPublicRoutePath(path)) go(LOGIN_PATH); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     try {
       localStorage.removeItem(USER_KEY);
@@ -974,9 +995,9 @@ function App() {
   const confirmLayer = <ConfirmDialog dialog={confirmDialog} onCancel={() => { confirmDialog?.resolve(false); setConfirmDialog(null); }} onConfirm={() => { confirmDialog?.resolve(true); setConfirmDialog(null); }} />;
 
   if (isPublicRoutePath(path)) return <><Suspense fallback={<PageLoading />}><SIAB2PreviewLanding /></Suspense><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : '/login'), 0); return null; }
-  if (!sessionChecked && path !== '/login') return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
-  if (path === '/login') return <>{SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : LOGIN_PATH), 0); return null; }
+  if (!sessionChecked && !isLoginRoutePath(path)) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (isLoginRoutePath(path)) return <>{path === LOGIN_PATH && SSO_ENABLED && backendSsoEnabled && <WorkOSLoginHandler />}<LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} mode={path === SIAB2_LOGIN_PATH ? 'scoped' : 'default'} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!user) return <LoginScreen onLogin={handleLogin} showSso={SSO_ENABLED && backendSsoEnabled} />;
   if (user.mustChangePassword) return <><PasswordChangeScreen onChanged={() => { localStorage.removeItem(USER_KEY); setSessionChecked(true); setUser(null); notify('Password berhasil diganti. Silakan masuk kembali.', 'ok'); go('/login'); }} /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   const route = routeForPath(path);
