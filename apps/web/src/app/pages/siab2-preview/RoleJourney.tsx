@@ -22,11 +22,11 @@ export default function RoleJourney() {
           <div>
             <span className="siab2p-eyebrow">Akses Sesuai Peran</span>
             <h2 id="siab2-role-title">
-              Setiap pengguna punya <em>ruang kerja</em> berbeda
+              Ruang kerja disusun sesuai <em>peran</em>
             </h2>
           </div>
           <p>
-            Admin, guru, siswa, operator, dan kepala madrasah melihat informasi dan memegang akses sesuai peran serta tugas akademiknya masing-masing.
+            Admin, guru, siswa, operator, dan kepala madrasah membuka informasi sesuai tugas akademik masing-masing, tanpa menumpuk menu yang tidak dibutuhkan.
           </p>
         </div>
 
@@ -59,14 +59,14 @@ export default function RoleJourney() {
             </div>
             <div className="siab2p-role-detail-title">
               <span><RoleIcon /></span>
-              <h3>Workspace {activeRole.name}</h3>
+              <h3>Ruang Kerja {activeRole.name}</h3>
             </div>
             <p>{activeRole.desc}</p>
             <div className="siab2p-role-features">
               <h4>Fitur Utama & Akses Kerja</h4>
               <div>
                 {activeRole.features.map((feature) => (
-                  <span key={feature}><i />{feature}</span>
+                  <span key={feature}>{feature}</span>
                 ))}
               </div>
             </div>

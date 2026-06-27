@@ -30,11 +30,10 @@ export default function DashboardPreview() {
             ))}
           </div>
           <div className="siab2p-dashboard-list-block">
-            <p>Log Aktivitas & Peringatan Sistem</p>
+            <p>Ringkasan Kerja Sistem</p>
             <div className="siab2p-dashboard-list">
               {siab2Data.dashboardMock.admin.alerts.map((alert) => (
                 <div className="siab2p-dashboard-list-row" key={alert.name}>
-                  <span className="siab2p-row-dot" />
                   <div>
                     <strong>{alert.name}</strong>
                     <small>{alert.detail}</small>
@@ -71,7 +70,6 @@ export default function DashboardPreview() {
             <div className="siab2p-dashboard-list">
               {siab2Data.dashboardMock.guru.alerts.map((alert) => (
                 <div className="siab2p-dashboard-list-row" key={alert.name}>
-                  <span className="siab2p-row-dot" />
                   <div>
                     <strong>{alert.name}</strong>
                     <small>{alert.detail}</small>
@@ -127,9 +125,9 @@ export default function DashboardPreview() {
               <span>{metric.label}</span>
               <div>
                 <strong>{metric.value}</strong>
-                <StatusBadge type={metric.status} text="Hari Ini" />
+                <StatusBadge type={metric.status} text="Tersedia" />
               </div>
-              <i className="siab2p-metric-progress"><b style={{ width: metric.value }} /></i>
+              <i className="siab2p-metric-progress"><b /></i>
             </div>
           ))}
         </div>
@@ -138,7 +136,6 @@ export default function DashboardPreview() {
           <div className="siab2p-dashboard-list">
             {siab2Data.dashboardMock.kepala.approvals.map((approval) => (
               <div className="siab2p-dashboard-list-row" key={approval.name}>
-                <span className="siab2p-row-dot" />
                 <div>
                   <strong>{approval.name}</strong>
                   <small>{approval.detail}</small>
@@ -158,22 +155,21 @@ export default function DashboardPreview() {
       <div className="siab2p-container">
         <div className="siab2p-section-head siab2p-section-head-split">
           <div>
-            <span className="siab2p-eyebrow">Portal SIAB2</span>
+            <span className="siab2p-eyebrow">Tampilan SIAB2</span>
             <h2 id="siab2-dashboard-title">
               Dashboard <em>akademik</em> mudah dipahami
             </h2>
           </div>
           <p>
-            Tampilan workspace interaktif yang membantu menampilkan rekapitulasi data contoh secara jelas tanpa visual yang membingungkan.
+            Tampilan workspace akademik disusun ringkas agar pengguna dapat membaca informasi sesuai perannya tanpa elemen yang mengganggu pekerjaan harian.
           </p>
         </div>
 
         <div className="siab2p-browser-mockup">
           <div className="siab2p-browser-accent" />
           <div className="siab2p-browser-header">
-            <div className="siab2p-window-dots"><span /><span /><span /></div>
-            <div className="siab2p-address-pill">Portal SIAB2 — MAN 1 Rokan Hulu</div>
-            <div className="siab2p-connected"><span /> <strong>Mode Portal</strong></div>
+            <div className="siab2p-address-pill">SIAB2 — MAN 1 Rokan Hulu</div>
+            <div className="siab2p-connected"><strong>Akses sesuai peran</strong></div>
           </div>
 
           <div className="siab2p-dashboard-tabs" role="tablist" aria-label="Tampilan role dashboard SIAB2">
@@ -193,8 +189,8 @@ export default function DashboardPreview() {
 
           <div className="siab2p-browser-content">{renderContent()}</div>
           <div className="siab2p-browser-status">
-            <span>Portal SIAB2 — Data Contoh</span>
-            <strong><i />Simulasi Tampilan</strong>
+            <span>SIAB2 — MAN 1 Rokan Hulu</span>
+            <strong>Tampilan Ringkas</strong>
           </div>
         </div>
       </div>

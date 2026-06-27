@@ -65,14 +65,18 @@ describe('PRD v2.2 UI shell', () => {
 
     expect(await screen.findByRole('main', { name: /SIAB2 Sistem Informasi Akademik Berkarakter/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Masuk SIAB2/i })).toHaveAttribute('href', '/siab2/login');
-    expect(screen.queryByText(/Mode Preview|Preview Build/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/JL\.TUANKU TAMBUSAI NO\.183/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/07627393218/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/manpasir675027@yahoo\.co\.id/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Data Contoh|Mode Preview|Preview Build|Notifikasi rapi|Akses cepat|Data akademik terkelola/i)).not.toBeInTheDocument();
   });
 
-  it('keeps /siab2-preview as a safe compatibility landing route', async () => {
+  it('redirects /siab2-preview to canonical /siab2 instead of rendering an active preview route', async () => {
     mockStorage();
     window.history.replaceState({}, '', '/siab2-preview');
     render(<App />);
 
+    await waitFor(() => expect(window.location.pathname).toBe('/siab2'));
     expect(await screen.findByRole('main', { name: /SIAB2 Sistem Informasi Akademik Berkarakter/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Masuk SIAB2/i })).toHaveAttribute('href', '/siab2/login');
   });
@@ -91,6 +95,7 @@ describe('PRD v2.2 UI shell', () => {
     expect(container.querySelector('.login-left')).not.toBeInTheDocument();
     expect(container.querySelector('.login-card')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Tentang SIAB2/i })).toHaveAttribute('href', '/siab2');
+    expect(screen.queryByText(/Notifikasi rapi|Akses cepat|Data akademik terkelola/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByText('Admin/TU')[0]);
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });

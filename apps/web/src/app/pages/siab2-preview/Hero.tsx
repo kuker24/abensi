@@ -5,49 +5,40 @@ import VideoBackground from './VideoBackground';
 
 function AcademicPreviewCard() {
   return (
-    <aside className="siab2p-academic-card" aria-label="Status Portal SIAB2">
+    <aside className="siab2p-academic-card" aria-label="Profil resmi MAN 1 Rokan Hulu">
       <div className="siab2p-academic-card-orb" />
       <div className="siab2p-card-header">
         <div className="siab2p-card-title-dot">
-          <span />
-          <strong>Status Portal SIAB2</strong>
+          <strong>Profil Resmi Madrasah</strong>
         </div>
-        <em>Tahun Ajaran</em>
+        <em>SIAB2</em>
       </div>
 
-      <div className="siab2p-card-metric-grid">
-        <div className="siab2p-card-metric">
-          <span>Tahun Pelajaran</span>
-          <strong>2026/2027</strong>
-        </div>
-        <div className="siab2p-card-metric">
-          <span>Semester</span>
-          <strong className="siab2p-text-accent">Genap</strong>
+      <div className="siab2p-card-metric-grid siab2p-official-profile-grid">
+        <div className="siab2p-card-metric siab2p-card-metric-wide">
+          <span>Madrasah</span>
+          <strong>MAN 1 Rokan Hulu</strong>
         </div>
         <div className="siab2p-card-metric siab2p-card-metric-wide">
-          <div className="siab2p-presence-row">
-            <div>
-              <span>Status Presensi Hari Ini</span>
-              <strong>97.4% Hadir</strong>
-            </div>
-            <i>Data Contoh</i>
-          </div>
-          <div className="siab2p-progress-track">
-            <div className="siab2p-progress-fill" />
-          </div>
+          <span>Profil</span>
+          <strong className="siab2p-text-accent">Madrasah Berbasis Riset</strong>
+        </div>
+        <div className="siab2p-card-metric siab2p-card-metric-wide">
+          <span>Alamat</span>
+          <strong>JL.TUANKU TAMBUSAI NO.183</strong>
         </div>
         <div className="siab2p-card-metric">
-          <span>Kelas Aktif</span>
-          <strong>24 Rombel</strong>
+          <span>Telepon</span>
+          <strong>07627393218</strong>
         </div>
-        <div className="siab2p-card-metric">
-          <span>Siswa & Guru</span>
-          <strong>683 / 42 Orang</strong>
+        <div className="siab2p-card-metric siab2p-card-metric-wide">
+          <span>Email</span>
+          <strong>manpasir675027@yahoo.co.id</strong>
         </div>
       </div>
 
       <div className="siab2p-card-footer-note">
-        <span>Portal SIAB2</span>
+        <span>Sistem Informasi Akademik Berkarakter</span>
         <strong>MAN 1 Rokan Hulu</strong>
       </div>
     </aside>
@@ -89,7 +80,7 @@ export default function Hero() {
               Untuk <strong>{roleDetails[roleIndex].role}</strong>: {roleDetails[roleIndex].text}
             </p>
             <p className="siab2p-hero-description">
-              Dirancang untuk membantu menyusun data siswa, kehadiran harian, jadwal pelajaran, jurnal mengajar, dan laporan madrasah dalam satu ruang kerja digital yang rapi, aman, dan mudah dipahami.
+              Portal akademik untuk membantu tata kelola data siswa, kehadiran, jadwal pelajaran, jurnal mengajar, dan laporan madrasah dalam satu ruang kerja digital yang rapi dan mudah dipahami.
             </p>
 
             <div className="siab2p-hero-actions">

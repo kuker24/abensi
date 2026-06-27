@@ -5509,3 +5509,110 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     line-height: 1.25;
   }
 }
+
+/* SIAB2 official public-route cleanup */
+.siab2-preview .siab2p-role-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.96fr) minmax(380px, 1.04fr);
+  gap: clamp(24px, 4vw, 46px);
+  align-items: start;
+}
+
+.siab2-preview .siab2p-role-list {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.siab2-preview .siab2p-role-list-item {
+  background: linear-gradient(180deg, rgba(18, 22, 28, 0.86), rgba(8, 12, 17, 0.78));
+}
+
+.siab2-preview .siab2p-role-detail {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  margin: 0 !important;
+  transform: none !important;
+  border-color: rgba(137, 170, 204, 0.28);
+  background: linear-gradient(180deg, rgba(16, 20, 27, 0.96), rgba(8, 12, 18, 0.94)) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255,255,255,0.08);
+  backdrop-filter: blur(22px) saturate(1.1);
+  -webkit-backdrop-filter: blur(22px) saturate(1.1);
+  overflow: hidden;
+}
+
+.siab2-preview .siab2p-role-detail .siab2p-card-hover-wash {
+  opacity: 0.18;
+}
+
+.siab2-preview .siab2p-role-features span::before {
+  content: none !important;
+}
+
+.siab2-preview .siab2p-role-features span {
+  background: rgba(255,255,255,0.045);
+}
+
+.siab2-preview .siab2p-card-title-dot {
+  gap: 0;
+}
+
+.siab2-preview .siab2p-official-profile-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.siab2-preview .siab2p-card-metric strong,
+.siab2-preview .siab2p-ledger-item strong,
+.siab2-preview .siab2p-stat-item strong,
+.siab2-preview .siab2p-stat-item span {
+  overflow-wrap: anywhere;
+}
+
+.siab2-preview .siab2p-stat-item strong {
+  font-size: clamp(28px, 4vw, 52px);
+}
+
+.siab2-preview .siab2p-contact-card strong {
+  min-width: 70px;
+  color: var(--siab2p-accent-1);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.siab2-preview .siab2p-contact-card a {
+  color: var(--siab2p-text);
+  text-decoration: none;
+}
+
+.siab2-preview .siab2p-browser-header {
+  gap: 12px;
+}
+
+.siab2-preview .siab2p-connected {
+  justify-content: center;
+}
+
+@media (max-width: 1024px) {
+  .siab2-preview .siab2p-role-grid {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .siab2-preview .siab2p-role-detail {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .siab2-preview .siab2p-official-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .siab2-preview .siab2p-contact-card strong {
+    min-width: 62px;
+  }
+}

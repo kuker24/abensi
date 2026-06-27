@@ -101,52 +101,52 @@ export const roleDetails = [
 ] as const;
 
 export const ledgerItems = [
-  { label: 'Tahun Ajaran', value: '2026/2027' },
-  { label: 'Semester', value: 'Genap' },
-  { label: 'Kelas Aktif', value: '24' },
-  { label: 'Siswa Terdata', value: '683' },
-  { label: 'Guru Aktif', value: '42' },
-  { label: 'Rekap Hari Ini', value: 'Aktif', good: true }
+  { label: 'Madrasah', value: 'Berbasis Riset' },
+  { label: 'Alamat', value: 'Jl. Tuanku Tambusai 183' },
+  { label: 'Telepon', value: '07627393218' },
+  { label: 'Email', value: 'Email Resmi' },
+  { label: 'Portal', value: 'SIAB2' },
+  { label: 'Akses', value: 'Sesuai Peran', good: true }
 ] as const;
 
 export const siab2Data: Siab2DataType = {
-  academicYear: 'Tahun Ajaran 2026/2027',
-  semester: 'Semester Genap',
+  academicYear: 'MAN 1 Rokan Hulu',
+  semester: 'Madrasah Berbasis Riset',
   institution: 'MAN 1 Rokan Hulu',
   stats: [
-    { value: '683', label: 'Siswa Terdata' },
-    { value: '42', label: 'Guru Aktif' },
-    { value: '24', label: 'Kelas Akademik' },
-    { value: '5', label: 'Peran Pengguna' },
-    { value: '1', label: 'Sistem Terpadu' }
+    { value: 'Profil', label: 'Madrasah Berbasis Riset' },
+    { value: 'Alamat', label: 'JL.TUANKU TAMBUSAI NO.183' },
+    { value: 'Telepon', label: '07627393218' },
+    { value: 'Email', label: 'manpasir675027@yahoo.co.id' },
+    { value: 'SIAB2', label: 'Sistem Akademik' }
   ],
   modules: [
     {
       id: 'siswa-guru',
       title: 'Data Siswa & Guru',
       tag: 'Sistem Utama',
-      desc: 'Manajemen data induk civitas akademika lengkap dengan riwayat NISN, NUPTK, dan dokumen akademik terpusat.',
+      desc: 'Manajemen data induk civitas akademika untuk mendukung administrasi akademik madrasah secara tertata.',
       previewType: 'table'
     },
     {
       id: 'kehadiran',
       title: 'Kehadiran Harian',
       tag: 'Pencatatan Karakter',
-      desc: 'Membantu memantau presensi harian siswa dengan status kehadiran detail (Hadir, Izin, Sakit, Alfa, Terlambat).',
+      desc: 'Membantu pencatatan presensi harian siswa dengan status kehadiran yang mudah ditinjau oleh petugas terkait.',
       previewType: 'chart'
     },
     {
       id: 'jadwal-jurnal',
       title: 'Jadwal & Jurnal Mengajar',
       tag: 'Rencana KBM',
-      desc: 'Distribusi jadwal pelajaran kelas teratur dikombinasikan dengan pengisian jurnal mengajar mandiri oleh guru setiap hari.',
+      desc: 'Mendukung penyusunan jadwal pelajaran dan jurnal mengajar guru dalam alur kerja yang lebih rapi.',
       previewType: 'timeline'
     },
     {
       id: 'laporan',
       title: 'Laporan Kepala Madrasah',
       tag: 'Hasil Validasi',
-      desc: 'Membantu menyusun rekap presensi, jurnal, dan laporan berkala untuk mempermudah tinjauan pimpinan.',
+      desc: 'Membantu penyusunan rekap presensi, jurnal, dan laporan berkala untuk bahan tinjauan pimpinan madrasah.',
       previewType: 'signature'
     }
   ],
@@ -155,7 +155,7 @@ export const siab2Data: Siab2DataType = {
       name: 'Admin Madrasah',
       desc: 'Mendukung pengelolaan data secara terpusat, akun pengguna, konfigurasi kelas, dan hak akses utama.',
       badge: 'Akses Penuh',
-      features: ['Pembagian Rombel & Kelas', 'Validasi Data Induk Akademik', 'Audit Log Aktivitas']
+      features: ['Pembagian Rombel & Kelas', 'Validasi Data Induk Akademik', 'Riwayat Aktivitas Pengguna']
     },
     {
       name: 'Guru',
@@ -173,7 +173,7 @@ export const siab2Data: Siab2DataType = {
       name: 'Operator Akademik',
       desc: 'Mendukung penyiapan struktur data akademik, verifikasi data guru dan siswa, serta penyusunan jadwal pelajaran makro.',
       badge: 'Data & Struktur',
-      features: ['Siap Integrasi Data', 'Penyusunan Jadwal Rinci', 'Manajemen NISN & NUPTK']
+      features: ['Penataan Data Akademik', 'Penyusunan Jadwal Rinci', 'Manajemen Identitas Akademik']
     },
     {
       name: 'Kepala Madrasah',
@@ -185,47 +185,47 @@ export const siab2Data: Siab2DataType = {
   dashboardMock: {
     admin: {
       metrics: [
-        { label: 'Siswa Terdata', value: '683', change: 'Aktif', status: 'Hadir' },
-        { label: 'Guru Aktif', value: '42', change: 'Siap Verifikasi', status: 'Aktif' },
-        { label: 'Kelas Aktif', value: '24', change: 'Semester Genap', status: 'Izin' }
+        { label: 'Data Induk', value: 'Terkelola', change: 'Sesuai Peran', status: 'Hadir' },
+        { label: 'Jurnal Mengajar', value: 'Tersusun', change: 'Perlu Tinjauan', status: 'Aktif' },
+        { label: 'Laporan Akademik', value: 'Berkala', change: 'Untuk Pimpinan', status: 'Izin' }
       ],
       alerts: [
-        { name: 'Siswa Belum Diabsen', detail: 'Kelas XII MIPA 1 (Guru Mapel 01)', status: 'Terlambat' },
-        { name: 'Jurnal Belum Lengkap', detail: 'Kelas XI IPS 2 (Guru Mapel 02)', status: 'Pending' },
-        { name: 'Data Siswa Belum Lengkap', detail: '5 Siswa di Kelas X Agama', status: 'Nonaktif' }
+        { name: 'Validasi Presensi', detail: 'Pemeriksaan data kehadiran oleh petugas berwenang', status: 'Pending' },
+        { name: 'Rekap Jurnal', detail: 'Ringkasan jurnal mengajar untuk bahan tinjauan', status: 'Aktif' },
+        { name: 'Kelengkapan Data', detail: 'Pembaruan data induk dilakukan sesuai kebutuhan madrasah', status: 'Hadir' }
       ]
     },
     guru: {
       schedule: [
-        { time: '07.30 - 09.00', subject: 'Fisika Peminatan', class: 'XII MIPA 1', status: 'Aktif' },
-        { time: '09.15 - 10.45', subject: 'Fisika Umum', class: 'XI IPS 2', status: 'Pending' }
+        { time: 'Jam Pelajaran', subject: 'Jadwal Mengajar', class: 'Kelas Aktif', status: 'Aktif' },
+        { time: 'Setelah KBM', subject: 'Jurnal Mengajar', class: 'Catatan Kelas', status: 'Pending' }
       ],
       alerts: [
-        { name: 'Absensi Perlu Diisi', detail: 'Kelas XII MIPA 1 siap diverifikasi hari ini', status: 'Terlambat' },
-        { name: 'Input Jurnal Mingguan', detail: 'Batas pengisian tanggal 28/06/2026', status: 'Pending' }
+        { name: 'Presensi Kelas', detail: 'Guru mengisi presensi sesuai jadwal mengajar', status: 'Pending' },
+        { name: 'Jurnal Mengajar', detail: 'Catatan KBM tersimpan untuk arsip madrasah', status: 'Aktif' }
       ]
     },
     siswa: {
       schedule: [
-        { time: '07.30 - 09.00', subject: 'Kimia', teacher: 'Guru Mapel 01', status: 'Hadir' },
-        { time: '09.15 - 10.45', subject: 'Matematika Wajib', teacher: 'Guru Mapel 02', status: 'Hadir' },
-        { time: '11.00 - 12.30', subject: 'Bahasa Inggris', teacher: 'Guru Mapel 03', status: 'Terlambat' }
+        { time: 'Hari Aktif', subject: 'Jadwal Pelajaran', teacher: 'Guru Pengampu', status: 'Hadir' },
+        { time: 'Semester', subject: 'Riwayat Kehadiran', teacher: 'Wali Kelas', status: 'Hadir' },
+        { time: 'Berkala', subject: 'Catatan Karakter', teacher: 'Madrasah', status: 'Pending' }
       ],
       attendance: [
-        { label: 'Hadir', count: '142 Hari', status: 'Hadir' },
-        { label: 'Izin', count: '4 Hari', status: 'Izin' },
-        { label: 'Sakit', count: '2 Hari', status: 'Sakit' },
-        { label: 'Terlambat', count: '1 Kali', status: 'Terlambat' }
+        { label: 'Hadir', count: 'Tercatat', status: 'Hadir' },
+        { label: 'Izin', count: 'Tercatat', status: 'Izin' },
+        { label: 'Sakit', count: 'Tercatat', status: 'Sakit' },
+        { label: 'Terlambat', count: 'Tercatat', status: 'Terlambat' }
       ]
     },
     kepala: {
       metrics: [
-        { label: 'Rasio Kehadiran Siswa Hari Ini', value: '97.4%', status: 'Hadir' },
-        { label: 'Keterisian Jurnal Mengajar Guru', value: '92.8%', status: 'Aktif' }
+        { label: 'Rekap Kehadiran', value: 'Tersedia', status: 'Hadir' },
+        { label: 'Jurnal Mengajar', value: 'Tertata', status: 'Aktif' }
       ],
       approvals: [
-        { name: 'Laporan Kehadiran Bulanan - Mei', detail: 'Diajukan oleh Operator (25/06/2026)', status: 'Pending' },
-        { name: 'Jurnal Mengajar Semester Genap', detail: 'Diajukan oleh Guru Mapel 01', status: 'Aktif' }
+        { name: 'Laporan Kehadiran Berkala', detail: 'Disiapkan untuk tinjauan pimpinan madrasah', status: 'Pending' },
+        { name: 'Jurnal Mengajar Semester', detail: 'Dirapikan sebagai arsip akademik madrasah', status: 'Aktif' }
       ]
     }
   }
