@@ -4547,6 +4547,24 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   max-width: 100%;
 }
 
+@media (max-width: 1320px) {
+  .siab2-topbar-crumb,
+  .siab2-topbar .live-clock,
+  .siab2-topbar-user-copy {
+    display: none;
+  }
+
+  .siab2-topbar-search {
+    min-width: 180px;
+    max-width: 240px;
+  }
+
+  .siab2-topbar-user-trigger {
+    width: 42px;
+    padding: 4px;
+  }
+}
+
 @media (max-width: 1180px) {
   .siab2-shell {
     grid-template-columns: 286px minmax(0, 1fr);
@@ -4555,10 +4573,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   .siab2-sidebar {
     width: 286px;
     min-width: 286px;
-  }
-
-  .siab2-topbar-crumb {
-    display: none;
   }
 }
 
