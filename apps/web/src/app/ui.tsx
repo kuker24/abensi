@@ -25,7 +25,7 @@ export function ToastHost({ toasts, onClose }: { toasts: ToastMessage[]; onClose
 }
 
 export function Pill({ tone = '', children, dot = true }: { tone?: string; children: ReactNode; dot?: boolean }) {
-  return <span className={`pill ${tone}`}>{dot && <span className="d" />}{children}</span>;
+  return <span className={`pill siab2-status-pill ${tone}`}>{dot && <span className="d" />}{children}</span>;
 }
 
 export function statusLabel(status?: string | null): string {
@@ -191,11 +191,11 @@ export interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Btn({ variant = '', size = '', children, loading = false, ...props }: BtnProps) {
-  return <button className={`btn ${variant} ${size}`} disabled={loading || props.disabled} {...props}>{loading ? <Loader2 className="spin" size={14} /> : null}{children}</button>;
+  return <button className={`btn siab2-action-button ${variant} ${size}`} disabled={loading || props.disabled} {...props}>{loading ? <Loader2 className="spin" size={14} /> : null}{children}</button>;
 }
 
 export function IconBtn({ label, children, ...props }: BtnProps & { label: string }) {
-  return <button className="btn icon ghost" aria-label={label} title={label} {...props}>{children}</button>;
+  return <button className="btn siab2-action-button icon ghost" aria-label={label} title={label} {...props}>{children}</button>;
 }
 
 const FieldLabelContext = createContext<string | undefined>(undefined);
@@ -212,13 +212,13 @@ function namedControlProps(props: Record<string, unknown>, fallbackLabel?: strin
 }
 
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
-  return <div className="field"><div className="field-label"><span>{label}</span>{hint && <span className="mono faint" style={{ fontSize: 11 }}>{hint}</span>}</div><FieldLabelContext.Provider value={textFromNode(label)}>{children}</FieldLabelContext.Provider></div>;
+  return <div className="field siab2-form-field"><div className="field-label siab2-form-label"><span>{label}</span>{hint && <span className="mono faint" style={{ fontSize: 11 }}>{hint}</span>}</div><FieldLabelContext.Provider value={textFromNode(label)}>{children}</FieldLabelContext.Provider></div>;
 }
 
 export function TextInput({ icon, type, ...props }: any) {
   const fieldLabel = useContext(FieldLabelContext);
   const controlProps = namedControlProps(props, fieldLabel);
-  return <label className="input">{icon}{type === 'textarea' ? <textarea {...controlProps} /> : <input type={type} {...controlProps} />}</label>;
+  return <label className="input siab2-input">{icon}{type === 'textarea' ? <textarea {...controlProps} /> : <input type={type} {...controlProps} />}</label>;
 }
 
 interface SelectInputProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -228,16 +228,16 @@ interface SelectInputProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export function SelectInput({ wrapperClassName = '', className = '', ...props }: SelectInputProps) {
   const fieldLabel = useContext(FieldLabelContext);
   const controlProps = namedControlProps(props as Record<string, unknown>, fieldLabel) as SelectHTMLAttributes<HTMLSelectElement>;
-  return <label className={`input select-input ${wrapperClassName}`.trim()}><select className={className} {...controlProps} /></label>;
+  return <label className={`input select-input siab2-select-input ${wrapperClassName}`.trim()}><select className={className} {...controlProps} /></label>;
 }
 
 export function Card({ title, sub, actions, children, pad = true, variant = 'default' }: { title?: ReactNode; sub?: ReactNode; actions?: ReactNode; children?: ReactNode; pad?: boolean; variant?: 'default' | 'elevated' | 'glass' | 'flat' }) {
   const variantClass = variant === 'elevated' ? 'card-elevated' : variant === 'glass' ? 'card-glass' : variant === 'flat' ? 'card-flat' : '';
-  return <div className={`card ${variantClass} ${pad ? 'pad' : ''}`}>{title && <div className="card-head compact"><div><div className="card-title">{title}</div>{sub && <div className="card-sub">{sub}</div>}</div>{actions && <div className="row table-actions">{actions}</div>}</div>}{children}</div>;
+  return <div className={`card siab2-content-card ${variantClass} ${pad ? 'pad' : ''}`}>{title && <div className="card-head compact siab2-content-card-head"><div><div className="card-title siab2-content-card-title">{title}</div>{sub && <div className="card-sub siab2-content-card-sub">{sub}</div>}</div>{actions && <div className="row table-actions siab2-action-bar">{actions}</div>}</div>}{children}</div>;
 }
 
 export function PageHead({ eyebrow, title, sub, actions }: { eyebrow: ReactNode; title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
-  return <div className="page-head"><div><div className="eyebrow"><span className="dot" /> {eyebrow}</div><h1 className="page-title">{title}</h1>{sub && <div className="page-sub">{sub}</div>}</div>{actions && <div className="row page-actions">{actions}</div>}</div>;
+  return <div className="page-head siab2-page-head"><div><div className="eyebrow siab2-page-eyebrow"><span className="dot" /> {eyebrow}</div><h1 className="page-title siab2-page-title">{title}</h1>{sub && <div className="page-sub siab2-page-sub">{sub}</div>}</div>{actions && <div className="row page-actions siab2-page-actions">{actions}</div>}</div>;
 }
 
 function friendlyErrorDetails(error: string) {
@@ -272,33 +272,33 @@ function friendlyErrorDetails(error: string) {
 }
 
 export function LoadingState({ label = 'Memuat data…', sub = 'Mohon tunggu, sistem sedang mengambil data terbaru.' }: { label?: string; sub?: string }) {
-  return <div className="card pad-lg state app-state loading-state" role="status" aria-live="polite" aria-busy="true"><span className="app-state-icon"><Loader2 className="spin" size={22} /></span><b>{label}</b><span>{sub}</span></div>;
+  return <div className="card pad-lg state app-state loading-state siab2-loading-state" role="status" aria-live="polite" aria-busy="true"><span className="app-state-icon"><Loader2 className="spin" size={22} /></span><b>{label}</b><span>{sub}</span></div>;
 }
 
 export function ErrorState({ error, onRetry, title, hint }: { error: string; onRetry?: () => void; title?: string; hint?: string }) {
   const details = friendlyErrorDetails(error);
   const showDetail = details.detail && details.detail !== details.title && details.detail !== title;
-  return <div className="card pad-lg state app-state bad" role="alert"><span className="app-state-icon"><AlertTriangle size={22} /></span><b>{title || details.title}</b><span>{hint || details.hint}</span>{showDetail && <small className="state-detail">Detail: {details.detail}</small>}{onRetry && <Btn onClick={onRetry}><RefreshCw size={14} /> Coba lagi</Btn>}</div>;
+  return <div className="card pad-lg state app-state bad siab2-error-state" role="alert"><span className="app-state-icon"><AlertTriangle size={22} /></span><b>{title || details.title}</b><span>{hint || details.hint}</span>{showDetail && <small className="state-detail">Detail: {details.detail}</small>}{onRetry && <Btn onClick={onRetry}><RefreshCw size={14} /> Coba lagi</Btn>}</div>;
 }
 
 export function EmptyState({ title = 'Belum ada data', sub = 'Data akan muncul di sini setelah tersedia.', action }: { title?: string; sub?: string; action?: ReactNode }) {
-  return <div className="empty app-state"><span className="app-state-icon"><Cpu size={26} /></span><b>{title}</b><span>{sub}</span>{action && <div className="app-state-action">{action}</div>}</div>;
+  return <div className="empty app-state siab2-empty-state"><span className="app-state-icon"><Cpu size={26} /></span><b>{title}</b><span>{sub}</span>{action && <div className="app-state-action">{action}</div>}</div>;
 }
 
 export function FriendlyEmptyState({ title = 'Belum ada data', sub = 'Nanti kalau sudah ada aktivitas, data akan muncul di sini.', action }: { title?: string; sub?: string; action?: ReactNode }) {
-  return <div className="friendly-empty app-state"><span className="app-state-icon"><Cpu size={28} /></span><b>{title}</b><span>{sub}</span>{action && <div className="friendly-empty-action app-state-action">{action}</div>}</div>;
+  return <div className="friendly-empty app-state siab2-empty-state"><span className="app-state-icon"><Cpu size={28} /></span><b>{title}</b><span>{sub}</span>{action && <div className="friendly-empty-action app-state-action">{action}</div>}</div>;
 }
 
 export function SimpleHelpBox({ title = 'Bantuan singkat', items, children }: { title?: ReactNode; items?: ReactNode[]; children?: ReactNode }) {
-  return <div className="simple-help"><b>{title}</b>{items?.length ? <ul>{items.map((item, index) => <li key={index}>{item}</li>)}</ul> : children}</div>;
+  return <div className="simple-help siab2-help-box"><b>{title}</b>{items?.length ? <ul>{items.map((item, index) => <li key={index}>{item}</li>)}</ul> : children}</div>;
 }
 
 export function StepGuide({ title = 'Ikuti langkah ini', steps }: { title?: ReactNode; steps: ReactNode[] }) {
-  return <div className="step-guide" aria-label={String(title)}><div className="step-guide-title">{title}</div><div className="step-guide-list">{steps.map((step, index) => <div className="step-guide-item" key={index}><b>{index + 1}</b><span>{step}</span></div>)}</div></div>;
+  return <div className="step-guide siab2-step-guide" aria-label={String(title)}><div className="step-guide-title">{title}</div><div className="step-guide-list">{steps.map((step, index) => <div className="step-guide-item" key={index}><b>{index + 1}</b><span>{step}</span></div>)}</div></div>;
 }
 
 export function QuickActionCard({ title, desc, icon, actionLabel, onClick, tone = '' }: { title: ReactNode; desc?: ReactNode; icon?: ReactNode; actionLabel?: ReactNode; onClick?: () => void; tone?: string }) {
-  return <button type="button" className={`quick-action-card ${tone}`} onClick={onClick}><span className="quick-action-icon">{icon || <Check size={18} />}</span><b>{title}</b>{desc && <small>{desc}</small>}{actionLabel && <em>{actionLabel}</em>}</button>;
+  return <button type="button" className={`quick-action-card siab2-quick-action-card ${tone}`} onClick={onClick}><span className="quick-action-icon">{icon || <Check size={18} />}</span><b>{title}</b>{desc && <small>{desc}</small>}{actionLabel && <em>{actionLabel}</em>}</button>;
 }
 
 export function RoleTaskPanel({ title = 'Apa yang harus saya lakukan sekarang?', tasks }: { title?: ReactNode; tasks: Array<{ title: ReactNode; desc?: ReactNode; icon?: ReactNode; actionLabel?: ReactNode; onClick?: () => void; tone?: string }> }) {
@@ -314,8 +314,8 @@ export function DataTable<T extends Record<string, any>>({ rows, columns, empty 
   }
   const labelFor = (column: Column<T>) => typeof column.header === 'string' ? column.header : String(column.key || '');
   return (
-    <div className="table-wrap" tabIndex={0} role="region" aria-label="Tabel data">
-      <table className="data-table">
+    <div className="table-wrap siab2-data-table-wrap" tabIndex={0} role="region" aria-label="Tabel data">
+      <table className="data-table siab2-data-table">
         <thead>
           <tr>
             {columns.map((c) => <th key={String(c.key || c.header)} scope="col">{c.header}</th>)}
@@ -330,7 +330,7 @@ export function DataTable<T extends Record<string, any>>({ rows, columns, empty 
                   <span className="cell-wrap">{c.render ? c.render(row, i) : String(row[c.key as string] ?? '—')}</span>
                 </td>
               ))}
-              {onRow && <td className="cell-actions" data-label="Aksi"><span className="table-actions">{onRow(row)}</span></td>}
+              {onRow && <td className="cell-actions" data-label="Aksi"><span className="table-actions siab2-table-actions">{onRow(row)}</span></td>}
             </tr>
           ))}
         </tbody>
@@ -341,12 +341,12 @@ export function DataTable<T extends Record<string, any>>({ rows, columns, empty 
 
 export function Pagination({ meta, onPage }: { meta: PaginationMeta; onPage: (page: number) => void }) {
   if (!meta || (meta.totalPages || 1) <= 1) return null;
-  return <div className="row pagination"><Btn size="sm" disabled={(meta.page || 1) <= 1} onClick={() => onPage((meta.page || 1) - 1)}>Sebelumnya</Btn><span className="mono muted">Hal {meta.page} / {meta.totalPages} · {meta.total} data</span><Btn size="sm" disabled={(meta.page || 1) >= (meta.totalPages || 1)} onClick={() => onPage((meta.page || 1) + 1)}>Berikutnya</Btn></div>;
+  return <div className="row pagination siab2-pagination"><Btn size="sm" disabled={(meta.page || 1) <= 1} onClick={() => onPage((meta.page || 1) - 1)}>Sebelumnya</Btn><span className="mono muted">Hal {meta.page} / {meta.totalPages} · {meta.total} data</span><Btn size="sm" disabled={(meta.page || 1) >= (meta.totalPages || 1)} onClick={() => onPage((meta.page || 1) + 1)}>Berikutnya</Btn></div>;
 }
 
 export function StatCardPremium({ icon, label, value, sub, tone = '', onClick }: { icon?: ReactNode; label: string; value: ReactNode; sub?: ReactNode; tone?: string; onClick?: () => void }) {
   return (
-    <div className={`stat-premium ${tone} ${onClick ? 'hover' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : undefined} style={onClick ? { cursor: 'pointer' } : undefined}>
+    <div className={`stat-premium siab2-stat-card ${tone} ${onClick ? 'hover' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : undefined} style={onClick ? { cursor: 'pointer' } : undefined}>
       <div className={`stat-icon ${tone}`}>{icon || <Check size={18} />}</div>
       <div className="stat-main">
         <div className="stat-label">{label}</div>
@@ -367,7 +367,7 @@ export function RosterProgress({ current, total }: { current: number; total: num
 }
 
 export function SkeletonTable({ rows = 4 }: { rows?: number }) {
-  return <div className="card"><div className="table-wrap" tabIndex={0} role="region" aria-label="Tabel sedang dimuat"><table className="data-table"><tbody>{Array.from({ length: rows }).map((_, i) => <tr key={i}><td colSpan={6} style={{ padding: 12 }}><div className="skeleton" style={{ height: 14 }} /></td></tr>)}</tbody></table></div></div>;
+  return <div className="card siab2-content-card"><div className="table-wrap siab2-data-table-wrap" tabIndex={0} role="region" aria-label="Tabel sedang dimuat"><table className="data-table siab2-data-table"><tbody>{Array.from({ length: rows }).map((_, i) => <tr key={i}><td colSpan={6} style={{ padding: 12 }}><div className="skeleton" style={{ height: 14 }} /></td></tr>)}</tbody></table></div></div>;
 }
 
 export function AsyncTable<T extends Record<string, any>>({ state, columns, empty, onRow }: { state: ApiState<any>; columns: Column<T>[]; empty?: EmptyStateConfig; onRow?: (row: T) => ReactNode }) {

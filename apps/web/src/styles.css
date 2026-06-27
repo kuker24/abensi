@@ -4717,3 +4717,677 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     justify-content: flex-start;
   }
 }
+
+
+/* ================================================================
+   SIAB2 Pass 3 content system — authenticated surfaces only.
+   Scoped to .siab2-shell so /login and /siab2-preview remain unchanged.
+   ================================================================ */
+.siab2-shell {
+  --siab2-content-radius: 24px;
+  --siab2-content-radius-sm: 16px;
+  --siab2-content-hairline: rgba(137, 170, 204, 0.18);
+  --siab2-content-hairline-strong: rgba(137, 170, 204, 0.30);
+  --siab2-content-ink: rgba(246, 250, 255, 0.94);
+  --siab2-content-muted: rgba(226, 238, 248, 0.66);
+  --siab2-content-surface: linear-gradient(180deg, rgba(14, 26, 40, 0.82), rgba(7, 13, 22, 0.72));
+  --siab2-content-surface-soft: linear-gradient(180deg, rgba(137, 170, 204, 0.105), rgba(255, 255, 255, 0.026));
+  --siab2-content-glow: 0 20px 54px rgba(2, 7, 12, 0.34), 0 1px 0 rgba(255,255,255,0.055) inset;
+}
+
+.siab2-shell .siab2-shell-page-wrap .content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-page-head {
+  margin-bottom: 0;
+  border: 1px solid rgba(137, 170, 204, 0.16);
+  background:
+    radial-gradient(500px circle at 10% 0%, rgba(137, 170, 204, 0.11), transparent 58%),
+    linear-gradient(180deg, rgba(13, 26, 40, 0.76), rgba(7, 13, 22, 0.62));
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22), 0 1px 0 rgba(255,255,255,0.05) inset;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-page-eyebrow,
+.siab2-shell .siab2-shell-page-wrap .eyebrow {
+  color: rgba(191, 215, 238, 0.74);
+  letter-spacing: 0.16em;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-page-title {
+  color: var(--siab2-content-ink);
+  letter-spacing: -0.035em;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-page-sub {
+  max-width: 72ch;
+  color: var(--siab2-content-muted);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-page-actions,
+.siab2-shell .siab2-shell-page-wrap .siab2-action-bar,
+.siab2-shell .siab2-shell-page-wrap .siab2-table-actions,
+.siab2-shell .siab2-shell-page-wrap .table-actions,
+.siab2-shell .siab2-shell-page-wrap .row.page-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-content-card,
+.siab2-shell .siab2-shell-page-wrap .card {
+  border-color: var(--siab2-content-hairline);
+  border-radius: var(--siab2-content-radius);
+  background: var(--siab2-content-surface);
+  box-shadow: var(--siab2-content-glow);
+  overflow: hidden;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-content-card::before,
+.siab2-shell .siab2-shell-page-wrap .card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(137,170,204,0.12), transparent 18%, transparent 82%, rgba(78,133,191,0.10)),
+    radial-gradient(420px circle at 100% 0%, rgba(78,133,191,0.08), transparent 54%);
+  opacity: 0.72;
+  z-index: 0;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-content-card > *,
+.siab2-shell .siab2-shell-page-wrap .card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-content-card:hover,
+.siab2-shell .siab2-shell-page-wrap .card:hover {
+  border-color: var(--siab2-content-hairline-strong);
+  box-shadow: 0 22px 58px rgba(2, 7, 12, 0.38), 0 0 0 1px rgba(137,170,204,0.06) inset;
+  transform: none;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-content-card-head {
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(137, 170, 204, 0.12);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-content-card-title {
+  color: var(--siab2-content-ink);
+  font-weight: 760;
+  letter-spacing: -0.015em;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-content-card-sub,
+.siab2-shell .siab2-shell-page-wrap .muted,
+.siab2-shell small {
+  color: var(--siab2-content-muted);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card {
+  position: relative;
+  isolation: isolate;
+  min-height: 142px;
+  border-color: rgba(137, 170, 204, 0.18);
+  border-radius: 22px;
+  background:
+    radial-gradient(280px circle at 100% 0%, rgba(137,170,204,0.13), transparent 54%),
+    linear-gradient(180deg, rgba(17, 31, 47, 0.86), rgba(8, 15, 25, 0.74));
+  box-shadow: 0 18px 42px rgba(0,0,0,0.30), 0 1px 0 rgba(255,255,255,0.055) inset;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(137, 170, 204, 0.36);
+  box-shadow: 0 20px 46px rgba(0,0,0,0.34), 0 0 26px rgba(78, 133, 191, 0.14);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card .stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(137, 170, 204, 0.12);
+  border-color: rgba(137, 170, 204, 0.24);
+  color: #b9d2ec;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card .stat-num {
+  color: #f8fbff;
+  font-size: clamp(25px, 2.15vw, 34px);
+  line-height: 1;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card .stat-label {
+  color: rgba(226, 238, 248, 0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 10.5px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card .stat-delta {
+  color: rgba(226, 238, 248, 0.66);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card.ok .stat-icon,
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card.ok {
+  border-color: rgba(121, 214, 182, 0.24);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card.warn .stat-icon,
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card.warn {
+  border-color: rgba(245, 158, 11, 0.26);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card.bad .stat-icon,
+.siab2-shell .siab2-shell-page-wrap .siab2-stat-card.bad {
+  border-color: rgba(248, 113, 113, 0.26);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-data-table-wrap,
+.siab2-shell .siab2-shell-page-wrap .table-wrap {
+  max-width: 100%;
+  border-color: rgba(137, 170, 204, 0.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(10, 20, 32, 0.72), rgba(5, 10, 18, 0.66));
+  box-shadow: 0 1px 0 rgba(255,255,255,0.045) inset;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-data-table,
+.siab2-shell .siab2-shell-page-wrap .data-table {
+  font-size: 13px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-data-table th,
+.siab2-shell .siab2-shell-page-wrap .data-table th {
+  padding: 11px 12px;
+  color: rgba(209, 227, 243, 0.70);
+  background:
+    linear-gradient(180deg, rgba(137, 170, 204, 0.12), rgba(137, 170, 204, 0.05));
+  border-bottom: 1px solid rgba(137, 170, 204, 0.18);
+  text-transform: uppercase;
+  letter-spacing: 0.105em;
+  font-size: 10.5px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-data-table td,
+.siab2-shell .siab2-shell-page-wrap .data-table td {
+  padding: 12px;
+  border-bottom-color: rgba(137, 170, 204, 0.105);
+  color: rgba(244, 249, 255, 0.91);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:nth-child(even) td,
+.siab2-shell .siab2-shell-page-wrap .data-table tbody tr:nth-child(even) td {
+  background: rgba(137, 170, 204, 0.026);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:hover td,
+.siab2-shell .siab2-shell-page-wrap .data-table tbody tr:hover td {
+  background: rgba(137, 170, 204, 0.085);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:hover,
+.siab2-shell .siab2-shell-page-wrap .data-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 #89AACC;
+}
+
+.siab2-shell .siab2-shell-page-wrap .cell-wrap {
+  line-height: 1.45;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-status-pill {
+  border-color: rgba(137, 170, 204, 0.18);
+  background: rgba(137, 170, 204, 0.095);
+  color: rgba(236, 245, 255, 0.82);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-status-pill.acc,
+.siab2-shell .siab2-shell-page-wrap .siab2-status-pill.info {
+  background: rgba(137, 170, 204, 0.15);
+  color: #b9d2ec;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-status-pill.ok {
+  background: rgba(121, 214, 182, 0.14);
+  color: #98e5cb;
+  border-color: rgba(121, 214, 182, 0.24);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-status-pill.warn {
+  background: rgba(245, 158, 11, 0.13);
+  color: #f9c978;
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-status-pill.bad {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fda4a4;
+  border-color: rgba(248, 113, 113, 0.24);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-form-field {
+  gap: 7px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-form-label {
+  color: rgba(226, 238, 248, 0.72);
+  font-size: 11.5px;
+  letter-spacing: 0.055em;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-input,
+.siab2-shell .siab2-shell-page-wrap .siab2-select-input,
+.siab2-shell .siab2-shell-page-wrap .input {
+  border-color: rgba(137, 170, 204, 0.18);
+  border-radius: 15px;
+  background: rgba(137, 170, 204, 0.068);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.035) inset;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-input:hover,
+.siab2-shell .siab2-shell-page-wrap .siab2-select-input:hover,
+.siab2-shell .siab2-shell-page-wrap .input:hover {
+  border-color: rgba(137, 170, 204, 0.30);
+  background: rgba(137, 170, 204, 0.095);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-input:focus-within,
+.siab2-shell .siab2-shell-page-wrap .siab2-select-input:focus-within,
+.siab2-shell .siab2-shell-page-wrap .input:focus-within {
+  border-color: rgba(137, 170, 204, 0.58);
+  background: rgba(10, 21, 34, 0.92);
+  box-shadow: 0 0 0 3px rgba(78, 133, 191, 0.20), 0 0 24px rgba(78, 133, 191, 0.12);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-input input,
+.siab2-shell .siab2-shell-page-wrap .siab2-input textarea,
+.siab2-shell .siab2-shell-page-wrap .siab2-select-input select,
+.siab2-shell .siab2-shell-page-wrap .input input,
+.siab2-shell .siab2-shell-page-wrap .input textarea,
+.siab2-shell .siab2-shell-page-wrap .input select {
+  color: rgba(247, 251, 255, 0.94);
+}
+
+.siab2-shell .siab2-shell-page-wrap .form-grid,
+.siab2-shell .siab2-shell-page-wrap .policy-field-grid,
+.siab2-shell .siab2-shell-page-wrap .policy-time-grid {
+  gap: 13px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .form-grid {
+  align-items: end;
+}
+
+.siab2-shell .siab2-shell-page-wrap .tabs,
+.siab2-shell .siab2-shell-page-wrap .master-data-tabs,
+.siab2-shell .siab2-shell-page-wrap .siab2-filter-tabs {
+  border: 1px solid rgba(137, 170, 204, 0.14);
+  border-radius: 18px;
+  padding: 7px;
+  background: rgba(5, 12, 20, 0.46);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
+}
+
+.siab2-shell .siab2-shell-page-wrap .master-data-tabs-wrap {
+  margin: 4px 0 16px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .master-data-tab-group-label,
+.siab2-shell .siab2-shell-page-wrap .tab-label {
+  color: rgba(226, 238, 248, 0.58);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-action-button.primary,
+.siab2-shell .siab2-shell-page-wrap .btn.primary {
+  color: #06111d;
+  border-color: rgba(137, 170, 204, 0.76);
+  background: linear-gradient(135deg, #89AACC 0%, #4E85BF 100%);
+  box-shadow: 0 10px 24px rgba(78, 133, 191, 0.24);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-action-button.primary:hover,
+.siab2-shell .siab2-shell-page-wrap .btn.primary:hover {
+  border-color: rgba(185, 210, 236, 0.90);
+  background: linear-gradient(135deg, #a4bed8 0%, #5f98cf 100%);
+  box-shadow: 0 12px 28px rgba(78, 133, 191, 0.30);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-action-button.ghost,
+.siab2-shell .siab2-shell-page-wrap .btn.ghost {
+  border-color: rgba(137, 170, 204, 0.18);
+  background: rgba(137, 170, 204, 0.055);
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-empty-state,
+.siab2-shell .siab2-shell-page-wrap .siab2-loading-state,
+.siab2-shell .siab2-shell-page-wrap .siab2-error-state,
+.siab2-shell .siab2-shell-page-wrap .app-state {
+  border: 1px solid rgba(137, 170, 204, 0.16);
+  border-radius: 22px;
+  background:
+    radial-gradient(280px circle at 50% 0%, rgba(137,170,204,0.12), transparent 62%),
+    linear-gradient(180deg, rgba(12, 24, 38, 0.76), rgba(7, 14, 23, 0.66));
+}
+
+.siab2-shell .siab2-shell-page-wrap .app-state-icon {
+  border: 1px solid rgba(137, 170, 204, 0.20);
+  background: rgba(137, 170, 204, 0.10);
+  color: #b9d2ec;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-help-box,
+.siab2-shell .siab2-shell-page-wrap .siab2-step-guide,
+.siab2-shell .siab2-shell-page-wrap .simple-help,
+.siab2-shell .siab2-shell-page-wrap .step-guide {
+  border-color: rgba(137, 170, 204, 0.15);
+  background: rgba(137, 170, 204, 0.064);
+  border-radius: 20px;
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-quick-action-card,
+.siab2-shell .siab2-shell-page-wrap .quick-action-card {
+  border-color: rgba(137, 170, 204, 0.16);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(137, 170, 204, 0.095), rgba(255,255,255,0.024));
+}
+
+.siab2-shell .siab2-shell-page-wrap .siab2-quick-action-card:hover,
+.siab2-shell .siab2-shell-page-wrap .quick-action-card:hover {
+  border-color: rgba(137, 170, 204, 0.32);
+  box-shadow: 0 14px 28px rgba(0,0,0,0.22), 0 0 22px rgba(78,133,191,0.12);
+}
+
+.siab2-shell .siab2-shell-page-wrap .attendance-checkpoint,
+.siab2-shell .siab2-shell-page-wrap .smart-help,
+.siab2-shell .siab2-shell-page-wrap .simple-summary,
+.siab2-shell .siab2-shell-page-wrap .cleanup-card,
+.siab2-shell .siab2-shell-page-wrap .activation-safe,
+.siab2-shell .siab2-shell-page-wrap .security-note {
+  border-color: rgba(137, 170, 204, 0.16);
+  background: rgba(137, 170, 204, 0.068);
+}
+
+.siab2-shell .siab2-shell-page-wrap .codeblock {
+  border: 1px solid rgba(137, 170, 204, 0.14);
+  background: rgba(2, 7, 12, 0.42);
+  color: rgba(235, 245, 255, 0.86);
+}
+
+@media (max-width: 1024px) {
+  .siab2-shell .siab2-shell-page-wrap .siab2-content-card,
+  .siab2-shell .siab2-shell-page-wrap .card {
+    border-radius: 20px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-stat-card {
+    min-height: 128px;
+  }
+}
+
+@media (max-width: 720px) {
+  .siab2-shell .siab2-shell-page-wrap .content {
+    gap: 14px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-content-card,
+  .siab2-shell .siab2-shell-page-wrap .card {
+    padding: 15px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-content-card-head {
+    display: grid;
+    gap: 10px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-page-actions,
+  .siab2-shell .siab2-shell-page-wrap .siab2-action-bar,
+  .siab2-shell .siab2-shell-page-wrap .table-actions,
+  .siab2-shell .siab2-shell-page-wrap .siab2-table-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-page-actions > *,
+  .siab2-shell .siab2-shell-page-wrap .siab2-action-bar > *,
+  .siab2-shell .siab2-shell-page-wrap .table-actions > * {
+    max-width: 100%;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-stat-card {
+    min-height: 118px;
+    padding: 15px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .data-table {
+    min-width: 640px;
+    font-size: 12.5px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table th,
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table td,
+  .siab2-shell .siab2-shell-page-wrap .data-table th,
+  .siab2-shell .siab2-shell-page-wrap .data-table td {
+    padding: 10px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* Fix1: responsive table/card safety for mobile and tablet content pages. */
+@media (min-width: 721px) and (max-width: 1180px) {
+  .siab2-shell .siab2-shell-page-wrap .master-data-layout,
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-list-panel,
+  .siab2-shell .siab2-shell-page-wrap .master-data-form-panel,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-toolbar {
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) minmax(160px, 220px);
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .data-table {
+    min-width: 680px;
+  }
+}
+
+@media (max-width: 720px) {
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table-wrap,
+  .siab2-shell .siab2-shell-page-wrap .table-wrap,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .table-wrap,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .data-table,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .siab2-data-table,
+  .siab2-shell .siab2-shell-page-wrap .master-data-table-region .data-table,
+  .siab2-shell .siab2-shell-page-wrap .user-table-region .data-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12.5px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table thead,
+  .siab2-shell .siab2-shell-page-wrap .data-table thead {
+    display: none;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tr,
+  .siab2-shell .siab2-shell-page-wrap .data-table tr {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    gap: 0;
+    padding: 12px;
+    border: 1px solid rgba(137, 170, 204, 0.16);
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(13, 25, 39, 0.78), rgba(5, 11, 19, 0.72));
+    box-shadow: 0 12px 24px rgba(0,0,0,0.22), 0 1px 0 rgba(255,255,255,0.04) inset;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:hover,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody tr:hover {
+    box-shadow: 0 12px 24px rgba(0,0,0,0.22), inset 3px 0 0 #89AACC;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:nth-child(even) td,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody tr:nth-child(even) td,
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table tbody tr:hover td,
+  .siab2-shell .siab2-shell-page-wrap .data-table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table td,
+  .siab2-shell .siab2-shell-page-wrap .data-table td {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    min-width: 0;
+    width: 100%;
+    padding: 9px 0;
+    border: 0;
+    border-bottom: 1px solid rgba(137, 170, 204, 0.075);
+    color: rgba(244, 249, 255, 0.92);
+    text-align: left;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table td:last-child,
+  .siab2-shell .siab2-shell-page-wrap .data-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table td::before,
+  .siab2-shell .siab2-shell-page-wrap .data-table td::before {
+    content: attr(data-label) ':';
+    min-width: 0;
+    max-width: 100%;
+    flex: none;
+    color: rgba(190, 213, 235, 0.72);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.115em;
+    line-height: 1.35;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table .cell-wrap,
+  .siab2-shell .siab2-shell-page-wrap .data-table .cell-wrap,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap {
+    display: flex;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 7px;
+    color: rgba(248, 251, 255, 0.94);
+    line-height: 1.45;
+    text-align: left;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap > .row,
+  .siab2-shell .siab2-shell-page-wrap .cell-actions .row,
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-cell,
+  .siab2-shell .siab2-shell-page-wrap .master-data-action-row {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-cell {
+    align-items: center;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .master-data-user-cell span:last-child,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap .mono,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap b,
+  .siab2-shell .siab2-shell-page-wrap .cell-wrap small {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-data-table .cell-actions,
+  .siab2-shell .siab2-shell-page-wrap .data-table .cell-actions {
+    display: grid;
+    gap: 8px;
+    padding-top: 12px;
+    margin-top: 3px;
+    border-top: 1px solid rgba(137, 170, 204, 0.12);
+    text-align: left;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-table-actions,
+  .siab2-shell .siab2-shell-page-wrap .table-actions,
+  .siab2-shell .siab2-shell-page-wrap .master-data-action-row {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .cell-actions .siab2-action-button,
+  .siab2-shell .siab2-shell-page-wrap .cell-actions .btn,
+  .siab2-shell .siab2-shell-page-wrap .master-data-action-row .btn {
+    flex: 1 1 128px;
+    min-width: min(128px, 100%);
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .siab2-shell .siab2-shell-page-wrap .siab2-status-pill,
+  .siab2-shell .siab2-shell-page-wrap .pill {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+}
