@@ -361,7 +361,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
                   <div className="login-brand-sub siab2-login-brand-sub">{BRAND.fullName}</div>
                 </div>
               </div>
-              <a className="siab2-login-preview-link" href="/siab2-preview">Lihat preview ↗</a>
+              <a className="siab2-login-official-link" href="/siab2-preview">Tentang SIAB2 ↗</a>
             </div>
 
             <div className="siab2-login-visual-main">
@@ -371,7 +371,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
                 <p className="siab2-login-role-line">
                   Untuk <strong>{role === 'guru' ? 'Guru' : role === 'admin' ? 'Admin/TU' : 'Siswa'}</strong>: ruang kerja akademik yang rapi untuk presensi, kelas, laporan, dan koordinasi madrasah.
                 </p>
-                <p className="siab2-login-hero-description">Masuk ke portal resmi dengan tampilan gelap sinematik, status operasional, dan modul akademik yang dirancang satu keluarga dengan preview SIAB2 Pass 3.</p>
+                <p className="siab2-login-hero-description">Gerbang resmi untuk tata kelola akademik madrasah: akses peran, rekap harian, jurnal KBM, dan laporan akademik dalam satu ruang kerja yang tertata.</p>
                 <div className="siab2-login-trust-row" aria-label="Fitur utama SIAB2">
                   <span><Shield size={13} /> Akses berbasis peran</span>
                   <span><Activity size={13} /> Status harian</span>
@@ -383,7 +383,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
                 <div className="siab2-login-status-orb" aria-hidden="true" />
                 <div className="siab2-login-status-head">
                   <div><span /><strong>Status Portal SIAB2</strong></div>
-                  <em>Data Contoh</em>
+                  <em>Portal Resmi</em>
                 </div>
                 <div className="siab2-login-metric-grid">
                   <div className="siab2-login-metric"><Calendar size={15} /><span>Tahun Ajaran</span><strong>2026/2027</strong></div>
@@ -391,9 +391,10 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
                   <div className="siab2-login-metric siab2-login-metric-wide">
                     <div><CheckSquare size={16} /><span>Presensi Hari Ini</span></div>
                     <strong>97.4% Hadir</strong>
-                    <i><b /> Preview operasional harian</i>
+                    <i><b /> Rekap harian tersusun</i>
                   </div>
-                  <div className="siab2-login-metric"><Users size={15} /><span>Kelas Aktif</span><strong>24 Rombel</strong></div>
+                  <div className="siab2-login-metric"><BookOpen size={15} /><span>Kelas Aktif</span><strong>24 Rombel</strong></div>
+                  <div className="siab2-login-metric"><Users size={15} /><span>Siswa & Guru</span><strong>683 / 42 Orang</strong></div>
                   <div className="siab2-login-metric"><Database size={15} /><span>Ledger Akademik</span><strong>Tersusun</strong></div>
                 </div>
                 <div className="siab2-login-progress-track"><span /></div>
@@ -412,9 +413,9 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
                 <div className="login-spec siab2-login-spec"><span className="k">PORTAL</span><span className="v">MAN 1 Rokan Hulu</span></div>
               </div>
               <div className="siab2-login-ledger-card">
-                <div className="siab2-login-ledger-head"><LayoutDashboard size={15} /><strong>Mini Dashboard</strong><span>Live Preview</span></div>
-                <div className="siab2-login-ledger-row"><span>Presensi guru</span><strong>Terpantau</strong></div>
-                <div className="siab2-login-ledger-row"><span>Jurnal kelas</span><strong>Siap input</strong></div>
+                <div className="siab2-login-ledger-head"><LayoutDashboard size={15} /><strong>Rekap Akademik</strong><span>Ruang Kerja</span></div>
+                <div className="siab2-login-ledger-row"><span>Presensi guru</span><strong>Terkelola</strong></div>
+                <div className="siab2-login-ledger-row"><span>Jurnal kelas</span><strong>Tersedia</strong></div>
                 <div className="siab2-login-ledger-row"><span>Notifikasi</span><strong>Ringkas</strong></div>
               </div>
             </div>
@@ -474,6 +475,7 @@ function LoginScreen({ onLogin, showSso = false }: { onLogin: (selectedRole: Log
           <div className="siab2-login-form-ledger" aria-hidden="true">
             <span><Bell size={13} /> Notifikasi rapi</span>
             <span><Zap size={13} /> Akses cepat</span>
+            <span><Database size={13} /> Data akademik terkelola</span>
           </div>
         </section>
       </div>
@@ -519,7 +521,7 @@ function PasswordChangeScreen({ onChanged }: { onChanged: () => void }) {
           <div className="siab2-login-password-copy">
             <div className="eyebrow siab2-login-eyebrow"><span className="dot" /> PROTEKSI AKUN</div>
             <h1><span>SIAB2</span><em>Pengamanan akses pertama</em></h1>
-            <p>Lengkapi pergantian password sebelum masuk ke ruang kerja akademik. Status portal, modul, dan ledger tetap memakai visual Pass 3 yang sama.</p>
+            <p>Lengkapi pergantian password sebelum masuk ke ruang kerja akademik resmi. Proteksi akun membantu menjaga akses SIAB2 tetap tertata untuk operasional madrasah.</p>
           </div>
           <div className="siab2-login-module-deck siab2-login-password-modules">
             <div className="siab2-login-module-chip"><Shield size={14} /><span>Akun</span><strong>Diverifikasi</strong></div>
