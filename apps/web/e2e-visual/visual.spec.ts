@@ -81,7 +81,23 @@ async function seedUser(page: Page, user: { id: string; username: string; fullNa
   await page.addInitScript((args: { key: string; value: unknown }) => localStorage.setItem(args.key, JSON.stringify(args.value)), { key: USER_KEY, value: user });
 }
 
+async function waitForVisualContent(page: Page, name: string) {
+  if (name === 'admin-dashboard') {
+    await expect(page.getByText('Tren 7 hari')).toBeVisible();
+    await expect(page.getByText('Aktivitas terbaru')).toBeVisible();
+  }
+  if (name === 'guru-dashboard') {
+    await expect(page.getByText('Daftar jadwal/sesi hari ini', { exact: true })).toBeVisible();
+    await expect(page.getByText('Status sesi', { exact: true })).toBeVisible();
+  }
+  if (name === 'siswa-dashboard') {
+    await expect(page.getByText('Checklist hari ini')).toBeVisible();
+    await expect(page.getByText('Riwayat kehadiran')).toBeVisible();
+  }
+}
+
 async function expectStableScreenshot(page: Page, name: string) {
+  await waitForVisualContent(page, name);
   await expect(page).toHaveScreenshot(`${name}.png`, {
     fullPage: true,
     animations: 'disabled',

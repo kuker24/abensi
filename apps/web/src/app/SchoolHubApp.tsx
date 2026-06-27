@@ -554,41 +554,52 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
     return acc;
   }, {}), [itemsForUser]);
   const handleNav = useCallback((url: string) => { go(url); onClose?.(); }, [onClose]);
+  const currentRoleLabel = roleLabel(user?.role);
   return (
-    <aside className={`side${isOpen ? ' side-open' : ''}`} aria-label="Navigasi utama">
-      <div className="brand">
-        <div className="brand-mark">
+    <aside className={`side siab2-sidebar${isOpen ? ' side-open siab2-sidebar-open' : ''}`} aria-label="Navigasi utama" data-role={navKeyForRole(user?.role)}>
+      <div className="siab2-sidebar-aura" aria-hidden="true" />
+      <div className="brand siab2-sidebar-brand">
+        <div className="brand-mark siab2-sidebar-brand-mark">
           <img className="brand-logo" src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
         </div>
-        <div className="brand-text">
-          <div className="brand-name">{BRAND.shortName}</div>
-          <div className="brand-sub">{BRAND.fullName} · {BRAND.institution}</div>
+        <div className="brand-text siab2-sidebar-brand-text">
+          <div className="siab2-sidebar-kicker">Portal Resmi SIAB2</div>
+          <div className="brand-name siab2-sidebar-brand-name">{BRAND.shortName}</div>
+          <div className="brand-sub siab2-sidebar-brand-sub">{BRAND.institution}</div>
         </div>
-        <button className="btn icon ghost hamburger" aria-label="Tutup navigasi" onClick={onClose}><X size={16} /></button>
+        <button className="btn icon ghost hamburger siab2-sidebar-close" aria-label="Tutup navigasi" onClick={onClose}><X size={16} /></button>
       </div>
-      <nav className="nav-body" aria-label="Menu navigasi" style={{ flex: 1, overflowY: 'auto' }}>
+      <div className="siab2-sidebar-status" aria-label={`Konteks peran ${currentRoleLabel}`}>
+        <span className="siab2-sidebar-status-orb" aria-hidden="true" />
+        <span>Ruang kerja akademik</span>
+        <strong>{currentRoleLabel}</strong>
+      </div>
+      <nav className="nav-body siab2-sidebar-nav" aria-label="Menu navigasi">
         {Object.entries(grouped).map(([section, items]) => (
-          <div key={section} className="nav-block">
-            <div className="nav-section" aria-hidden="true">{section}</div>
-            {items.map(([, url, label, Ico]) => (
-              <button
-                key={url}
-                className={`nav-item${path === url ? ' active' : ''}`}
-                onClick={() => handleNav(url)}
-                aria-current={path === url ? 'page' : undefined}
-              >
-                <Ico size={16} aria-hidden="true" strokeWidth={2} /><span>{label}</span>
-              </button>
-            ))}
+          <div key={section} className="nav-block siab2-sidebar-nav-block">
+            <div className="nav-section siab2-sidebar-nav-section" aria-hidden="true"><span>{section}</span><em>{items.length}</em></div>
+            {items.map(([, url, label, Ico]) => {
+              const active = path === url;
+              return (
+                <button
+                  key={url}
+                  className={`nav-item siab2-sidebar-nav-item${active ? ' active siab2-sidebar-nav-item-active' : ''}`}
+                  onClick={() => handleNav(url)}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <span className="siab2-sidebar-nav-icon"><Ico size={16} aria-hidden="true" strokeWidth={2} /></span><span className="siab2-sidebar-nav-label">{label}</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </nav>
-      <div className="side-foot">
-        <div className="side-user">
+      <div className="side-foot siab2-sidebar-footer">
+        <div className="side-user siab2-sidebar-user-card">
           <Avatar name={user?.fullName} size="sm" />
           <div className="side-user-info">
             <div className="side-user-name">{user?.fullName}</div>
-            <div className="side-user-role">{roleLabel(user?.role)}</div>
+            <div className="side-user-role">{currentRoleLabel}</div>
           </div>
           <IconBtn label="Keluar dari akun" onClick={onLogout}><LogOut size={15} /></IconBtn>
         </div>
@@ -597,10 +608,12 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
   );
 }
 
-function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: { crumbs: string[]; user: User; onOpenTutorial: () => void; onToggleSidebar: () => void; connection: ConnectionStatus }) {
+function TopBar({ crumbs, path, user, onOpenTutorial, onToggleSidebar, onLogout, connection }: { crumbs: string[]; path: string; user: User; onOpenTutorial: () => void; onToggleSidebar: () => void; onLogout: () => void; connection: ConnectionStatus }) {
   const [query, setQuery] = useState('');
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const menuItems = useMemo(
     () => navItemsForUser(user).map(([section, url, label]) => ({ section, url, label })),
     [user]
@@ -641,6 +654,21 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [refreshUnreadCount]);
+  useEffect(() => {
+    if (!profileMenuOpen) return undefined;
+    const closeOnPointer = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setProfileMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProfileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnPointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnPointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [profileMenuOpen]);
   // Ctrl+K to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -657,21 +685,29 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
   const safeUnreadCount = unreadCount ?? 0;
   const notificationLabel = safeUnreadCount > 0 ? `Notifikasi, ${safeUnreadCount} belum dibaca` : 'Notifikasi';
   const notificationBadge = safeUnreadCount > 99 ? '99+' : String(safeUnreadCount);
+  const currentRoute = routeForPath(path);
+  const currentArea = currentRoute?.area || crumbs[0] || BRAND.compactName;
+  const currentTitle = currentRoute?.title || crumbs[crumbs.length - 1] || BRAND.compactName;
+  const currentRoleLabel = roleLabel(user?.role);
   return (
-    <div className="topbar">
-      <button className="btn icon ghost hamburger" style={{ minWidth: 40, minHeight: 40 }} aria-label="Buka menu navigasi" onClick={onToggleSidebar}>
+    <div className="topbar siab2-topbar">
+      <button className="btn icon ghost hamburger siab2-topbar-menu" aria-label="Buka menu navigasi" onClick={onToggleSidebar}>
         <Menu size={18} />
       </button>
-      <div className="crumb" style={{ flexWrap: 'wrap' }}>
+      <div className="crumb siab2-topbar-crumb" aria-label="Jejak halaman">
         {crumbs.map((c, i) => (
-          <span key={`${c}-${i}`} className="row" style={{ gap: 6 }}>
+          <span key={`${c}-${i}`} className="row siab2-topbar-crumb-item">
             <span className={i === crumbs.length - 1 ? 'now' : ''}>{c}</span>
-            {i < crumbs.length - 1 && <ChevronRight size={12} style={{ color: 'var(--fg-faint)' }} />}
+            {i < crumbs.length - 1 && <ChevronRight size={12} aria-hidden="true" />}
           </span>
         ))}
       </div>
+      <div className="siab2-topbar-page-context">
+        <span>{currentArea}</span>
+        <strong>{currentTitle}</strong>
+      </div>
       <div className="top-spacer" />
-      <div className="searchbox searchbox-active">
+      <div className="searchbox searchbox-active siab2-topbar-search">
         <Search size={14} />
         <input
           ref={searchRef}
@@ -682,7 +718,7 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
           placeholder="Cari menu… (Ctrl+K)"
         />
         {query && (
-          <div className="search-results" role="listbox" aria-label="Hasil pencarian menu">
+          <div className="search-results siab2-topbar-search-results" role="listbox" aria-label="Hasil pencarian menu">
             {results.length ? results.map((item) => (
               <button key={item.url} type="button" onMouseDown={(e) => { e.preventDefault(); setQuery(''); go(item.url); }}>
                 <span>{item.label}</span>
@@ -693,15 +729,37 @@ function TopBar({ crumbs, user, onOpenTutorial, onToggleSidebar, connection }: {
         )}
       </div>
       <LiveClock />
-      <div className={`system-ribbon top-status ${connection}`} aria-live="polite" style={{ border: 'none', background: 'transparent', boxShadow: 'none', padding: 0 }}>
+      <div className={`system-ribbon top-status siab2-topbar-status ${connection}`} aria-live="polite">
         <span className="connection-lamp" aria-hidden="true" />
-        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{roleLabel(user?.role)} {roleStatus}</span>
+        <span>{currentRoleLabel} {roleStatus}</span>
       </div>
       <IconBtn label="Lihat tutorial" onClick={onOpenTutorial}><BookOpen size={16} /></IconBtn>
       <span className="notif-wrapper"><IconBtn label={notificationLabel} onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
         <Bell size={16} />
         {safeUnreadCount > 0 && <span className="notif-badge" aria-hidden="true">{notificationBadge}</span>}
       </IconBtn></span>
+      <div className="siab2-topbar-user" ref={profileMenuRef}>
+        <button
+          type="button"
+          className="siab2-topbar-user-trigger"
+          aria-haspopup="menu"
+          aria-expanded={profileMenuOpen}
+          onClick={() => setProfileMenuOpen((value) => !value)}
+        >
+          <Avatar name={user?.fullName} size="sm" />
+          <span className="siab2-topbar-user-copy"><strong>{user?.fullName}</strong><em>{currentRoleLabel}</em></span>
+          <ChevronRight className="siab2-topbar-user-chevron" size={14} aria-hidden="true" />
+        </button>
+        {profileMenuOpen && (
+          <div className="dropdown-menu siab2-topbar-profile-menu" role="menu" aria-label="Menu pengguna">
+            <div className="siab2-topbar-profile-head">
+              <Avatar name={user?.fullName} size="sm" />
+              <span><strong>{user?.fullName}</strong><em>{currentRoleLabel}</em></span>
+            </div>
+            <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); onLogout(); }}><LogOut size={15} /> Keluar dari akun</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -764,7 +822,31 @@ function AppLayout({ user, path, onLogout, children }: { user: User; path: strin
   }, []);
 
   const showTutorial = Boolean(user) || tutorialEnabled || tutorialOpenKey > 0;
-  return <div className="app"><a href="#main-content" className="skip-link">Lompat ke konten</a><div className={`side-backdrop${sidebarOpen ? ' side-open' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" /><Sidebar user={user} path={path} onLogout={onLogout} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} /><main className="main" id="main-content" tabIndex={-1}><TopBar crumbs={crumbs} user={user} connection={connection} onOpenTutorial={() => { setTutorialEnabled(true); setTutorialOpenKey((value) => value + 1); }} onToggleSidebar={() => setSidebarOpen((v) => !v)} /><AppErrorBoundary resetKey={path}><Suspense fallback={<PageLoading />}>{children}</Suspense></AppErrorBoundary></main>{showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} /></Suspense>}</div>;
+  return (
+    <div className="app siab2-shell" data-siab2-shell="pass3" data-role={navKeyForRole(user?.role)}>
+      <div className="siab2-shell-grid" aria-hidden="true" />
+      <a href="#main-content" className="skip-link">Lompat ke konten</a>
+      <div className={`side-backdrop siab2-shell-backdrop${sidebarOpen ? ' side-open siab2-shell-backdrop-open' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" />
+      <Sidebar user={user} path={path} onLogout={onLogout} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main className="main siab2-shell-main" id="main-content" tabIndex={-1}>
+        <TopBar
+          crumbs={crumbs}
+          path={path}
+          user={user}
+          connection={connection}
+          onOpenTutorial={() => { setTutorialEnabled(true); setTutorialOpenKey((value) => value + 1); }}
+          onToggleSidebar={() => setSidebarOpen((v) => !v)}
+          onLogout={onLogout}
+        />
+        <div className="siab2-shell-page-wrap">
+          <AppErrorBoundary resetKey={path}>
+            <Suspense fallback={<PageLoading />}>{children}</Suspense>
+          </AppErrorBoundary>
+        </div>
+      </main>
+      {showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} /></Suspense>}
+    </div>
+  );
 }
 
 function Unauthorized({ user }: { user: User | null }) {
