@@ -106,6 +106,14 @@ function presensiPath(sessionId) {
   return `/guru/presensi${qs({ sessionId })}`;
 }
 
+function sessionClassSubjectTitle(session) {
+  const text = (value) => typeof value === 'string' ? value.trim() : '';
+  const subjectName = text(session?.subject?.name) || text(session?.subjectName);
+  const classCode = text(session?.schoolClass?.code) || text(session?.schoolClass) || text(session?.className);
+  if (subjectName && classCode) return `${subjectName} · ${classCode}`;
+  return subjectName || classCode || 'Presensi Guru';
+}
+
 function TeacherTodaySessionCard({ item }) {
   const progressTotal = Math.max(0, Number(item.studentTotal || 0));
   const filled = Math.max(0, Number(item.attendanceFilledCount || 0));
@@ -184,6 +192,7 @@ export function ClassInputPage({ notify }) {
   const current = itemsOf(sessions.data).find((s) => s.id === sessionId);
   const sessionDetail = rosterState.data?.session || current;
   const teacherPresence = sessionDetail?.teacherPresence || current?.teacherPresence?.find?.((item) => item.teacherId === current?.teacher?.id) || null;
+  const presensiTitle = sessionClassSubjectTitle(sessionDetail);
   const endsAt = sessionDetail?.endsAt ? new Date(sessionDetail.endsAt) : null;
   const startsAt = sessionDetail?.startsAt ? new Date(sessionDetail.startsAt) : null;
   const isEarlyCheckout = Boolean(endsAt && nowTick < endsAt.getTime());
@@ -264,7 +273,7 @@ export function ClassInputPage({ notify }) {
       notify(message, 'bad');
     } finally { setActionLoading(''); }
   }
-  return <div className="content teacher-attendance-flow"><PageHead eyebrow="PRESENSI KELAS" title={current ? `${current.subject?.name} · ${current.schoolClass?.code}` : 'Pilih sesi'} sub="Alur sederhana: Masuk Kelas → Semua Hadir/ubah pengecualian → Simpan → Tutup Sesi." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{s.schoolClass?.code} · {s.subject?.name} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
+  return <div className="content teacher-attendance-flow"><PageHead eyebrow="PRESENSI KELAS" title={presensiTitle} sub="Alur sederhana: Masuk Kelas → Semua Hadir/ubah pengecualian → Simpan → Tutup Sesi." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{sessionClassSubjectTitle(s)} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
     <StepGuide title="Urutan kerja guru" steps={['Pilih sesi yang benar.', 'Klik Masuk Kelas.', 'Klik Semua Hadir bila mayoritas hadir.', 'Ubah pengecualian: Telat, Izin, Sakit, atau Alpa.', 'Klik Simpan, lalu Tutup Sesi.']} />
     <div className="attendance-checkpoint"><div><span className="eyebrow"><span className="dot" /> CHECKPOINT PRESENSI</span><b>{progressPercent}% selesai</b><small>{completedCount}/{roster.length || 0} siswa sudah dikonfirmasi. {defaultedCount ? `${defaultedCount} masih ALPA default.` : ''} {isOpen ? 'Sesi sedang bisa diisi.' : 'Buka sesi terlebih dahulu untuk mengubah status.'}</small></div><RosterProgress current={completedCount} total={roster.length} /></div>
     <div className="grid g-4"><StatCardPremium icon={<Clock size={18} />} label="Jam Mulai" value={startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkInAt ? `Masuk ${formatDateTime(teacherPresence.checkInAt)}` : 'Guru belum absen masuk'} /><StatCardPremium icon={<DoorOpen size={18} />} label="Jam Selesai" value={endsAt ? endsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkOutAt ? `Keluar ${formatDateTime(teacherPresence.checkOutAt)}` : isEarlyCheckout ? 'Belum waktunya keluar' : 'Sudah boleh absen keluar'} tone={isEarlyCheckout ? 'warn' : 'ok'} /><StatCardPremium icon={<Activity size={18} />} label="Status Guru" value={teacherPresence?.status ? statusLabel(teacherPresence.status) : statusLabel(current?.status)} sub="Masuk/keluar kelas" /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Siswa Tercatat" value={roster.length} sub={`${counts.HADIR || 0} hadir · ${counts.ALPA || 0} alpa`} /></div>

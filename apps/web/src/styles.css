@@ -4294,7 +4294,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   width: 100%;
   max-width: 100%;
   min-height: 72px;
-  overflow-x: hidden;
+  overflow: visible;
+  z-index: 120;
   padding: 11px clamp(16px, 2vw, 26px);
   gap: 12px;
   border-bottom: 1px solid rgba(137, 170, 204, 0.15);
@@ -4421,6 +4422,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 .siab2-topbar-user {
   position: relative;
+  z-index: 5;
   flex: 0 0 auto;
 }
 
@@ -4480,6 +4482,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   right: 0;
   top: calc(100% + 10px);
   left: auto;
+  z-index: 450;
   min-width: 236px;
   border-color: rgba(137, 170, 204, 0.22);
   background: rgba(7, 14, 23, 0.96);
