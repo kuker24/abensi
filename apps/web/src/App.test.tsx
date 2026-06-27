@@ -68,11 +68,12 @@ describe('PRD v2.2 UI shell', () => {
     expect(screen.queryByText(/Mode Preview|Preview Build/i)).not.toBeInTheDocument();
   });
 
-  it('keeps /siab2-preview as a safe compatibility landing route', async () => {
+  it('redirects /siab2-preview to canonical /siab2 instead of rendering an active preview route', async () => {
     mockStorage();
     window.history.replaceState({}, '', '/siab2-preview');
     render(<App />);
 
+    await waitFor(() => expect(window.location.pathname).toBe('/siab2'));
     expect(await screen.findByRole('main', { name: /SIAB2 Sistem Informasi Akademik Berkarakter/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Masuk SIAB2/i })).toHaveAttribute('href', '/siab2/login');
   });
