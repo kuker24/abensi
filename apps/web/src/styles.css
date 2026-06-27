@@ -4001,9 +4001,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   isolation: isolate;
   display: grid;
   grid-template-columns: 304px minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
   max-width: 100vw;
-  overflow-x: clip;
+  overflow-x: hidden;
   background:
     radial-gradient(1000px circle at 10% -6%, rgba(137, 170, 204, 0.18), transparent 54%),
     radial-gradient(740px circle at 92% 10%, rgba(78, 133, 191, 0.18), transparent 52%),
@@ -4046,10 +4048,16 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   opacity: 0.38;
 }
 
+.siab2-shell > * {
+  min-width: 0;
+}
+
 .siab2-shell .siab2-shell-main {
   position: relative;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
-  overflow-x: clip;
+  overflow-x: hidden;
   background: transparent;
 }
 
@@ -4058,10 +4066,14 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   z-index: 1;
   min-width: 0;
   width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .siab2-shell .content {
+  min-width: 0;
   max-width: 1500px;
+  overflow-x: clip;
   padding: clamp(18px, 2vw, 30px) clamp(18px, 2.2vw, 34px) 48px;
 }
 
@@ -4279,7 +4291,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .siab2-topbar {
+  width: 100%;
+  max-width: 100%;
   min-height: 72px;
+  overflow-x: hidden;
   padding: 11px clamp(16px, 2vw, 26px);
   gap: 12px;
   border-bottom: 1px solid rgba(137, 170, 204, 0.15);
@@ -4541,6 +4556,17 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 .siab2-shell .page-sub {
   color: rgba(232, 242, 252, 0.68);
+}
+
+.siab2-shell .dashboard-hero,
+.siab2-shell .dashboard-hero-panel,
+.siab2-shell .dashboard-mini-list,
+.siab2-shell .role-task-grid,
+.siab2-shell .cards-grid,
+.siab2-shell .page-actions,
+.siab2-shell .dashboard-hero-actions {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .siab2-shell .table-wrap {
