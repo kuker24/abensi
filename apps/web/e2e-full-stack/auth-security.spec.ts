@@ -102,8 +102,10 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
     await expect(page.getByRole('tab', { name: 'Guru' })).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('textbox', { name: 'Nama akun Guru' }).fill('guru.matematika');
     await page.getByRole('textbox', { name: 'Kata Sandi' }).fill(defaultPassword);
+    const loginResponsePromise = page.waitForResponse((response) => response.url().endsWith('/api/v1/auth/login') && response.request().method() === 'POST');
     await page.getByRole('button', { name: /Masuk/ }).click();
-    await expect(page).toHaveURL(/\/guru\//);
+    const loginResponse = await loginResponsePromise;
+    if (!loginResponse.ok()) throw new Error(`Form login failed with ${loginResponse.status()}: ${await loginResponse.text()}`);
 
     const apiCookies = await context.cookies(apiBaseURL);
     expect(apiCookies.find((cookie) => cookie.name === 'schoolhub_access_token')?.httpOnly).toBe(true);
