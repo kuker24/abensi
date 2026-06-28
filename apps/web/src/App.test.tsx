@@ -67,6 +67,9 @@ describe('PRD v2.2 UI shell', () => {
 
     expect(await screen.findByRole('main', { name: /SIAB2 Sistem Informasi Akademik Berkarakter/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Masuk SIAB2/i })).toHaveAttribute('href', '/siab2/login');
+    expect(screen.getByRole('img', { name: /Foto grup resmi MAN 1 Rokan Hulu/i })).toHaveAttribute('src', '/man1-rohul-hero-group.jpeg');
+    expect(screen.getByText(/Dokumentasi Madrasah/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Profil Resmi Madrasah/i)).not.toBeInTheDocument();
     expect(screen.getAllByText(/JL\.TUANKU TAMBUSAI NO\.183/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/07627393218/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/manpasir675027@yahoo\.co\.id/i).length).toBeGreaterThan(0);

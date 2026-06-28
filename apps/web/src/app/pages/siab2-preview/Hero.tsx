@@ -3,45 +3,30 @@ import { ledgerItems, roleDetails } from './data';
 import GradientButton from './GradientButton';
 import VideoBackground from './VideoBackground';
 
-function AcademicPreviewCard() {
+function MadrasahPhotoPanel() {
   return (
-    <aside className="siab2p-academic-card" aria-label="Profil resmi MAN 1 Rokan Hulu">
-      <div className="siab2p-academic-card-orb" />
-      <div className="siab2p-card-header">
-        <div className="siab2p-card-title-dot">
-          <strong>Profil Resmi Madrasah</strong>
-        </div>
-        <em>SIAB2</em>
+    <figure className="siab2p-photo-panel" aria-label="Foto resmi MAN 1 Rokan Hulu">
+      <div className="siab2p-photo-panel-glow" />
+      <div className="siab2p-photo-frame">
+        <img
+          src="/man1-rohul-hero-group.jpeg"
+          alt="Foto grup resmi MAN 1 Rokan Hulu di depan gedung madrasah"
+          loading="eager"
+          decoding="async"
+        />
+        <div className="siab2p-photo-sheen" aria-hidden="true" />
+        <div className="siab2p-photo-badge">Dokumentasi Madrasah</div>
+        <figcaption className="siab2p-photo-caption">
+          <span>MAN 1 Rokan Hulu</span>
+          <strong>Madrasah Berbasis Riset</strong>
+        </figcaption>
       </div>
-
-      <div className="siab2p-card-metric-grid siab2p-official-profile-grid">
-        <div className="siab2p-card-metric siab2p-card-metric-wide">
-          <span>Madrasah</span>
-          <strong>MAN 1 Rokan Hulu</strong>
-        </div>
-        <div className="siab2p-card-metric siab2p-card-metric-wide">
-          <span>Profil</span>
-          <strong className="siab2p-text-accent">Madrasah Berbasis Riset</strong>
-        </div>
-        <div className="siab2p-card-metric siab2p-card-metric-wide">
-          <span>Alamat</span>
-          <strong>JL.TUANKU TAMBUSAI NO.183</strong>
-        </div>
-        <div className="siab2p-card-metric">
-          <span>Telepon</span>
-          <strong>07627393218</strong>
-        </div>
-        <div className="siab2p-card-metric siab2p-card-metric-wide">
-          <span>Email</span>
-          <strong>manpasir675027@yahoo.co.id</strong>
-        </div>
+      <div className="siab2p-photo-meta" aria-hidden="true">
+        <span>SIAB2</span>
+        <i />
+        <span>Portal Akademik</span>
       </div>
-
-      <div className="siab2p-card-footer-note">
-        <span>Sistem Informasi Akademik Berkarakter</span>
-        <strong>MAN 1 Rokan Hulu</strong>
-      </div>
-    </aside>
+    </figure>
   );
 }
 
@@ -90,7 +75,7 @@ export default function Hero() {
           </div>
 
           <div className="siab2p-hero-card-slot">
-            <AcademicPreviewCard />
+            <MadrasahPhotoPanel />
           </div>
         </div>
       </div>
