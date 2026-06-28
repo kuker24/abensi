@@ -99,9 +99,12 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
     await expect(page.getByRole('button', { name: 'Masuk' })).toBeVisible();
     await expect(page.evaluate(() => window.localStorage.getItem('schoolhub_user'))).resolves.toBeNull();
 
-    await page.getByRole('tab', { name: 'Admin/TU' }).click();
-    await page.getByPlaceholder('Masukkan nama akun').fill('admin.tu');
-    await page.getByPlaceholder('Masukkan kata sandi').fill(adminPassword);
+    const adminTab = page.getByRole('tab', { name: 'Admin/TU' });
+    await adminTab.click();
+    await expect(adminTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Portal aman · Admin/TU')).toBeVisible();
+    await page.getByRole('textbox', { name: 'Nama akun Admin/TU' }).fill('admin.tu');
+    await page.getByRole('textbox', { name: 'Kata Sandi' }).fill(adminPassword);
     await page.getByRole('button', { name: /Masuk/ }).click();
     await expect(page).toHaveURL(/\/admin\//);
 
