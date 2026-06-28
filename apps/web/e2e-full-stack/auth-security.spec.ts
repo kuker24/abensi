@@ -99,21 +99,18 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
     await expect(page.getByRole('button', { name: 'Masuk' })).toBeVisible();
     await expect(page.evaluate(() => window.localStorage.getItem('schoolhub_user'))).resolves.toBeNull();
 
-    const adminTab = page.getByRole('tab', { name: 'Admin/TU' });
-    await adminTab.click();
-    await expect(adminTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByText('Portal aman · Admin/TU')).toBeVisible();
-    await page.getByRole('textbox', { name: 'Nama akun Admin/TU' }).fill('admin.tu');
-    await page.getByRole('textbox', { name: 'Kata Sandi' }).fill(adminPassword);
+    await expect(page.getByRole('tab', { name: 'Guru' })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('textbox', { name: 'Nama akun Guru' }).fill('guru.matematika');
+    await page.getByRole('textbox', { name: 'Kata Sandi' }).fill(defaultPassword);
     await page.getByRole('button', { name: /Masuk/ }).click();
-    await expect(page).toHaveURL(/\/admin\//);
+    await expect(page).toHaveURL(/\/guru\//);
 
     const apiCookies = await context.cookies(apiBaseURL);
     expect(apiCookies.find((cookie) => cookie.name === 'schoolhub_access_token')?.httpOnly).toBe(true);
     expect(apiCookies.find((cookie) => cookie.name === 'schoolhub_refresh_token')?.httpOnly).toBe(true);
     const me = await context.request.get(`${apiBaseURL}auth/me`);
     expect(me.ok()).toBeTruthy();
-    await expect(me.json()).resolves.toMatchObject({ user: { username: 'admin.tu', role: 'ADMIN_TU' } });
+    await expect(me.json()).resolves.toMatchObject({ user: { username: 'guru.matematika', role: 'GURU_MAPEL' } });
   });
 
   test('refresh token reuse revokes the token family with real PostgreSQL session state', async ({ playwright }) => {
