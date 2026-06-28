@@ -237,7 +237,7 @@ export function Card({ title, sub, actions, children, pad = true, variant = 'def
 }
 
 export function PageHead({ eyebrow, title, sub, actions }: { eyebrow: ReactNode; title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
-  return <div className="page-head siab2-page-head"><div><div className="eyebrow siab2-page-eyebrow"><span className="dot" /> {eyebrow}</div><h1 className="page-title siab2-page-title">{title}</h1>{sub && <div className="page-sub siab2-page-sub">{sub}</div>}</div>{actions && <div className="row page-actions siab2-page-actions">{actions}</div>}</div>;
+  return <div className="page-head siab2-page-head"><div><div className="eyebrow siab2-page-eyebrow">{eyebrow}</div><h1 className="page-title siab2-page-title">{title}</h1>{sub && <div className="page-sub siab2-page-sub">{sub}</div>}</div>{actions && <div className="row page-actions siab2-page-actions">{actions}</div>}</div>;
 }
 
 function friendlyErrorDetails(error: string) {
@@ -385,7 +385,7 @@ export function HeroPanel({ eyebrow, title, sub, actions, children, tone = '' }:
   return (
     <section className={`hero-panel ${tone}`}>
       <div className="hero-panel-copy">
-        {eyebrow && <div className="eyebrow"><span className="dot" />{eyebrow}</div>}
+        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h2>{title}</h2>
         {sub && <p>{sub}</p>}
         {actions && <div className="dashboard-hero-actions">{actions}</div>}

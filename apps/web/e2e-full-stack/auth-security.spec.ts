@@ -94,22 +94,25 @@ test.describe('real full-stack auth, cookies, and CSRF', () => {
   });
 
   test('browser form login starts unauthenticated and uses server cookies, not pre-seeded localStorage', async ({ page, context }) => {
-    await page.goto('/login');
+    await page.goto('/siab2/login');
+    await expect(page).toHaveURL(/\/siab2\/login$/);
     await expect(page.getByRole('button', { name: 'Masuk' })).toBeVisible();
     await expect(page.evaluate(() => window.localStorage.getItem('schoolhub_user'))).resolves.toBeNull();
 
-    await page.getByRole('tab', { name: 'Admin/TU' }).click();
-    await page.getByPlaceholder('Masukkan nama akun').fill('admin.tu');
-    await page.getByPlaceholder('Masukkan kata sandi').fill(adminPassword);
+    await expect(page.getByRole('tab', { name: 'Guru' })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('textbox', { name: 'Nama akun Guru' }).fill('guru.matematika');
+    await page.getByRole('textbox', { name: 'Kata Sandi' }).fill(defaultPassword);
+    const loginResponsePromise = page.waitForResponse((response) => response.url().endsWith('/api/v1/auth/login') && response.request().method() === 'POST');
     await page.getByRole('button', { name: /Masuk/ }).click();
-    await expect(page).toHaveURL(/\/admin\//);
+    const loginResponse = await loginResponsePromise;
+    if (!loginResponse.ok()) throw new Error(`Form login failed with ${loginResponse.status()}: ${await loginResponse.text()}`);
 
     const apiCookies = await context.cookies(apiBaseURL);
     expect(apiCookies.find((cookie) => cookie.name === 'schoolhub_access_token')?.httpOnly).toBe(true);
     expect(apiCookies.find((cookie) => cookie.name === 'schoolhub_refresh_token')?.httpOnly).toBe(true);
     const me = await context.request.get(`${apiBaseURL}auth/me`);
     expect(me.ok()).toBeTruthy();
-    await expect(me.json()).resolves.toMatchObject({ user: { username: 'admin.tu', role: 'ADMIN_TU' } });
+    await expect(me.json()).resolves.toMatchObject({ user: { username: 'guru.matematika', role: 'GURU_MAPEL' } });
   });
 
   test('refresh token reuse revokes the token family with real PostgreSQL session state', async ({ playwright }) => {

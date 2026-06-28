@@ -70,7 +70,7 @@ export default function Hero() {
               <img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" />
               <div>
                 <p>MAN 1 Rokan Hulu</p>
-                <span>Kementerian Agama RI</span>
+                <span>Di bawah naungan Kementerian Agama RI</span>
               </div>
             </div>
 

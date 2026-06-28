@@ -42,15 +42,15 @@ export function useWorkOSAuth() {
 /**
  * WorkOS Login Route Handler
  *
- * This component handles the /login route when WorkOS initiates
- * authentication flows (e.g., impersonation, SSO-initiated login).
+ * This component handles the canonical /siab2/login route when WorkOS
+ * initiates authentication flows (e.g., impersonation, SSO-initiated login).
  */
 export function WorkOSLoginHandler() {
   const { signIn, isLoading } = useAuth();
 
   useEffect(() => {
-    // Handle /login route for WorkOS-initiated flows
-    if (window.location.pathname === '/login' && window.location.search.includes('workos=true')) {
+    // Handle the canonical SIAB2 login route for WorkOS-initiated flows
+    if (window.location.pathname === '/siab2/login' && window.location.search.includes('workos=true')) {
       signIn();
     }
   }, [signIn]);
@@ -166,7 +166,7 @@ export function useWorkOSSignOut(onLocalSignOut?: () => void) {
 
     // Then sign out from WorkOS
     signOut({
-      returnTo: window.location.origin + '/login',
+      returnTo: window.location.origin + '/siab2/login',
     });
   }, [signOut, onLocalSignOut]);
 
