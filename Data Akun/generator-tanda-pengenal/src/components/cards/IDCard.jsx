@@ -16,7 +16,7 @@ const PhotoBlock = ({ user }) => {
   const photoUrl = user.foto || user.photo || user.photo_url || user.foto_url;
 
   return (
-    <div className="relative mx-auto h-[82px] w-[70px] overflow-hidden rounded-[18px] border border-white/40 bg-slate-100 shadow-[0_18px_45px_rgba(2,8,23,0.22)] ring-4 ring-white/20">
+    <div className="relative mx-auto h-[74px] w-[64px] overflow-hidden rounded-[16px] border border-white/40 bg-slate-100 shadow-[0_18px_45px_rgba(2,8,23,0.22)] ring-4 ring-white/20">
       {photoUrl ? (
         <img
           src={photoUrl}
@@ -88,7 +88,7 @@ const IDCard = ({
       <div className="absolute -right-20 top-20 h-44 w-44 rounded-full border border-white/60 bg-white/20" />
       <div className="absolute -bottom-28 -left-12 h-52 w-52 rounded-full bg-[#0b1720]/10 blur-2xl" />
 
-      <header className="relative h-[122px] overflow-hidden bg-[#061017] px-5 pt-4 text-white">
+      <header className="relative h-[112px] overflow-hidden bg-[#061017] px-5 pt-4 text-white">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_8%,rgba(111,166,216,0.36),transparent_34%),linear-gradient(135deg,#05080b_0%,#0a151d_52%,#142637_100%)]" />
         <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-[#8fc4f3] via-[#5c8fb9] to-[#d7e9f8]" />
         <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#9dccf1] to-transparent opacity-80" />
@@ -113,7 +113,7 @@ const IDCard = ({
           </div>
         </div>
 
-        <div className="relative mt-5 flex items-end justify-between gap-3">
+        <div className="relative mt-4 flex items-end justify-between gap-3">
           <div>
             <p className="text-[8px] font-black uppercase tracking-[0.22em] text-[#8fb9d8]">
               {resolvedSettings.issuerLabel}
@@ -126,19 +126,19 @@ const IDCard = ({
         </div>
       </header>
 
-      <main className="relative px-4 pb-4 pt-3">
-        <section className="rounded-[22px] border border-white/70 bg-white/78 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.10)] backdrop-blur">
+      <main className="relative px-4 pb-3 pt-2.5">
+        <section className="rounded-[20px] border border-white/70 bg-white/78 p-2.5 shadow-[0_18px_45px_rgba(15,23,42,0.10)] backdrop-blur">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[7px] font-black uppercase tracking-[0.24em] text-[#496a83]">Nama Pemegang</p>
             <span className="rounded-full bg-[#0d2130] px-2 py-1 text-[7px] font-black uppercase tracking-[0.16em] text-[#c6e1f7]">
               TA {user.tahun_ajaran || resolvedSettings.academicYear}
             </span>
           </div>
-          <h2 className="mt-2 min-h-[40px] text-[17px] font-black uppercase leading-[1.08] tracking-[-0.02em] text-slate-950">
+          <h2 className="mt-1.5 min-h-[34px] text-[15.5px] font-black uppercase leading-[1.08] tracking-[-0.02em] text-slate-950">
             {user.nama || 'Nama belum diisi'}
           </h2>
 
-          <div className="mt-3 grid gap-2">
+          <div className="mt-2 grid gap-1.5">
             <FieldBlock label="Tempat tanggal lahir" value={birthInfo}>
               <span className="inline-flex items-start gap-1.5">
                 <CalendarDays className="mt-0.5 h-3 w-3 flex-shrink-0 text-[#496a83]" />
@@ -161,11 +161,11 @@ const IDCard = ({
           </div>
         </section>
 
-        <section className="mt-3 grid grid-cols-[92px_1fr] gap-3 rounded-[22px] border border-slate-900/10 bg-[#071018] p-3 text-white shadow-[0_16px_38px_rgba(2,8,23,0.24)]">
+        <section className="mt-2 grid grid-cols-[80px_1fr] gap-2.5 rounded-[20px] border border-slate-900/10 bg-[#071018] p-2.5 text-white shadow-[0_16px_38px_rgba(2,8,23,0.24)]">
           <div className="rounded-2xl bg-white p-2 shadow-inner">
             <QRCodeSVG
               value={qrValue}
-              size={76}
+              size={64}
               level="M"
               bgColor="#ffffff"
               fgColor="#071018"
@@ -200,10 +200,6 @@ const IDCard = ({
         )}
       </main>
 
-      <footer className="absolute bottom-0 left-0 right-0 flex items-center justify-between border-t border-slate-900/10 bg-white/72 px-4 py-2 text-[7px] font-black uppercase tracking-[0.18em] text-slate-500 backdrop-blur">
-        <span>{resolvedSettings.schoolName}</span>
-        <span>{resolvedSettings.brandName}</span>
-      </footer>
     </article>
   );
 };

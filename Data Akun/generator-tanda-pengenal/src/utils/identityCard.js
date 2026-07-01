@@ -195,7 +195,7 @@ export const validateCardUser = (user = {}) => {
   }
 
   const birthInfo = formatBirthInfo(user);
-  if (!birthInfo || !cleanString(user.tempat_lahir) || !cleanString(user.tanggal_lahir)) {
+  if (!birthInfo) {
     errors.push(`${REQUIRED_CARD_FIELD_LABELS.tempat_tanggal_lahir} wajib diisi`);
   }
 
