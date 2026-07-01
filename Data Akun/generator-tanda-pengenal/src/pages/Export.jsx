@@ -81,10 +81,10 @@ const Export = () => {
       title="Export PDF Print-Ready"
       subtitle="Cetak massal kartu tanda pengenal resmi portrait SIAB2"
     >
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="space-y-6">
-          <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
-            <div className="bg-[#071018] p-6 text-white">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="min-w-0 space-y-4 lg:space-y-6">
+          <div className="min-w-0 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm sm:rounded-[32px]">
+            <div className="bg-[#071018] p-4 text-white sm:p-6">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#6fa6d8]/30 bg-[#6fa6d8]/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[#b9dcf7]">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 Print-ready portrait
@@ -95,7 +95,7 @@ const Export = () => {
               </p>
             </div>
 
-            <div className="grid gap-4 p-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:p-6 lg:grid-cols-4">
               <div className="rounded-3xl bg-slate-50 p-4">
                 <p className="text-xs font-black uppercase tracking-widest text-slate-500">Kandidat</p>
                 <p className="mt-2 text-3xl font-black text-slate-950">{candidates.length}</p>
@@ -142,7 +142,7 @@ const Export = () => {
             </div>
           )}
 
-          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
             <h2 className="text-xl font-black text-slate-950">Aksi Export</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               PDF dibuat dari render kartu aktual agar preview dan hasil print konsisten. QR diexport sebagai PNG tajam.
@@ -185,7 +185,7 @@ const Export = () => {
                 type="button"
                 onClick={handleGeneratePDF}
                 disabled={isGenerating || !readiness.validCount}
-                className="inline-flex items-center gap-2 rounded-2xl bg-[#071018] px-5 py-3 text-sm font-black text-white transition hover:bg-[#13283a] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-w-0 items-center gap-2 rounded-2xl bg-[#071018] px-4 py-3 text-sm font-black text-white transition hover:bg-[#13283a] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
               >
                 {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                 {isGenerating ? 'Membuat PDF' : 'Generate & Download PDF'}
@@ -194,14 +194,14 @@ const Export = () => {
                 type="button"
                 onClick={handlePrint}
                 disabled={!pdfBlob || isGenerating}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
               >
                 <Printer className="h-4 w-4" />
                 Print PDF Terakhir
               </button>
               <Link
                 to="/generate"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50"
+                className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 sm:px-5"
               >
                 Cek Preview
                 <ArrowRight className="h-4 w-4" />
@@ -210,8 +210,8 @@ const Export = () => {
           </div>
         </section>
 
-        <aside className="space-y-6">
-          <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+        <aside className="min-w-0 space-y-4 lg:space-y-6">
+          <section className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-[#386f99]">Preview export</p>
@@ -221,7 +221,7 @@ const Export = () => {
             </div>
 
             {firstPreviewUser ? (
-              <div className="mt-5 flex justify-center overflow-auto rounded-[28px] bg-[radial-gradient(circle_at_50%_0%,rgba(111,166,216,0.18),transparent_42%),linear-gradient(180deg,#0b1118,#05070a)] p-5">
+              <div className="mt-5 max-w-full overflow-auto rounded-[24px] bg-[radial-gradient(circle_at_50%_0%,rgba(111,166,216,0.18),transparent_42%),linear-gradient(180deg,#0b1118,#05070a)] p-2 sm:rounded-[28px] sm:p-4 lg:flex lg:justify-center lg:p-5">
                 <IDCard user={firstPreviewUser} settings={cardSettings} scale={0.92} />
               </div>
             ) : (
@@ -231,7 +231,7 @@ const Export = () => {
             )}
           </section>
 
-          <section className="rounded-[32px] border border-[#6fa6d8]/30 bg-[#071018] p-6 text-white shadow-[0_24px_70px_rgba(2,8,23,0.22)]">
+          <section className="min-w-0 rounded-[28px] border border-[#6fa6d8]/30 bg-[#071018] p-4 text-white shadow-[0_24px_70px_rgba(2,8,23,0.22)] sm:rounded-[32px] sm:p-6">
             <h2 className="font-black">Spesifikasi PDF</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">

@@ -74,8 +74,8 @@ const GenerateCards = () => {
         )}
 
         {users.length > 0 && (
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_1fr]">
-            <aside className="space-y-4">
+          <div className="grid min-w-0 grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-[360px_1fr]">
+            <aside className="min-w-0 space-y-4">
               <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
                 <button
                   type="button"
@@ -95,7 +95,7 @@ const GenerateCards = () => {
                 </button>
 
                 {showSettings && (
-                  <div className="space-y-4 border-t border-slate-100 p-5">
+                  <div className="space-y-4 border-t border-slate-100 p-4 sm:p-5">
                     <div>
                       <label className="mb-1.5 block text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                         Skin kartu
@@ -124,7 +124,7 @@ const GenerateCards = () => {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <label className="mb-1.5 block text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                           Brand
@@ -231,7 +231,7 @@ const GenerateCards = () => {
               </section>
             </aside>
 
-            <section className="min-w-0 rounded-[32px] border border-slate-800 bg-[#05080b] p-5 shadow-[0_24px_80px_rgba(2,8,23,0.28)] lg:p-7">
+            <section className="min-w-0 rounded-[28px] border border-slate-800 bg-[#05080b] p-3 shadow-[0_24px_80px_rgba(2,8,23,0.28)] sm:rounded-[32px] sm:p-5 lg:p-7">
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#6fa6d8]/30 bg-[#6fa6d8]/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[#b9dcf7]">
@@ -254,13 +254,13 @@ const GenerateCards = () => {
               </div>
 
               {currentUser ? (
-                <div className="grid gap-6 lg:grid-cols-[minmax(360px,430px)_1fr]">
-                  <div className="flex justify-center overflow-auto rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(111,166,216,0.18),transparent_42%),linear-gradient(180deg,#0b1118,#05070a)] p-6">
+                <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(360px,430px)_1fr] lg:gap-6">
+                  <div className="max-w-full overflow-auto rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(111,166,216,0.18),transparent_42%),linear-gradient(180deg,#0b1118,#05070a)] p-2 sm:rounded-[28px] sm:p-4 lg:flex lg:justify-center lg:p-6">
                     <IDCard user={currentUser} settings={cardSettings} />
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-5 text-white">
+                  <div className="min-w-0 space-y-4">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-4 text-white sm:p-5">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.18em] text-[#8fb9d8]">Data aktif</p>
@@ -296,7 +296,7 @@ const GenerateCards = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
                       <button
                         type="button"
                         onClick={handlePrev}

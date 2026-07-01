@@ -140,9 +140,9 @@ const ImportData = () => {
       title="Import Data Siswa"
       subtitle="Masukkan data wajib untuk kartu tanda pengenal resmi vertikal SIAB2"
     >
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="space-y-6">
-          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="min-w-0 space-y-4 lg:space-y-6">
+          <div className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#071018] px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[#b9dcf7]">
@@ -168,7 +168,7 @@ const ImportData = () => {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`rounded-[28px] border-2 border-dashed p-8 text-center transition ${
+              className={`rounded-[24px] border-2 border-dashed p-5 text-center transition sm:rounded-[28px] sm:p-8 ${
                 isDragging
                   ? 'border-[#6fa6d8] bg-[#eef7ff]'
                   : 'border-slate-200 bg-slate-50 hover:border-[#6fa6d8] hover:bg-[#f6fbff]'
@@ -210,7 +210,7 @@ const ImportData = () => {
           )}
 
           {validationReport && (
-            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-xl font-black text-slate-950">Hasil Validasi CSV</h2>
@@ -230,8 +230,8 @@ const ImportData = () => {
               </div>
 
               <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <div className="max-w-full overflow-x-auto">
+                  <table className="min-w-[760px] divide-y divide-slate-200 text-sm sm:min-w-full">
                     <thead className="bg-slate-50 text-xs font-black uppercase tracking-wider text-slate-500">
                       <tr>
                         <th className="px-4 py-3 text-left">Status</th>
@@ -318,8 +318,8 @@ const ImportData = () => {
           )}
         </section>
 
-        <aside className="space-y-6">
-          <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+        <aside className="min-w-0 space-y-4 lg:space-y-6">
+          <section className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 text-[#386f99]" />
               <h2 className="font-black text-slate-950">Kolom Wajib</h2>
@@ -334,7 +334,7 @@ const ImportData = () => {
             </div>
           </section>
 
-          <section className="rounded-[32px] border border-[#6fa6d8]/30 bg-[#071018] p-6 text-white shadow-[0_24px_70px_rgba(2,8,23,0.22)]">
+          <section className="min-w-0 rounded-[28px] border border-[#6fa6d8]/30 bg-[#071018] p-4 text-white shadow-[0_24px_70px_rgba(2,8,23,0.22)] sm:rounded-[32px] sm:p-6">
             <h2 className="font-black">Kolom Opsional</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
               Field ini boleh ditambahkan tanpa mengganggu field wajib. QR akan memakai qr_value jika ada, kalau tidak fallback ke NISN.
