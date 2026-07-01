@@ -121,6 +121,18 @@ const Export = () => {
             </div>
           )}
 
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <div>
+                <p className="font-black">Privasi sebelum mencetak</p>
+                <p className="mt-1 text-sm leading-6">
+                  Pastikan perangkat aman, jangan bagikan PDF mentah ke kanal publik, dan hapus data lokal setelah selesai mencetak.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {readiness.invalidCount > 0 && (
             <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
               <div className="flex items-start gap-3">

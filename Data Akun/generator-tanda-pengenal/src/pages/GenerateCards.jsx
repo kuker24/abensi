@@ -11,6 +11,7 @@ import {
   FileDown,
   Settings,
   ShieldCheck,
+  Trash2,
   Users,
   XCircle,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const GenerateCards = () => {
     getStats,
     cardSettings,
     updateCardSettings,
+    clearLocalData,
   } = useStore();
   const stats = getStats();
   const [showSettings, setShowSettings] = useState(true);
@@ -193,6 +195,24 @@ const GenerateCards = () => {
                     Mode pilihan aktif: {selectedUsers.length} data terpilih.
                   </p>
                 )}
+              </section>
+
+              <section className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold">Data tersimpan di browser ini</p>
+                    <p className="mt-1 text-xs leading-5 text-amber-900">Selesai preview/export? Hapus data lokal agar tidak tertinggal di perangkat operator.</p>
+                    <button
+                      type="button"
+                      onClick={clearLocalData}
+                      className="mt-3 inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-900 transition hover:bg-amber-100"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Hapus Data Lokal
+                    </button>
+                  </div>
+                </div>
               </section>
 
               <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">

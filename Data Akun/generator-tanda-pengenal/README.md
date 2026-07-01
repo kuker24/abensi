@@ -38,10 +38,68 @@ Contoh nilai TTL yang didukung:
 - `Pekanbaru, 12 Agustus 2010`
 - `Pekanbaru 12 Agustus 2010`
 
-## QR
+## Privacy & Data Handling
 
-- Jika kolom `qr_value` tersedia, nilai itu dipakai sebagai isi QR.
+- Aplikasi ini standalone frontend dan tidak memiliki backend.
+- Generator tidak mengirim data siswa ke server selama dipakai sebagai standalone tool.
+- Data import tersimpan sementara di browser `localStorage` perangkat operator dengan key `id-card-generator-storage`.
+- Data yang dipersist hanya field yang diizinkan untuk kebutuhan kartu; raw row CSV dan kolom sensitif tidak disimpan.
+- Jangan gunakan perangkat publik/bersama untuk memproses data pribadi siswa.
+- Gunakan tombol **Hapus Data Lokal** / **Bersihkan Data Browser** setelah selesai mencetak atau sebelum menyerahkan perangkat ke orang lain.
+
+## CSV Safety Rules
+
+Kolom yang diterima untuk data kartu:
+
+- `id`
+- `nama`
+- `tempat_lahir`
+- `tanggal_lahir`
+- `ttl`
+- `nisn`
+- `alamat`
+- `kelas`
+- `jurusan`
+- `role`
+- `status`
+- `qr_value`
+- `tahun_ajaran`
+- `nomor_kartu`
+- `createdAt`
+- `updatedAt`
+
+Aturan keamanan CSV:
+
+- Jangan import CSV berisi `password`, `pass`, `pwd`, `username`, `token`, `secret`, `api_key`, `access_token`, `refresh_token`, `cookie`, `session`, `credential`, `auth`, `key`, `raw`, atau kolom rahasia lain.
+- Jika CSV berisi kolom sensitif, aplikasi mengabaikan kolom tersebut dan hanya menampilkan nama kolomnya sebagai warning.
+- Jika CSV berisi kolom tidak dikenal, kolom tersebut juga diabaikan.
+- Warning tidak menampilkan nilai dari password/token/secret.
+
+## Local Storage Policy
+
+- localStorage hanya untuk penggunaan sementara saat operator membuat kartu.
+- Jangan anggap localStorage sebagai database, backup, atau arsip resmi.
+- Setelah PDF selesai dibuat dan diverifikasi, klik **Hapus Data Lokal**.
+- Jika menggunakan perangkat non-pribadi, bersihkan data browser juga dari menu browser setelah selesai.
+- Jika data lama pernah tersimpan sebelum hardening ini, aplikasi akan melakukan sanitasi saat load dan membuang field lama seperti `raw`, `username`, `password`, `token`, dan `secret`.
+
+## QR Safety
+
+- Jika kolom `qr_value` tersedia dan aman, nilai itu dipakai sebagai isi QR.
 - Jika `qr_value` kosong/tidak ada, QR otomatis fallback ke `nisn`.
+- QR tidak boleh berisi password, token, secret, cookie, session, API key, atau kredensial lain.
+- Jika `qr_value` terlihat mengandung pola sensitif, aplikasi mengabaikannya dan fallback ke `nisn` tanpa menampilkan nilai sensitif di UI.
+
+## Operator SOP
+
+1. Pakai laptop/perangkat operator yang tepercaya.
+2. Siapkan CSV resmi yang hanya berisi kolom kartu yang diperlukan.
+3. Pastikan CSV tidak memuat password, username login, token, secret, cookie, session, atau kredensial lain.
+4. Import CSV dan cek warning kolom yang diabaikan.
+5. Preview kartu dan pastikan NISN, alamat, TTL, serta QR benar.
+6. Export PDF dan cek hasil A4 portrait 3x3 sebelum dicetak massal.
+7. Setelah selesai, klik **Hapus Data Lokal** / **Bersihkan Data Browser**.
+8. Jangan membagikan PDF mentah ke kanal publik.
 
 ## Menjalankan Project
 
@@ -76,14 +134,6 @@ Rafi Maulana,"Pekanbaru 12 Agustus 2010",3213213213,"Desa Rambah Hilir"
 - PDF output: A4 portrait.
 - Layout: 3x3 kartu per halaman.
 - Cut marks bersifat opsional dan bisa diaktifkan/nonaktifkan dari halaman export/generate.
-
-## Catatan Keamanan Data
-
-- Aplikasi ini standalone frontend dan tidak memiliki backend.
-- Tidak ada database server.
-- Data import tersimpan di browser local storage.
-- Jangan gunakan perangkat publik/bersama untuk memproses data pribadi siswa.
-- Bersihkan data browser setelah selesai jika memakai perangkat non-pribadi.
 
 ## Known Limitations
 
