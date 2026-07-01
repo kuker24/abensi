@@ -7,7 +7,7 @@ import {
   normalizeIdentityRow,
   validateCardUser,
   validateCardUsers,
-} from './identityCard';
+} from './identityCard.js';
 
 /**
  * Parse CSV file and return structured identity-card data plus privacy warnings.
