@@ -27,7 +27,7 @@ const Users = () => {
     toggleUserSelection,
     deselectAllUsers,
     deleteUser,
-    clearUsers,
+    clearLocalData,
     getStats,
   } = useStore();
   
@@ -57,7 +57,7 @@ const Users = () => {
       result = result.filter(
         (u) =>
           u.nama?.toLowerCase().includes(search) ||
-          u.username?.toLowerCase().includes(search)
+          u.nisn?.toLowerCase().includes(search)
       );
     }
     
@@ -93,8 +93,8 @@ const Users = () => {
   };
   
   const handleClearAll = () => {
-    if (window.confirm('Hapus semua data pengguna?')) {
-      clearUsers();
+    if (window.confirm('Hapus semua data lokal dari browser ini?')) {
+      clearLocalData();
     }
   };
   
@@ -166,7 +166,7 @@ const Users = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Cari nama atau username..."
+                placeholder="Cari nama atau NISN..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -257,7 +257,7 @@ const Users = () => {
                   className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
-                  Hapus Semua
+                  Hapus Data Lokal
                 </button>
               )}
             </div>
@@ -294,7 +294,7 @@ const Users = () => {
                         Nama
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Username
+                        NISN
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Role
@@ -331,7 +331,7 @@ const Users = () => {
                           <p className="font-medium text-gray-900">{user.nama}</p>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-gray-600">{user.username}</p>
+                          <p className="font-mono text-gray-600">{user.nisn || '-'}</p>
                         </td>
                         <td className="px-4 py-3">
                           <span

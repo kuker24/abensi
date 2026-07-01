@@ -9,12 +9,14 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import { Layout } from '../components/layout';
 import { useStore } from '../store/useStore';
 
 const Dashboard = () => {
-  const { users, activityLog, getStats } = useStore();
+  const { users, activityLog, getStats, clearLocalData } = useStore();
   const stats = getStats();
 
   const statCards = [
@@ -82,6 +84,29 @@ const Dashboard = () => {
   return (
     <Layout title="Dashboard" subtitle="Ringkasan data dan aktivitas">
       <div className="space-y-6">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <div>
+                <p className="font-bold">Privasi data lokal</p>
+                <p className="mt-1 text-sm leading-6">
+                  Data siswa tersimpan sementara di browser perangkat ini. Gunakan perangkat aman dan hapus data lokal setelah kartu selesai dicetak.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={clearLocalData}
+              disabled={users.length === 0 && activityLog.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-black text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Hapus Data Lokal
+            </button>
+          </div>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {statCards.map((stat, index) => (

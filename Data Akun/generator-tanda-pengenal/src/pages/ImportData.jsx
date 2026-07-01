@@ -25,9 +25,10 @@ const REQUIRED_COLUMNS = [
 
 const OPTIONAL_COLUMNS = [
   'ttl / tempat_tanggal_lahir',
-  'qr_value',
-  'foto / foto_url',
+  'qr_value (bukan token/password/secret)',
   'kelas',
+  'jurusan',
+  'role',
   'tahun_ajaran',
   'nomor_kartu',
   'status',
@@ -41,7 +42,7 @@ const SAMPLE_CSV = [
 
 const ImportData = () => {
   const fileInputRef = useRef(null);
-  const { setUsers, clearUsers } = useStore();
+  const { setUsers, clearLocalData } = useStore();
   const [isDragging, setIsDragging] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [file, setFile] = useState(null);
@@ -49,6 +50,7 @@ const ImportData = () => {
   const [validationReport, setValidationReport] = useState(null);
   const [error, setError] = useState('');
   const [imported, setImported] = useState(false);
+  const [privacyReport, setPrivacyReport] = useState(null);
 
   const handleDragOver = useCallback((event) => {
     event.preventDefault();
@@ -72,12 +74,14 @@ const ImportData = () => {
     setFile(selectedFile);
     setError('');
     setImported(false);
+    setPrivacyReport(null);
 
     try {
-      const users = await parseCSV(selectedFile);
+      const { users, privacyReport: nextPrivacyReport } = await parseCSV(selectedFile);
       const report = validateUsers(users);
       setParsedUsers(users);
       setValidationReport(report);
+      setPrivacyReport(nextPrivacyReport);
 
       if (users.length === 0) {
         setError('CSV tidak berisi baris data yang bisa dibaca.');
@@ -85,6 +89,7 @@ const ImportData = () => {
     } catch (parseError) {
       setParsedUsers([]);
       setValidationReport(null);
+      setPrivacyReport(null);
       setError(parseError.message || 'Gagal membaca CSV. Periksa format file.');
     } finally {
       setIsParsing(false);
@@ -115,9 +120,10 @@ const ImportData = () => {
     setFile(null);
     setParsedUsers([]);
     setValidationReport(null);
+    setPrivacyReport(null);
     setError('');
     setImported(false);
-    clearUsers();
+    clearLocalData();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -134,6 +140,11 @@ const ImportData = () => {
   };
 
   const fileSize = file ? `${(file.size / 1024).toFixed(1)} KB` : '';
+  const hasPrivacyWarnings = Boolean(
+    privacyReport?.sensitiveColumns?.length ||
+    privacyReport?.ignoredColumns?.length ||
+    privacyReport?.qrSensitiveRows?.length
+  );
 
   return (
     <Layout
@@ -142,6 +153,18 @@ const ImportData = () => {
     >
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="min-w-0 space-y-4 lg:space-y-6">
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <div>
+                <p className="font-black">Privasi data siswa</p>
+                <p className="mt-1 text-sm leading-6">
+                  Gunakan hanya file CSV resmi. Jangan impor kolom password, token, secret, cookie, atau data sensitif lain. Data tersimpan sementara di browser perangkat ini.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -206,6 +229,29 @@ const ImportData = () => {
             <div className="flex items-start gap-3 rounded-3xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
               <p className="text-sm font-semibold leading-6">{error}</p>
+            </div>
+          )}
+
+          {hasPrivacyWarnings && (
+            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-black">Kolom berisiko sudah diabaikan</p>
+                  <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-900">
+                    {privacyReport.sensitiveColumns.length > 0 && (
+                      <li>Kolom sensitif diabaikan: <span className="font-bold">{privacyReport.sensitiveColumns.join(', ')}</span>.</li>
+                    )}
+                    {privacyReport.ignoredColumns.length > 0 && (
+                      <li>Kolom tidak dikenal diabaikan: <span className="font-bold">{privacyReport.ignoredColumns.join(', ')}</span>.</li>
+                    )}
+                    {privacyReport.qrSensitiveRows.length > 0 && (
+                      <li>QR berisi pola sensitif pada baris {privacyReport.qrSensitiveRows.join(', ')} diabaikan dan fallback ke NISN.</li>
+                    )}
+                  </ul>
+                  <p className="mt-2 text-xs font-semibold text-amber-800">Peringatan hanya menampilkan nama kolom/baris, bukan isi CSV.</p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -302,7 +348,7 @@ const ImportData = () => {
                   className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Bersihkan
+                  Hapus Data Lokal
                 </button>
                 {imported && (
                   <Link
@@ -337,7 +383,7 @@ const ImportData = () => {
           <section className="min-w-0 rounded-[28px] border border-[#6fa6d8]/30 bg-[#071018] p-4 text-white shadow-[0_24px_70px_rgba(2,8,23,0.22)] sm:rounded-[32px] sm:p-6">
             <h2 className="font-black">Kolom Opsional</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Field ini boleh ditambahkan tanpa mengganggu field wajib. QR akan memakai qr_value jika ada, kalau tidak fallback ke NISN.
+              Field ini boleh ditambahkan tanpa mengganggu field wajib. Kolom lain akan diabaikan. QR akan memakai qr_value jika aman, kalau tidak fallback ke NISN.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {OPTIONAL_COLUMNS.map((column) => (

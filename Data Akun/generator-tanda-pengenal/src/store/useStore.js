@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_CARD_SETTINGS } from '../utils/cardTemplates';
-import { validateCardUsers } from '../utils/identityCard';
+import {
+  sanitizePersistedGeneratorState,
+  sanitizeSelectedUsers,
+  sanitizeUser,
+  sanitizeUsers,
+  validateCardUsers,
+} from '../utils/identityCard';
+
+const GENERATOR_STORAGE_VERSION = 1;
 
 // Main application store
 export const useStore = create(
@@ -23,20 +31,29 @@ export const useStore = create(
       
       // Actions for users
       setUsers: (users) => {
-        set({ users });
-        get().addActivityLog(`Imported ${users.length} users`);
+        const safeUsers = sanitizeUsers(users);
+        set((state) => ({
+          users: safeUsers,
+          selectedUsers: sanitizeSelectedUsers(state.selectedUsers, safeUsers),
+        }));
+        get().addActivityLog(`Imported ${safeUsers.length} users`);
       },
       
       addUser: (user) => {
-        set((state) => ({ users: [...state.users, user] }));
+        set((state) => ({ users: [...state.users, sanitizeUser(user, state.users.length)] }));
       },
       
       updateUser: (id, updates) => {
-        set((state) => ({
-          users: state.users.map((user) =>
-            user.id === id ? { ...user, ...updates } : user
-          ),
-        }));
+        set((state) => {
+          const users = state.users.map((user, index) =>
+            user.id === id ? sanitizeUser({ ...user, ...updates }, index) : user
+          );
+
+          return {
+            users,
+            selectedUsers: sanitizeSelectedUsers(state.selectedUsers, users),
+          };
+        });
       },
       
       deleteUser: (id) => {
@@ -51,12 +68,22 @@ export const useStore = create(
         set({ users: [], selectedUsers: [] });
         get().addActivityLog('Cleared all users');
       },
+
+      clearLocalData: () => {
+        set({ users: [], selectedUsers: [], activityLog: [] });
+      },
       
       // Selection actions
       selectUser: (id) => {
-        set((state) => ({
-          selectedUsers: [...state.selectedUsers, id],
-        }));
+        set((state) => {
+          const selectedId = String(id || '').trim();
+          const exists = state.users.some((user) => user.id === selectedId);
+          if (!selectedId || !exists || state.selectedUsers.includes(selectedId)) return state;
+
+          return {
+            selectedUsers: [...state.selectedUsers, selectedId],
+          };
+        });
       },
       
       deselectUser: (id) => {
@@ -158,7 +185,7 @@ export const useStore = create(
           filtered = filtered.filter(
             (u) =>
               u.nama?.toLowerCase().includes(searchLower) ||
-              u.username?.toLowerCase().includes(searchLower)
+              u.nisn?.toLowerCase().includes(searchLower)
           );
         }
         
@@ -173,11 +200,30 @@ export const useStore = create(
     }),
     {
       name: 'id-card-generator-storage',
-      partialize: (state) => ({
-        users: state.users,
-        activityLog: state.activityLog,
-        cardSettings: state.cardSettings,
-      }),
+      version: GENERATOR_STORAGE_VERSION,
+      migrate: (persistedState) => sanitizePersistedGeneratorState(persistedState),
+      merge: (persistedState, currentState) => {
+        const safeState = sanitizePersistedGeneratorState(persistedState);
+        return {
+          ...currentState,
+          ...safeState,
+          cardSettings: {
+            ...DEFAULT_CARD_SETTINGS,
+            ...safeState.cardSettings,
+          },
+        };
+      },
+      partialize: (state) => {
+        const safeState = sanitizePersistedGeneratorState(state);
+        return {
+          users: safeState.users,
+          activityLog: safeState.activityLog,
+          cardSettings: {
+            ...DEFAULT_CARD_SETTINGS,
+            ...safeState.cardSettings,
+          },
+        };
+      },
     }
   )
 );
