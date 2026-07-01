@@ -1,4 +1,4 @@
-import { REQUIRED_CARD_FIELD_LABELS } from './cardTemplates';
+import { REQUIRED_CARD_FIELD_LABELS } from './cardTemplates.js';
 
 const MONTHS_ID = [
   'Januari',
