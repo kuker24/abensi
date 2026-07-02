@@ -123,12 +123,15 @@ export const generateCardSVG = async (user, options = {}) => {
   const name = user.nama || 'Nama belum diisi';
   const nisn = user.nisn || '-';
   const classOrRole = user.kelas || user.role || user.jurusan || '-';
+  const issuerLabelText = settings.issuerLabel?.toLowerCase().includes('tanda pengenal')
+    ? 'Kartu Digital Madrasah'
+    : settings.issuerLabel || 'Kartu Digital Madrasah';
   const nameFontSize = getNameFontSize(name);
   const logoClipId = `logoClip-${sanitizeFilenameSegment(nisn)}-${Date.now()}`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="${XMLNS}" xmlns:xlink="${XLINK_NS}" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${renderWidthPx} ${renderHeightPx}" role="img" aria-label="Kartu tanda pengenal ${escapeXml(name)}">
-  <title>Kartu Tanda Pengenal SIAB2 - ${escapeXml(name)}</title>
+  <title>Kartu Digital Madrasah SIAB2 - ${escapeXml(name)}</title>
   <desc>SVG ukuran kartu CR80 ${widthMm}mm x ${heightMm}mm, tidak ditempatkan pada kertas A4.</desc>
   <defs>
     <clipPath id="${logoClipId}">
@@ -143,7 +146,7 @@ export const generateCardSVG = async (user, options = {}) => {
     <image href="${logoDataUrl}" xlink:href="${logoDataUrl}" x="82" y="22" width="48" height="48" preserveAspectRatio="xMidYMid meet" clip-path="url(#${logoClipId})" />
     <text x="150" y="44" fill="#071018" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900" letter-spacing="4">SIAB2</text>
     <text x="150" y="61" fill="#557088" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing="2.2">MAN 1 ROKAN HULU</text>
-    <text x="162" y="94" fill="#0d3047" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="900" letter-spacing="1.2">${escapeXml(settings.issuerLabel).toUpperCase()}</text>
+    <text x="162" y="94" fill="#0d3047" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="900" letter-spacing="1.2">${escapeXml(issuerLabelText).toUpperCase()}</text>
   </g>
 
   <g id="qr-panel">
@@ -165,7 +168,7 @@ export const generateCardSVG = async (user, options = {}) => {
 
   <g id="footer">
     <rect x="0" y="414" width="324" height="100" fill="#ffffff" />
-    <text x="162" y="461" fill="#557088" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing="2.1">KARTU TANDA PENGENAL SIAB2</text>
+    <text x="162" y="461" fill="#557088" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing="2.1">KARTU DIGITAL MADRASAH</text>
     <text x="162" y="487" fill="#071018" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="900" letter-spacing="0.7">MAN 1 ROKAN HULU</text>
   </g>
 </svg>`;

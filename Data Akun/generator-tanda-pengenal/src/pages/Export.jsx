@@ -55,7 +55,7 @@ const Export = () => {
     try {
       const blob = await generatePDF(readiness.validUsers, {
         settings: cardSettings,
-        title: 'Kartu Tanda Pengenal Resmi SIAB2',
+        title: 'Kartu Digital Madrasah SIAB2',
         onProgress: (nextProgress) => setProgress(nextProgress),
       });
 

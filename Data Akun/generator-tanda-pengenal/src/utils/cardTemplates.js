@@ -32,7 +32,7 @@ export const DEFAULT_CARD_SETTINGS = {
   brandName: 'SIAB2',
   tagline: 'Sistem Informasi Akademik Berkarakter',
   academicYear: '2025/2026',
-  issuerLabel: 'Kartu Tanda Pengenal Resmi',
+  issuerLabel: 'Kartu Digital Madrasah',
   statusLabel: 'AKTIF',
   showCutMarks: true,
 };

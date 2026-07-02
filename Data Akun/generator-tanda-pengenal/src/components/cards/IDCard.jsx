@@ -34,6 +34,9 @@ const IDCard = ({
   const qrValue = buildQrValue(user);
   const validation = validateCardUser(user);
   const classOrRole = user.kelas || user.role || user.jurusan || '-';
+  const issuerLabelText = resolvedSettings.issuerLabel?.toLowerCase().includes('tanda pengenal')
+    ? 'Kartu Digital Madrasah'
+    : resolvedSettings.issuerLabel || 'Kartu Digital Madrasah';
 
   const cardStyle = {
     width: `${renderWidthPx}px`,
@@ -71,7 +74,7 @@ const IDCard = ({
             </div>
           </div>
           <p className="mt-3 text-[13px] font-black uppercase tracking-[0.08em] text-[#0d3047]">
-            {resolvedSettings.issuerLabel}
+            {issuerLabelText}
           </p>
         </div>
       </header>
@@ -112,7 +115,7 @@ const IDCard = ({
 
         <footer className="flex h-[100px] flex-col items-center justify-center gap-2 bg-white px-5 text-center text-[#071018]">
           <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#557088]">
-            Kartu Tanda Pengenal SIAB2
+            Kartu Digital Madrasah
           </p>
           <p className="text-[12px] font-black uppercase tracking-[0.04em] text-[#071018]">
             MAN 1 Rokan Hulu

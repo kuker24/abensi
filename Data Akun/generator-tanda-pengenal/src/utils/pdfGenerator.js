@@ -153,7 +153,7 @@ export const generatePDF = async (users, options = {}) => {
   const template = getCardTemplate(settings.cardSkin);
   const { widthMm, heightMm } = template.dimensions;
   const cardsPerPage = template.pdf.cardsPerPage;
-  const title = options.title || 'Kartu Tanda Pengenal Resmi SIAB2';
+  const title = options.title || 'Kartu Digital Madrasah SIAB2';
   const totalUsers = users.length;
   const totalPages = Math.ceil(totalUsers / cardsPerPage);
   const totalBatches = Math.ceil(totalUsers / BATCH_SIZE);
