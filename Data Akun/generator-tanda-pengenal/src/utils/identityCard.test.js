@@ -28,6 +28,7 @@ const FORBIDDEN_KEYS = [
 ];
 
 const FORBIDDEN_VALUES = ['pass123', 'abc123', 'secret123', 'rahasia', 'password=abc123', 'cookie-value', 'session-value', 'credential-value'];
+const LOCAL_OPAQUE_QR_PATTERN = /^schoolhub:qr:v1:QR_LOCAL_[A-Z0-9]{14}$/;
 
 const assertOnlyAllowedFields = (user) => {
   Object.keys(user).forEach((field) => {
@@ -48,7 +49,7 @@ const assertNoForbiddenValues = (value) => {
   });
 };
 
-test('normalizes CSV row using allowed fields and QR fallback to NISN', () => {
+test('normalizes CSV row using allowed fields and opaque QR fallback', () => {
   const user = normalizeIdentityRow({
     nama: 'Ahmad Fauzan',
     tempat_lahir: 'Rokan Hulu',
@@ -61,8 +62,11 @@ test('normalizes CSV row using allowed fields and QR fallback to NISN', () => {
 
   assert.equal(user.nama, 'Ahmad Fauzan');
   assert.equal(formatBirthInfo(user), 'Rokan Hulu, 14 Februari 2010');
-  assert.equal(user.qr_value, '1234567890');
-  assert.equal(buildQrValue(user), '1234567890');
+  assert.match(user.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(buildQrValue(user), user.qr_value);
+  assert.equal(user.qr_value.includes(user.nisn), false);
+  assert.equal(user.qr_value.includes(user.nama.toUpperCase()), false);
+  assert.equal(user.qr_value.includes(user.kelas), false);
   assert.equal(validateCardUser(user).isValid, true);
   assertOnlyAllowedFields(user);
   assertNoForbiddenKeys(user);
@@ -103,7 +107,8 @@ test('strips sensitive fields and never keeps raw CSV rows', () => {
 
   assert.equal(user.nama, 'Siti Rahma');
   assert.equal(user.ttl, 'Pekanbaru, 12 Agustus 2010');
-  assert.equal(user.qr_value, '0987654321');
+  assert.match(user.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(user.qr_value.includes(user.nisn), false);
   assert.equal(validateCardUser(user).isValid, true);
   assertOnlyAllowedFields(user);
   assertNoForbiddenKeys(user);
@@ -122,16 +127,24 @@ test('preserves TTL without comma while stripping sensitive fields', () => {
   assert.equal(user.nama, 'Budi Santoso');
   assert.equal(user.ttl, 'Rambah 10 Januari 2011');
   assert.equal(formatBirthInfo(user), 'Rambah 10 Januari 2011');
-  assert.equal(user.qr_value, '1122334455');
+  assert.match(user.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(user.qr_value.includes(user.nisn), false);
   assert.equal(validateCardUser(user).isValid, true);
   assertOnlyAllowedFields(user);
   assertNoForbiddenKeys(user);
   assertNoForbiddenValues(user);
 });
 
-test('uses safe qr_value and ignores sensitive-looking qr_value', () => {
-  const safeQrUser = normalizeIdentityRow({
+test('uses only official opaque qr_value and ignores unsafe or direct identity values', () => {
+  const officialQrUser = normalizeIdentityRow({
     nama: 'Aman',
+    ttl: 'Rokan Hulu, 1 Mei 2011',
+    nisn: '9988776655',
+    alamat: 'Jl. Lintas',
+    qr_value: 'QR_7F3K9X2P8LQ0',
+  });
+  const urlQrUser = normalizeIdentityRow({
+    nama: 'Url Lama',
     ttl: 'Rokan Hulu, 1 Mei 2011',
     nisn: '9988776655',
     alamat: 'Jl. Lintas',
@@ -145,10 +158,12 @@ test('uses safe qr_value and ignores sensitive-looking qr_value', () => {
     qr_value: 'password=abc123',
   });
 
-  assert.equal(safeQrUser.qr_value, 'https://verifikasi.example/siswa/9988776655');
-  assert.equal(isSensitiveQrValue(safeQrUser.qr_value), false);
+  assert.equal(officialQrUser.qr_value, 'schoolhub:qr:v1:QR_7F3K9X2P8LQ0');
+  assert.match(urlQrUser.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(urlQrUser.qr_value.includes(urlQrUser.nisn), false);
   assert.equal(isSensitiveQrValue('password=abc123'), true);
-  assert.equal(sensitiveQrUser.qr_value, '9988776655');
+  assert.match(sensitiveQrUser.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(sensitiveQrUser.qr_value.includes(sensitiveQrUser.nisn), false);
   assertNoForbiddenValues(sensitiveQrUser);
 });
 
@@ -206,7 +221,8 @@ test('sanitizes legacy persisted state and keeps selected IDs valid', () => {
   const sanitized = sanitizePersistedGeneratorState(legacyState);
 
   assert.equal(sanitized.users.length, 1);
-  assert.equal(sanitized.users[0].qr_value, '1112223334');
+  assert.match(sanitized.users[0].qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(sanitized.users[0].qr_value.includes('1112223334'), false);
   assert.deepEqual(sanitized.selectedUsers, ['legacy-1']);
   assertOnlyAllowedFields(sanitized.users[0]);
   assertNoForbiddenKeys(sanitized.users[0]);

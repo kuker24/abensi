@@ -25,7 +25,7 @@ const REQUIRED_COLUMNS = [
 
 const OPTIONAL_COLUMNS = [
   'ttl / tempat_tanggal_lahir',
-  'qr_value (bukan token/password/secret)',
+  'qr_value resmi (schoolhub:qr:v1:QR_...)',
   'kelas',
   'jurusan',
   'role',
@@ -37,7 +37,7 @@ const OPTIONAL_COLUMNS = [
 const SAMPLE_CSV = [
   'nama,tempat_lahir,tanggal_lahir,nisn,alamat,kelas,qr_value',
   'Ahmad Fauzan,Rokan Hulu,2010-02-14,1234567890,"Jl. Tuanku Tambusai, Pasir Pengaraian",X A,',
-  'Siti Rahma,Pekanbaru,12/08/2010,0987654321,"Desa Rambah Tengah Hulu",X B,https://verifikasi.example/siswa/0987654321',
+  'Siti Rahma,Pekanbaru,12/08/2010,0987654321,"Desa Rambah Tengah Hulu",X B,schoolhub:qr:v1:QR_7F3K9X2P8LQ0',
 ].join('\n');
 
 const ImportData = () => {
@@ -246,7 +246,7 @@ const ImportData = () => {
                       <li>Kolom tidak dikenal diabaikan: <span className="font-bold">{privacyReport.ignoredColumns.join(', ')}</span>.</li>
                     )}
                     {privacyReport.qrSensitiveRows.length > 0 && (
-                      <li>QR berisi pola sensitif pada baris {privacyReport.qrSensitiveRows.join(', ')} diabaikan dan fallback ke NISN.</li>
+                      <li>QR berisi pola sensitif pada baris {privacyReport.qrSensitiveRows.join(', ')} diabaikan dan diganti fallback opaque lokal.</li>
                     )}
                   </ul>
                   <p className="mt-2 text-xs font-semibold text-amber-800">Peringatan hanya menampilkan nama kolom/baris, bukan isi CSV.</p>
@@ -383,7 +383,7 @@ const ImportData = () => {
           <section className="min-w-0 rounded-[28px] border border-[#6fa6d8]/30 bg-[#071018] p-4 text-white shadow-[0_24px_70px_rgba(2,8,23,0.22)] sm:rounded-[32px] sm:p-6">
             <h2 className="font-black">Kolom Opsional</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Field ini boleh ditambahkan tanpa mengganggu field wajib. Kolom lain akan diabaikan. QR akan memakai qr_value jika aman, kalau tidak fallback ke NISN.
+              Field ini boleh ditambahkan tanpa mengganggu field wajib. Kolom lain akan diabaikan. QR memakai qr_value resmi jika berbentuk schoolhub:qr:v1:QR_..., kalau tidak diganti fallback opaque lokal tanpa NISN/nama/kelas.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {OPTIONAL_COLUMNS.map((column) => (
