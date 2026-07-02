@@ -8,6 +8,7 @@ export function StudentDailyCompletenessPage(props: { notify: (message: string, 
 export function PrayerAttendancePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function AnomalyPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function MasterDataPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function IdCardGeneratorAccessPage(): JSX.Element;
 export function SchedulePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function DevicesPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function AndroidApkUpdatePage(props: { notify: (message: string, type?: string) => void }): JSX.Element;

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
+import { AccessController } from './access.controller';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 
@@ -29,7 +30,7 @@ function jwtAudience() {
     })
   ],
   providers: [AuthService, JwtStrategy],
-  controllers: [AuthController],
+  controllers: [AuthController, AccessController],
   exports: [AuthService]
 })
 export class AuthModule {}
