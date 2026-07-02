@@ -17,14 +17,12 @@ import { parseCSV, validateUsers } from '../utils/csvParser';
 
 const REQUIRED_COLUMNS = [
   { field: 'nama', label: 'Nama', aliases: 'Nama, Nama Lengkap' },
-  { field: 'tempat_lahir', label: 'Tempat lahir', aliases: 'Tempat Lahir, tempat' },
-  { field: 'tanggal_lahir', label: 'Tanggal lahir', aliases: 'Tanggal Lahir, tgl_lahir' },
   { field: 'nisn', label: 'NISN', aliases: 'NISN, no_nisn' },
-  { field: 'alamat', label: 'Alamat', aliases: 'Alamat, domisili' },
 ];
 
 const OPTIONAL_COLUMNS = [
   'ttl / tempat_tanggal_lahir',
+  'alamat',
   'qr_value resmi (schoolhub:qr:v1:QR_...)',
   'kelas',
   'jurusan',
@@ -383,7 +381,7 @@ const ImportData = () => {
           <section className="min-w-0 rounded-[28px] border border-[#6fa6d8]/30 bg-[#071018] p-4 text-white shadow-[0_24px_70px_rgba(2,8,23,0.22)] sm:rounded-[32px] sm:p-6">
             <h2 className="font-black">Kolom Opsional</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Field ini boleh ditambahkan tanpa mengganggu field wajib. Kolom lain akan diabaikan. QR memakai qr_value resmi jika berbentuk schoolhub:qr:v1:QR_..., kalau tidak diganti fallback opaque lokal tanpa NISN/nama/kelas.
+              Field ini boleh ditambahkan tanpa mengganggu field wajib. TTL/alamat hanya metadata lokal dan tidak dicetak di kartu final. QR memakai qr_value resmi jika berbentuk schoolhub:qr:v1:QR_..., kalau tidak diganti fallback opaque lokal tanpa NISN/nama/kelas.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {OPTIONAL_COLUMNS.map((column) => (

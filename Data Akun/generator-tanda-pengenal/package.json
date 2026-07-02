@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test src/utils/identityCard.test.js src/utils/csvParser.test.js",
+    "test": "node --test src/utils/identityCard.test.js src/utils/csvParser.test.js src/utils/siab2Cards.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

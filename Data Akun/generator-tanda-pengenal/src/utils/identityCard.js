@@ -406,17 +406,8 @@ export const validateCardUser = (user = {}) => {
     errors.push(`${REQUIRED_CARD_FIELD_LABELS.nama} wajib diisi minimal 2 karakter`);
   }
 
-  const birthInfo = formatBirthInfo(user);
-  if (!birthInfo) {
-    errors.push(`${REQUIRED_CARD_FIELD_LABELS.tempat_tanggal_lahir} wajib diisi`);
-  }
-
   if (!cleanString(user.nisn)) {
     errors.push(`${REQUIRED_CARD_FIELD_LABELS.nisn} wajib diisi`);
-  }
-
-  if (!cleanString(user.alamat)) {
-    errors.push(`${REQUIRED_CARD_FIELD_LABELS.alamat} wajib diisi`);
   }
 
   if (!buildQrValue(user)) {

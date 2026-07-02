@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
@@ -18,10 +18,12 @@ import { useStore } from '../store/useStore';
 import { getCardTemplate } from '../utils/cardTemplates';
 import { getReadinessSummary } from '../utils/identityCard';
 import { downloadPDF, generatePDF, printPDF } from '../utils/pdfGenerator';
+import { fetchSiab2Cards } from '../utils/siab2Cards';
 import { downloadSVGCards } from '../utils/svgGenerator';
 
 const Export = () => {
-  const { users, selectedUsers, getSelectedUsers, cardSettings } = useStore();
+  const { users, selectedUsers, getSelectedUsers, cardSettings, setUsers, selectAllUsers } = useStore();
+  const [searchParams] = useSearchParams();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingSvg, setIsGeneratingSvg] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -29,6 +31,14 @@ const Export = () => {
   const [pdfBlob, setPdfBlob] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [autoLoadStatus, setAutoLoadStatus] = useState({ loading: false, count: 0, source: '' });
+  const [pendingAutoPdf, setPendingAutoPdf] = useState('');
+
+  const autoLoadEnabled = searchParams.get('autoLoad') === '1';
+  const autoPdfRequested = searchParams.get('autoPdf') === '1';
+  const autoLoadClassId = searchParams.get('classId') || '';
+  const autoLoadUserId = searchParams.get('userId') || '';
+  const autoLoadKey = `${autoLoadUserId}|${autoLoadClassId}|${autoPdfRequested ? 'pdf' : 'preview'}`;
 
   const candidates = selectedUsers.length > 0 ? getSelectedUsers() : users;
   const readiness = useMemo(() => getReadinessSummary(candidates), [candidates]);
@@ -36,24 +46,19 @@ const Export = () => {
   const firstPreviewUser = readiness.validUsers[0] || candidates[0];
   const totalPages = Math.ceil(readiness.validCount / template.pdf.cardsPerPage) || 0;
 
-  const buildFilename = () => {
+  const buildFilename = useCallback(() => {
     const date = new Date().toISOString().slice(0, 10);
     return `kartu-tanda-pengenal-siab2-${date}.pdf`;
-  };
+  }, []);
 
-  const handleGeneratePDF = async () => {
-    if (!readiness.validCount) {
-      setError('Tidak ada data valid untuk export. Lengkapi nama, tempat tanggal lahir, NISN, alamat, dan QR.');
-      return;
-    }
-
+  const generateAndDownloadPdf = useCallback(async (validUsers, pageCount) => {
     setIsGenerating(true);
-    setProgress({ current: 0, total: readiness.validCount });
+    setProgress({ current: 0, total: validUsers.length });
     setError('');
     setMessage('');
 
     try {
-      const blob = await generatePDF(readiness.validUsers, {
+      const blob = await generatePDF(validUsers, {
         settings: cardSettings,
         title: 'Kartu Digital Madrasah SIAB2',
         onProgress: (nextProgress) => setProgress(nextProgress),
@@ -61,17 +66,26 @@ const Export = () => {
 
       setPdfBlob(blob);
       downloadPDF(blob, buildFilename());
-      setMessage(`PDF berhasil dibuat: ${readiness.validCount} kartu dalam ${totalPages} halaman A4 portrait.`);
+      setMessage(`PDF berhasil dibuat: ${validUsers.length} kartu dalam ${pageCount} halaman A4 portrait.`);
     } catch (generateError) {
       setError(generateError.message || 'Gagal membuat PDF.');
     } finally {
       setIsGenerating(false);
     }
-  };
+  }, [buildFilename, cardSettings]);
+
+  const handleGeneratePDF = useCallback(async () => {
+    if (!readiness.validCount) {
+      setError('Tidak ada data valid untuk export. Lengkapi nama, NISN, dan QR.');
+      return;
+    }
+
+    await generateAndDownloadPdf(readiness.validUsers, totalPages);
+  }, [generateAndDownloadPdf, readiness.validCount, readiness.validUsers, totalPages]);
 
   const handleGenerateSVG = async () => {
     if (!readiness.validCount) {
-      setError('Tidak ada data valid untuk export SVG. Lengkapi nama, tempat tanggal lahir, NISN, alamat, dan QR.');
+      setError('Tidak ada data valid untuk export SVG. Lengkapi nama, NISN, dan QR.');
       return;
     }
 
@@ -102,6 +116,43 @@ const Export = () => {
 
     printPDF(pdfBlob);
   };
+
+  useEffect(() => {
+    if (!autoLoadEnabled) return undefined;
+    let cancelled = false;
+
+    const loadOfficialCards = async () => {
+      setAutoLoadStatus({ loading: true, count: 0, source: 'SIAB2 API' });
+      setError('');
+      setMessage('Memuat data kartu resmi dari SIAB2...');
+
+      try {
+        const { payload, users: loadedUsers } = await fetchSiab2Cards({ classId: autoLoadClassId, userId: autoLoadUserId });
+        if (cancelled) return;
+        setUsers(loadedUsers);
+        selectAllUsers();
+        setAutoLoadStatus({ loading: false, count: loadedUsers.length, source: payload.source || 'SIAB2 API' });
+        setMessage(`Data resmi SIAB2 dimuat: ${loadedUsers.length} kartu.`);
+        if (autoPdfRequested) setPendingAutoPdf(autoLoadKey);
+      } catch (loadError) {
+        if (cancelled) return;
+        setAutoLoadStatus({ loading: false, count: 0, source: 'SIAB2 API' });
+        setError(loadError.message || 'Gagal memuat data kartu dari SIAB2. Pastikan sudah login sebagai Admin TU/Operator IT.');
+      }
+    };
+
+    loadOfficialCards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [autoLoadClassId, autoLoadEnabled, autoLoadKey, autoLoadUserId, autoPdfRequested, selectAllUsers, setUsers]);
+
+  useEffect(() => {
+    if (!pendingAutoPdf || pendingAutoPdf !== autoLoadKey || !readiness.validCount || autoLoadStatus.loading || isGenerating) return;
+    setPendingAutoPdf('');
+    handleGeneratePDF();
+  }, [autoLoadKey, autoLoadStatus.loading, handleGeneratePDF, isGenerating, pendingAutoPdf, readiness.validCount]);
 
   const progressPercent = progress?.total ? Math.round((progress.current / progress.total) * 100) : 0;
   const svgProgressPercent = svgProgress?.total ? Math.round((svgProgress.current / svgProgress.total) * 100) : 0;
@@ -148,6 +199,12 @@ const Export = () => {
           {selectedUsers.length > 0 && (
             <div className="rounded-3xl border border-[#6fa6d8]/30 bg-[#eef7ff] p-4 text-sm font-semibold text-[#173a55]">
               Mode pilihan aktif: export memakai {selectedUsers.length} data terpilih.
+            </div>
+          )}
+
+          {autoLoadEnabled && (
+            <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
+              {autoLoadStatus.loading ? 'Memuat data kartu resmi dari SIAB2...' : `Sumber: ${autoLoadStatus.source || 'SIAB2 API'} · ${autoLoadStatus.count} kartu dimuat.`}
             </div>
           )}
 

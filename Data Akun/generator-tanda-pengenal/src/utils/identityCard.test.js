@@ -167,19 +167,26 @@ test('uses only official opaque qr_value and ignores unsafe or direct identity v
   assertNoForbiddenValues(sensitiveQrUser);
 });
 
-test('required field validation fails clearly when required values are missing', () => {
-  const validation = validateCardUser({
+test('required field validation only requires stable card identity fields', () => {
+  const missing = validateCardUser({
     nama: '',
     ttl: '',
     nisn: '',
     alamat: '',
   });
 
-  assert.equal(validation.isValid, false);
-  assert.ok(validation.errors.some((error) => error.includes('Nama')));
-  assert.ok(validation.errors.some((error) => error.includes('Tempat tanggal lahir')));
-  assert.ok(validation.errors.some((error) => error.includes('NISN')));
-  assert.ok(validation.errors.some((error) => error.includes('Alamat')));
+  assert.equal(missing.isValid, false);
+  assert.ok(missing.errors.some((error) => error.includes('Nama')));
+  assert.ok(missing.errors.some((error) => error.includes('NISN')));
+  assert.ok(!missing.errors.some((error) => error.includes('Tempat tanggal lahir')));
+  assert.ok(!missing.errors.some((error) => error.includes('Alamat')));
+
+  const stableIdentityOnly = validateCardUser({
+    nama: 'Aisyah Putri',
+    nisn: '1234567890',
+    qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',
+  });
+  assert.equal(stableIdentityOnly.isValid, true);
 });
 
 test('documents allowed and sensitive field detection rules', () => {

@@ -94,15 +94,15 @@ test('ignores sensitive QR values and warns without printing QR contents', async
   assertNoForbiddenValues(result);
 });
 
-test('keeps required-field validation failures visible', async () => {
+test('keeps stable-identity validation failures visible', async () => {
   const csv = `nama,ttl,nisn,alamat\n,,,\nSiswa Tanpa NISN,"Rambah, 10 Januari 2011",,"Jl. Pendidikan"\nSiswa Tanpa Alamat,"Rambah, 10 Januari 2011",1234567890,\n`;
 
   const { users } = await parseCSV(csv);
   const report = validateUsers(users);
 
   assert.equal(users.length, 2);
-  assert.equal(report.validCount, 0);
-  assert.equal(report.invalidCount, 2);
+  assert.equal(report.validCount, 1);
+  assert.equal(report.invalidCount, 1);
   assert.ok(report.invalidUsers[0].errors.some((error) => error.includes('NISN')));
-  assert.ok(report.invalidUsers[1].errors.some((error) => error.includes('Alamat')));
+  assert.ok(!report.validUsers[0].alamat);
 });

@@ -37,13 +37,11 @@ export const DEFAULT_CARD_SETTINGS = {
   showCutMarks: true,
 };
 
-export const REQUIRED_CARD_FIELDS = ['nama', 'tempat_tanggal_lahir', 'nisn', 'alamat', 'qr'];
+export const REQUIRED_CARD_FIELDS = ['nama', 'nisn', 'qr'];
 
 export const REQUIRED_CARD_FIELD_LABELS = {
   nama: 'Nama',
-  tempat_tanggal_lahir: 'Tempat tanggal lahir',
   nisn: 'NISN',
-  alamat: 'Alamat',
   qr: 'QR',
 };
 
