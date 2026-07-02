@@ -332,7 +332,10 @@ export class QrCredentialsService {
 
   async findActiveByQrCode(qrCode: string) {
     const codeHash = qrCodeHash(qrCode);
-    const credential = await this.prisma.qrCredential.findUnique({ where: { codeHash }, include: { user: { include: { enrollments: { include: { schoolClass: true }, take: 1 } } } } }) as any;
+    const credential = await this.prisma.qrCredential.findUnique({
+      where: { codeHash },
+      include: { user: { select: { id: true, username: true, fullName: true, role: true, active: true, cardStatus: true } } }
+    }) as any;
     if (!credential) throw new NotFoundException('QR credential tidak ditemukan.');
     if (credential.status !== QrCredentialStatus.ACTIVE) throw new ForbiddenException('QR credential tidak aktif.');
     if (credential.expiresAt && credential.expiresAt <= new Date()) throw new ForbiddenException('QR credential sudah kedaluwarsa.');

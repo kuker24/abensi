@@ -561,7 +561,7 @@ export class AttendanceGateService {
   }
 
   private scanUserPayload(user: { id: string; fullName: string; username: string; role: Role; enrollments?: Array<{ schoolClass?: { code?: string; name?: string } | null }> }) {
-    const schoolClass = user.enrollments?.[0]?.schoolClass;
+    const schoolClass = user.role === Role.SISWA ? null : user.enrollments?.[0]?.schoolClass;
     return { id: user.id, fullName: user.fullName, username: user.username, role: user.role, className: schoolClass?.name || schoolClass?.code || null };
   }
 

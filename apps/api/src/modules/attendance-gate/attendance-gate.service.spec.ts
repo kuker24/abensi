@@ -273,8 +273,8 @@ describe('AttendanceGateService adaptive QR scan', () => {
     expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ qrCredentialId: 'qr-1', scanMode: AndroidReaderMode.GERBANG, signatureVerified: true }) }));
   });
 
-  it('menerima siswa scan Mode Gerbang Android sebagai datang', async () => {
-    const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, role: Role.SISWA, enrollments: [] };
+  it('menerima siswa scan Mode Gerbang Android sebagai datang tanpa membutuhkan kelas', async () => {
+    const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, role: Role.SISWA, enrollments: [{ schoolClass: { code: 'X-A', name: 'Kelas X A' } }] };
     const prisma = makePrisma(user);
     const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
     const signatures = new DeviceSignatureService(prisma, redis);
@@ -286,7 +286,7 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
     const result = await service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-gate-student-in', '/api/v1/attendance/qr-reader-scan'));
 
-    expect(result).toMatchObject({ kind: 'GATE', ok: true, action: 'Datang', message: 'Datang tercatat.' });
+    expect(result).toMatchObject({ kind: 'GATE', ok: true, action: 'Datang', message: 'Datang tercatat.', user: { className: null } });
     expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 'siswa-1', direction: GateDirection.IN, scanMode: AndroidReaderMode.GERBANG }) }));
   });
 
@@ -371,8 +371,8 @@ describe('AttendanceGateService adaptive QR scan', () => {
     const users = {
       staff: { id: 'staff-1', username: 'staff1', fullName: 'Staf Satu', active: true, role: Role.ADMIN_TU, enrollments: [] },
       guru: { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role: Role.GURU_MAPEL, enrollments: [] },
-      siswa1: { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, role: Role.SISWA, enrollments: [] },
-      siswa2: { id: 'siswa-2', username: 'siswa2', fullName: 'Siswa Dua', active: true, role: Role.SISWA, enrollments: [] }
+      siswa1: { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, role: Role.SISWA, enrollments: [{ schoolClass: { code: 'X-A', name: 'Kelas X A' } }] },
+      siswa2: { id: 'siswa-2', username: 'siswa2', fullName: 'Siswa Dua', active: true, role: Role.SISWA, enrollments: [{ schoolClass: { code: 'XI-B', name: 'Kelas XI B' } }] }
     };
     const prisma = makePrisma(users.siswa1);
     prisma.__policy.dhuhaStartTime = '00:00';
@@ -411,8 +411,8 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
     expect(gate1).toMatchObject({ kind: 'GATE', ok: true, action: 'Datang' });
     expect(gate2).toMatchObject({ kind: 'GATE', ok: true, action: 'Datang' });
-    expect(prayer1).toMatchObject({ kind: 'PRAYER', ok: true });
-    expect(prayer2).toMatchObject({ kind: 'PRAYER', ok: true });
+    expect(prayer1).toMatchObject({ kind: 'PRAYER', ok: true, user: { className: null } });
+    expect(prayer2).toMatchObject({ kind: 'PRAYER', ok: true, user: { className: null } });
     expect(prisma.__tx.gateLog.create).toHaveBeenCalledTimes(2);
     expect(prisma.__tx.prayerAttendanceLog.create).toHaveBeenCalledTimes(2);
     expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ readerId: 'reader-1', scanMode: AndroidReaderMode.GERBANG }) }));
