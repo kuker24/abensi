@@ -50,7 +50,7 @@ const GenerateCards = () => {
 
   return (
     <Layout
-      title="Generate Kartu Tanda Pengenal"
+      title="Generate Kartu Digital Madrasah"
       subtitle="Preview kartu resmi portrait SIAB2 sebelum export PDF print-ready"
     >
       <div className="space-y-6">
