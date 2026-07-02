@@ -35,7 +35,8 @@ Kolom `ttl`, `tempat_lahir`, `tanggal_lahir`, dan `alamat` masih boleh diimport 
 - Data yang dipersist hanya field yang diizinkan untuk kebutuhan kartu; raw row CSV dan kolom sensitif tidak disimpan.
 - Jangan gunakan perangkat publik/bersama untuk memproses data pribadi siswa.
 - Gunakan tombol **Hapus Data Lokal** setelah selesai mencetak atau sebelum menyerahkan perangkat ke orang lain.
-- Jika disajikan di route production `/id-card-generator/`, route static ini masih bersifat public. Gunakan hanya sebagai operator-only SOP pada perangkat tepercaya sampai auth guard, IP allowlist, atau VPN diterapkan.
+- Akses operasional production diarahkan dari **Data Sekolah → Akun & Data Sekolah → Generator Kartu Tanda Pengenal** melalui `/admin/master-data/id-card-generator/`.
+- Route legacy `/id-card-generator/` bukan akses utama lagi dan harus dilindungi server-side oleh Nginx `auth_request` sebelum menyajikan bundle generator.
 
 ## CSV Safety Rules
 
@@ -89,7 +90,7 @@ Aturan keamanan CSV:
 5. Preview kartu dan pastikan nama, NISN, label SISWA, dan QR benar.
 6. Export PDF dan cek hasil A4 portrait 3x3 sebelum dicetak massal.
 7. Setelah selesai, klik **Hapus Data Lokal**.
-8. Jika route `/id-card-generator/` masih public, gunakan hanya dari perangkat operator tepercaya sampai auth guard/IP allowlist/VPN diterapkan.
+8. Buka generator dari `/admin/master-data/id-card-generator/`; route legacy `/id-card-generator/` hanya boleh tetap hidup jika sudah dilindungi server-side.
 9. Jangan membagikan PDF mentah ke kanal publik.
 
 ## Menjalankan Project
@@ -128,6 +129,6 @@ Rafi Maulana,"Pekanbaru 12 Agustus 2010",3213213213,"Desa Rambah Hilir"
 
 ## Known Limitations
 
-- Route static `/id-card-generator/` belum menjadi server-side protected route; endpoint API resmi tetap membutuhkan sesi SIAB2.
+- Protection production untuk route generator bergantung pada konfigurasi reverse proxy `auth_request`; jalankan `nginx -t` dan smoke akses role sebelum deploy.
 - Vite build dapat memberi warning large chunks karena dependency PDF/export.
 - Dependency audit lokal masih perlu follow-up jika alat ini akan dipakai luas dan rutin.

@@ -76,6 +76,7 @@ const HistoryPage = lazyPage(loadAdminPages, 'HistoryPage');
 const ItDashboardPage = lazyPage(loadAdminPages, 'ItDashboardPage');
 const LiveMonitorPage = lazyPage(loadAdminPages, 'LiveMonitorPage');
 const MasterDataPage = lazyPage(loadAdminPages, 'MasterDataPage');
+const IdCardGeneratorAccessPage = lazyPage(loadAdminPages, 'IdCardGeneratorAccessPage');
 const NotificationsPage = lazyPage(loadAdminPages, 'NotificationsPage');
 const PicketBookPage = lazyPage(loadAdminPages, 'PicketBookPage');
 const PicketDashboardPage = lazyPage(loadAdminPages, 'PicketDashboardPage');
@@ -171,6 +172,7 @@ export const ROUTES = [
   { path: '/admin/anomaly', area: 'Admin/TU', title: 'Masalah yang Perlu Dicek', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <AnomalyPage notify={notify} /> },
   { path: '/admin/picket', area: 'Admin/TU', title: 'Catatan Piket', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: ({ notify }) => <PicketBookPage notify={notify} /> },
   { path: '/admin/master-data', area: 'Admin/TU', title: 'Akun & Data Sekolah', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['users.read', 'academic.read'], render: ({ notify }) => <MasterDataPage notify={notify} /> },
+  { path: '/admin/master-data/id-card-generator', area: 'Admin/TU', title: 'Generator Kartu Tanda Pengenal', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: () => <IdCardGeneratorAccessPage /> },
   { path: '/admin/schedule', area: 'Admin/TU', title: 'Jadwal Kelas', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <SchedulePage notify={notify} /> },
   { path: '/admin/devices', area: 'Admin/TU', title: 'HP Scanner & Kartu', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: ({ notify }) => <DevicesPage notify={notify} /> },
   { path: '/admin/android-apk-update', area: 'Admin/TU', title: 'APK Update Center', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.manage'], render: ({ notify }) => <AndroidApkUpdatePage notify={notify} /> },

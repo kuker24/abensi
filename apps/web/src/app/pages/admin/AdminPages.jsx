@@ -33,6 +33,22 @@ function downloadCsvFile(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
+const ID_CARD_GENERATOR_INTERNAL_BASE = '/admin/master-data/id-card-generator/';
+
+function idCardGeneratorUrl(hashPath = '/', params = {}) {
+  const search = new URLSearchParams(params);
+  const query = search.toString();
+  return `${ID_CARD_GENERATOR_INTERNAL_BASE}#${hashPath}${query ? `?${query}` : ''}`;
+}
+
+function openIdCardGenerator(hashPath = '/export', params = {}) {
+  window.location.assign(idCardGeneratorUrl(hashPath, params));
+}
+
+function openIdCardGeneratorTab(hashPath = '/export', params = {}) {
+  window.open(idCardGeneratorUrl(hashPath, params), '_blank', 'noopener,noreferrer');
+}
+
 function sanitizeQrResult(value) {
   if (Array.isArray(value)) return value.map(sanitizeQrResult);
   if (!value || typeof value !== 'object') return value;
@@ -332,7 +348,9 @@ export function MasterDataPage({ notify }) {
     url.searchParams.set('tab', nextTab);
     window.history.pushState({}, '', `${url.pathname}?${url.searchParams.toString()}`);
   }
-  return <div className="content master-data-page"><PageHead eyebrow="DATA SEKOLAH" title="Akun & Data Sekolah" sub="Kelola siswa, akun, kelas, mapel, tahun ajaran, semester, dan ruang tanpa membuka ID internal." /><TabBar value={tab} onChange={selectTab} groups={MASTER_DATA_TAB_GROUPS} /><ContextualMasterDataHelp tab={tab} />
+  const user = readStoredUser();
+  const canOpenGenerator = ['ADMIN_TU', 'DEVELOPER', 'OPERATOR_IT'].includes(user?.role);
+  return <div className="content master-data-page"><PageHead eyebrow="DATA SEKOLAH" title="Akun & Data Sekolah" sub="Kelola siswa, akun, kelas, mapel, tahun ajaran, semester, dan ruang tanpa membuka ID internal." />{canOpenGenerator && <IdCardGeneratorEntryCard />}<TabBar value={tab} onChange={selectTab} groups={MASTER_DATA_TAB_GROUPS} /><ContextualMasterDataHelp tab={tab} />
     <section id={`master-data-panel-${tab}`} role="tabpanel" aria-labelledby={`master-data-tab-${tab}`} className="master-data-panel">
       {tab === 'student-import' && <StudentImportPanel notify={notify} />}
       {tab === 'users' && <UsersPanel notify={notify} />}
@@ -347,6 +365,17 @@ export function MasterDataPage({ notify }) {
       {tab === 'import' && <ImportPanel notify={notify} />}
     </section>
   </div>;
+}
+
+function IdCardGeneratorEntryCard() {
+  return <Card title="Generator Kartu Tanda Pengenal" sub="Buat dan cetak kartu tanda pengenal siswa/operator dari data sekolah." actions={<Pill tone="ok">Internal</Pill>}><div className="user-preset-grid master-data-account-presets"><QuickActionCard title="Buka Generator" desc="Akses dilindungi server-side. Gunakan perangkat tepercaya dan tekan Hapus Data Lokal setelah selesai." icon={<CreditCard size={18} />} actionLabel="Buka Generator" onClick={() => openIdCardGenerator('/export')} tone="ok" /><QuickActionCard title="Cetak dari data akun" desc="Gunakan tombol Kartu di Daftar Pengguna untuk membuka generator dengan data resmi satu akun." icon={<ShieldCheck size={18} />} actionLabel="Lihat Daftar Pengguna" onClick={() => { const url = new URL(window.location.href); url.searchParams.set('tab', 'users'); window.history.pushState({}, '', `${url.pathname}?${url.searchParams.toString()}`); window.dispatchEvent(new PopStateEvent('popstate')); }} /></div></Card>;
+}
+
+export function IdCardGeneratorAccessPage() {
+  useEffect(() => {
+    window.location.replace(idCardGeneratorUrl('/export'));
+  }, []);
+  return <div className="content"><Card title="Membuka Generator Kartu Tanda Pengenal" sub="Akses generator dilindungi server-side untuk operator internal."><LoadingState label="Mengalihkan ke generator…" /></Card></div>;
 }
 
 function ContextualMasterDataHelp({ tab }) {
@@ -459,7 +488,7 @@ function UsersPanel({ notify }) {
       await apiFetch(`/qr-credentials/users/${row.id}/generate`, { method: 'POST', body: JSON.stringify({ label: 'QR SIAB2' }) });
     }
     const params = new URLSearchParams({ autoLoad: '1', userId: row.id, autoPdf: '1' });
-    window.open(`/id-card-generator/#/export?${params.toString()}`, '_blank', 'noopener,noreferrer');
+    openIdCardGeneratorTab('/export', Object.fromEntries(params.entries()));
     notify(`Generator kartu ${row.fullName} dibuka. QR lama tidak diganti jika sudah ada.`);
   }
   const userEmpty = allRows.length ? { title: 'Tidak ada pengguna yang sesuai dengan filter.', sub: 'Ubah status, peran, atau kata kunci pencarian.' } : { title: 'Belum ada pengguna tambahan.', sub: 'Gunakan formulir di sebelah kiri untuk membuat akun guru, siswa, piket, atau operator.' };
@@ -644,7 +673,7 @@ function QrCredentialPanel({ notify }) {
   const generatorExportUrl = (extra = {}) => {
     const params = new URLSearchParams({ autoLoad: '1', ...extra });
     if (form.classId && !params.has('classId')) params.set('classId', form.classId);
-    return `/id-card-generator/#/export?${params.toString()}`;
+    return idCardGeneratorUrl('/export', Object.fromEntries(params.entries()));
   };
   const refreshStatus = () => {
     readiness.refresh();
