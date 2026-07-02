@@ -12,7 +12,7 @@ import {
 /**
  * Parse CSV file and return structured identity-card data plus privacy warnings.
  * Required operational fields: nama, tempat_lahir, tanggal_lahir, nisn, alamat.
- * TTL aliases are supported and qr_value is optional because it can fall back to NISN.
+ * TTL aliases are supported and qr_value is optional; missing/unsafe values use an opaque local fallback, never raw NISN.
  * Sensitive and unknown columns are reported by name only and never copied to users.
  * @param {File} file - CSV file to parse
  * @returns {Promise<{ users: Array, privacyReport: Object }>} - Parsed safe user data

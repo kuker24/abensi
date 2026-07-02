@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { Dashboard, ImportData, Users, GenerateCards, Export } from './pages';
 
 function App() {

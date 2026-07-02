@@ -1,40 +1,8 @@
-import { BadgeCheck, CalendarDays, MapPin, School, ShieldCheck, User } from 'lucide-react';
+import { BadgeCheck } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import schoolLogo from '../../assets/logoman1.jpeg';
 import { DEFAULT_CARD_SETTINGS, getCardTemplate } from '../../utils/cardTemplates';
-import { buildQrValue, formatBirthInfo, getInitials, validateCardUser } from '../../utils/identityCard';
-
-const FieldBlock = ({ label, value, children }) => (
-  <div className="rounded-xl border border-slate-200/90 bg-white/92 px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-    <p className="text-[7px] font-black uppercase tracking-[0.2em] text-slate-500">{label}</p>
-    <div className="mt-1 text-[10.5px] font-semibold leading-snug text-slate-950">
-      {children || value || '-'}
-    </div>
-  </div>
-);
-
-const PhotoBlock = ({ user }) => {
-  const photoUrl = user.foto || user.photo || user.photo_url || user.foto_url;
-
-  return (
-    <div className="relative mx-auto h-[74px] w-[64px] overflow-hidden rounded-[16px] border border-white/40 bg-slate-100 shadow-[0_18px_45px_rgba(2,8,23,0.22)] ring-4 ring-white/20">
-      {photoUrl ? (
-        <img
-          src={photoUrl}
-          alt={`Foto ${user.nama || 'pemegang kartu'}`}
-          className="h-full w-full object-cover"
-          crossOrigin="anonymous"
-        />
-      ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-slate-100 via-white to-blue-100 text-slate-400">
-          <User className="h-7 w-7" />
-          <span className="mt-1 text-[11px] font-black tracking-[0.12em] text-slate-500">
-            {getInitials(user.nama)}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-};
+import { buildQrValue, getCardRoleLabel, validateCardUser } from '../../utils/identityCard';
 
 const IDCard = ({
   user,
@@ -64,10 +32,11 @@ const IDCard = ({
   const template = getCardTemplate(resolvedSettings.cardSkin);
   const { renderWidthPx, renderHeightPx } = template.dimensions;
   const qrValue = buildQrValue(user);
-  const birthInfo = formatBirthInfo(user);
   const validation = validateCardUser(user);
-  const cardNumber = user.nomor_kartu || user.nisn || 'BELUM ADA';
-  const activeStatus = user.status || resolvedSettings.statusLabel;
+  const roleLabel = getCardRoleLabel(user);
+  const issuerLabelText = resolvedSettings.issuerLabel?.toLowerCase().includes('tanda pengenal')
+    ? 'Kartu Digital Madrasah'
+    : resolvedSettings.issuerLabel || 'Kartu Digital Madrasah';
 
   const cardStyle = {
     width: `${renderWidthPx}px`,
@@ -84,120 +53,80 @@ const IDCard = ({
       data-card-skin={template.id}
       aria-label={`Kartu tanda pengenal ${user.nama || ''}`.trim()}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(111,166,216,0.34),transparent_34%),linear-gradient(180deg,#f8fbff_0%,#edf4f8_48%,#e9f0f4_100%)]" />
-      <div className="absolute -right-20 top-20 h-44 w-44 rounded-full border border-white/60 bg-white/20" />
-      <div className="absolute -bottom-28 -left-12 h-52 w-52 rounded-full bg-[#0b1720]/10 blur-2xl" />
-
-      <header className="relative h-[112px] overflow-hidden bg-[#061017] px-5 pt-4 text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_8%,rgba(111,166,216,0.36),transparent_34%),linear-gradient(135deg,#05080b_0%,#0a151d_52%,#142637_100%)]" />
-        <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-[#8fc4f3] via-[#5c8fb9] to-[#d7e9f8]" />
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#9dccf1] to-transparent opacity-80" />
-
-        <div className="relative flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/15 bg-white/10 shadow-[0_0_24px_rgba(111,166,216,0.28)]">
-              <School className="h-5 w-5 text-[#b9dcf7]" />
+      <header className="relative h-[108px] bg-white px-5 py-4 text-[#071018]">
+        <div className="flex h-full flex-col items-center justify-center text-center">
+          <div className="flex items-center justify-center gap-3">
+            <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-[18px] border border-[#071018]/10 bg-white shadow-[0_10px_26px_rgba(7,16,24,0.12)]">
+              <img
+                src={schoolLogo}
+                alt="Logo MAN 1 Rokan Hulu"
+                className="h-full w-full object-contain p-1"
+                crossOrigin="anonymous"
+              />
             </div>
-            <div>
-              <p className="text-[15px] font-black leading-none tracking-[0.22em] text-white">
+            <div className="text-left">
+              <p className="text-[20px] font-black uppercase leading-none tracking-[0.18em] text-[#071018]">
                 {resolvedSettings.brandName}
               </p>
-              <p className="mt-1 text-[7px] font-bold uppercase tracking-[0.24em] text-[#b9c7d2]">
+              <p className="mt-1 text-[8px] font-black uppercase tracking-[0.22em] text-[#557088]">
                 {resolvedSettings.schoolName}
               </p>
             </div>
           </div>
-
-          <div className="rounded-full border border-[#9dccf1]/30 bg-[#9dccf1]/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[0.18em] text-[#c7e4fb]">
-            {activeStatus}
-          </div>
-        </div>
-
-        <div className="relative mt-4 flex items-end justify-between gap-3">
-          <div>
-            <p className="text-[8px] font-black uppercase tracking-[0.22em] text-[#8fb9d8]">
-              {resolvedSettings.issuerLabel}
-            </p>
-            <p className="mt-1 max-w-[178px] text-[8px] font-semibold leading-snug text-white/72">
-              {resolvedSettings.tagline}
-            </p>
-          </div>
-          <PhotoBlock user={user} />
+          <p className="mt-3 text-[13px] font-black uppercase tracking-[0.08em] text-[#0d3047]">
+            {issuerLabelText}
+          </p>
         </div>
       </header>
 
-      <main className="relative px-4 pb-3 pt-2.5">
-        <section className="rounded-[20px] border border-white/70 bg-white/78 p-2.5 shadow-[0_18px_45px_rgba(15,23,42,0.10)] backdrop-blur">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[7px] font-black uppercase tracking-[0.24em] text-[#496a83]">Nama Pemegang</p>
-            <span className="rounded-full bg-[#0d2130] px-2 py-1 text-[7px] font-black uppercase tracking-[0.16em] text-[#c6e1f7]">
-              TA {user.tahun_ajaran || resolvedSettings.academicYear}
-            </span>
-          </div>
-          <h2 className="mt-1.5 min-h-[34px] text-[15.5px] font-black uppercase leading-[1.08] tracking-[-0.02em] text-slate-950">
-            {user.nama || 'Nama belum diisi'}
-          </h2>
-
-          <div className="mt-2 grid gap-1.5">
-            <FieldBlock label="Tempat tanggal lahir" value={birthInfo}>
-              <span className="inline-flex items-start gap-1.5">
-                <CalendarDays className="mt-0.5 h-3 w-3 flex-shrink-0 text-[#496a83]" />
-                <span>{birthInfo || '-'}</span>
-              </span>
-            </FieldBlock>
-
-            <FieldBlock label="NISN" value={user.nisn}>
-              <span className="font-mono text-[12px] font-black tracking-[0.08em] text-[#0b2233]">
-                {user.nisn || '-'}
-              </span>
-            </FieldBlock>
-
-            <FieldBlock label="Alamat">
-              <span className="flex items-start gap-1.5">
-                <MapPin className="mt-0.5 h-3 w-3 flex-shrink-0 text-[#496a83]" />
-                <span className="max-h-[43px] overflow-hidden leading-snug">{user.alamat || '-'}</span>
-              </span>
-            </FieldBlock>
-          </div>
-        </section>
-
-        <section className="mt-2 grid grid-cols-[80px_1fr] gap-2.5 rounded-[20px] border border-slate-900/10 bg-[#071018] p-2.5 text-white shadow-[0_16px_38px_rgba(2,8,23,0.24)]">
-          <div className="rounded-2xl bg-white p-2 shadow-inner">
+      <main className="relative flex h-[406px] flex-col">
+        <section className="relative flex h-[210px] items-center justify-center overflow-hidden bg-[#071018] px-5">
+          <div className="absolute inset-y-0 left-0 w-[28%] bg-[#0d3047]" />
+          <div className="absolute inset-y-0 right-0 w-[28%] bg-[#0d3047]" />
+          <div className="absolute inset-y-0 left-[28%] right-[28%] bg-[#071018]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_26%,rgba(143,196,243,0.18),transparent_34%),linear-gradient(180deg,rgba(7,16,24,0.02),rgba(7,16,24,0.28))]" />
+          <div className="relative grid h-[164px] w-[164px] place-items-center rounded-[28px] bg-white shadow-[0_18px_44px_rgba(7,16,24,0.34)] ring-4 ring-white/20">
             <QRCodeSVG
               value={qrValue}
-              size={64}
+              size={144}
               level="M"
               bgColor="#ffffff"
               fgColor="#071018"
-              marginSize={1}
+              marginSize={2}
               aria-label={`QR ${user.nama || user.nisn || 'kartu'}`}
             />
           </div>
-          <div className="flex min-w-0 flex-col justify-between py-0.5">
-            <div>
-              <div className="flex items-center gap-1.5 text-[#a8cfee]">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                <p className="text-[7px] font-black uppercase tracking-[0.2em]">Verifikasi Identitas</p>
-              </div>
-              <p className="mt-1 text-[8.5px] font-semibold leading-snug text-white/72">
-                Pindai QR untuk membaca identitas resmi pemegang kartu.
-              </p>
-            </div>
-            <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1">
-              <p className="text-[6.5px] font-black uppercase tracking-[0.18em] text-white/42">Nomor Kartu</p>
-              <p className="truncate font-mono text-[9px] font-black tracking-[0.08em] text-white">
-                {cardNumber}
-              </p>
-            </div>
+        </section>
+
+        <section className="relative flex h-[96px] flex-col items-center justify-center overflow-hidden px-5 text-center text-white shadow-[0_-1px_0_rgba(255,255,255,0.42)_inset,0_1px_0_rgba(255,255,255,0.42)_inset]">
+          <div className="absolute inset-0 bg-[#0d3047]" style={{ backgroundColor: '#0d3047' }} />
+          <div className="relative z-10 flex flex-col items-center justify-center">
+            <h2 className="max-w-[280px] text-[18px] font-black uppercase leading-[1.05] tracking-[0.04em]">
+              {user.nama || 'Nama belum diisi'}
+            </h2>
+            <p className="mt-2 font-mono text-[13px] font-black leading-none tracking-[0.12em] text-white/95">
+              {user.nisn || '-'}
+            </p>
+            <p className="mt-2 max-w-[260px] text-[10px] font-black uppercase leading-none tracking-[0.12em] text-white/88">
+              {roleLabel}
+            </p>
           </div>
         </section>
 
-        {!validation.isValid && (
-          <div className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-2 py-1.5 text-[7.5px] font-bold leading-snug text-amber-900">
-            <BadgeCheck className="mt-0.5 h-3 w-3 flex-shrink-0" />
-            <span>Data belum lengkap: {validation.errors.join(', ')}</span>
-          </div>
-        )}
+        <footer className="flex h-[100px] flex-col items-center justify-center gap-2 bg-white px-5 text-center text-[#071018]">
+          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#557088]">
+            Kartu Digital Madrasah
+          </p>
+          <p className="text-[12px] font-black uppercase tracking-[0.04em] text-[#071018]">
+            MAN 1 Rokan Hulu
+          </p>
+          {!validation.isValid && (
+            <div className="mt-1 flex max-w-[260px] items-start gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-2 py-1.5 text-[7.5px] font-bold leading-snug text-amber-900">
+              <BadgeCheck className="mt-0.5 h-3 w-3 flex-shrink-0" />
+              <span>Data belum lengkap: {validation.errors.join(', ')}</span>
+            </div>
+          )}
+        </footer>
       </main>
 
     </article>

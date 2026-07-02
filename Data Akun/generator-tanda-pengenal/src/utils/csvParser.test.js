@@ -15,6 +15,7 @@ const FORBIDDEN_KEYS = [
 ];
 
 const FORBIDDEN_VALUES = ['pass123', 'abc123', 'secret123', 'rahasia', 'password=abc123'];
+const LOCAL_OPAQUE_QR_PATTERN = /^schoolhub:qr:v1:QR_LOCAL_[A-Z0-9]{14}$/;
 
 const assertNoForbiddenKeys = (user) => {
   FORBIDDEN_KEYS.forEach((field) => {
@@ -29,7 +30,7 @@ const assertNoForbiddenValues = (value) => {
   });
 };
 
-test('parses normal CSV as valid card data with QR fallback to NISN', async () => {
+test('parses normal CSV as valid card data with opaque QR fallback', async () => {
   const csv = `nama,tempat_lahir,tanggal_lahir,nisn,alamat,kelas,qr_value\nAhmad Fauzan,Rokan Hulu,2010-02-14,1234567890,"Jl. Tuanku Tambusai",X A,\n`;
 
   const { users, privacyReport } = await parseCSV(csv);
@@ -38,7 +39,8 @@ test('parses normal CSV as valid card data with QR fallback to NISN', async () =
   assert.equal(users.length, 1);
   assert.equal(users[0].nama, 'Ahmad Fauzan');
   assert.equal(formatBirthInfo(users[0]), 'Rokan Hulu, 14 Februari 2010');
-  assert.equal(users[0].qr_value, '1234567890');
+  assert.match(users[0].qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(users[0].qr_value.includes(users[0].nisn), false);
   assert.equal(report.validCount, 1);
   assert.equal(report.invalidCount, 0);
   assert.deepEqual(privacyReport.sensitiveColumns, []);
@@ -54,7 +56,8 @@ test('parses CSV with sensitive columns while warning by column name only', asyn
 
   assert.equal(validateCardUser(user).isValid, true);
   assert.equal(user.nama, 'Siti Rahma');
-  assert.equal(user.qr_value, '0987654321');
+  assert.match(user.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(user.qr_value.includes(user.nisn), false);
   assert.deepEqual(result.privacyReport.sensitiveColumns, ['username', 'password', 'token', 'secret']);
   assert.deepEqual(result.privacyReport.ignoredColumns, []);
   assertNoForbiddenKeys(user);
@@ -70,7 +73,8 @@ test('parses TTL without comma and strips password column', async () => {
   assert.equal(validateCardUser(user).isValid, true);
   assert.equal(user.ttl, 'Rambah 10 Januari 2011');
   assert.equal(formatBirthInfo(user), 'Rambah 10 Januari 2011');
-  assert.equal(user.qr_value, '1122334455');
+  assert.match(user.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(user.qr_value.includes(user.nisn), false);
   assert.deepEqual(result.privacyReport.sensitiveColumns, ['password']);
   assertNoForbiddenKeys(user);
   assertNoForbiddenValues(result);
@@ -83,21 +87,22 @@ test('ignores sensitive QR values and warns without printing QR contents', async
   const [user] = result.users;
 
   assert.equal(validateCardUser(user).isValid, true);
-  assert.equal(user.qr_value, '9988776655');
+  assert.match(user.qr_value, LOCAL_OPAQUE_QR_PATTERN);
+  assert.equal(user.qr_value.includes(user.nisn), false);
   assert.deepEqual(result.privacyReport.qrSensitiveRows, [1]);
   assert.deepEqual(result.privacyReport.sensitiveColumns, []);
   assertNoForbiddenValues(result);
 });
 
-test('keeps required-field validation failures visible', async () => {
+test('keeps stable-identity validation failures visible', async () => {
   const csv = `nama,ttl,nisn,alamat\n,,,\nSiswa Tanpa NISN,"Rambah, 10 Januari 2011",,"Jl. Pendidikan"\nSiswa Tanpa Alamat,"Rambah, 10 Januari 2011",1234567890,\n`;
 
   const { users } = await parseCSV(csv);
   const report = validateUsers(users);
 
   assert.equal(users.length, 2);
-  assert.equal(report.validCount, 0);
-  assert.equal(report.invalidCount, 2);
+  assert.equal(report.validCount, 1);
+  assert.equal(report.invalidCount, 1);
   assert.ok(report.invalidUsers[0].errors.some((error) => error.includes('NISN')));
-  assert.ok(report.invalidUsers[1].errors.some((error) => error.includes('Alamat')));
+  assert.ok(!report.validUsers[0].alamat);
 });

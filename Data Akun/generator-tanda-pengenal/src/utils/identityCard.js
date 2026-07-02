@@ -94,6 +94,35 @@ export const normalizeHeaderKey = (key = '') => {
 };
 
 const cleanString = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
+const SCHOOLHUB_QR_PREFIX = 'schoolhub:qr:v1:';
+const SCHOOLHUB_QR_PATTERN = /^schoolhub:qr:v1:QR_[A-Z0-9_-]{10,64}$/i;
+const OPAQUE_QR_PATTERN = /^QR_[A-Z0-9_-]{10,64}$/i;
+
+const opaqueDigest = (value) => {
+  const input = cleanString(value) || 'SIAB2';
+  let first = 0x811c9dc5;
+  let second = 0x45d9f3b;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const code = input.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193) >>> 0;
+    second = Math.imul(second ^ (code + index), 0x85ebca6b) >>> 0;
+  }
+
+  return `${first.toString(36)}${second.toString(36)}`.toUpperCase().padEnd(14, '0').slice(0, 14);
+};
+
+export const normalizeSchoolHubQrValue = (value = '') => {
+  const qr = cleanString(value);
+  if (SCHOOLHUB_QR_PATTERN.test(qr)) return `${SCHOOLHUB_QR_PREFIX}${qr.slice(SCHOOLHUB_QR_PREFIX.length).toUpperCase()}`;
+  if (OPAQUE_QR_PATTERN.test(qr)) return `${SCHOOLHUB_QR_PREFIX}${qr.toUpperCase()}`;
+  return '';
+};
+
+const buildLocalOpaqueQrValue = (user = {}) => {
+  const seed = [user.id, user.nisn, user.nama, formatBirthInfo(user)].map(cleanString).filter(Boolean).join('|');
+  return `${SCHOOLHUB_QR_PREFIX}QR_LOCAL_${opaqueDigest(seed)}`;
+};
 
 export const isSensitiveFieldName = (field = '') => {
   const key = normalizeHeaderKey(field);
@@ -187,11 +216,28 @@ export const cleanName = (name) => {
 const normalizeRole = (role) => {
   const roleLower = cleanString(role).toLowerCase();
 
-  if (['teacher', 'guru', 'pengajar', 'pegawai'].includes(roleLower)) {
+  if (['teacher', 'guru', 'guru_mapel', 'guru piket', 'guru_piket', 'pengajar', 'pegawai'].includes(roleLower)) {
     return 'teacher';
   }
 
   return 'student';
+};
+
+export const isStudentCardUser = (user = {}) => {
+  const role = cleanString(user.role || user.displayRole || user.role_label).toLowerCase();
+  return ['student', 'siswa', 'role.siswa'].includes(role);
+};
+
+export const getCardRoleLabel = (user = {}) => {
+  if (isStudentCardUser(user)) return 'SISWA';
+
+  const role = cleanString(user.role_label || user.displayRole || user.role).toLowerCase();
+  if (['teacher', 'guru', 'guru_mapel', 'guru piket', 'guru_piket', 'pengajar'].includes(role)) return 'GURU';
+  if (['admin_tu', 'admin tu', 'admin/tu'].includes(role)) return 'ADMIN TU';
+  if (['operator_it', 'operator it'].includes(role)) return 'OPERATOR IT';
+  if (['developer', 'dev'].includes(role)) return 'DEVELOPER';
+
+  return cleanString(user.jurusan || user.kelas || user.role || 'MAN 1 ROKAN HULU').toUpperCase();
 };
 
 const parseTtl = (ttlValue) => {
@@ -244,15 +290,11 @@ export const formatBirthInfo = (user = {}) => {
 };
 
 export const buildQrValue = (user = {}) => {
-  const explicit = cleanString(user.qr_value || user.qrValue || user.qr);
-  if (explicit && !isSensitiveQrValue(explicit)) return explicit;
+  const explicit = cleanString(user.qr_value || user.qrValue || user.qr || user.qrCode);
+  const officialQr = explicit && !isSensitiveQrValue(explicit) ? normalizeSchoolHubQrValue(explicit) : '';
+  if (officialQr) return officialQr;
 
-  const nisn = cleanString(user.nisn);
-  if (nisn) return nisn;
-
-  const nama = cleanString(user.nama);
-  const ttl = formatBirthInfo(user);
-  return ['SIAB2', 'MAN1ROHUL', nama, ttl].filter(Boolean).join('|');
+  return buildLocalOpaqueQrValue(user);
 };
 
 export const sanitizeUser = (user = {}, index = 0) => {
@@ -364,17 +406,8 @@ export const validateCardUser = (user = {}) => {
     errors.push(`${REQUIRED_CARD_FIELD_LABELS.nama} wajib diisi minimal 2 karakter`);
   }
 
-  const birthInfo = formatBirthInfo(user);
-  if (!birthInfo) {
-    errors.push(`${REQUIRED_CARD_FIELD_LABELS.tempat_tanggal_lahir} wajib diisi`);
-  }
-
   if (!cleanString(user.nisn)) {
     errors.push(`${REQUIRED_CARD_FIELD_LABELS.nisn} wajib diisi`);
-  }
-
-  if (!cleanString(user.alamat)) {
-    errors.push(`${REQUIRED_CARD_FIELD_LABELS.alamat} wajib diisi`);
   }
 
   if (!buildQrValue(user)) {

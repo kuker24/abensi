@@ -1,4 +1,4 @@
-import { Role } from '@prisma/client';
+import { CardStatus, QrCredentialStatus, Role } from '@prisma/client';
 import { IdentityService } from './identity.service';
 
 jest.mock('bcryptjs', () => ({
@@ -35,17 +35,24 @@ function makePrisma() {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn()
     },
-    $transaction: jest.fn(async (fn) => fn({
-      user: {
-        update: prisma.user.update,
-        delete: jest.fn().mockResolvedValue({})
-      },
-      authSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
-      userTutorialState: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-      notification: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-      auditEntry: { create: prisma.auditEntry.create },
-      auditChainState: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() }
-    }))
+    __tx: undefined,
+    $transaction: jest.fn(async (fn) => {
+      const tx = {
+        user: {
+          update: prisma.user.update,
+          delete: jest.fn().mockResolvedValue({})
+        },
+        authSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        qrCredential: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        smartCard: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        userTutorialState: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        notification: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        auditEntry: { create: prisma.auditEntry.create },
+        auditChainState: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() }
+      };
+      prisma.__tx = tx;
+      return fn(tx);
+    })
   };
   return prisma;
 }
@@ -68,13 +75,18 @@ describe('IdentityService', () => {
   it('deactivates user as safe delete', async () => {
     const prisma = makePrisma();
     prisma.user.findUnique.mockResolvedValue({ id: 'u1', username: 'siswa', fullName: 'Siswa', role: Role.SISWA, cardStatus: 'ACTIVE', active: true });
-    prisma.user.update.mockResolvedValue({ id: 'u1', username: 'siswa', fullName: 'Siswa', role: Role.SISWA, active: false });
+    prisma.user.update.mockResolvedValue({ id: 'u1', username: 'siswa', fullName: 'Siswa', role: Role.SISWA, cardStatus: CardStatus.INACTIVE, active: false });
     const service = new IdentityService(prisma);
 
     const result = await service.deactivateUser('u1', actor, 'Lulus');
 
     expect(result.active).toBe(false);
-    expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ active: false }) }));
+    expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ active: false, cardStatus: CardStatus.INACTIVE }) }));
+    expect(prisma.__tx.qrCredential.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'u1', status: QrCredentialStatus.ACTIVE },
+      data: expect.objectContaining({ status: QrCredentialStatus.REVOKED, revokedById: 'admin-1', revokeReason: 'Lulus' })
+    }));
+    expect(prisma.__tx.smartCard.updateMany).toHaveBeenCalledWith({ where: { userId: 'u1', status: { not: CardStatus.INACTIVE } }, data: { status: CardStatus.INACTIVE } });
     expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'user.deactivated', reason: 'Lulus' }) });
   });
 

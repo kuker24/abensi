@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { CardStatus, Prisma, Role } from '@prisma/client';
+import { CardStatus, Prisma, QrCredentialStatus, Role } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto, ImportUserRowDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
@@ -100,6 +100,7 @@ export class IdentityService {
     const shouldRevokeSessions = Boolean(passwordHash || payload.role !== undefined || payload.active !== undefined);
 
     return this.prisma.$transaction(async (tx) => {
+      const deactivatedAt = payload.active === false ? new Date() : null;
       const user = await tx.user.update({
         where: { id: userId },
         data: {
@@ -107,6 +108,7 @@ export class IdentityService {
           ...(passwordHash ? { passwordHash, passwordChangedAt: null, mustChangePassword: true } : {}),
           ...(payload.role !== undefined ? { role: payload.role } : {}),
           ...(payload.cardStatus !== undefined ? { cardStatus: payload.cardStatus } : {}),
+          ...(deactivatedAt ? { cardStatus: CardStatus.INACTIVE } : {}),
           ...(payload.active !== undefined ? { active: payload.active } : {}),
           ...(shouldRevokeSessions ? { sessionVersion: { increment: 1 } } : {})
         },
@@ -122,7 +124,21 @@ export class IdentityService {
       });
 
       const revoked = shouldRevokeSessions
-        ? await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'identity-changed' } })
+        ? await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: deactivatedAt ?? new Date(), revokedReason: 'identity-changed' } })
+        : { count: 0 };
+      const revokedQr = deactivatedAt
+        ? await tx.qrCredential.updateMany({
+          where: { userId, status: QrCredentialStatus.ACTIVE },
+          data: {
+            status: QrCredentialStatus.REVOKED,
+            revokedAt: deactivatedAt,
+            revokedById: actor.sub,
+            revokeReason: payload.reason || 'Pengguna dinonaktifkan.'
+          }
+        })
+        : { count: 0 };
+      const inactiveSmartCards = deactivatedAt
+        ? await tx.smartCard.updateMany({ where: { userId, status: { not: CardStatus.INACTIVE } }, data: { status: CardStatus.INACTIVE } })
         : { count: 0 };
 
       await writeAudit(tx, {
@@ -141,7 +157,7 @@ export class IdentityService {
           cardStatus: before.cardStatus,
           active: before.active
         } as Prisma.InputJsonValue,
-        after: { ...user, revokedSessionCount: revoked.count } as Prisma.InputJsonValue
+        after: { ...user, revokedSessionCount: revoked.count, revokedQrCredentialCount: revokedQr.count, inactiveSmartCardCount: inactiveSmartCards.count } as Prisma.InputJsonValue
       });
 
       return user;

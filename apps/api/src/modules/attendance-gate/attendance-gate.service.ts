@@ -472,7 +472,7 @@ export class AttendanceGateService {
         });
         return true;
       });
-      return { kind: 'CHECK_ONLY', ok: result, message: 'QR valid. Tidak ada presensi yang dicatat.', user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
+      return { kind: 'CHECK_ONLY', ok: result, readOnly: true, attendanceRecorded: false, message: 'QR valid. Tidak ada presensi yang dicatat.', user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
     }
 
     if (GATE_QR_ANDROID_MODES.has(requestedMode)) {
@@ -560,9 +560,9 @@ export class AttendanceGateService {
     return { ...result, message: 'Pulang tercatat.', action: 'Pulang' };
   }
 
-  private scanUserPayload(user: { id: string; fullName: string; username: string; role: Role; enrollments?: Array<{ schoolClass?: { code?: string; name?: string } | null }> }) {
-    const schoolClass = user.enrollments?.[0]?.schoolClass;
-    return { id: user.id, fullName: user.fullName, username: user.username, role: user.role, className: schoolClass?.name || schoolClass?.code || null };
+  private scanUserPayload(user: { id: string; fullName: string; username: string; role: Role; active?: boolean; cardStatus?: CardStatus | null; enrollments?: Array<{ schoolClass?: { code?: string; name?: string } | null }> }) {
+    const schoolClass = user.role === Role.SISWA ? null : user.enrollments?.[0]?.schoolClass;
+    return { id: user.id, fullName: user.fullName, username: user.username, role: user.role, active: user.active ?? true, cardStatus: user.cardStatus ?? null, className: schoolClass?.name || schoolClass?.code || null };
   }
 
   private cutoffDateFor(value: Date, time: string | null | undefined) {
