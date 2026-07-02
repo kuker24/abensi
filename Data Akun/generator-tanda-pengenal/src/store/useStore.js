@@ -9,6 +9,7 @@ import {
   validateCardUsers,
 } from '../utils/identityCard';
 
+export const GENERATOR_STORAGE_KEY = 'id-card-generator-storage';
 const GENERATOR_STORAGE_VERSION = 1;
 
 // Main application store
@@ -71,6 +72,11 @@ export const useStore = create(
 
       clearLocalData: () => {
         set({ users: [], selectedUsers: [], activityLog: [] });
+        try {
+          localStorage.removeItem(GENERATOR_STORAGE_KEY);
+        } catch {
+          // Browser storage may be unavailable in private or test contexts.
+        }
       },
       
       // Selection actions
@@ -199,7 +205,7 @@ export const useStore = create(
       },
     }),
     {
-      name: 'id-card-generator-storage',
+      name: GENERATOR_STORAGE_KEY,
       version: GENERATOR_STORAGE_VERSION,
       migrate: (persistedState) => sanitizePersistedGeneratorState(persistedState),
       merge: (persistedState, currentState) => {

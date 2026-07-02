@@ -1,5 +1,6 @@
 import Sidebar from './Sidebar';
 import Header from './Header';
+import PrivacyBanner from './PrivacyBanner';
 
 const Layout = ({ children, title, subtitle }) => {
   return (
@@ -10,6 +11,7 @@ const Layout = ({ children, title, subtitle }) => {
       <div className="relative min-h-screen min-w-0 lg:ml-64">
         <Header title={title} subtitle={subtitle} />
         <main className="min-w-0 p-3 sm:p-4 lg:p-6">
+          <PrivacyBanner />
           {children}
         </main>
       </div>

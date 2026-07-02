@@ -19,24 +19,13 @@ Generator Tanda Pengenal SIAB2 adalah aplikasi frontend standalone untuk membuat
 
 ## Field Wajib CSV
 
-Kolom minimal yang harus tersedia:
+Kolom minimal yang harus tersedia untuk kartu siswa final:
 
 - `nama`
-- `tempat_lahir`
-- `tanggal_lahir`
 - `nisn`
-- `alamat`
+- `qr_value` resmi `schoolhub:qr:v1:QR_...` jika akan dicetak produksi
 
-Untuk tempat tanggal lahir, aplikasi juga mendukung satu kolom gabungan dengan alias:
-
-- `ttl`
-- `tempat_tanggal_lahir`
-- `Tempat Tanggal Lahir`
-
-Contoh nilai TTL yang didukung:
-
-- `Pekanbaru, 12 Agustus 2010`
-- `Pekanbaru 12 Agustus 2010`
+Kolom `ttl`, `tempat_lahir`, `tanggal_lahir`, dan `alamat` masih boleh diimport sebagai metadata lokal, tetapi tidak dicetak pada kartu siswa final.
 
 ## Privacy & Data Handling
 
@@ -45,7 +34,8 @@ Contoh nilai TTL yang didukung:
 - Data import tersimpan sementara di browser `localStorage` perangkat operator dengan key `id-card-generator-storage`.
 - Data yang dipersist hanya field yang diizinkan untuk kebutuhan kartu; raw row CSV dan kolom sensitif tidak disimpan.
 - Jangan gunakan perangkat publik/bersama untuk memproses data pribadi siswa.
-- Gunakan tombol **Hapus Data Lokal** / **Bersihkan Data Browser** setelah selesai mencetak atau sebelum menyerahkan perangkat ke orang lain.
+- Gunakan tombol **Hapus Data Lokal** setelah selesai mencetak atau sebelum menyerahkan perangkat ke orang lain.
+- Jika disajikan di route production `/id-card-generator/`, route static ini masih bersifat public. Gunakan hanya sebagai operator-only SOP pada perangkat tepercaya sampai auth guard, IP allowlist, atau VPN diterapkan.
 
 ## CSV Safety Rules
 
@@ -94,12 +84,13 @@ Aturan keamanan CSV:
 
 1. Pakai laptop/perangkat operator yang tepercaya.
 2. Siapkan CSV resmi yang hanya berisi kolom kartu yang diperlukan.
-3. Pastikan CSV tidak memuat password, username login, token, secret, cookie, session, atau kredensial lain.
+3. Pastikan CSV tidak memuat password, token, secret, cookie, session, atau kredensial lain.
 4. Import CSV dan cek warning kolom yang diabaikan.
-5. Preview kartu dan pastikan NISN, alamat, TTL, serta QR benar.
+5. Preview kartu dan pastikan nama, NISN, label SISWA, dan QR benar.
 6. Export PDF dan cek hasil A4 portrait 3x3 sebelum dicetak massal.
-7. Setelah selesai, klik **Hapus Data Lokal** / **Bersihkan Data Browser**.
-8. Jangan membagikan PDF mentah ke kanal publik.
+7. Setelah selesai, klik **Hapus Data Lokal**.
+8. Jika route `/id-card-generator/` masih public, gunakan hanya dari perangkat operator tepercaya sampai auth guard/IP allowlist/VPN diterapkan.
+9. Jangan membagikan PDF mentah ke kanal publik.
 
 ## Menjalankan Project
 
@@ -137,6 +128,6 @@ Rafi Maulana,"Pekanbaru 12 Agustus 2010",3213213213,"Desa Rambah Hilir"
 
 ## Known Limitations
 
-- Belum ada automated test framework khusus untuk generator ini.
+- Route static `/id-card-generator/` belum menjadi server-side protected route; endpoint API resmi tetap membutuhkan sesi SIAB2.
 - Vite build dapat memberi warning large chunks karena dependency PDF/export.
 - Dependency audit lokal masih perlu follow-up jika alat ini akan dipakai luas dan rutin.
