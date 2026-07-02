@@ -21,6 +21,11 @@ function safeExpiresAt(value?: string) {
   return date;
 }
 
+function stableCredentialExpiresAt(value: string | undefined, role: Role) {
+  if (role === Role.SISWA) return null;
+  return safeExpiresAt(value);
+}
+
 function printableRole(role: Role) {
   if (role === Role.SISWA) return 'Siswa';
   if (role === Role.GURU_MAPEL || role === Role.GURU_PIKET) return 'Guru';
@@ -50,17 +55,17 @@ export class QrCredentialsService {
     return { ...safe, hasPrintableQr: Boolean(credential.codeCiphertext) };
   }
 
-  private async createCredential(tx: Prisma.TransactionClient, userId: string, actor: Actor, payload: GenerateQrCredentialDto, rotatedFromId?: string | null) {
+  private async createCredential(tx: Prisma.TransactionClient, user: { id: string; role: Role }, actor: Actor, payload: GenerateQrCredentialDto, rotatedFromId?: string | null) {
     const opaque = generateOpaqueQrCode();
     const qrCode = formatSchoolHubQr(opaque);
     const created = await tx.qrCredential.create({
       data: {
-        userId,
+        userId: user.id,
         codeHash: qrCodeHash(qrCode),
         codeCiphertext: this.signatures.encryptSecret(qrCode),
         shortCode: shortQrCode(qrCode),
         label: payload.label || 'QR Absensi SchoolHub',
-        expiresAt: safeExpiresAt(payload.expiresAt),
+        expiresAt: stableCredentialExpiresAt(payload.expiresAt, user.role),
         createdById: actor.sub,
         rotatedFromId: rotatedFromId ?? null
       },
@@ -92,7 +97,7 @@ export class QrCredentialsService {
 
     return this.prisma.$transaction(async (tx) => {
       await tx.qrCredential.updateMany({ where: { userId, status: QrCredentialStatus.ACTIVE }, data: { status: QrCredentialStatus.REVOKED, revokedAt: new Date(), revokedById: actor.sub, revokeReason: 'Diganti oleh generate QR baru.' } });
-      const { credential, qrCode } = await this.createCredential(tx, userId, actor, payload);
+      const { credential, qrCode } = await this.createCredential(tx, user, actor, payload);
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role,
@@ -107,11 +112,13 @@ export class QrCredentialsService {
   }
 
   async rotateForUser(userId: string, payload: RotateQrCredentialDto, actor: Actor) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true, active: true } });
+    if (!user || !user.active) throw new NotFoundException('Pengguna tidak ditemukan atau tidak aktif.');
     const existing = await this.prisma.qrCredential.findFirst({ where: { userId, status: QrCredentialStatus.ACTIVE }, orderBy: { createdAt: 'desc' } });
     if (!existing) return this.generateForUser(userId, payload, actor);
     return this.prisma.$transaction(async (tx) => {
       const revoked = await tx.qrCredential.update({ where: { id: existing.id }, data: { status: QrCredentialStatus.REVOKED, revokedAt: new Date(), revokedById: actor.sub, revokeReason: payload.reason || 'Rotasi QR credential.' } });
-      const { credential, qrCode } = await this.createCredential(tx, userId, actor, payload, existing.id);
+      const { credential, qrCode } = await this.createCredential(tx, user, actor, payload, existing.id);
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role,
@@ -171,7 +178,7 @@ export class QrCredentialsService {
         if (!payload.onlyMissing) {
           await tx.qrCredential.updateMany({ where: { userId: user.id, status: QrCredentialStatus.ACTIVE }, data: { status: QrCredentialStatus.REVOKED, revokedAt: new Date(), revokedById: actor.sub, revokeReason: 'Bulk generate QR credential baru.' } });
         }
-        const { credential, qrCode } = await this.createCredential(tx, user.id, actor, payload);
+        const { credential, qrCode } = await this.createCredential(tx, user, actor, payload);
         results.push({ userId: user.id, fullName: user.fullName, qrCode, credentialId: credential.id });
       }
       await writeAudit(tx, {
