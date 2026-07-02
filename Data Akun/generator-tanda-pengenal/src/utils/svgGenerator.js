@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import schoolLogo from '../assets/logoman1.jpeg';
 import { DEFAULT_CARD_SETTINGS, getCardTemplate } from './cardTemplates';
-import { buildQrValue } from './identityCard';
+import { buildQrValue, getCardRoleLabel } from './identityCard';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const XMLNS = 'http://www.w3.org/2000/svg';
@@ -122,7 +122,7 @@ export const generateCardSVG = async (user, options = {}) => {
   const logoDataUrl = await getLogoDataUrl();
   const name = user.nama || 'Nama belum diisi';
   const nisn = user.nisn || '-';
-  const classOrRole = user.kelas || user.role || user.jurusan || '-';
+  const roleLabel = getCardRoleLabel(user);
   const issuerLabelText = settings.issuerLabel?.toLowerCase().includes('tanda pengenal')
     ? 'Kartu Digital Madrasah'
     : settings.issuerLabel || 'Kartu Digital Madrasah';
@@ -163,7 +163,7 @@ export const generateCardSVG = async (user, options = {}) => {
     <rect x="0" y="318" width="324" height="96" fill="#0d3047" />
     <text x="162" y="353" fill="#ffffff" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${nameFontSize}" font-weight="900" letter-spacing="1.2">${escapeXml(name).toUpperCase()}</text>
     <text x="162" y="379" fill="#ffffff" text-anchor="middle" font-family="Courier New, monospace" font-size="13" font-weight="900" letter-spacing="2.1">${escapeXml(nisn)}</text>
-    <text x="162" y="401" fill="#ffffff" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="900" letter-spacing="1.5">${escapeXml(classOrRole).toUpperCase()}</text>
+    <text x="162" y="401" fill="#ffffff" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="900" letter-spacing="1.5">${escapeXml(roleLabel).toUpperCase()}</text>
   </g>
 
   <g id="footer">

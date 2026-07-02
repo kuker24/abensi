@@ -37,7 +37,7 @@ function makeCredential(data: Record<string, unknown>) {
   };
 }
 
-function makePrisma(options: { user?: Record<string, unknown> | null; users?: Array<Record<string, unknown>> } = {}) {
+function makePrisma(options: { user?: Record<string, unknown> | null; users?: Array<Record<string, unknown>>; credentials?: Array<Record<string, unknown>> } = {}) {
   const user = options.user ?? { id: 'student-1', fullName: 'Siswa Satu', username: '1234567890', role: Role.SISWA, active: true };
   const tx = {
     ...auditClient(),
@@ -53,7 +53,8 @@ function makePrisma(options: { user?: Record<string, unknown> | null; users?: Ar
       findMany: jest.fn().mockResolvedValue(options.users ?? [])
     },
     qrCredential: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'credential-old', userId: 'student-1', status: QrCredentialStatus.ACTIVE })
+      findFirst: jest.fn().mockResolvedValue({ id: 'credential-old', userId: 'student-1', status: QrCredentialStatus.ACTIVE }),
+      findMany: jest.fn().mockResolvedValue(options.credentials ?? [])
     },
     $transaction: jest.fn(async (callback: any) => callback(tx)),
     __tx: tx
@@ -119,5 +120,49 @@ describe('QrCredentialsService stable student identity cards', () => {
 
     const data = prisma.__tx.qrCredential.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ userId: 'student-1', expiresAt: null, rotatedFromId: 'credential-old' });
+  });
+
+  it('exports student card data without class fields for long-term printing', async () => {
+    const prisma = makePrisma({
+      credentials: [
+        {
+          id: 'credential-student-1',
+          userId: 'student-1',
+          status: QrCredentialStatus.ACTIVE,
+          label: 'QR SIAB2',
+          shortCode: 'ABCDEFGH',
+          codeCiphertext: 'enc:schoolhub:qr:v1:QR_ABCDEFGHIJKL',
+          issuedAt: new Date('2026-01-01T00:00:00.000Z'),
+          expiresAt: null,
+          user: {
+            id: 'student-1',
+            fullName: 'Siswa Satu',
+            username: '1234567890',
+            role: Role.SISWA,
+            active: true,
+            cardStatus: 'ACTIVE',
+            enrollments: [{ schoolClass: { code: 'X-A', name: 'Kelas X A' } }]
+          }
+        }
+      ]
+    });
+    const service = new QrCredentialsService(prisma, makeSignatures());
+
+    const result = await service.exportCards({});
+
+    expect(result.cards).toHaveLength(1);
+    expect(result.cards[0]).toMatchObject({
+      fullName: 'Siswa Satu',
+      nama: 'Siswa Satu',
+      username: '1234567890',
+      nisn: '1234567890',
+      role: Role.SISWA,
+      roleLabel: 'SISWA',
+      className: null,
+      classCode: null,
+      level: 'SISWA',
+      qrCode: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',
+      qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL'
+    });
   });
 });

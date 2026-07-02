@@ -284,18 +284,23 @@ export class QrCredentialsService {
     }) as any[];
     const cards = items.map((item) => {
       const qrCode = this.signatures.decryptSecret(item.codeCiphertext) || null;
-      const schoolClass = item.user.enrollments?.[0]?.schoolClass || null;
+      const isStudent = item.user.role === Role.SISWA;
+      const schoolClass = isStudent ? null : item.user.enrollments?.[0]?.schoolClass || null;
       const className = schoolClass ? `${schoolClass.code} · ${schoolClass.name}` : null;
+      const displayRole = printableRole(item.user.role);
       return {
         id: item.id,
         userId: item.userId,
         fullName: item.user.fullName,
+        nama: item.user.fullName,
         username: item.user.username,
+        nisn: item.user.username,
         role: item.user.role,
-        displayRole: printableRole(item.user.role),
+        roleLabel: isStudent ? 'SISWA' : displayRole,
+        displayRole,
         className,
         classCode: schoolClass?.code || null,
-        level: printableLevel(item.user.role, className),
+        level: isStudent ? 'SISWA' : printableLevel(item.user.role, className),
         program: 'e-Hadir Absensi',
         status: item.user.active ? 'Aktif' : 'Nonaktif',
         cardStatus: item.user.cardStatus,
@@ -303,6 +308,7 @@ export class QrCredentialsService {
         label: item.label,
         shortCode: item.shortCode,
         qrCode,
+        qr_value: qrCode,
         qrMasked: qrCode ? redactQr(qrCode) : null,
         issuedAt: item.issuedAt,
         expiresAt: item.expiresAt,

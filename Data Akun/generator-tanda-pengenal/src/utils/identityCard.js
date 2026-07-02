@@ -187,11 +187,28 @@ export const cleanName = (name) => {
 const normalizeRole = (role) => {
   const roleLower = cleanString(role).toLowerCase();
 
-  if (['teacher', 'guru', 'pengajar', 'pegawai'].includes(roleLower)) {
+  if (['teacher', 'guru', 'guru_mapel', 'guru piket', 'guru_piket', 'pengajar', 'pegawai'].includes(roleLower)) {
     return 'teacher';
   }
 
   return 'student';
+};
+
+export const isStudentCardUser = (user = {}) => {
+  const role = cleanString(user.role || user.displayRole || user.role_label).toLowerCase();
+  return ['student', 'siswa', 'role.siswa'].includes(role);
+};
+
+export const getCardRoleLabel = (user = {}) => {
+  if (isStudentCardUser(user)) return 'SISWA';
+
+  const role = cleanString(user.role_label || user.displayRole || user.role).toLowerCase();
+  if (['teacher', 'guru', 'guru_mapel', 'guru piket', 'guru_piket', 'pengajar'].includes(role)) return 'GURU';
+  if (['admin_tu', 'admin tu', 'admin/tu'].includes(role)) return 'ADMIN TU';
+  if (['operator_it', 'operator it'].includes(role)) return 'OPERATOR IT';
+  if (['developer', 'dev'].includes(role)) return 'DEVELOPER';
+
+  return cleanString(user.jurusan || user.kelas || user.role || 'MAN 1 ROKAN HULU').toUpperCase();
 };
 
 const parseTtl = (ttlValue) => {

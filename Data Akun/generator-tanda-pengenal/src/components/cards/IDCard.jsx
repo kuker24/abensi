@@ -2,7 +2,7 @@ import { BadgeCheck } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import schoolLogo from '../../assets/logoman1.jpeg';
 import { DEFAULT_CARD_SETTINGS, getCardTemplate } from '../../utils/cardTemplates';
-import { buildQrValue, validateCardUser } from '../../utils/identityCard';
+import { buildQrValue, getCardRoleLabel, validateCardUser } from '../../utils/identityCard';
 
 const IDCard = ({
   user,
@@ -33,7 +33,7 @@ const IDCard = ({
   const { renderWidthPx, renderHeightPx } = template.dimensions;
   const qrValue = buildQrValue(user);
   const validation = validateCardUser(user);
-  const classOrRole = user.kelas || user.role || user.jurusan || '-';
+  const roleLabel = getCardRoleLabel(user);
   const issuerLabelText = resolvedSettings.issuerLabel?.toLowerCase().includes('tanda pengenal')
     ? 'Kartu Digital Madrasah'
     : resolvedSettings.issuerLabel || 'Kartu Digital Madrasah';
@@ -108,7 +108,7 @@ const IDCard = ({
               {user.nisn || '-'}
             </p>
             <p className="mt-2 max-w-[260px] text-[10px] font-black uppercase leading-none tracking-[0.12em] text-white/88">
-              {classOrRole}
+              {roleLabel}
             </p>
           </div>
         </section>

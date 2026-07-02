@@ -5,7 +5,9 @@ import {
   buildQrValue,
   formatBirthInfo,
   getCanonicalAllowedField,
+  getCardRoleLabel,
   isSensitiveFieldName,
+  isStudentCardUser,
   isSensitiveQrValue,
   normalizeIdentityRow,
   sanitizePersistedGeneratorState,
@@ -64,6 +66,26 @@ test('normalizes CSV row using allowed fields and QR fallback to NISN', () => {
   assert.equal(validateCardUser(user).isValid, true);
   assertOnlyAllowedFields(user);
   assertNoForbiddenKeys(user);
+});
+
+test('student card label ignores class so printed cards survive class promotion', () => {
+  const user = normalizeIdentityRow({
+    nama: 'Ahmad Fauzan',
+    ttl: 'Rokan Hulu, 14 Februari 2010',
+    nisn: '1234567890',
+    alamat: 'Jl. Tuanku Tambusai',
+    kelas: 'X A',
+    role: 'SISWA',
+  });
+
+  assert.equal(isStudentCardUser(user), true);
+  assert.equal(user.kelas, 'X A');
+  assert.equal(getCardRoleLabel(user), 'SISWA');
+});
+
+test('non-student card label can still use stable role labels', () => {
+  assert.equal(getCardRoleLabel({ role: 'GURU_MAPEL', kelas: 'Guru Biologi' }), 'GURU');
+  assert.equal(getCardRoleLabel({ role: 'ADMIN_TU' }), 'ADMIN TU');
 });
 
 test('strips sensitive fields and never keeps raw CSV rows', () => {
