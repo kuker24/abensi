@@ -265,8 +265,9 @@ export class QrCredentialsService {
       activeQrCount: withQr,
       missingQrCount: targetUsers.length - withQr,
       studentsWithoutClass,
+      classRequiredForCards: false,
       readyToPrintCount: withQr,
-      isReadyToPrint: targetUsers.length > 0 && withQr === targetUsers.length && studentsWithoutClass === 0,
+      isReadyToPrint: targetUsers.length > 0 && withQr === targetUsers.length,
       classes: classSummaries
     };
   }

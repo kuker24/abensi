@@ -37,7 +37,7 @@ function makeCredential(data: Record<string, unknown>) {
   };
 }
 
-function makePrisma(options: { user?: Record<string, unknown> | null; users?: Array<Record<string, unknown>>; credentials?: Array<Record<string, unknown>> } = {}) {
+function makePrisma(options: { user?: Record<string, unknown> | null; users?: Array<Record<string, unknown>>; credentials?: Array<Record<string, unknown>>; classes?: Array<Record<string, unknown>> } = {}) {
   const user = options.user ?? { id: 'student-1', fullName: 'Siswa Satu', username: '1234567890', role: Role.SISWA, active: true };
   const tx = {
     ...auditClient(),
@@ -55,6 +55,9 @@ function makePrisma(options: { user?: Record<string, unknown> | null; users?: Ar
     qrCredential: {
       findFirst: jest.fn().mockResolvedValue({ id: 'credential-old', userId: 'student-1', status: QrCredentialStatus.ACTIVE }),
       findMany: jest.fn().mockResolvedValue(options.credentials ?? [])
+    },
+    schoolClass: {
+      findMany: jest.fn().mockResolvedValue(options.classes ?? [])
     },
     $transaction: jest.fn(async (callback: any) => callback(tx)),
     __tx: tx
@@ -120,6 +123,27 @@ describe('QrCredentialsService stable student identity cards', () => {
 
     const data = prisma.__tx.qrCredential.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ userId: 'student-1', expiresAt: null, rotatedFromId: 'credential-old' });
+  });
+
+  it('does not require class enrollment for card print readiness', async () => {
+    const prisma = makePrisma({
+      users: [
+        { id: 'student-1', role: Role.SISWA, enrollments: [], qrCredentials: [{ id: 'credential-student-1' }] }
+      ]
+    });
+    const service = new QrCredentialsService(prisma, makeSignatures());
+
+    const result = await service.readiness({});
+
+    expect(result).toMatchObject({
+      totalTargetUsers: 1,
+      totalStudents: 1,
+      activeQrCount: 1,
+      studentsWithoutClass: 1,
+      classRequiredForCards: false,
+      readyToPrintCount: 1,
+      isReadyToPrint: true
+    });
   });
 
   it('exports student card data without class fields for long-term printing', async () => {
