@@ -469,8 +469,8 @@ describe('AttendanceGateService adaptive QR scan', () => {
     expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
   });
 
-  it('CHECK_ONLY official QR tidak membuat log absensi', async () => {
-    const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, role: Role.SISWA, enrollments: [] };
+  it('CHECK_ONLY official QR membaca identitas online tanpa membuat log absensi', async () => {
+    const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, cardStatus: CardStatus.ACTIVE, role: Role.SISWA, enrollments: [{ schoolClass: { code: 'X-A', name: 'Kelas X A' } }] };
     const prisma = makePrisma(user);
     const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
     const signatures = new DeviceSignatureService(prisma, redis);
@@ -482,7 +482,13 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
     const result = await service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-check-only', '/api/v1/attendance/qr-reader-scan'));
 
-    expect(result.kind).toBe('CHECK_ONLY');
+    expect(result).toMatchObject({
+      kind: 'CHECK_ONLY',
+      ok: true,
+      readOnly: true,
+      attendanceRecorded: false,
+      user: { fullName: 'Siswa Satu', username: 'siswa1', role: Role.SISWA, active: true, cardStatus: CardStatus.ACTIVE, className: null }
+    });
     expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
     expect(prisma.__tx.prayerAttendanceLog.create).not.toHaveBeenCalled();
   });

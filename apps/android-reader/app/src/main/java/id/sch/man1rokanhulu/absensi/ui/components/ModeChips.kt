@@ -15,14 +15,14 @@ import androidx.compose.ui.unit.dp
 fun modeLabel(mode: String): String = when (mode) {
     "GERBANG", "GATE_IN", "GATE_OUT" -> "Gerbang"
     "MUSHOLA" -> "Mushola"
-    "CHECK_ONLY" -> "Cek Saja"
+    "CHECK_ONLY" -> "Cek Identitas"
     else -> mode.replace('_', ' ')
 }
 
 fun modeHelp(mode: String): String = when (mode) {
     "GERBANG", "GATE_IN", "GATE_OUT" -> "Untuk datang/pulang siswa, guru, staf, dan kepala."
     "MUSHOLA" -> "Untuk sholat/ibadah siswa."
-    "CHECK_ONLY" -> "Untuk cek QR tanpa mencatat hadir."
+    "CHECK_ONLY" -> "Baca identitas online tanpa mencatat presensi."
     else -> "Mode scan aktif."
 }
 

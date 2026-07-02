@@ -703,7 +703,7 @@ const ANDROID_MODE_LABELS = {
   GATE_IN: 'Gerbang',
   GATE_OUT: 'Gerbang',
   MUSHOLA: 'Mushola',
-  CHECK_ONLY: 'Cek Saja'
+  CHECK_ONLY: 'Cek Identitas'
 };
 
 const FLEXIBLE_ANDROID_MODES = ['GERBANG', 'MUSHOLA'];
