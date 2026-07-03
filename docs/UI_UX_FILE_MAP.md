@@ -156,7 +156,9 @@ Generator terpisah di:
 
 - `DataSekolah/generator-tanda-pengenal/`
 - Production build disalin ke: `apps/web/public/id-card-generator/`
-- URL production: `/id-card-generator/`
+- URL production langsung: `/id-card-generator/`
+- URL production terproteksi dari web utama: `/admin/master-data/id-card-generator/`
+- Metadata generator mengikuti root app: `/favicon.svg`, `/app-icon.svg`, `/site.webmanifest`, dan theme color `#16181c`.
 
 ### 6.1 Route Generator
 
@@ -179,7 +181,8 @@ File route:
 | Layout utama | `DataSekolah/generator-tanda-pengenal/src/components/layout/Layout.jsx` | Struktur sidebar/header/main |
 | Sidebar | `DataSekolah/generator-tanda-pengenal/src/components/layout/Sidebar.jsx` | Menu generator |
 | Header | `DataSekolah/generator-tanda-pengenal/src/components/layout/Header.jsx` | Judul halaman, search, badge total |
-| CSS global | `DataSekolah/generator-tanda-pengenal/src/index.css` | Scrollbar, print style, table, dropzone, ID card style |
+| HTML root | `DataSekolah/generator-tanda-pengenal/index.html` dan `apps/web/public/id-card-generator/index.html` | Title, favicon, app icon, manifest, theme-color |
+| CSS global | `DataSekolah/generator-tanda-pengenal/src/index.css` | Scrollbar, print style, table, dropzone, ID card style, overlay dark SIAB2 |
 | Tailwind config | `DataSekolah/generator-tanda-pengenal/tailwind.config.js` | Palet `primary`, spacing, utility |
 
 ### 6.3 Kartu ID & PDF
@@ -198,6 +201,7 @@ Prioritas redesign generator:
 2. `IDCard.jsx` karena output fisik kartu.
 3. `ImportData.jsx` untuk pengalaman operator.
 4. `Layout.jsx`, `Sidebar.jsx`, `Header.jsx` agar selaras dengan web utama.
+5. Setelah perubahan source generator, rebuild/copy static bundle ke `apps/web/public/id-card-generator/`; untuk perubahan metadata bundle saja, pastikan HTML static tetap memakai root asset SIAB2 agar favicon tidak 404 dari protected alias.
 
 ## 7. Android Reader UI, Jika Ikut Diperbarui
 
