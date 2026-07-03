@@ -1,12 +1,13 @@
 # Generator Tanda Pengenal SIAB2
 
-Generator Tanda Pengenal SIAB2 adalah aplikasi frontend standalone untuk membuat kartu identitas resmi siswa MAN 1 Rokan Hulu. Alur utamanya adalah import CSV data siswa, preview kartu portrait resmi, lalu export PDF A4 print-ready.
+Generator Tanda Pengenal SIAB2 adalah aplikasi frontend internal untuk membuat kartu identitas MAN 1 Rokan Hulu. Mode resmi mengambil data dari database SIAB2; import CSV/manual tetap tersedia hanya sebagai draft layout/testing dan diberi label `DRAFT / TIDAK TERVERIFIKASI`.
 
 ## Tujuan
 
-- Import CSV data siswa secara cepat.
-- Preview kartu tanda pengenal portrait resmi yang selaras dengan visual SIAB2.
-- Export PDF A4 print-ready untuk kebutuhan operasional sekolah.
+- Mengambil kartu resmi dari Data Sekolah/database SIAB2.
+- Menjaga CSV/manual sebagai draft layout/testing, bukan sumber resmi.
+- Preview kartu tanda pengenal portrait yang selaras dengan visual SIAB2.
+- Export PDF A4 print-ready dan SVG per kartu untuk kebutuhan operasional sekolah.
 
 ## Stack
 
@@ -17,21 +18,28 @@ Generator Tanda Pengenal SIAB2 adalah aplikasi frontend standalone untuk membuat
 - html2canvas + jsPDF
 - qrcode.react
 
-## Field Wajib CSV
+## Mode Sumber Data
 
-Kolom minimal yang harus tersedia untuk kartu siswa final:
+1. **Ambil dari Data Sekolah** — sumber resmi DB-backed melalui endpoint SIAB2 yang sudah dilindungi auth/role. Output diberi label `RESMI / DATABASE`.
+2. **Import CSV Draft** — hanya untuk draft layout/testing. Output tetap diberi label/watermark `DRAFT / TIDAK TERVERIFIKASI` dan tidak menggantikan data resmi.
+
+Orang yang belum ada di database SIAB2 tidak bisa dibuatkan kartu resmi dari CSV saja.
+
+## Field Wajib CSV Draft
+
+Kolom minimal yang harus tersedia untuk draft kartu:
 
 - `nama`
 - `nisn`
-- `qr_value` resmi `schoolhub:qr:v1:QR_...` jika akan dicetak produksi
+- `qr_value` resmi `schoolhub:qr:v1:QR_...` jika tersedia untuk pengujian QR
 
-Kolom `ttl`, `tempat_lahir`, `tanggal_lahir`, dan `alamat` masih boleh diimport sebagai metadata lokal, tetapi tidak dicetak pada kartu siswa final.
+Kolom `ttl`, `tempat_lahir`, `tanggal_lahir`, dan `alamat` masih boleh diimport sebagai metadata lokal draft, tetapi tidak dicetak pada kartu siswa final saat field resmi belum tersedia di schema.
 
 ## Privacy & Data Handling
 
-- Aplikasi ini standalone frontend dan tidak memiliki backend.
-- Generator tidak mengirim data siswa ke server selama dipakai sebagai standalone tool.
-- Data import tersimpan sementara di browser `localStorage` perangkat operator dengan key `id-card-generator-storage`.
+- Pada mode resmi, generator membaca data kartu dari API SIAB2 yang sudah dilindungi auth/role.
+- Pada mode CSV draft, generator tidak mengunggah file CSV ke server; parsing dilakukan di browser.
+- Data yang sedang diproses tersimpan sementara di browser `localStorage` perangkat operator dengan key `id-card-generator-storage`.
 - Data yang dipersist hanya field yang diizinkan untuk kebutuhan kartu; raw row CSV dan kolom sensitif tidak disimpan.
 - Jangan gunakan perangkat publik/bersama untuk memproses data pribadi siswa.
 - Gunakan tombol **Hapus Data Lokal** setelah selesai mencetak atau sebelum menyerahkan perangkat ke orang lain.
@@ -77,21 +85,20 @@ Aturan keamanan CSV:
 ## QR Safety
 
 - Jika kolom `qr_value` tersedia dan aman, nilai itu dipakai sebagai isi QR.
-- Jika `qr_value` kosong/tidak ada, QR otomatis fallback ke `nisn`.
+- Jika `qr_value` kosong/tidak ada, QR otomatis fallback ke nilai opaque lokal `schoolhub:qr:v1:QR_LOCAL_...` untuk draft/testing.
 - QR tidak boleh berisi password, token, secret, cookie, session, API key, atau kredensial lain.
-- Jika `qr_value` terlihat mengandung pola sensitif, aplikasi mengabaikannya dan fallback ke `nisn` tanpa menampilkan nilai sensitif di UI.
+- Jika `qr_value` terlihat mengandung pola sensitif, aplikasi mengabaikannya dan fallback ke nilai opaque lokal tanpa menampilkan nilai sensitif di UI.
 
 ## Operator SOP
 
 1. Pakai laptop/perangkat operator yang tepercaya.
-2. Siapkan CSV resmi yang hanya berisi kolom kartu yang diperlukan.
-3. Pastikan CSV tidak memuat password, token, secret, cookie, session, atau kredensial lain.
-4. Import CSV dan cek warning kolom yang diabaikan.
-5. Preview kartu dan pastikan nama, NISN, label SISWA, dan QR benar.
-6. Export PDF dan cek hasil A4 portrait 3x3 sebelum dicetak massal.
+2. Buka generator dari `/admin/master-data/id-card-generator/`; route legacy `/id-card-generator/` hanya boleh tetap hidup jika sudah dilindungi server-side.
+3. Untuk kartu resmi, pilih **Ambil dari Data Sekolah** dari halaman Export.
+4. Jika memakai CSV, perlakukan hasil sebagai draft/testing saja dan pastikan CSV tidak memuat password, token, secret, cookie, session, atau kredensial lain.
+5. Preview kartu dan pastikan nama, NISN/username label, label role, QR, serta status `RESMI / DATABASE` atau `DRAFT / TIDAK TERVERIFIKASI` benar.
+6. Export PDF/SVG dan cek hasil sebelum dicetak massal.
 7. Setelah selesai, klik **Hapus Data Lokal**.
-8. Buka generator dari `/admin/master-data/id-card-generator/`; route legacy `/id-card-generator/` hanya boleh tetap hidup jika sudah dilindungi server-side.
-9. Jangan membagikan PDF mentah ke kanal publik.
+8. Jangan membagikan PDF/SVG mentah ke kanal publik.
 
 ## Menjalankan Project
 
@@ -108,8 +115,8 @@ npm run preview
 ```csv
 nama,tempat_lahir,tanggal_lahir,nisn,alamat,kelas,qr_value
 Ahmad Fauzan,Rokan Hulu,2010-02-14,1234567890,"Jl. Tuanku Tambusai, Pasir Pengaraian",X A,
-Siti Rahma,Pekanbaru,12/08/2010,0987654321,"Desa Rambah Tengah Hulu",X B,https://verifikasi.example/siswa/0987654321
-Budi Santoso,"",,"1122334455","Dusun Suka Maju",X C,1122334455
+Siti Rahma,Pekanbaru,12/08/2010,0987654321,"Desa Rambah Tengah Hulu",X B,schoolhub:qr:v1:QR_7F3K9X2P8LQ0
+Budi Santoso,"",,"1122334455","Dusun Suka Maju",X C,
 ```
 
 Alternatif dengan kolom TTL gabungan:

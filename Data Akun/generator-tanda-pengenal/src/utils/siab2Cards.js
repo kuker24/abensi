@@ -1,6 +1,7 @@
 const DEFAULT_API_BASE = '/api/v1';
 
 const cleanString = (value) => String(value ?? '').trim();
+const FORBIDDEN_CARD_FIELDS = /(?:password|passwordHash|token|secret|cookie|session|accessToken|refreshToken|resetToken)/i;
 
 const isStudentRole = (role = '') => {
   const normalized = cleanString(role).toUpperCase();
@@ -21,6 +22,10 @@ export const buildSiab2CardExportPath = ({ classId = '', userId = '' } = {}) => 
 };
 
 export const mapSiab2CardToGeneratorUser = (card = {}, index = 0) => {
+  for (const key of Object.keys(card || {})) {
+    if (FORBIDDEN_CARD_FIELDS.test(key)) throw new Error('Payload kartu resmi memuat field kredensial terlarang.');
+  }
+
   const role = cleanString(card.role || card.roleLabel || card.displayRole);
   const isStudent = isStudentRole(role) || isStudentRole(card.roleLabel) || cleanString(card.displayRole).toUpperCase() === 'SISWA';
   const fullName = cleanString(card.nama || card.fullName || card.name);
@@ -35,6 +40,9 @@ export const mapSiab2CardToGeneratorUser = (card = {}, index = 0) => {
     jurusan: cleanString(card.program),
     status: cleanString(card.status || card.cardStatus) || 'Aktif',
     qr_value: qrValue,
+    card_source: 'database',
+    card_source_label: cleanString(card.sourceLabel) || 'RESMI / DATABASE',
+    is_official: 'true',
     nomor_kartu: cleanString(card.shortCode),
     createdAt: cleanString(card.issuedAt || card.createdAt),
     updatedAt: cleanString(card.generatedAt || card.updatedAt),

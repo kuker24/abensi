@@ -186,7 +186,13 @@ describe('QrCredentialsService stable student identity cards', () => {
       classCode: null,
       level: 'SISWA',
       qrCode: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',
-      qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL'
+      qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',
+      cardSource: 'database',
+      isOfficial: true,
+      sourceLabel: 'RESMI / DATABASE'
     });
+    expect(result.cards[0]).not.toHaveProperty('password');
+    expect(result.cards[0]).not.toHaveProperty('passwordHash');
+    expect(result.cards[0]).not.toHaveProperty('token');
   });
 });

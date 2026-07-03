@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import schoolLogo from '../assets/logoman1.jpeg';
 import { DEFAULT_CARD_SETTINGS, getCardTemplate } from './cardTemplates';
-import { buildQrValue, getCardRoleLabel } from './identityCard';
+import { buildQrValue, getCardRoleLabel, getCardSourceLabel, isDraftCard } from './identityCard';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const XMLNS = 'http://www.w3.org/2000/svg';
@@ -123,6 +123,8 @@ export const generateCardSVG = async (user, options = {}) => {
   const name = user.nama || 'Nama belum diisi';
   const nisn = user.nisn || '-';
   const roleLabel = getCardRoleLabel(user);
+  const sourceLabel = getCardSourceLabel(user);
+  const draftCard = isDraftCard(user);
   const issuerLabelText = settings.issuerLabel?.toLowerCase().includes('tanda pengenal')
     ? 'Kartu Digital Madrasah'
     : settings.issuerLabel || 'Kartu Digital Madrasah';
@@ -170,6 +172,15 @@ export const generateCardSVG = async (user, options = {}) => {
     <rect x="0" y="414" width="324" height="100" fill="#ffffff" />
     <text x="162" y="461" fill="#557088" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing="2.1">KARTU DIGITAL MADRASAH</text>
     <text x="162" y="487" fill="#071018" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="900" letter-spacing="0.7">MAN 1 ROKAN HULU</text>
+  </g>
+
+  ${draftCard ? `<g id="draft-watermark" opacity="0.72" transform="translate(162 274) rotate(-45)">
+    <rect x="-214" y="-22" width="428" height="44" fill="#fff1f2" stroke="#e11d48" stroke-width="4" />
+    <text x="0" y="10" fill="#be123c" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="900" letter-spacing="4">DRAFT</text>
+  </g>` : ''}
+  <g id="source-badge">
+    <rect x="184" y="16" width="124" height="22" rx="11" fill="${draftCard ? '#fff1f2' : '#ecfdf5'}" stroke="${draftCard ? '#fda4af' : '#86efac'}" stroke-width="1" />
+    <text x="246" y="30" fill="${draftCard ? '#be123c' : '#047857'}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7" font-weight="900" letter-spacing="0.7">${escapeXml(sourceLabel)}</text>
   </g>
 </svg>`;
 };

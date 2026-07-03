@@ -28,6 +28,9 @@ export const ALLOWED_USER_FIELDS = [
   'role',
   'status',
   'qr_value',
+  'card_source',
+  'card_source_label',
+  'is_official',
   'tahun_ajaran',
   'nomor_kartu',
   'createdAt',
@@ -63,6 +66,8 @@ const SENSITIVE_FIELD_KEYS = new Set([
 const SENSITIVE_COMPACT_KEYS = new Set(SENSITIVE_FIELD_NAMES.map((field) => field.replace(/[_\s-]+/g, '')));
 const SENSITIVE_TOKEN_KEYS = new Set(['password', 'pass', 'pwd', 'username', 'user', 'token', 'secret', 'cookie', 'session', 'credential', 'auth', 'key', 'raw']);
 const QR_SENSITIVE_PATTERN = /(?:password|pass|pwd|token|secret|api[_\s-]?key|access[_\s-]?token|refresh[_\s-]?token|cookie|session|credential|auth)/i;
+const OFFICIAL_SOURCE_VALUES = new Set(['database', 'db', 'schoolhub-api', 'siab2-api', 'official', 'resmi']);
+const DRAFT_SOURCE_VALUES = new Set(['csv-draft', 'csv_draft', 'draft', 'manual-draft', 'manual_draft']);
 
 export const FIELD_ALIASES = {
   id: ['id', 'ID', 'identity_id'],
@@ -79,6 +84,9 @@ export const FIELD_ALIASES = {
   tahun_ajaran: ['tahun_ajaran', 'Tahun Ajaran', 'tahun ajaran', 'periode', 'Periode'],
   nomor_kartu: ['nomor_kartu', 'Nomor Kartu', 'nomor kartu', 'card_number', 'no kartu'],
   status: ['status', 'Status'],
+  card_source: ['card_source', 'card source', 'sumber kartu', 'source'],
+  card_source_label: ['card_source_label', 'card source label', 'label sumber'],
+  is_official: ['is_official', 'official', 'resmi'],
   createdAt: ['createdAt', 'created_at', 'created at', 'dibuat'],
   updatedAt: ['updatedAt', 'updated_at', 'updated at', 'diubah'],
 };
@@ -135,6 +143,22 @@ export const isSensitiveFieldName = (field = '') => {
 };
 
 export const isSensitiveQrValue = (value = '') => QR_SENSITIVE_PATTERN.test(cleanString(value));
+
+export const normalizeCardSource = (value = '') => {
+  const source = cleanString(value).toLowerCase();
+  if (OFFICIAL_SOURCE_VALUES.has(source)) return 'database';
+  if (DRAFT_SOURCE_VALUES.has(source)) return 'csv-draft';
+  return '';
+};
+
+export const isDatabaseOfficialCard = (user = {}) => normalizeCardSource(user.card_source) === 'database';
+
+export const isDraftCard = (user = {}) => !isDatabaseOfficialCard(user);
+
+export const getCardSourceLabel = (user = {}) => {
+  if (isDatabaseOfficialCard(user)) return 'RESMI / DATABASE';
+  return 'DRAFT / TIDAK TERVERIFIKASI';
+};
 
 const getAliasedValue = (row, aliases) => {
   const normalized = Object.entries(row || {}).reduce((acc, [key, value]) => {
@@ -318,6 +342,9 @@ export const sanitizeUser = (user = {}, index = 0) => {
   safeUser.jurusan = cleanString(source.jurusan || safeUser.jurusan);
   safeUser.role = normalizeRole(source.role || safeUser.role);
   safeUser.status = cleanString(source.status || safeUser.status) || 'Aktif';
+  safeUser.card_source = normalizeCardSource(source.card_source || safeUser.card_source) || 'csv-draft';
+  safeUser.is_official = isDatabaseOfficialCard({ ...safeUser, ...source, card_source: safeUser.card_source }) ? 'true' : 'false';
+  safeUser.card_source_label = getCardSourceLabel(safeUser);
   safeUser.tahun_ajaran = cleanString(source.tahun_ajaran || safeUser.tahun_ajaran);
   safeUser.nomor_kartu = cleanString(source.nomor_kartu || safeUser.nomor_kartu);
   safeUser.createdAt = cleanString(source.createdAt || safeUser.createdAt);
@@ -390,6 +417,9 @@ export const normalizeIdentityRow = (row, index = 0) => {
     tahun_ajaran: getAliasedValue(row, FIELD_ALIASES.tahun_ajaran),
     nomor_kartu: getAliasedValue(row, FIELD_ALIASES.nomor_kartu),
     status: getAliasedValue(row, FIELD_ALIASES.status) || 'Aktif',
+    card_source: 'csv-draft',
+    card_source_label: 'DRAFT / TIDAK TERVERIFIKASI',
+    is_official: 'false',
     createdAt: getAliasedValue(row, FIELD_ALIASES.createdAt),
     updatedAt: getAliasedValue(row, FIELD_ALIASES.updatedAt),
   }, index);

@@ -43,8 +43,17 @@ test('maps student cards without class for stable identity card display', () => 
   assert.equal(users[0].role, 'student');
   assert.equal(users[0].kelas, '');
   assert.equal(users[0].qr_value, 'schoolhub:qr:v1:QR_ABCDEFGHIJKL');
+  assert.equal(users[0].card_source, 'database');
+  assert.equal(users[0].card_source_label, 'RESMI / DATABASE');
+  assert.equal(users[0].is_official, 'true');
   assert.equal(users[1].role, 'teacher');
   assert.equal(users[1].kelas, 'Guru Piket');
+});
+
+test('rejects official card payloads that contain credential fields', () => {
+  assert.throws(() => mapSiab2CardsPayload({
+    cards: [{ nama: 'Aisyah', nisn: '1', passwordHash: 'secret', qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL' }],
+  }), /field kredensial terlarang/i);
 });
 
 test('fetchSiab2Cards uses credentials and retries once after refresh', async () => {

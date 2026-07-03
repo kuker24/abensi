@@ -305,6 +305,9 @@ const Users = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Sumber
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -351,6 +354,17 @@ const Users = () => {
                           <span className="inline-flex items-center gap-1 text-green-600 text-sm">
                             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                             {user.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs font-bold rounded-full ${
+                              user.card_source === 'database' && user.is_official === 'true'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {user.card_source === 'database' && user.is_official === 'true' ? 'RESMI / DATABASE' : 'DRAFT / TIDAK TERVERIFIKASI'}
                           </span>
                         </td>
                       </tr>
