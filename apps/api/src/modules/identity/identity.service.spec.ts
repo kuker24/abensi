@@ -2,7 +2,8 @@ import { CardStatus, QrCredentialStatus, Role } from '@prisma/client';
 import { IdentityService } from './identity.service';
 
 jest.mock('bcryptjs', () => ({
-  hash: jest.fn(async (value: string) => `hash:length:${value.length}`)
+  hash: jest.fn(async (value: string) => `hash:length:${value.length}`),
+  compare: jest.fn(async (value: string, hash: string) => hash === 'hash:pin:valid' ? value === '123456' : value === 'AdminPass#123')
 }));
 
 function safeJson(value: unknown) {
@@ -28,6 +29,8 @@ function makePrisma() {
     reconciliationEscalation: { count: jest.fn().mockResolvedValue(0) },
     picketNote: { count: jest.fn().mockResolvedValue(0) },
     smartCard: { count: jest.fn().mockResolvedValue(0) },
+    authSession: { count: jest.fn().mockResolvedValue(0) },
+    qrCredential: { count: jest.fn().mockResolvedValue(0) },
     teacherLeave: { count: jest.fn().mockResolvedValue(0) },
     weeklySchedule: { count: jest.fn().mockResolvedValue(0) },
     prayerAttendanceLog: { count: jest.fn().mockResolvedValue(0) },
@@ -35,6 +38,10 @@ function makePrisma() {
     attendanceCorrectionEvent: { count: jest.fn().mockResolvedValue(0) },
     userTutorialState: { deleteMany: jest.fn() },
     notification: { deleteMany: jest.fn() },
+    accountDeleteSecuritySetting: {
+      findUnique: jest.fn(),
+      upsert: jest.fn()
+    },
     auditEntry: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn()
@@ -51,6 +58,7 @@ function makePrisma() {
         smartCard: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         userTutorialState: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         notification: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        accountDeleteSecuritySetting: { upsert: prisma.accountDeleteSecuritySetting.upsert },
         auditEntry: { create: prisma.auditEntry.create },
         auditChainState: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() }
       };
@@ -237,6 +245,94 @@ describe('IdentityService', () => {
 
     await expect(service.generateAccountLoginSlips({ userIds: ['student-1'], reason: 'Cetak slip akun awal.' }, actor)).rejects.toThrow('Lembar akun hanya boleh dibuat untuk pengguna aktif.');
     expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('configures account delete PIN with admin re-auth and never audits the PIN', async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue({ id: 'admin-1', username: 'admin', role: Role.ADMIN_TU, active: true, passwordHash: 'hash:admin' });
+    prisma.accountDeleteSecuritySetting.upsert.mockResolvedValue({ id: 1, updatedAt: new Date('2026-07-03T00:00:00.000Z') });
+    const service = new IdentityService(prisma);
+
+    const result = await service.configureAccountDeletePin({ currentPassword: 'AdminPass#123', pin: '123456', confirmPin: '123456', reason: 'Menyiapkan PIN hapus akun.' }, actor);
+
+    expect(result.configured).toBe(true);
+    expect(prisma.accountDeleteSecuritySetting.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ deletePinHash: expect.stringMatching(/^hash:length:/), updatedById: 'admin-1' })
+    }));
+    expect(safeJson(prisma.auditEntry.create.mock.calls)).not.toContain('123456');
+  });
+
+  it('previews account delete decisions without mutating data', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'fresh-1', username: 'fresh.user', fullName: 'Fresh User', role: Role.SISWA, active: true, cardStatus: CardStatus.ACTIVE, archivedAt: null },
+      { id: 'kepsek-1', username: 'kepsek', fullName: 'Kepala Sekolah', role: Role.KEPALA_SEKOLAH, active: true, cardStatus: CardStatus.ACTIVE, archivedAt: null }
+    ]);
+    prisma.studentAttendance.count.mockResolvedValueOnce(0).mockResolvedValueOnce(2);
+    const service = new IdentityService(prisma);
+
+    const preview = await service.previewAccountDelete({ userIds: ['fresh-1', 'kepsek-1'] }, actor);
+
+    expect(preview.summary).toEqual({ hardDeleteCount: 1, archiveCount: 1, rejectedCount: 0 });
+    expect(preview.items[0].action).toBe('HARD_DELETE');
+    expect(preview.items[1].action).toBe('ARCHIVE');
+    expect(preview.items[1].warnings.join(' ')).toMatch(/Kepala Sekolah/);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.user.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate account delete IDs before PIN verification', async () => {
+    const prisma = makePrisma();
+    const service = new IdentityService(prisma);
+
+    await expect(service.deleteAccounts({ userIds: ['u1', 'u1'], reason: 'Menghapus akun duplikat.', pin: '123456', confirmText: 'HAPUS AKUN' }, actor)).rejects.toThrow('duplikat');
+    expect(prisma.accountDeleteSecuritySetting.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('audits wrong delete PIN without storing PIN', async () => {
+    const prisma = makePrisma();
+    prisma.accountDeleteSecuritySetting.findUnique.mockResolvedValue({ deletePinHash: 'hash:pin:valid' });
+    const service = new IdentityService(prisma);
+
+    await expect(service.deleteAccounts({ userIds: ['u1'], reason: 'Menghapus akun salah input.', pin: '000000', confirmText: 'HAPUS AKUN' }, actor)).rejects.toThrow('PIN konfirmasi salah');
+    expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'identity.accounts.delete_pin_failed' }) });
+    expect(safeJson(prisma.auditEntry.create.mock.calls)).not.toContain('000000');
+  });
+
+  it('archives account with dependencies and revokes sessions and QR credentials', async () => {
+    const prisma = makePrisma();
+    prisma.accountDeleteSecuritySetting.findUnique.mockResolvedValue({ deletePinHash: 'hash:pin:valid' });
+    prisma.user.findMany.mockResolvedValue([{ id: 'student-1', username: 'siswa.histori', fullName: 'Siswa Histori', role: Role.SISWA, active: true, cardStatus: CardStatus.ACTIVE, archivedAt: null }]);
+    prisma.studentAttendance.count.mockResolvedValue(1);
+    prisma.user.update.mockResolvedValue({});
+    const service = new IdentityService(prisma);
+
+    const result = await service.deleteAccounts({ userIds: ['student-1'], reason: 'Membersihkan akun tidak dipakai.', pin: '123456', confirmText: 'HAPUS AKUN' }, actor);
+
+    expect(result.archivedCount).toBe(1);
+    expect(result.hardDeletedCount).toBe(0);
+    expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'student-1' },
+      data: expect.objectContaining({ active: false, archivedById: 'admin-1', deleteMode: 'ARCHIVED_BY_ACCOUNT_DELETE', sessionVersion: { increment: 1 } })
+    }));
+    expect(prisma.__tx.authSession.updateMany).toHaveBeenCalledWith({ where: { userId: 'student-1', revokedAt: null }, data: { revokedAt: expect.any(Date), revokedReason: 'account-archived' } });
+    expect(prisma.__tx.qrCredential.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'student-1', status: QrCredentialStatus.ACTIVE } }));
+    expect(safeJson(prisma.auditEntry.create.mock.calls)).not.toContain('123456');
+  });
+
+  it('hard deletes only orphan accounts', async () => {
+    const prisma = makePrisma();
+    prisma.accountDeleteSecuritySetting.findUnique.mockResolvedValue({ deletePinHash: 'hash:pin:valid' });
+    prisma.user.findMany.mockResolvedValue([{ id: 'fresh-1', username: 'fresh.user', fullName: 'Fresh User', role: Role.SISWA, active: true, cardStatus: CardStatus.ACTIVE, archivedAt: null }]);
+    const service = new IdentityService(prisma);
+
+    const result = await service.deleteAccounts({ userIds: ['fresh-1'], reason: 'Menghapus akun test kosong.', pin: '123456', confirmText: 'HAPUS AKUN', mode: 'hard-delete-only-if-safe' }, actor);
+
+    expect(result.hardDeletedCount).toBe(1);
+    expect(result.archivedCount).toBe(0);
+    expect(prisma.__tx.userTutorialState.deleteMany).toHaveBeenCalledWith({ where: { userId: 'fresh-1' } });
+    expect(prisma.__tx.notification.deleteMany).toHaveBeenCalledWith({ where: { userId: 'fresh-1' } });
+    expect(prisma.__tx.user.delete).toHaveBeenCalledWith({ where: { id: 'fresh-1' } });
   });
 
 });
