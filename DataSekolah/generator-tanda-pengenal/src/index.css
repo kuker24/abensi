@@ -218,21 +218,67 @@ body {
 }
 .schoolhub-generator .bg-white { background-color: rgba(30, 32, 37, 0.82) !important; }
 .schoolhub-generator .bg-gray-50,
+.schoolhub-generator .bg-gray-100,
+.schoolhub-generator .bg-gray-200,
+.schoolhub-generator .bg-slate-50,
 .schoolhub-generator .bg-warm-50,
 .schoolhub-generator .bg-primary-50,
 .schoolhub-generator .bg-blue-50,
-.schoolhub-generator .bg-yellow-50 { background-color: rgba(255,255,255,0.045) !important; }
+.schoolhub-generator .bg-yellow-50,
+.schoolhub-generator .bg-green-50,
+.schoolhub-generator .bg-emerald-50,
+.schoolhub-generator .bg-rose-50,
+.schoolhub-generator .bg-red-50 { background-color: rgba(255,255,255,0.045) !important; }
 .schoolhub-generator .border-gray-100,
+.schoolhub-generator .border-gray-200,
+.schoolhub-generator .border-slate-200,
 .schoolhub-generator .border-warm-200,
-.schoolhub-generator .border-warm-300 { border-color: rgba(255,255,255,0.08) !important; }
+.schoolhub-generator .border-warm-300,
+.schoolhub-generator .border-blue-200,
+.schoolhub-generator .border-yellow-200,
+.schoolhub-generator .border-green-200,
+.schoolhub-generator .border-emerald-200,
+.schoolhub-generator .border-rose-200,
+.schoolhub-generator .border-red-200 { border-color: rgba(255,255,255,0.08) !important; }
 .schoolhub-generator .text-gray-900,
 .schoolhub-generator .text-ink-900,
 .schoolhub-generator .text-ink-800,
-.schoolhub-generator .text-gray-700 { color: #f0ede8 !important; }
+.schoolhub-generator .text-gray-800,
+.schoolhub-generator .text-gray-700,
+.schoolhub-generator .text-slate-900,
+.schoolhub-generator .text-slate-800,
+.schoolhub-generator .text-slate-700 { color: #f0ede8 !important; }
+.schoolhub-generator .text-gray-600,
 .schoolhub-generator .text-gray-500,
 .schoolhub-generator .text-gray-400,
 .schoolhub-generator .text-ink-500,
-.schoolhub-generator .text-ink-400 { color: #a8a29e !important; }
+.schoolhub-generator .text-ink-400,
+.schoolhub-generator .text-slate-500,
+.schoolhub-generator .text-slate-400 { color: #a8a29e !important; }
+.schoolhub-generator .text-blue-500,
+.schoolhub-generator .text-blue-600,
+.schoolhub-generator .text-blue-700,
+.schoolhub-generator .text-blue-800 { color: #60a5fa !important; }
+.schoolhub-generator .text-yellow-500,
+.schoolhub-generator .text-yellow-600,
+.schoolhub-generator .text-yellow-700,
+.schoolhub-generator .text-yellow-800 { color: #fbbf24 !important; }
+.schoolhub-generator .text-green-500,
+.schoolhub-generator .text-green-600,
+.schoolhub-generator .text-green-700,
+.schoolhub-generator .text-green-800,
+.schoolhub-generator .text-emerald-500,
+.schoolhub-generator .text-emerald-600,
+.schoolhub-generator .text-emerald-700,
+.schoolhub-generator .text-emerald-800 { color: #34d399 !important; }
+.schoolhub-generator .text-red-500,
+.schoolhub-generator .text-red-600,
+.schoolhub-generator .text-red-700,
+.schoolhub-generator .text-red-800,
+.schoolhub-generator .text-rose-500,
+.schoolhub-generator .text-rose-600,
+.schoolhub-generator .text-rose-700,
+.schoolhub-generator .text-rose-800 { color: #f87171 !important; }
 .schoolhub-generator .shadow-sm { box-shadow: 0 4px 24px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.03) !important; }
 .schoolhub-generator .card-hover:hover { box-shadow: 0 18px 46px rgba(0,0,0,0.38), 0 0 0 1px rgba(245,158,11,0.18) !important; }
 .schoolhub-generator input,
@@ -241,6 +287,12 @@ body {
   background: #16181c;
   border-color: rgba(255,255,255,0.10);
   color: #f0ede8;
+}
+.schoolhub-generator input:focus,
+.schoolhub-generator select:focus,
+.schoolhub-generator textarea:focus {
+  border-color: rgba(245,158,11,0.72);
+  box-shadow: 0 0 0 3px rgba(245,158,11,0.16);
 }
 .schoolhub-generator input::placeholder,
 .schoolhub-generator textarea::placeholder { color: #78716c; }
