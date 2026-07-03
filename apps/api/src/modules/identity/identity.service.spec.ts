@@ -2,8 +2,12 @@ import { CardStatus, QrCredentialStatus, Role } from '@prisma/client';
 import { IdentityService } from './identity.service';
 
 jest.mock('bcryptjs', () => ({
-  hash: jest.fn(async (value: string) => `hash:${value}`)
+  hash: jest.fn(async (value: string) => `hash:length:${value.length}`)
 }));
+
+function safeJson(value: unknown) {
+  return JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? item.toString() : item);
+}
 
 function makePrisma() {
   const prisma: any = {
@@ -167,4 +171,72 @@ describe('IdentityService', () => {
 
     await expect(service.deleteUserPermanently('dev-1', { confirmUsername: 'developer', reason: 'Tidak boleh hapus sendiri.' }, { sub: 'dev-1', role: 'DEVELOPER' })).rejects.toThrow('Anda tidak boleh menghapus akun sendiri.');
   });
+
+
+  it('generates account login slips for active allowed users without storing plaintext', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'student-1', username: 'siswa.test', fullName: 'Siswa Test', role: Role.SISWA, active: true },
+      { id: 'teacher-1', username: 'guru.test', fullName: 'Guru Test', role: Role.GURU_MAPEL, active: true }
+    ]);
+    prisma.user.update.mockResolvedValue({});
+    const service = new IdentityService(prisma);
+
+    const result = await service.generateAccountLoginSlips({ userIds: ['student-1', 'teacher-1'], reason: 'Cetak slip akun awal.' }, actor);
+
+    expect(result.slips).toHaveLength(2);
+    expect(result.revokeSessions).toBe(true);
+    expect(prisma.user.update).toHaveBeenCalledTimes(2);
+    for (const slip of result.slips) {
+      expect(slip.initialPassword).toHaveLength(14);
+      expect(safeJson(prisma.user.update.mock.calls)).not.toContain(`"initialPassword":"${slip.initialPassword}"`);
+      expect(safeJson(prisma.user.update.mock.calls)).not.toContain(`"password":"${slip.initialPassword}"`);
+    }
+    expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'student-1' },
+      data: expect.objectContaining({
+        passwordHash: expect.stringMatching(/^hash:length:/),
+        mustChangePassword: false,
+        passwordChangedAt: null,
+        sessionVersion: { increment: 1 }
+      })
+    }));
+    expect(prisma.__tx.authSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: { in: ['student-1', 'teacher-1'] }, revokedAt: null },
+      data: { revokedAt: expect.any(Date), revokedReason: 'account-slip-generated' }
+    });
+    const auditCall = prisma.auditEntry.create.mock.calls.at(-1)?.[0];
+    expect(auditCall).toEqual({ data: expect.objectContaining({ action: 'account_slips.generated', module: 'identity', reason: 'Cetak slip akun awal.' }) });
+    for (const slip of result.slips) {
+      expect(safeJson(auditCall)).not.toContain(slip.initialPassword);
+    }
+  });
+
+  it('rejects empty and oversized account login slip batches', async () => {
+    const prisma = makePrisma();
+    const service = new IdentityService(prisma);
+
+    await expect(service.generateAccountLoginSlips({ userIds: [], reason: 'Cetak slip akun awal.' }, actor)).rejects.toThrow('Pilih minimal satu pengguna.');
+    await expect(service.generateAccountLoginSlips({ userIds: Array.from({ length: 51 }, (_, index) => `u-${index}`), reason: 'Cetak slip akun awal.' }, actor)).rejects.toThrow('Maksimal 50 pengguna per batch.');
+    expect(prisma.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects operator IT and developer target account slips', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([{ id: 'dev-1', username: 'developer', fullName: 'Developer', role: Role.DEVELOPER, active: true }]);
+    const service = new IdentityService(prisma);
+
+    await expect(service.generateAccountLoginSlips({ userIds: ['student-1'], reason: 'Cetak slip akun awal.' }, { sub: 'operator-1', role: 'OPERATOR_IT' })).rejects.toThrow('Lembar akun login hanya boleh dibuat oleh Admin TU atau Developer.');
+    await expect(service.generateAccountLoginSlips({ userIds: ['dev-1'], reason: 'Cetak slip akun awal.' }, { sub: 'dev-admin', role: 'DEVELOPER' })).rejects.toThrow('Target lembar akun hanya SISWA, GURU_MAPEL, GURU_PIKET, atau KEPALA_SEKOLAH.');
+  });
+
+  it('rejects inactive users for account login slips', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([{ id: 'student-1', username: 'siswa.test', fullName: 'Siswa Test', role: Role.SISWA, active: false }]);
+    const service = new IdentityService(prisma);
+
+    await expect(service.generateAccountLoginSlips({ userIds: ['student-1'], reason: 'Cetak slip akun awal.' }, actor)).rejects.toThrow('Lembar akun hanya boleh dibuat untuk pengguna aktif.');
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
 });

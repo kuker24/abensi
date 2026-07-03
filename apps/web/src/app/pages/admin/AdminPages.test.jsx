@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AndroidApkUpdatePage, AuditPage, DevicesPage, ReportsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
+import { AndroidApkUpdatePage, AuditPage, DevicesPage, MasterDataPage, ReportsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -12,6 +12,61 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe('Master Data account login slips', () => {
+  it('renders slips from memory state and clears them without browser storage', async () => {
+    const notify = vi.fn();
+    const localSetItem = vi.fn();
+    const sessionSetItem = vi.fn();
+    Object.defineProperty(window, 'localStorage', {
+      value: { getItem: vi.fn(() => JSON.stringify({ id: 'admin-1', role: 'ADMIN_TU' })), setItem: localSetItem, removeItem: vi.fn(), clear: vi.fn() },
+      configurable: true
+    });
+    Object.defineProperty(globalThis, 'localStorage', { value: window.localStorage, configurable: true });
+    Object.defineProperty(window, 'sessionStorage', {
+      value: { getItem: vi.fn(), setItem: sessionSetItem, removeItem: vi.fn(), clear: vi.fn() },
+      configurable: true
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    window.history.pushState({}, '', '/admin/master-data?tab=account-slips');
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/identity/users')) {
+        return new Response(JSON.stringify({
+          items: [
+            { id: 'student-1', username: 'siswa.test', fullName: 'Siswa Test', role: 'SISWA', active: true },
+            { id: 'developer-1', username: 'dev', fullName: 'Developer', role: 'DEVELOPER', active: true }
+          ],
+          meta: { page: 1, limit: 200, total: 2, totalPages: 1 }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/identity/account-slips/generate')) {
+        return new Response(JSON.stringify({
+          generatedAt: '2026-07-03T00:00:00.000Z',
+          revokeSessions: true,
+          revokedSessions: 0,
+          slips: [{ userId: 'student-1', fullName: 'Siswa Test', username: 'siswa.test', role: 'SISWA', initialPassword: 'contoh-pass-01' }]
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<MasterDataPage notify={notify} />);
+
+    const checkbox = await screen.findByLabelText('Pilih Siswa Test');
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: /Generate Lembar Akun/i }));
+
+    expect(await screen.findByText('contoh-pass-01')).toBeInTheDocument();
+    expect(screen.getByTestId('account-slip-print-area')).toBeInTheDocument();
+    expect(localSetItem).not.toHaveBeenCalled();
+    expect(sessionSetItem).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Hapus dari layar/i })[0]);
+    await waitFor(() => expect(screen.queryByText('contoh-pass-01')).not.toBeInTheDocument());
+  });
 });
 
 describe('HP Scanner Android operator UI', () => {

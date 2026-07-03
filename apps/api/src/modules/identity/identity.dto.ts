@@ -1,5 +1,5 @@
 import { CardStatus, Role } from '@prisma/client';
-import { IsArray, IsBoolean, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateUserDto {
@@ -78,6 +78,22 @@ export class PermanentDeleteUserDto {
   @IsString()
   @MinLength(10)
   reason!: string;
+}
+
+export class GenerateAccountSlipsDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  userIds!: string[];
+
+  @IsString()
+  @MinLength(10)
+  reason!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  revokeSessions?: boolean;
 }
 
 export class UpdateMeDto {

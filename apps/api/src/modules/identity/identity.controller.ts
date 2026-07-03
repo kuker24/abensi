@@ -9,7 +9,7 @@ import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IMPORT_FILE_INTERCEPTOR_OPTIONS, parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CreateUserDto, ImportUserRowDto, ImportUsersDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
+import { CreateUserDto, GenerateAccountSlipsDto, ImportUserRowDto, ImportUsersDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
 import { IdentityService } from './identity.service';
 
 @Controller('identity')
@@ -104,6 +104,13 @@ export class IdentityController {
   ) {
     const rows = await parseImportFile(file);
     return this.identityService.commitUsersImport(rows as unknown as ImportUserRowDto[], user);
+  }
+
+  @Post('account-slips/generate')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  generateAccountSlips(@Body() body: GenerateAccountSlipsDto, @CurrentUser() user: { sub: string; role: string }) {
+    return this.identityService.generateAccountLoginSlips(body, user);
   }
 
   @Get('me')

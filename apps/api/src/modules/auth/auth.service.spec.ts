@@ -52,6 +52,31 @@ describe('AuthService role-aware login', () => {
     });
   });
 
+  it('logs in with an account slip password without forcing password change', async () => {
+    const { prisma, service } = makeService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'student-1',
+      username: 'siswa.test',
+      fullName: 'Siswa Test',
+      role: Role.SISWA,
+      active: true,
+      passwordHash: 'hash',
+      sessionVersion: 7,
+      mustChangePassword: false
+    });
+    prisma.authSession.create.mockResolvedValue({ id: 'session-1' });
+
+    const result = await service.login('siswa.test', 'SlipPassword123', {}, 'siswa');
+
+    expect(result.user).toEqual(expect.objectContaining({
+      id: 'student-1',
+      username: 'siswa.test',
+      role: Role.SISWA,
+      mustChangePassword: false
+    }));
+    expect(prisma.authSession.create).toHaveBeenCalled();
+  });
+
   it('returns the current authenticated user without trusting local browser storage', async () => {
     const { prisma, service } = makeService();
     prisma.user.findUnique.mockResolvedValue({

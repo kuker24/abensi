@@ -5909,3 +5909,130 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     min-width: 62px;
   }
 }
+
+.account-slip-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.account-slip-checkbox {
+  align-items: center;
+  color: var(--muted, #64748b);
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.account-slip-user-list {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.account-slip-actions {
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.account-slip-print-area {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.account-login-slip {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 18px;
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 160px;
+  padding: 14px;
+  page-break-inside: avoid;
+}
+
+.account-login-slip__header {
+  align-items: center;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.account-login-slip dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.account-login-slip dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.account-login-slip dt {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.account-login-slip dd {
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.account-login-slip__password {
+  background: #f8fafc;
+  border: 1px dashed #94a3b8;
+  border-radius: 10px;
+  display: inline-block;
+  font-size: 17px !important;
+  letter-spacing: 0.06em;
+  padding: 6px 8px;
+}
+
+.account-login-slip p {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: auto 0 0;
+}
+
+@media print {
+  body:has(.account-slip-print-area) * {
+    visibility: hidden !important;
+  }
+
+  body:has(.account-slip-print-area) .account-slip-print-area,
+  body:has(.account-slip-print-area) .account-slip-print-area * {
+    visibility: visible !important;
+  }
+
+  body:has(.account-slip-print-area) .account-slip-print-area {
+    background: #fff;
+    display: grid !important;
+    gap: 8mm;
+    grid-template-columns: repeat(2, 1fr);
+    left: 0;
+    padding: 10mm;
+    position: absolute;
+    top: 0;
+    width: 190mm;
+  }
+
+  body:has(.account-slip-print-area) .account-login-slip {
+    border: 0.35mm solid #0f172a;
+    border-radius: 4mm;
+    min-height: 58mm;
+    padding: 5mm;
+  }
+}
