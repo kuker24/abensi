@@ -159,6 +159,8 @@ Generator terpisah di:
 - URL production langsung: `/id-card-generator/`
 - URL production terproteksi dari web utama: `/admin/master-data/id-card-generator/`
 - Metadata generator mengikuti root app: `/favicon.svg`, `/app-icon.svg`, `/site.webmanifest`, dan theme color `#16181c`.
+- Generator tidak memuat font/CDN eksternal agar sesuai CSP produksi (`style-src 'self' 'unsafe-inline'`) dan menghindari console/failed request noise.
+- Layout generator menyediakan tautan `Kembali ke SIAB2` untuk affordance mobile/standalone dari protected static route.
 
 ### 6.1 Route Generator
 

@@ -5,6 +5,13 @@ const Layout = ({ children, title, subtitle }) => {
   return (
     <div className="schoolhub-generator min-h-screen bg-[#16181c] text-[#f0ede8]">
       {/* Sidebar */}
+      <a
+        href="/admin/master-data"
+        className="generator-return-link no-print"
+        aria-label="Kembali ke Akun dan Data Sekolah SIAB2"
+      >
+        ← Kembali ke SIAB2
+      </a>
       <Sidebar />
 
       {/* Main Content */}
