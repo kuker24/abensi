@@ -2,9 +2,14 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { CardStatus, Prisma, QrCredentialStatus, Role } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto, ImportUserRowDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
+import { CreateUserDto, GenerateAccountSlipsDto, ImportUserRowDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
 import bcrypt from 'bcryptjs';
 import { writeAudit } from '../../common/audit-log';
+import { generateAccountSlipPassword } from './account-slip-password.util';
+
+const ACCOUNT_SLIP_CREATOR_ROLES = new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]);
+const ACCOUNT_SLIP_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
+const MAX_ACCOUNT_SLIP_USERS = 50;
 
 @Injectable()
 export class IdentityService {
@@ -39,6 +44,102 @@ export class IdentityService {
     if (targetRole === Role.DEVELOPER && actorRole !== Role.DEVELOPER) {
       throw new ForbiddenException('Akun developer hanya boleh dikelola oleh developer.');
     }
+  }
+
+  async generateAccountLoginSlips(payload: GenerateAccountSlipsDto, actor: { sub: string; role: string }) {
+    if (!ACCOUNT_SLIP_CREATOR_ROLES.has(actor.role as Role)) {
+      throw new ForbiddenException('Lembar akun login hanya boleh dibuat oleh Admin TU atau Developer.');
+    }
+
+    const uniqueUserIds = [...new Set((payload.userIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+    if (uniqueUserIds.length === 0) throw new BadRequestException('Pilih minimal satu pengguna.');
+    if (uniqueUserIds.length > MAX_ACCOUNT_SLIP_USERS) throw new BadRequestException(`Maksimal ${MAX_ACCOUNT_SLIP_USERS} pengguna per batch.`);
+
+    const reason = String(payload.reason || '').trim();
+    if (reason.length < 10) throw new BadRequestException('Alasan wajib diisi minimal 10 karakter.');
+    const revokeSessions = payload.revokeSessions !== false;
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: uniqueUserIds } },
+      select: { id: true, username: true, fullName: true, role: true, active: true }
+    });
+    const foundIds = new Set(users.map((user) => user.id));
+    const missingIds = uniqueUserIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) throw new BadRequestException('Sebagian pengguna tidak ditemukan.');
+
+    const inactiveUsers = users.filter((user) => !user.active);
+    if (inactiveUsers.length > 0) throw new BadRequestException('Lembar akun hanya boleh dibuat untuk pengguna aktif.');
+
+    const unsupportedUsers = users.filter((user) => !ACCOUNT_SLIP_TARGET_ROLES.has(user.role));
+    if (unsupportedUsers.length > 0) throw new ForbiddenException('Target lembar akun hanya SISWA, GURU_MAPEL, GURU_PIKET, atau KEPALA_SEKOLAH.');
+
+    const prepared = await Promise.all(users.map(async (user) => {
+      const initialPassword = generateAccountSlipPassword();
+      return {
+        user,
+        initialPassword,
+        passwordHash: await bcrypt.hash(initialPassword, 10)
+      };
+    }));
+    const now = new Date();
+
+    const roleDistribution = prepared.reduce<Record<string, number>>((acc, item) => {
+      acc[item.user.role] = (acc[item.user.role] || 0) + 1;
+      return acc;
+    }, {});
+
+    const revokedSessions = await this.prisma.$transaction(async (tx) => {
+      for (const item of prepared) {
+        await tx.user.update({
+          where: { id: item.user.id },
+          data: {
+            passwordHash: item.passwordHash,
+            mustChangePassword: false,
+            passwordChangedAt: null,
+            sessionVersion: { increment: 1 }
+          }
+        });
+      }
+
+      const revoked = revokeSessions
+        ? await tx.authSession.updateMany({
+          where: { userId: { in: uniqueUserIds }, revokedAt: null },
+          data: { revokedAt: now, revokedReason: 'account-slip-generated' }
+        })
+        : { count: 0 };
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'identity',
+        action: 'account_slips.generated',
+        resource: 'user',
+        resourceId: 'bulk-account-slip',
+        reason,
+        after: {
+          count: prepared.length,
+          userIds: uniqueUserIds,
+          roleDistribution,
+          revokeSessions,
+          revokedSessions: revoked.count
+        } as Prisma.InputJsonValue
+      });
+
+      return revoked.count;
+    });
+
+    return {
+      generatedAt: now.toISOString(),
+      revokeSessions,
+      revokedSessions,
+      slips: prepared.map((item) => ({
+        userId: item.user.id,
+        fullName: item.user.fullName,
+        username: item.user.username,
+        role: item.user.role,
+        initialPassword: item.initialPassword
+      }))
+    };
   }
 
   async createUser(payload: CreateUserDto, actorId: string, actorRole?: string) {

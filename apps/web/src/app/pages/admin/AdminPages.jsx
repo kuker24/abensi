@@ -307,7 +307,7 @@ function ResolveFlagModal({ flag, onClose, onDone }) {
 
 const MASTER_DATA_TAB_GROUPS = [
   { label: 'Siswa', tabs: [['student-import', 'Import Siswa'], ['students', 'Daftar Siswa'], ['enroll', 'Daftarkan Manual']] },
-  { label: 'Akun', tabs: [['users', 'Buat/Edit Akun']] },
+  { label: 'Akun', tabs: [['users', 'Buat/Edit Akun'], ['account-slips', 'Lembar Akun Login']] },
   { label: 'Akademik', tabs: [['classes', 'Kelas'], ['subjects', 'Mapel'], ['years', 'Tahun Ajaran'], ['semesters', 'Semester'], ['rooms', 'Ruang']] },
   { label: 'Bantuan & Lanjutan', tabs: [['schedule-help', 'Cara Pakai'], ['import', 'Impor Lanjutan']] }
 ];
@@ -319,6 +319,7 @@ const MASTER_DATA_HELP = {
   'student-import': { title: 'Urutan paling mudah', items: ['Upload CSV siswa di tab Import Siswa.', 'Klik Periksa, lalu Simpan & Siapkan QR.', 'Buka Daftar Pengguna di Master Data, lalu klik Kartu untuk membuka generator cetak.'] },
   students: { title: 'Cek daftar siswa', items: ['Gunakan filter kelas untuk verifikasi anggota kelas.', 'Jika siswa belum muncul, cek akun siswa dan pendaftaran kelas.'] },
   users: { title: 'Kelola akun aman', items: ['Buat akun dengan password sementara, lalu minta pengguna mengganti password.', 'Nonaktifkan akun yang tidak dipakai; jangan hapus jika sudah punya riwayat.'] },
+  'account-slips': { title: 'Lembar akun login', items: ['Generate password awal dari endpoint khusus, bukan dari flow buat/edit akun.', 'Password hanya tampil sekali di layar cetak dan tidak disimpan di browser.'] },
   classes: { title: 'Data kelas', items: ['Buat kelas setelah label tahun ajaran disepakati.', 'Gunakan kode singkat yang sama dengan jadwal dan kartu.'] },
   subjects: { title: 'Data mapel', items: ['Isi kode mapel yang mudah dikenali.', 'Nama mapel dipakai di jadwal dan laporan.'] },
   years: { title: 'Tahun ajaran', items: ['Buat tahun ajaran aktif sebelum membuat semester.', 'Kode contoh: 2026/2027.'] },
@@ -354,6 +355,7 @@ export function MasterDataPage({ notify }) {
     <section id={`master-data-panel-${tab}`} role="tabpanel" aria-labelledby={`master-data-tab-${tab}`} className="master-data-panel">
       {tab === 'student-import' && <StudentImportPanel notify={notify} />}
       {tab === 'users' && <UsersPanel notify={notify} />}
+      {tab === 'account-slips' && <AccountLoginSlipPanel notify={notify} />}
       {tab === 'years' && <SimpleCreatePanel title="Tahun Ajaran" path="/academic/years" fields={[{ key: 'code', label: 'Kode', placeholder: 'contoh: 2026/2027', hint: 'Kode ringkas untuk laporan.' }, { key: 'name', label: 'Nama', placeholder: 'contoh: Tahun Ajaran 2026/2027' }]} notify={notify} empty={{ title: 'Belum ada tahun ajaran.', sub: 'Buat tahun ajaran sebelum membuat semester.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}
       {tab === 'semesters' && <SemesterPanel notify={notify} />}
       {tab === 'rooms' && <SimpleCreatePanel title="Ruang" path="/academic/rooms" fields={[{ key: 'code', label: 'Kode Ruang', placeholder: 'contoh: R-A1 atau LAB-1' }, { key: 'name', label: 'Nama Ruang', placeholder: 'contoh: Ruang Kelas X A' }]} notify={notify} empty={{ title: 'Belum ada ruang kelas.', sub: 'Tambahkan ruang agar jadwal bisa memakai lokasi yang jelas.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}
@@ -493,6 +495,75 @@ function UsersPanel({ notify }) {
   }
   const userEmpty = allRows.length ? { title: 'Tidak ada pengguna yang sesuai dengan filter.', sub: 'Ubah status, peran, atau kata kunci pencarian.' } : { title: 'Belum ada pengguna tambahan.', sub: 'Gunakan formulir di sebelah kiri untuk membuat akun guru, siswa, piket, atau operator.' };
   return <div className="master-data-user-layout"><div className="master-data-form-panel"><Card title={form.id ? 'Edit Akun' : 'Buat Akun Baru'} sub="Pilih jenis akun dulu, lalu isi nama. Untuk siswa, lanjutkan ke tab Daftarkan Manual setelah disimpan."><div className="user-preset-grid master-data-account-presets">{userPresets.map((preset) => <QuickActionCard key={preset.role} title={preset.title} desc={preset.desc} icon={preset.icon} actionLabel="Pilih" onClick={() => applyUserPreset(preset.role)} tone={form.role === preset.role ? 'ok' : ''} />)}</div><form onSubmit={submit} className="form-grid"><Field label="Nama akun" hint="wajib"><TextInput value={form.username} placeholder="contoh: siswa.aisyah" onChange={(e) => set('username', e.target.value)} required disabled={Boolean(form.id) || submitting} /></Field><Field label="Nama Lengkap" hint="wajib"><TextInput value={form.fullName} placeholder="Nama lengkap sesuai data sekolah" onChange={(e) => set('fullName', e.target.value)} required disabled={submitting} /></Field><Field label="Kata sandi" hint={form.id ? 'opsional saat edit' : 'minimal 8 karakter'}><TextInput type="password" value={form.password} placeholder={form.id ? 'Kosongkan jika tidak diganti' : 'Isi password sementara'} autoComplete="new-password" onChange={(e) => set('password', e.target.value)} minLength={8} required={!form.id} disabled={submitting} /></Field><Field label="Peran"><SelectInput value={form.role} onChange={(e) => set('role', e.target.value)} disabled={submitting}>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field><Field label="Status Kartu"><SelectInput value={form.cardStatus} onChange={(e) => set('cardStatus', e.target.value)} disabled={submitting}><option value="ACTIVE">Aktif</option><option value="LOST">Hilang</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field>{formError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {formError}</div>}<Btn variant="primary" loading={submitting}><Plus size={14} /> {form.id ? 'Simpan Perubahan' : 'Buat Akun'}</Btn>{form.role === 'SISWA' && !form.id && <Btn type="button" disabled={submitting} onClick={() => notify('Setelah akun tersimpan, buka tab Daftarkan Manual untuk memilih kelas.', 'warn')}>Info daftar kelas</Btn>}{form.id && <Btn type="button" variant="ghost" disabled={submitting} onClick={() => { reset(emptyUserForm); setFormError(''); }}>Batal edit</Btn>}</form></Card></div><div className="master-data-list-panel"><Card title="Daftar Pengguna" sub="Nonaktifkan untuk menjaga riwayat. Tombol Kartu membuat QR hanya jika belum ada, lalu membuka generator cetak."><div className="master-data-toolbar" role="search" aria-label="Filter daftar pengguna"><Field label="Cari nama atau username"><TextInput value={search} placeholder="contoh: admin.tu atau Aisyah" onChange={(e) => setSearch(e.target.value)} /></Field><Field label="Status akun"><SelectInput value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="ALL">Semua status</option><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field><Field label="Peran"><SelectInput value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}><option value="ALL">Semua peran</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field></div><div className="master-data-table-region user-table-region"><AsyncTable state={filteredState} empty={userEmpty} columns={[{ header: 'Nama', render: (r) => <span className="row master-data-user-cell"><Avatar name={r.fullName} size="sm" /> <span>{r.fullName}</span></span> }, { header: 'Nama akun', render: (r) => <span className="mono" title={r.username}>{r.username}</span> }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Status', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} onRow={(r) => <div className="row master-data-action-row"><Btn size="sm" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => setForm({ id: r.id, username: r.username, fullName: r.fullName, password: '', role: r.role, cardStatus: r.cardStatus })}>Edit</Btn><Btn size="sm" disabled={!r.active} onClick={() => downloadUserCard(r)}><CreditCard size={12} /> Kartu</Btn>{r.active ? <Btn size="sm" variant="danger" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => deactivate(r)}>Nonaktifkan</Btn> : <Btn size="sm" onClick={() => activate(r)}>Aktifkan Lagi</Btn>}{isDeveloper && <Btn size="sm" variant="danger" onClick={() => permanentDelete(r)}>Hapus Permanen</Btn>}</div>} /></div></Card></div></div>;
+}
+
+
+const ACCOUNT_SLIP_ALLOWED_ROLES = new Set(['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH']);
+const ACCOUNT_SLIP_LOGIN_URL = 'https://absensi.man1rokanhulu.cloud';
+
+function AccountLoginSlipPanel({ notify }) {
+  const currentUser = readStoredUser();
+  const canGenerate = ['ADMIN_TU', 'DEVELOPER'].includes(currentUser?.role);
+  const users = useRemote(() => apiFetch('/identity/users?page=1&limit=200'), []);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [reason, setReason] = useState('Cetak lembar akun login awal.');
+  const [revokeSessions, setRevokeSessions] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [slipResult, setSlipResult] = useState(null);
+  const normalizedSearch = search.trim().toLowerCase();
+  const eligibleUsers = itemsOf(users.data).filter((user) => user.active && ACCOUNT_SLIP_ALLOWED_ROLES.has(user.role));
+  const filteredUsers = eligibleUsers.filter((user) => {
+    const roleMatches = roleFilter === 'ALL' || user.role === roleFilter;
+    const searchMatches = !normalizedSearch || `${user.fullName || ''} ${user.username || ''}`.toLowerCase().includes(normalizedSearch);
+    return roleMatches && searchMatches;
+  });
+  const selectedSet = new Set(selectedIds);
+  const selectedCount = selectedIds.length;
+  const selectedPreview = eligibleUsers.filter((user) => selectedSet.has(user.id));
+
+  function toggleUser(userId) {
+    setSlipResult(null);
+    setSelectedIds((current) => current.includes(userId) ? current.filter((id) => id !== userId) : current.length >= 50 ? current : [...current, userId]);
+  }
+
+  function clearSlips() {
+    setSlipResult(null);
+    setSelectedIds([]);
+  }
+
+  async function generateSlips() {
+    if (!canGenerate) return notify('Lembar akun login hanya boleh dibuat Admin TU atau Developer.', 'bad');
+    if (!selectedCount) return notify('Pilih minimal satu pengguna.', 'warn');
+    if (selectedCount > 50) return notify('Maksimal 50 pengguna per batch.', 'warn');
+    if (reason.trim().length < 10) return notify('Alasan wajib minimal 10 karakter.', 'warn');
+    const ok = await riskConfirm(`Generate password awal untuk ${selectedCount} akun? Password hanya tampil sekali di layar ini. Cetak lalu hapus dari layar.`, 'Generate Lembar Akun');
+    if (!ok) return;
+    setGenerating(true);
+    try {
+      const data = await apiFetch('/identity/account-slips/generate', {
+        method: 'POST',
+        body: JSON.stringify({ userIds: selectedIds, reason: reason.trim(), revokeSessions })
+      });
+      setSlipResult(data);
+      notify(`${data.slips?.length || 0} lembar akun siap dicetak. Hapus dari layar setelah selesai.`, 'ok');
+    } catch (error) {
+      notify(error.message || 'Lembar akun belum bisa dibuat.', 'bad');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function printSlips() {
+    window.print();
+  }
+
+  if (!canGenerate) {
+    return <Card title="Lembar Akun Login" sub="Fitur ini hanya untuk Admin TU dan Developer." actions={<Pill tone="bad">Terbatas</Pill>}><SimpleHelpBox title="Akses ditolak" items={['Operator IT tidak dapat generate password awal.', 'Minta Admin TU/Developer membuat lembar akun jika diperlukan.']} /></Card>;
+  }
+
+  return <div className="account-slip-workspace"><Card title="Lembar Akun Login" sub="Generate password awal untuk akun existing. Password tidak masuk QR, localStorage, audit, atau database plaintext." actions={<Pill tone="warn">Sekali tampil</Pill>}><SimpleHelpBox title="Aturan aman" items={['Hanya pilih akun aktif SISWA, GURU_MAPEL, GURU_PIKET, atau KEPALA_SEKOLAH.', 'Password awal tampil di slip dan disarankan diganti setelah login.', 'Cetak/simpan PDF via browser print, lalu klik Hapus dari layar.']} /><div className="master-data-toolbar compact"><Field label="Cari nama/username"><TextInput value={search} placeholder="contoh: siswa.test" onChange={(e) => setSearch(e.target.value)} /></Field><Field label="Peran"><SelectInput value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}><option value="ALL">Semua target</option><option value="SISWA">Siswa</option><option value="GURU_MAPEL">Guru Mapel</option><option value="GURU_PIKET">Guru Piket</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option></SelectInput></Field><Field label="Alasan"><TextInput value={reason} onChange={(e) => setReason(e.target.value)} /></Field></div><label className="account-slip-checkbox"><input type="checkbox" checked={revokeSessions} onChange={(event) => setRevokeSessions(event.target.checked)} /> Cabut sesi aktif setelah password awal digenerate</label><div className="master-data-table-region account-slip-user-list"><DataTable rows={filteredUsers} columns={[{ header: 'Pilih', render: (r) => <input aria-label={`Pilih ${r.fullName}`} type="checkbox" checked={selectedSet.has(r.id)} onChange={() => toggleUser(r.id)} /> }, { header: 'Nama', render: (r) => <span className="row master-data-user-cell"><Avatar name={r.fullName} size="sm" /> <span>{r.fullName}</span></span> }, { header: 'Username', render: (r) => <span className="mono">{r.username}</span> }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }]} /></div><div className="row account-slip-actions"><Pill>{selectedCount}/50 dipilih</Pill><Btn type="button" variant="primary" loading={generating} disabled={!selectedCount || generating} onClick={generateSlips}><KeyRound size={14} /> Generate Lembar Akun</Btn><Btn type="button" variant="ghost" disabled={!selectedCount && !slipResult} onClick={clearSlips}>Hapus dari layar</Btn></div>{selectedPreview.length > 0 && <p className="muted">Dipilih: {selectedPreview.slice(0, 4).map((user) => user.fullName).join(', ')}{selectedPreview.length > 4 ? ` +${selectedPreview.length - 4} lainnya` : ''}</p>}</Card>{slipResult?.slips?.length > 0 && <Card title="Preview Cetak" sub="Gunakan print browser untuk PDF. Jangan bagikan file mentah ke kanal publik." actions={<div className="row"><Btn size="sm" onClick={printSlips}><FileText size={14} /> Cetak / Simpan PDF</Btn><Btn size="sm" variant="ghost" onClick={clearSlips}>Hapus dari layar</Btn></div>}><div className="account-slip-print-area" data-testid="account-slip-print-area">{slipResult.slips.map((slip) => <article className="account-login-slip" key={slip.userId}><div className="account-login-slip__header"><strong>LEMBAR AKUN LOGIN</strong><span>{statusLabel(slip.role)}</span></div><dl><div><dt>Nama</dt><dd>{slip.fullName}</dd></div><div><dt>Username</dt><dd className="mono">{slip.username}</dd></div><div><dt>Password awal</dt><dd className="mono account-login-slip__password">{slip.initialPassword}</dd></div><div><dt>URL Login</dt><dd>{ACCOUNT_SLIP_LOGIN_URL}</dd></div></dl><p>Disarankan ganti password setelah login. Jangan tempel password pada kartu/QR.</p></article>)}</div></Card>}</div>;
 }
 
 function normalizeField(field) {
