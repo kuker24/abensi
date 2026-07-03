@@ -1,24 +1,49 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { CardStatus, Prisma, QrCredentialStatus, Role } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto, GenerateAccountSlipsDto, ImportUserRowDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
+import { ConfigureAccountDeletePinDto, CreateUserDto, DeleteAccountsDto, GenerateAccountSlipsDto, ImportUserRowDto, PermanentDeleteUserDto, PreviewAccountDeleteDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
 import bcrypt from 'bcryptjs';
 import { writeAudit } from '../../common/audit-log';
+import type { RequestMeta } from '../../common/request-meta';
 import { generateAccountSlipPassword } from './account-slip-password.util';
 
 const ACCOUNT_SLIP_CREATOR_ROLES = new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]);
 const ACCOUNT_SLIP_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
 const MAX_ACCOUNT_SLIP_USERS = 50;
 
+const ACCOUNT_DELETE_ACTOR_ROLES = new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]);
+const ACCOUNT_DELETE_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
+const ACCOUNT_DELETE_SENSITIVE_ROLES = new Set<Role>([Role.DEVELOPER, Role.ADMIN_TU, Role.OPERATOR_IT]);
+const MAX_ACCOUNT_DELETE_USERS = 50;
+const ACCOUNT_DELETE_CONFIRM_TEXT = 'HAPUS AKUN';
+const ACCOUNT_DELETE_PIN_SETTING_ID = 1;
+const ACCOUNT_DELETE_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const ACCOUNT_DELETE_RATE_LIMIT_MAX = 10;
+const ACCOUNT_DELETE_RATE_LIMITS = new Map<string, { count: number; resetAt: number }>();
+
+type AccountDeleteMode = 'auto' | 'archive-only' | 'hard-delete-only-if-safe';
+type AccountDeleteAction = 'HARD_DELETE' | 'ARCHIVE' | 'REJECT';
+type AccountDeleteTarget = { id: string; username: string; fullName: string; role: Role; active: boolean; cardStatus: CardStatus; archivedAt: Date | null };
+
 @Injectable()
 export class IdentityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listUsers(pagination: PaginationQuery) {
+  async listUsers(pagination: PaginationQuery, filters: { status?: string } = {}) {
+    const status = filters.status || 'active';
+    const where: Prisma.UserWhereInput = status === 'all'
+      ? {}
+      : status === 'archived'
+        ? { archivedAt: { not: null } }
+        : status === 'inactive'
+          ? { active: false, archivedAt: null }
+          : { active: true, archivedAt: null };
+
     const [total, items] = await Promise.all([
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
       this.prisma.user.findMany({
+        where,
         skip: pagination.skip,
         take: pagination.limit,
         select: {
@@ -28,6 +53,10 @@ export class IdentityService {
           role: true,
           active: true,
           cardStatus: true,
+          archivedAt: true,
+          archivedById: true,
+          archiveReason: true,
+          deleteMode: true,
           createdAt: true
         },
         orderBy: { createdAt: 'desc' }
@@ -43,6 +72,129 @@ export class IdentityService {
   private assertDeveloperMutationAllowed(targetRole: Role | undefined, actorRole?: string) {
     if (targetRole === Role.DEVELOPER && actorRole !== Role.DEVELOPER) {
       throw new ForbiddenException('Akun developer hanya boleh dikelola oleh developer.');
+    }
+  }
+
+  private assertAccountDeleteActor(actor: { sub: string; role: string }) {
+    if (!ACCOUNT_DELETE_ACTOR_ROLES.has(actor.role as Role)) {
+      throw new ForbiddenException('Hapus akun hanya boleh dilakukan Admin TU atau Developer.');
+    }
+  }
+
+  private normalizeAccountDeleteUserIds(userIds: string[] | undefined) {
+    const normalized = (userIds || []).map((id) => String(id || '').trim()).filter(Boolean);
+    if (normalized.length === 0) throw new BadRequestException('Pilih minimal satu akun.');
+    if (normalized.length > MAX_ACCOUNT_DELETE_USERS) throw new BadRequestException(`Maksimal ${MAX_ACCOUNT_DELETE_USERS} akun per batch.`);
+    if (new Set(normalized).size !== normalized.length) throw new BadRequestException('Daftar akun tidak boleh mengandung duplikat.');
+    return normalized;
+  }
+
+  private assertAccountDeleteRateLimit(actor: { sub: string }) {
+    const now = Date.now();
+    const key = actor.sub || 'anonymous';
+    const state = ACCOUNT_DELETE_RATE_LIMITS.get(key);
+    if (!state || state.resetAt <= now) {
+      ACCOUNT_DELETE_RATE_LIMITS.set(key, { count: 1, resetAt: now + ACCOUNT_DELETE_RATE_LIMIT_WINDOW_MS });
+      return;
+    }
+    if (state.count >= ACCOUNT_DELETE_RATE_LIMIT_MAX) {
+      throw new HttpException('Terlalu banyak percobaan hapus akun. Coba lagi beberapa menit.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    state.count += 1;
+  }
+
+  private roleDistribution(users: Array<{ role: Role }>) {
+    return users.reduce<Record<string, number>>((acc, user) => {
+      acc[user.role] = (acc[user.role] || 0) + 1;
+      return acc;
+    }, {});
+  }
+
+  async getAccountDeletePinStatus() {
+    const setting = await this.prisma.accountDeleteSecuritySetting.findUnique({
+      where: { id: ACCOUNT_DELETE_PIN_SETTING_ID },
+      select: { id: true, updatedAt: true, updatedById: true }
+    });
+    return { configured: Boolean(setting), updatedAt: setting?.updatedAt ?? null, updatedById: setting?.updatedById ?? null };
+  }
+
+  async configureAccountDeletePin(payload: ConfigureAccountDeletePinDto, actor: { sub: string; role: string }, meta: RequestMeta = {}) {
+    this.assertAccountDeleteActor(actor);
+    const reason = String(payload.reason || '').trim();
+    if (reason.length < 10) throw new BadRequestException('Alasan wajib diisi minimal 10 karakter.');
+    if (payload.pin !== payload.confirmPin) throw new BadRequestException('Konfirmasi PIN tidak sama.');
+    if (!/^\d{4,12}$/.test(payload.pin)) throw new BadRequestException('PIN harus berupa 4-12 digit angka.');
+
+    const currentUser = await this.prisma.user.findUnique({ where: { id: actor.sub }, select: { id: true, username: true, role: true, active: true, passwordHash: true } });
+    if (!currentUser || !currentUser.active) throw new UnauthorizedException('Sesi tidak aktif. Silakan masuk ulang.');
+    const passwordOk = await bcrypt.compare(payload.currentPassword, currentUser.passwordHash);
+    if (!passwordOk) {
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'identity',
+          action: 'identity.account_delete_pin.configure_failed',
+          resource: 'accountDeleteSecuritySetting',
+          resourceId: String(ACCOUNT_DELETE_PIN_SETTING_ID),
+          reason,
+          requestIp: meta.requestIp ?? null,
+          requestDevice: meta.requestDevice ?? null,
+          after: { failure: 'bad_current_password' } as Prisma.InputJsonValue
+        });
+      });
+      throw new ForbiddenException('Password admin tidak valid.');
+    }
+
+    const deletePinHash = await bcrypt.hash(payload.pin, 10);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const setting = await tx.accountDeleteSecuritySetting.upsert({
+        where: { id: ACCOUNT_DELETE_PIN_SETTING_ID },
+        update: { deletePinHash, updatedById: actor.sub },
+        create: { id: ACCOUNT_DELETE_PIN_SETTING_ID, deletePinHash, updatedById: actor.sub },
+        select: { id: true, updatedAt: true }
+      });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'identity',
+        action: 'identity.account_delete_pin.configured',
+        resource: 'accountDeleteSecuritySetting',
+        resourceId: String(setting.id),
+        reason,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: { configured: true } as Prisma.InputJsonValue
+      });
+      return setting;
+    });
+
+    return { configured: true, updatedAt: updated.updatedAt };
+  }
+
+  private async verifyAccountDeletePin(pin: string, actor: { sub: string; role: string }, meta: RequestMeta, userIds: string[], reason: string) {
+    const setting = await this.prisma.accountDeleteSecuritySetting.findUnique({
+      where: { id: ACCOUNT_DELETE_PIN_SETTING_ID },
+      select: { deletePinHash: true }
+    });
+    if (!setting) throw new BadRequestException('PIN hapus akun belum diatur. Atur PIN terlebih dahulu.');
+    const ok = await bcrypt.compare(pin, setting.deletePinHash);
+    if (!ok) {
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'identity',
+          action: 'identity.accounts.delete_pin_failed',
+          resource: 'user',
+          resourceId: 'bulk-account-delete',
+          reason,
+          requestIp: meta.requestIp ?? null,
+          requestDevice: meta.requestDevice ?? null,
+          after: { count: userIds.length, userIds } as Prisma.InputJsonValue
+        });
+      });
+      throw new ForbiddenException('PIN konfirmasi salah.');
     }
   }
 
@@ -285,6 +437,10 @@ export class IdentityService {
       updatedPicketNotes,
       actorAudits,
       smartCards,
+      authSessions,
+      qrCredentials,
+      createdQrCredentials,
+      revokedQrCredentials,
       teacherLeaves,
       reviewedTeacherLeaves,
       substituteLeaves,
@@ -293,6 +449,7 @@ export class IdentityService {
       createdPrayerLogs,
       attendanceOverrides,
       createdAttendanceOverrides,
+      correctionEventsAsStudent,
       correctionEventsAsActor
     ] = await Promise.all([
       this.prisma.session.count({ where: { teacherId: userId } }),
@@ -309,6 +466,10 @@ export class IdentityService {
       this.prisma.picketNote.count({ where: { updatedById: userId } }),
       this.prisma.auditEntry.count({ where: { actorId: userId } }),
       this.prisma.smartCard.count({ where: { userId } }),
+      this.prisma.authSession.count({ where: { userId } }),
+      this.prisma.qrCredential.count({ where: { userId } }),
+      this.prisma.qrCredential.count({ where: { createdById: userId } }),
+      this.prisma.qrCredential.count({ where: { revokedById: userId } }),
       this.prisma.teacherLeave.count({ where: { teacherId: userId } }),
       this.prisma.teacherLeave.count({ where: { reviewedById: userId } }),
       this.prisma.teacherLeave.count({ where: { substituteTeacherId: userId } }),
@@ -317,6 +478,7 @@ export class IdentityService {
       this.prisma.prayerAttendanceLog.count({ where: { createdById: userId } }),
       this.prisma.attendanceOverride.count({ where: { studentId: userId } }),
       this.prisma.attendanceOverride.count({ where: { createdById: userId } }),
+      this.prisma.attendanceCorrectionEvent.count({ where: { studentId: userId } }),
       this.prisma.attendanceCorrectionEvent.count({ where: { actorId: userId } })
     ]);
 
@@ -335,6 +497,10 @@ export class IdentityService {
       updatedPicketNotes,
       actorAudits,
       smartCards,
+      authSessions,
+      qrCredentials,
+      createdQrCredentials,
+      revokedQrCredentials,
       teacherLeaves,
       reviewedTeacherLeaves,
       substituteLeaves,
@@ -343,6 +509,7 @@ export class IdentityService {
       createdPrayerLogs,
       attendanceOverrides,
       createdAttendanceOverrides,
+      correctionEventsAsStudent,
       correctionEventsAsActor
     };
   }
@@ -363,6 +530,10 @@ export class IdentityService {
       updatedPicketNotes: 'perubahan buku piket',
       actorAudits: 'catatan audit sebagai pelaku',
       smartCards: 'kartu tertaut',
+      authSessions: 'sesi login',
+      qrCredentials: 'credential QR',
+      createdQrCredentials: 'credential QR dibuat',
+      revokedQrCredentials: 'credential QR dicabut',
       teacherLeaves: 'pengajuan izin guru',
       reviewedTeacherLeaves: 'review pengajuan guru',
       substituteLeaves: 'data guru pengganti',
@@ -371,11 +542,160 @@ export class IdentityService {
       createdPrayerLogs: 'scan mushola manual',
       attendanceOverrides: 'override presensi',
       createdAttendanceOverrides: 'override dibuat',
+      correctionEventsAsStudent: 'koreksi presensi sebagai siswa',
       correctionEventsAsActor: 'koreksi presensi sebagai pelaku'
     };
     return Object.entries(counts)
       .filter(([, value]) => value > 0)
       .map(([key, value]) => `${labels[key] || key}: ${value}`);
+  }
+
+  private async accountDeletePreviewItem(target: AccountDeleteTarget, actor: { sub: string; role: string }) {
+    const rejectReasons: string[] = [];
+    const warnings: string[] = [];
+    if (actor.sub === target.id) rejectReasons.push('Anda tidak boleh menghapus akun sendiri.');
+    if (target.archivedAt) rejectReasons.push('Akun sudah diarsipkan.');
+    if (ACCOUNT_DELETE_SENSITIVE_ROLES.has(target.role)) rejectReasons.push('Role sensitif tidak boleh dihapus dari fitur ini.');
+    if (!ACCOUNT_DELETE_TARGET_ROLES.has(target.role)) rejectReasons.push('Role target tidak didukung untuk hapus akun.');
+    if (target.role === Role.KEPALA_SEKOLAH) warnings.push('Target Kepala Sekolah: pastikan sudah ada keputusan resmi sebelum melanjutkan.');
+
+    const relationCounts = await this.protectedRelationCounts(target.id);
+    const dependencyReasons = this.relationBlockReasons(relationCounts);
+    const dependencyCount = Object.values(relationCounts).reduce((sum, value) => sum + value, 0);
+    const action: AccountDeleteAction = rejectReasons.length > 0 ? 'REJECT' : dependencyReasons.length > 0 ? 'ARCHIVE' : 'HARD_DELETE';
+    return {
+      userId: target.id,
+      username: target.username,
+      fullName: target.fullName,
+      role: target.role,
+      active: target.active,
+      cardStatus: target.cardStatus,
+      action,
+      dependencyCount,
+      dependencyReasons,
+      relationCounts,
+      rejectReasons,
+      warnings
+    };
+  }
+
+  async previewAccountDelete(payload: PreviewAccountDeleteDto, actor: { sub: string; role: string }) {
+    this.assertAccountDeleteActor(actor);
+    const userIds = this.normalizeAccountDeleteUserIds(payload.userIds);
+    const targets = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, username: true, fullName: true, role: true, active: true, cardStatus: true, archivedAt: true }
+    });
+    const foundIds = new Set(targets.map((target) => target.id));
+    const missingIds = userIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) throw new BadRequestException('Sebagian akun tidak ditemukan.');
+
+    const items = await Promise.all(targets.map((target) => this.accountDeletePreviewItem(target, actor)));
+    return {
+      requestedCount: userIds.length,
+      roleDistribution: this.roleDistribution(targets),
+      summary: {
+        hardDeleteCount: items.filter((item) => item.action === 'HARD_DELETE').length,
+        archiveCount: items.filter((item) => item.action === 'ARCHIVE').length,
+        rejectedCount: items.filter((item) => item.action === 'REJECT').length
+      },
+      items: userIds.map((id) => items.find((item) => item.userId === id)!)
+    };
+  }
+
+  async deleteAccounts(payload: DeleteAccountsDto, actor: { sub: string; role: string }, meta: RequestMeta = {}) {
+    this.assertAccountDeleteActor(actor);
+    this.assertAccountDeleteRateLimit(actor);
+    const userIds = this.normalizeAccountDeleteUserIds(payload.userIds);
+    const reason = String(payload.reason || '').trim();
+    if (reason.length < 10) throw new BadRequestException('Alasan wajib diisi minimal 10 karakter.');
+    if (String(payload.confirmText || '').trim() !== ACCOUNT_DELETE_CONFIRM_TEXT) throw new BadRequestException(`Ketik ${ACCOUNT_DELETE_CONFIRM_TEXT} untuk konfirmasi.`);
+    const mode: AccountDeleteMode = payload.mode || 'auto';
+
+    await this.verifyAccountDeletePin(payload.pin, actor, meta, userIds, reason);
+    const preview = await this.previewAccountDelete({ userIds }, actor);
+    const rejected = preview.items.filter((item) => item.action === 'REJECT');
+    if (rejected.length > 0) throw new ForbiddenException('Sebagian target tidak boleh dihapus. Periksa preview terlebih dahulu.');
+    if (mode === 'hard-delete-only-if-safe' && preview.items.some((item) => item.action !== 'HARD_DELETE')) {
+      throw new ConflictException('Mode hard-delete-only-if-safe menolak akun yang punya dependency. Gunakan archive-only atau auto.');
+    }
+
+    const now = new Date();
+    const executed = await this.prisma.$transaction(async (tx) => {
+      const hardDeleted: string[] = [];
+      const archived: string[] = [];
+      const revokedSessions: Record<string, number> = {};
+      const revokedQrCredentials: Record<string, number> = {};
+      const inactiveSmartCards: Record<string, number> = {};
+
+      for (const item of preview.items) {
+        const shouldArchive = mode === 'archive-only' || item.action === 'ARCHIVE';
+        if (shouldArchive) {
+          await tx.user.update({
+            where: { id: item.userId },
+            data: {
+              active: false,
+              cardStatus: CardStatus.INACTIVE,
+              archivedAt: now,
+              archivedById: actor.sub,
+              archiveReason: reason,
+              deleteMode: 'ARCHIVED_BY_ACCOUNT_DELETE',
+              sessionVersion: { increment: 1 }
+            }
+          });
+          const sessions = await tx.authSession.updateMany({ where: { userId: item.userId, revokedAt: null }, data: { revokedAt: now, revokedReason: 'account-archived' } });
+          const qr = await tx.qrCredential.updateMany({ where: { userId: item.userId, status: QrCredentialStatus.ACTIVE }, data: { status: QrCredentialStatus.REVOKED, revokedAt: now, revokedById: actor.sub, revokeReason: reason } });
+          const cards = await tx.smartCard.updateMany({ where: { userId: item.userId, status: { not: CardStatus.INACTIVE } }, data: { status: CardStatus.INACTIVE } });
+          archived.push(item.userId);
+          revokedSessions[item.userId] = sessions.count;
+          revokedQrCredentials[item.userId] = qr.count;
+          inactiveSmartCards[item.userId] = cards.count;
+        } else {
+          await tx.userTutorialState.deleteMany({ where: { userId: item.userId } });
+          await tx.notification.deleteMany({ where: { userId: item.userId } });
+          await tx.user.delete({ where: { id: item.userId } });
+          hardDeleted.push(item.userId);
+        }
+      }
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'identity',
+        action: 'identity.accounts.delete_executed',
+        resource: 'user',
+        resourceId: 'bulk-account-delete',
+        reason,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: {
+          mode,
+          count: preview.items.length,
+          userIds,
+          roleDistribution: preview.roleDistribution,
+          hardDeletedCount: hardDeleted.length,
+          archivedCount: archived.length,
+          rejectedCount: 0,
+          hardDeleted,
+          archived,
+          revokedSessions,
+          revokedQrCredentials,
+          inactiveSmartCards
+        } as Prisma.InputJsonValue
+      });
+
+      return { hardDeleted, archived, revokedSessions, revokedQrCredentials, inactiveSmartCards };
+    });
+
+    return {
+      deletedAt: now.toISOString(),
+      mode,
+      requestedCount: preview.requestedCount,
+      hardDeletedCount: executed.hardDeleted.length,
+      archivedCount: executed.archived.length,
+      rejectedCount: 0,
+      items: preview.items.map((item) => ({ ...item, executedAction: executed.hardDeleted.includes(item.userId) ? 'HARD_DELETE' : 'ARCHIVE' }))
+    };
   }
 
   async deleteUserPermanently(userId: string, payload: PermanentDeleteUserDto, actor: { sub: string; role: string }) {

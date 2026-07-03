@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Role } from '@prisma/client';
+import type { Request } from 'express';
 import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { Roles } from '../../common/roles.decorator';
@@ -8,8 +9,9 @@ import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IMPORT_FILE_INTERCEPTOR_OPTIONS, parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
+import { extractRequestMeta } from '../../common/request-meta';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CreateUserDto, GenerateAccountSlipsDto, ImportUserRowDto, ImportUsersDto, PermanentDeleteUserDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
+import { ConfigureAccountDeletePinDto, CreateUserDto, DeleteAccountsDto, GenerateAccountSlipsDto, ImportUserRowDto, ImportUsersDto, PermanentDeleteUserDto, PreviewAccountDeleteDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
 import { IdentityService } from './identity.service';
 
 @Controller('identity')
@@ -20,7 +22,7 @@ export class IdentityController {
   @Get('users')
   @Roles(Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER)
   @Capabilities('users.read')
-  listUsers(@Query('page') page?: string, @Query('limit') limit?: string) {
+  listUsers(@Query('page') page?: string, @Query('limit') limit?: string, @Query('status') status?: string) {
     const pagination = parsePagination({
       page,
       limit,
@@ -28,7 +30,7 @@ export class IdentityController {
       maxLimit: 200
     });
 
-    return this.identityService.listUsers(pagination);
+    return this.identityService.listUsers(pagination, { status });
   }
 
   @Post('users')
@@ -111,6 +113,42 @@ export class IdentityController {
   @Capabilities('users.manage')
   generateAccountSlips(@Body() body: GenerateAccountSlipsDto, @CurrentUser() user: { sub: string; role: string }) {
     return this.identityService.generateAccountLoginSlips(body, user);
+  }
+
+  @Get('accounts/delete-pin/status')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  getAccountDeletePinStatus() {
+    return this.identityService.getAccountDeletePinStatus();
+  }
+
+  @Post('accounts/delete-pin')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  configureAccountDeletePin(
+    @Body() body: ConfigureAccountDeletePinDto,
+    @CurrentUser() user: { sub: string; role: string },
+    @Req() request: Request
+  ) {
+    return this.identityService.configureAccountDeletePin(body, user, extractRequestMeta(request));
+  }
+
+  @Post('accounts/delete-preview')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  previewAccountDelete(@Body() body: PreviewAccountDeleteDto, @CurrentUser() user: { sub: string; role: string }) {
+    return this.identityService.previewAccountDelete(body, user);
+  }
+
+  @Post('accounts/delete')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  deleteAccounts(
+    @Body() body: DeleteAccountsDto,
+    @CurrentUser() user: { sub: string; role: string },
+    @Req() request: Request
+  ) {
+    return this.identityService.deleteAccounts(body, user, extractRequestMeta(request));
   }
 
   @Get('me')

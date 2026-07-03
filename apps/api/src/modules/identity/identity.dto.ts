@@ -1,5 +1,5 @@
 import { CardStatus, Role } from '@prisma/client';
-import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsEnum, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateUserDto {
@@ -94,6 +94,52 @@ export class GenerateAccountSlipsDto {
   @IsOptional()
   @IsBoolean()
   revokeSessions?: boolean;
+}
+
+export class PreviewAccountDeleteDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  userIds!: string[];
+}
+
+export class DeleteAccountsDto extends PreviewAccountDeleteDto {
+  @IsString()
+  @MinLength(10)
+  reason!: string;
+
+  @IsString()
+  @MinLength(4)
+  @MaxLength(12)
+  pin!: string;
+
+  @IsString()
+  confirmText!: string;
+
+  @IsOptional()
+  @IsIn(['auto', 'archive-only', 'hard-delete-only-if-safe'])
+  mode?: 'auto' | 'archive-only' | 'hard-delete-only-if-safe';
+}
+
+export class ConfigureAccountDeletePinDto {
+  @IsString()
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(4)
+  @MaxLength(12)
+  @Matches(/^\d{4,12}$/)
+  pin!: string;
+
+  @IsString()
+  @MinLength(4)
+  @MaxLength(12)
+  confirmPin!: string;
+
+  @IsString()
+  @MinLength(10)
+  reason!: string;
 }
 
 export class UpdateMeDto {

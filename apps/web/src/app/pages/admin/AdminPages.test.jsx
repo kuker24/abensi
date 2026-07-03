@@ -69,6 +69,69 @@ describe('Master Data account login slips', () => {
   });
 });
 
+describe('Master Data account delete guard', () => {
+  it('previews and confirms bulk account delete without storing PIN in browser storage', async () => {
+    const notify = vi.fn();
+    const localSetItem = vi.fn();
+    const sessionSetItem = vi.fn();
+    Object.defineProperty(window, 'localStorage', {
+      value: { getItem: vi.fn(() => JSON.stringify({ id: 'admin-1', role: 'ADMIN_TU' })), setItem: localSetItem, removeItem: vi.fn(), clear: vi.fn() },
+      configurable: true
+    });
+    Object.defineProperty(globalThis, 'localStorage', { value: window.localStorage, configurable: true });
+    Object.defineProperty(window, 'sessionStorage', {
+      value: { getItem: vi.fn(), setItem: sessionSetItem, removeItem: vi.fn(), clear: vi.fn() },
+      configurable: true
+    });
+    let deleteRequestBody = null;
+    vi.stubGlobal('fetch', vi.fn(async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/identity/accounts/delete-pin/status')) return new Response(JSON.stringify({ configured: true, updatedAt: '2026-07-03T00:00:00.000Z' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/identity/users')) {
+        return new Response(JSON.stringify({
+          items: [{ id: 'student-1', username: 'siswa.test', fullName: 'Siswa Test', role: 'SISWA', active: true, cardStatus: 'ACTIVE', archivedAt: null }],
+          meta: { page: 1, limit: 200, total: 1, totalPages: 1 }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/identity/accounts/delete-preview')) {
+        return new Response(JSON.stringify({
+          requestedCount: 1,
+          roleDistribution: { SISWA: 1 },
+          summary: { hardDeleteCount: 1, archiveCount: 0, rejectedCount: 0 },
+          items: [{ userId: 'student-1', username: 'siswa.test', fullName: 'Siswa Test', role: 'SISWA', active: true, cardStatus: 'ACTIVE', action: 'HARD_DELETE', dependencyCount: 0, dependencyReasons: [], rejectReasons: [], warnings: [] }]
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/identity/accounts/delete')) {
+        deleteRequestBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ deletedAt: '2026-07-03T00:00:00.000Z', hardDeletedCount: 1, archivedCount: 0, rejectedCount: 0, items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    window.history.pushState({}, '', '/admin/master-data?tab=users');
+    render(<MasterDataPage notify={notify} />);
+
+    fireEvent.click(await screen.findByLabelText('Pilih Siswa Test'));
+    fireEvent.click(screen.getByRole('button', { name: /Hapus Terpilih/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Konfirmasi Hapus Akun/i });
+    expect(dialog).toBeInTheDocument();
+    const pinInput = dialog.querySelector('input[type="password"][inputmode="numeric"]');
+    expect(pinInput).toBeTruthy();
+
+    fireEvent.change(within(dialog).getByLabelText(/Alasan/i), { target: { value: 'Membersihkan akun test salah.' } });
+    fireEvent.change(pinInput, { target: { value: '123456' } });
+    fireEvent.change(within(dialog).getByLabelText(/Ketik HAPUS AKUN/i), { target: { value: 'HAPUS AKUN' } });
+    fireEvent.click(within(dialog).getByLabelText(/Saya paham/i));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Konfirmasi Hapus Akun/i }));
+
+    await waitFor(() => expect(deleteRequestBody).toEqual(expect.objectContaining({ userIds: ['student-1'], confirmText: 'HAPUS AKUN', pin: '123456' })));
+    expect(localSetItem).not.toHaveBeenCalled();
+    expect(sessionSetItem).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Konfirmasi Hapus Akun/i })).not.toBeInTheDocument());
+  });
+});
+
 describe('HP Scanner Android operator UI', () => {
   it('clarifies the two physical scanner model without role-specific HP labels', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input) => {

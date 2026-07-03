@@ -409,10 +409,19 @@ function UsersPanel({ notify }) {
   const currentUser = readStoredUser();
   const isDeveloper = currentUser?.role === 'DEVELOPER';
   const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
-  const state = useRemote(() => apiFetch('/identity/users?page=1&limit=200'), []);
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ACTIVE');
+  const statusQuery = statusFilter === 'ALL' ? 'all' : statusFilter === 'ARCHIVED' ? 'archived' : statusFilter === 'INACTIVE' ? 'inactive' : 'active';
+  const state = useRemote(() => apiFetch(`/identity/users${qs({ page: 1, limit: 200, status: statusQuery })}`), [statusQuery]);
+  const deletePinStatus = useRemote(() => apiFetch('/identity/accounts/delete-pin/status'), []);
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [deletePreview, setDeletePreview] = useState(null);
+  const [deleteWorking, setDeleteWorking] = useState(false);
+  const [deleteResult, setDeleteResult] = useState(null);
+  const [deleteForm, setDeleteForm] = useState({ reason: '', pin: '', confirmText: '', mode: 'auto', understood: false });
+  const [pinForm, setPinForm] = useState({ currentPassword: '', pin: '', confirmPin: '', reason: 'Menyiapkan PIN hapus akun.' });
+  const [pinWorking, setPinWorking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const emptyUserForm = { id: '', username: '', fullName: '', password: '', role: 'SISWA', cardStatus: 'ACTIVE' };
@@ -430,11 +439,18 @@ function UsersPanel({ notify }) {
   const allRows = itemsOf(state.data);
   const normalizedSearch = search.trim().toLowerCase();
   const filteredRows = allRows.filter((user) => {
-    const statusMatches = statusFilter === 'ALL' || (statusFilter === 'ACTIVE') === Boolean(user.active);
+    const archived = Boolean(user.archivedAt);
+    const statusMatches = statusFilter === 'ALL'
+      || (statusFilter === 'ACTIVE' && Boolean(user.active) && !archived)
+      || (statusFilter === 'INACTIVE' && !user.active && !archived)
+      || (statusFilter === 'ARCHIVED' && archived);
     const roleMatches = roleFilter === 'ALL' || user.role === roleFilter;
     const searchMatches = !normalizedSearch || `${user.fullName || ''} ${user.username || ''}`.toLowerCase().includes(normalizedSearch);
     return statusMatches && roleMatches && searchMatches;
   });
+  const selectableRows = filteredRows.filter((user) => !user.archivedAt && ['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH'].includes(user.role));
+  const selectedSet = new Set(selectedIds);
+  const selectedRows = filteredRows.filter((user) => selectedSet.has(user.id));
   const filteredState = { ...state, data: { ...(state.data || {}), items: filteredRows, meta: { ...(state.data?.meta || {}), total: filteredRows.length } } };
   async function submit(e) {
     e.preventDefault();
@@ -483,6 +499,69 @@ function UsersPanel({ notify }) {
       notify(error.message || 'Akun tidak bisa dihapus permanen karena punya riwayat.', 'bad');
     }
   }
+  function toggleSelectUser(userId) {
+    setSelectedIds((prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]);
+  }
+  function toggleSelectAllVisible() {
+    const ids = selectableRows.map((user) => user.id);
+    setSelectedIds((prev) => ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
+  }
+  async function openDeletePreview(userIds) {
+    const ids = [...new Set((userIds || []).filter(Boolean))];
+    if (!ids.length) return notify('Pilih minimal satu akun untuk dihapus/diarsipkan.', 'warn');
+    if (ids.length > 50) return notify('Maksimal 50 akun per batch.', 'warn');
+    setDeleteWorking(true);
+    setDeleteResult(null);
+    try {
+      const preview = await apiFetch('/identity/accounts/delete-preview', { method: 'POST', body: JSON.stringify({ userIds: ids }) });
+      setDeletePreview(preview);
+      setDeleteForm({ reason: '', pin: '', confirmText: '', mode: 'auto', understood: false });
+    } catch (error) {
+      notify(error.message || 'Preview hapus akun gagal.', 'bad');
+    } finally {
+      setDeleteWorking(false);
+    }
+  }
+  function closeDeleteModal() {
+    setDeletePreview(null);
+    setDeleteForm({ reason: '', pin: '', confirmText: '', mode: 'auto', understood: false });
+  }
+  async function executeAccountDelete() {
+    if (!deletePreview?.items?.length) return;
+    if (deleteForm.reason.trim().length < 10) return notify('Alasan minimal 10 karakter.', 'warn');
+    if (!deleteForm.pin.trim()) return notify('PIN wajib diisi.', 'warn');
+    if (deleteForm.confirmText.trim() !== 'HAPUS AKUN') return notify('Ketik HAPUS AKUN untuk konfirmasi.', 'warn');
+    if (!deleteForm.understood) return notify('Centang pernyataan pemahaman risiko.', 'warn');
+    setDeleteWorking(true);
+    try {
+      const result = await apiFetch('/identity/accounts/delete', { method: 'POST', body: JSON.stringify({ userIds: deletePreview.items.map((item) => item.userId), reason: deleteForm.reason.trim(), pin: deleteForm.pin, confirmText: deleteForm.confirmText.trim(), mode: deleteForm.mode }) });
+      setDeleteResult(result);
+      setSelectedIds([]);
+      closeDeleteModal();
+      state.refresh();
+      notify(`Hapus akun selesai. Hard delete: ${result.hardDeletedCount}, arsip: ${result.archivedCount}.`);
+    } catch (error) {
+      notify(error.message || 'Hapus akun gagal.', 'bad');
+    } finally {
+      setDeleteWorking(false);
+      setDeleteForm((prev) => ({ ...prev, pin: '', confirmText: '', understood: false }));
+    }
+  }
+  async function configureDeletePin(event) {
+    event.preventDefault();
+    if (pinForm.pin !== pinForm.confirmPin) return notify('Konfirmasi PIN tidak sama.', 'warn');
+    setPinWorking(true);
+    try {
+      await apiFetch('/identity/accounts/delete-pin', { method: 'POST', body: JSON.stringify(pinForm) });
+      setPinForm({ currentPassword: '', pin: '', confirmPin: '', reason: 'Menyiapkan PIN hapus akun.' });
+      deletePinStatus.refresh();
+      notify('PIN hapus akun berhasil disimpan.');
+    } catch (error) {
+      notify(error.message || 'PIN hapus akun gagal disimpan.', 'bad');
+    } finally {
+      setPinWorking(false);
+    }
+  }
   async function downloadUserCard(row) {
     if (!row.active) return notify('Aktifkan akun dulu sebelum membuat kartu.', 'warn');
     const data = await apiFetch(`/qr-credentials/export/users/${row.id}/card`);
@@ -494,7 +573,83 @@ function UsersPanel({ notify }) {
     notify(`Generator kartu ${row.fullName} dibuka. QR lama tidak diganti jika sudah ada.`);
   }
   const userEmpty = allRows.length ? { title: 'Tidak ada pengguna yang sesuai dengan filter.', sub: 'Ubah status, peran, atau kata kunci pencarian.' } : { title: 'Belum ada pengguna tambahan.', sub: 'Gunakan formulir di sebelah kiri untuk membuat akun guru, siswa, piket, atau operator.' };
-  return <div className="master-data-user-layout"><div className="master-data-form-panel"><Card title={form.id ? 'Edit Akun' : 'Buat Akun Baru'} sub="Pilih jenis akun dulu, lalu isi nama. Untuk siswa, lanjutkan ke tab Daftarkan Manual setelah disimpan."><div className="user-preset-grid master-data-account-presets">{userPresets.map((preset) => <QuickActionCard key={preset.role} title={preset.title} desc={preset.desc} icon={preset.icon} actionLabel="Pilih" onClick={() => applyUserPreset(preset.role)} tone={form.role === preset.role ? 'ok' : ''} />)}</div><form onSubmit={submit} className="form-grid"><Field label="Nama akun" hint="wajib"><TextInput value={form.username} placeholder="contoh: siswa.aisyah" onChange={(e) => set('username', e.target.value)} required disabled={Boolean(form.id) || submitting} /></Field><Field label="Nama Lengkap" hint="wajib"><TextInput value={form.fullName} placeholder="Nama lengkap sesuai data sekolah" onChange={(e) => set('fullName', e.target.value)} required disabled={submitting} /></Field><Field label="Kata sandi" hint={form.id ? 'opsional saat edit' : 'minimal 8 karakter'}><TextInput type="password" value={form.password} placeholder={form.id ? 'Kosongkan jika tidak diganti' : 'Isi password sementara'} autoComplete="new-password" onChange={(e) => set('password', e.target.value)} minLength={8} required={!form.id} disabled={submitting} /></Field><Field label="Peran"><SelectInput value={form.role} onChange={(e) => set('role', e.target.value)} disabled={submitting}>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field><Field label="Status Kartu"><SelectInput value={form.cardStatus} onChange={(e) => set('cardStatus', e.target.value)} disabled={submitting}><option value="ACTIVE">Aktif</option><option value="LOST">Hilang</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field>{formError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {formError}</div>}<Btn variant="primary" loading={submitting}><Plus size={14} /> {form.id ? 'Simpan Perubahan' : 'Buat Akun'}</Btn>{form.role === 'SISWA' && !form.id && <Btn type="button" disabled={submitting} onClick={() => notify('Setelah akun tersimpan, buka tab Daftarkan Manual untuk memilih kelas.', 'warn')}>Info daftar kelas</Btn>}{form.id && <Btn type="button" variant="ghost" disabled={submitting} onClick={() => { reset(emptyUserForm); setFormError(''); }}>Batal edit</Btn>}</form></Card></div><div className="master-data-list-panel"><Card title="Daftar Pengguna" sub="Nonaktifkan untuk menjaga riwayat. Tombol Kartu membuat QR hanya jika belum ada, lalu membuka generator cetak."><div className="master-data-toolbar" role="search" aria-label="Filter daftar pengguna"><Field label="Cari nama atau username"><TextInput value={search} placeholder="contoh: admin.tu atau Aisyah" onChange={(e) => setSearch(e.target.value)} /></Field><Field label="Status akun"><SelectInput value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="ALL">Semua status</option><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field><Field label="Peran"><SelectInput value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}><option value="ALL">Semua peran</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field></div><div className="master-data-table-region user-table-region"><AsyncTable state={filteredState} empty={userEmpty} columns={[{ header: 'Nama', render: (r) => <span className="row master-data-user-cell"><Avatar name={r.fullName} size="sm" /> <span>{r.fullName}</span></span> }, { header: 'Nama akun', render: (r) => <span className="mono" title={r.username}>{r.username}</span> }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Status', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} onRow={(r) => <div className="row master-data-action-row"><Btn size="sm" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => setForm({ id: r.id, username: r.username, fullName: r.fullName, password: '', role: r.role, cardStatus: r.cardStatus })}>Edit</Btn><Btn size="sm" disabled={!r.active} onClick={() => downloadUserCard(r)}><CreditCard size={12} /> Kartu</Btn>{r.active ? <Btn size="sm" variant="danger" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => deactivate(r)}>Nonaktifkan</Btn> : <Btn size="sm" onClick={() => activate(r)}>Aktifkan Lagi</Btn>}{isDeveloper && <Btn size="sm" variant="danger" onClick={() => permanentDelete(r)}>Hapus Permanen</Btn>}</div>} /></div></Card></div></div>;
+  const allVisibleSelected = selectableRows.length > 0 && selectableRows.every((user) => selectedSet.has(user.id));
+  const selectedCount = selectedIds.length;
+  return (
+    <div className="master-data-user-layout">
+      <div className="master-data-form-panel">
+        <Card title={form.id ? 'Edit Akun' : 'Buat Akun Baru'} sub="Pilih jenis akun dulu, lalu isi nama. Untuk siswa, lanjutkan ke tab Daftarkan Manual setelah disimpan.">
+          <div className="user-preset-grid master-data-account-presets">
+            {userPresets.map((preset) => <QuickActionCard key={preset.role} title={preset.title} desc={preset.desc} icon={preset.icon} actionLabel="Pilih" onClick={() => applyUserPreset(preset.role)} tone={form.role === preset.role ? 'ok' : ''} />)}
+          </div>
+          <form onSubmit={submit} className="form-grid">
+            <Field label="Nama akun" hint="wajib"><TextInput value={form.username} placeholder="contoh: siswa.aisyah" onChange={(e) => set('username', e.target.value)} required disabled={Boolean(form.id) || submitting} /></Field>
+            <Field label="Nama Lengkap" hint="wajib"><TextInput value={form.fullName} placeholder="Nama lengkap sesuai data sekolah" onChange={(e) => set('fullName', e.target.value)} required disabled={submitting} /></Field>
+            <Field label="Kata sandi" hint={form.id ? 'opsional saat edit' : 'minimal 8 karakter'}><TextInput type="password" value={form.password} placeholder={form.id ? 'Kosongkan jika tidak diganti' : 'Isi password sementara'} autoComplete="new-password" onChange={(e) => set('password', e.target.value)} minLength={8} required={!form.id} disabled={submitting} /></Field>
+            <Field label="Peran"><SelectInput value={form.role} onChange={(e) => set('role', e.target.value)} disabled={submitting}>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field>
+            <Field label="Status Kartu"><SelectInput value={form.cardStatus} onChange={(e) => set('cardStatus', e.target.value)} disabled={submitting}><option value="ACTIVE">Aktif</option><option value="LOST">Hilang</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field>
+            {formError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {formError}</div>}
+            <Btn variant="primary" loading={submitting}><Plus size={14} /> {form.id ? 'Simpan Perubahan' : 'Buat Akun'}</Btn>
+            {form.role === 'SISWA' && !form.id && <Btn type="button" disabled={submitting} onClick={() => notify('Setelah akun tersimpan, buka tab Daftarkan Manual untuk memilih kelas.', 'warn')}>Info daftar kelas</Btn>}
+            {form.id && <Btn type="button" variant="ghost" disabled={submitting} onClick={() => { reset(emptyUserForm); setFormError(''); }}>Batal edit</Btn>}
+          </form>
+        </Card>
+
+        <Card title="PIN Hapus Akun" sub="PIN disimpan sebagai hash di server. Tidak disimpan di browser, audit, atau log." actions={<Pill tone={deletePinStatus.data?.configured ? 'ok' : 'warn'}>{deletePinStatus.data?.configured ? 'Sudah diatur' : 'Belum diatur'}</Pill>}>
+          <form onSubmit={configureDeletePin} className="form-grid">
+            <Field label="Password admin" hint="reauth"><TextInput type="password" value={pinForm.currentPassword} autoComplete="current-password" onChange={(e) => setPinForm((prev) => ({ ...prev, currentPassword: e.target.value }))} required disabled={pinWorking} /></Field>
+            <Field label="PIN baru" hint="4-12 digit"><TextInput type="password" inputMode="numeric" value={pinForm.pin} autoComplete="off" onChange={(e) => setPinForm((prev) => ({ ...prev, pin: e.target.value.replace(/\D/g, '').slice(0, 12) }))} minLength={4} maxLength={12} required disabled={pinWorking} /></Field>
+            <Field label="Ulangi PIN"><TextInput type="password" inputMode="numeric" value={pinForm.confirmPin} autoComplete="off" onChange={(e) => setPinForm((prev) => ({ ...prev, confirmPin: e.target.value.replace(/\D/g, '').slice(0, 12) }))} minLength={4} maxLength={12} required disabled={pinWorking} /></Field>
+            <Field label="Alasan"><TextInput value={pinForm.reason} onChange={(e) => setPinForm((prev) => ({ ...prev, reason: e.target.value }))} minLength={10} required disabled={pinWorking} /></Field>
+            <Btn variant="primary" loading={pinWorking}><KeyRound size={14} /> Simpan/Rotasi PIN</Btn>
+          </form>
+        </Card>
+      </div>
+
+      <div className="master-data-list-panel">
+        <Card title="Daftar Pengguna" sub="Default hanya akun aktif. Gunakan Hapus Akun untuk hard delete akun kosong atau arsipkan akun historis agar tidak tampil di daftar aktif." actions={<div className="row"><Btn size="sm" disabled={!selectedCount || deleteWorking} onClick={() => openDeletePreview(selectedIds)}><AlertTriangle size={12} /> Hapus Terpilih ({selectedCount})</Btn><Btn size="sm" variant="ghost" onClick={() => { state.refresh(); deletePinStatus.refresh(); }}><RefreshCw size={12} /> Refresh</Btn></div>}>
+          <div className="master-data-toolbar" role="search" aria-label="Filter daftar pengguna">
+            <Field label="Cari nama atau username"><TextInput value={search} placeholder="contoh: admin.tu atau Aisyah" onChange={(e) => setSearch(e.target.value)} /></Field>
+            <Field label="Status akun"><SelectInput value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setSelectedIds([]); }}><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="ARCHIVED">Dihapus/Diarsipkan</option><option value="ALL">Semua status</option></SelectInput></Field>
+            <Field label="Peran"><SelectInput value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}><option value="ALL">Semua peran</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field>
+          </div>
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+            <label className="row" style={{ gap: 8 }}><input type="checkbox" aria-label="Pilih semua akun terlihat" checked={allVisibleSelected} onChange={toggleSelectAllVisible} disabled={!selectableRows.length} /> Pilih semua target terlihat</label>
+            <span className="muted">{selectedCount} akun dipilih · bulk maksimal 50</span>
+          </div>
+          <div className="master-data-table-region user-table-region">
+            <AsyncTable state={filteredState} empty={userEmpty} columns={[
+              { header: 'Pilih', render: (r) => <input type="checkbox" aria-label={`Pilih ${r.fullName}`} checked={selectedSet.has(r.id)} disabled={Boolean(r.archivedAt) || !['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH'].includes(r.role)} onChange={() => toggleSelectUser(r.id)} /> },
+              { header: 'Nama', render: (r) => <span className="row master-data-user-cell"><Avatar name={r.fullName} size="sm" /> <span>{r.fullName}</span></span> },
+              { header: 'Nama akun', render: (r) => <span className="mono" title={r.username}>{r.username}</span> },
+              { header: 'Peran', render: (r) => <StatusPill status={r.role} /> },
+              { header: 'Status', render: (r) => r.archivedAt ? <Pill tone="warn">Diarsipkan</Pill> : <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }
+            ]} onRow={(r) => <div className="row master-data-action-row"><Btn size="sm" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => setForm({ id: r.id, username: r.username, fullName: r.fullName, password: '', role: r.role, cardStatus: r.cardStatus })}>Edit</Btn><Btn size="sm" disabled={!r.active || Boolean(r.archivedAt)} onClick={() => downloadUserCard(r)}><CreditCard size={12} /> Kartu</Btn>{r.active ? <Btn size="sm" variant="danger" disabled={Boolean(r.archivedAt) || r.role === 'DEVELOPER' && !isDeveloper} onClick={() => deactivate(r)}>Nonaktifkan</Btn> : !r.archivedAt && <Btn size="sm" onClick={() => activate(r)}>Aktifkan Lagi</Btn>}<Btn size="sm" variant="danger" disabled={Boolean(r.archivedAt) || !['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH'].includes(r.role)} onClick={() => openDeletePreview([r.id])}>Hapus Akun</Btn>{isDeveloper && <Btn size="sm" variant="danger" onClick={() => permanentDelete(r)}>Hapus Permanen</Btn>}</div>} />
+          </div>
+        </Card>
+        {deleteResult && <Card title="Ringkasan hapus akun" sub="PIN tidak ditampilkan atau disimpan di layar ini."><div className="row"><Pill tone="ok">Hard delete: {deleteResult.hardDeletedCount}</Pill><Pill tone="warn">Diarsipkan: {deleteResult.archivedCount}</Pill><Pill>Ditolak: {deleteResult.rejectedCount}</Pill></div></Card>}
+      </div>
+
+      {deletePreview && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="account-delete-title">
+        <div className="modal-card account-delete-modal">
+          <h2 id="account-delete-title">Konfirmasi Hapus Akun</h2>
+          <p className="muted">Preview ini belum mengubah data. Akun dengan riwayat akan diarsipkan agar hilang dari daftar aktif namun data laporan tetap aman.</p>
+          <div className="row"><Pill>Target: {deletePreview.requestedCount}</Pill><Pill tone="ok">Hard delete: {deletePreview.summary?.hardDeleteCount || 0}</Pill><Pill tone="warn">Arsip: {deletePreview.summary?.archiveCount || 0}</Pill><Pill tone={deletePreview.summary?.rejectedCount ? 'bad' : ''}>Ditolak: {deletePreview.summary?.rejectedCount || 0}</Pill></div>
+          <div className="account-delete-preview-list">
+            {deletePreview.items.map((item) => <div key={item.userId} className="account-delete-preview-row"><div><b>{item.fullName}</b><span className="mono">{item.username}</span></div><StatusPill status={item.role} /><Pill tone={item.action === 'HARD_DELETE' ? 'ok' : item.action === 'ARCHIVE' ? 'warn' : 'bad'}>{item.action}</Pill>{item.dependencyReasons?.length > 0 && <small>{item.dependencyReasons.slice(0, 3).join(' · ')}</small>}{item.warnings?.map((warning) => <small key={warning} className="warn-text">{warning}</small>)}{item.rejectReasons?.map((reason) => <small key={reason} className="bad-text">{reason}</small>)}</div>)}
+          </div>
+          <div className="form-grid">
+            <Field label="Mode"><SelectInput value={deleteForm.mode} onChange={(e) => setDeleteForm((prev) => ({ ...prev, mode: e.target.value }))}><option value="auto">Auto: hard delete jika aman, selain itu arsip</option><option value="archive-only">Archive-only</option><option value="hard-delete-only-if-safe">Hard delete hanya jika semua aman</option></SelectInput></Field>
+            <Field label="Alasan" hint="minimal 10 karakter"><TextInput value={deleteForm.reason} onChange={(e) => setDeleteForm((prev) => ({ ...prev, reason: e.target.value }))} minLength={10} required /></Field>
+            <Field label="PIN konfirmasi"><TextInput type="password" inputMode="numeric" autoComplete="off" value={deleteForm.pin} onChange={(e) => setDeleteForm((prev) => ({ ...prev, pin: e.target.value.replace(/\D/g, '').slice(0, 12) }))} required /></Field>
+            <Field label="Ketik HAPUS AKUN"><TextInput value={deleteForm.confirmText} onChange={(e) => setDeleteForm((prev) => ({ ...prev, confirmText: e.target.value }))} required /></Field>
+          </div>
+          <label className="row" style={{ gap: 8, margin: '12px 0' }}><input type="checkbox" checked={deleteForm.understood} onChange={(e) => setDeleteForm((prev) => ({ ...prev, understood: e.target.checked }))} /> Saya paham tindakan ini tidak boleh dilakukan sembarangan.</label>
+          <div className="row" style={{ justifyContent: 'flex-end' }}><Btn type="button" variant="ghost" disabled={deleteWorking} onClick={closeDeleteModal}>Batal</Btn><Btn type="button" variant="danger" loading={deleteWorking} disabled={Boolean(deletePreview.summary?.rejectedCount)} onClick={executeAccountDelete}>Konfirmasi Hapus Akun</Btn></div>
+        </div>
+      </div>}
+    </div>
+  );
 }
 
 

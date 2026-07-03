@@ -213,6 +213,10 @@ model User {
   sessionVersion     Int        @default(1)
   passwordChangedAt  DateTime?
   mustChangePassword Boolean    @default(false)
+  archivedAt         DateTime?
+  archivedById       String?
+  archiveReason      String?
+  deleteMode         String?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
@@ -260,9 +264,15 @@ model User {
   forcedTutorials                       UserTutorialState[]         @relation("TutorialForcedBy")
   createdAndroidApkReleases             AndroidApkRelease[]         @relation("AndroidApkReleaseCreatedBy")
   updatedAndroidApkReleases             AndroidApkRelease[]         @relation("AndroidApkReleaseUpdatedBy")
+  archivedBy                            User?                       @relation("UserArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  archivedUsers                         User[]                      @relation("UserArchivedBy")
+  updatedAccountDeleteSecuritySettings  AccountDeleteSecuritySetting[] @relation("AccountDeletePinUpdatedBy")
 
   @@index([role, active])
   @@index([active, createdAt])
+  @@index([active, archivedAt, createdAt])
+  @@index([archivedAt])
+  @@index([archivedById, archivedAt])
 }
 
 model SchoolClass {
@@ -803,6 +813,18 @@ model AuditChainState {
   lastHash     String?
   lastEntryId  String?
   updatedAt    DateTime @updatedAt
+}
+
+model AccountDeleteSecuritySetting {
+  id            Int      @id
+  deletePinHash String
+  updatedById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  updatedBy User? @relation("AccountDeletePinUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById, updatedAt])
 }
 
 model TeacherLeave {
