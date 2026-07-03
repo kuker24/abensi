@@ -56,18 +56,18 @@ const Dashboard = () => {
 
   const quickActions = [
     {
-      title: 'Import Data CSV',
-      description: 'Upload file CSV untuk mengimpor data pengguna',
+      title: 'Ambil Data Sekolah',
+      description: 'Muat kartu resmi DB-backed dari data SIAB2',
+      icon: CreditCard,
+      href: '/export',
+      color: 'bg-green-500 hover:bg-green-600',
+    },
+    {
+      title: 'Import CSV Draft',
+      description: 'Upload CSV hanya untuk draft layout/testing',
       icon: Upload,
       href: '/import',
       color: 'bg-primary-500 hover:bg-primary-600',
-    },
-    {
-      title: 'Buat Kartu ID',
-      description: 'Generate kartu tanda pengenal untuk peserta ujian',
-      icon: CreditCard,
-      href: '/generate',
-      color: 'bg-green-500 hover:bg-green-600',
     },
   ];
 

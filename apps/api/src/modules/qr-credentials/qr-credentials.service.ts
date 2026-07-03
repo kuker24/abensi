@@ -311,6 +311,9 @@ export class QrCredentialsService {
         qrCode,
         qr_value: qrCode,
         qrMasked: qrCode ? redactQr(qrCode) : null,
+        cardSource: 'database',
+        isOfficial: true,
+        sourceLabel: 'RESMI / DATABASE',
         issuedAt: item.issuedAt,
         expiresAt: item.expiresAt,
         note: 'Kartu hanya untuk absensi SchoolHub MAN 1 Rokan Hulu.'

@@ -33,6 +33,7 @@ const Export = () => {
   const [error, setError] = useState('');
   const [autoLoadStatus, setAutoLoadStatus] = useState({ loading: false, count: 0, source: '' });
   const [pendingAutoPdf, setPendingAutoPdf] = useState('');
+  const [sourceMode, setSourceMode] = useState('database');
 
   const autoLoadEnabled = searchParams.get('autoLoad') === '1';
   const autoPdfRequested = searchParams.get('autoPdf') === '1';
@@ -45,6 +46,11 @@ const Export = () => {
   const template = getCardTemplate(cardSettings.cardSkin);
   const firstPreviewUser = readiness.validUsers[0] || candidates[0];
   const totalPages = Math.ceil(readiness.validCount / template.pdf.cardsPerPage) || 0;
+  const officialCardCount = candidates.filter((user) => user.card_source === 'database' && user.is_official === 'true').length;
+  const draftCardCount = candidates.length - officialCardCount;
+  const hasDraftCards = draftCardCount > 0;
+  const hasOfficialCards = officialCardCount > 0;
+  const sourceBadge = hasDraftCards ? 'DRAFT / TIDAK TERVERIFIKASI' : hasOfficialCards ? 'RESMI / DATABASE' : 'BELUM ADA DATA';
 
   const buildFilename = useCallback(() => {
     const date = new Date().toISOString().slice(0, 10);
@@ -117,36 +123,36 @@ const Export = () => {
     printPDF(pdfBlob);
   };
 
+  const loadOfficialCards = useCallback(async ({ autoPdf = false, cancelled = () => false } = {}) => {
+    setSourceMode('database');
+    setAutoLoadStatus({ loading: true, count: 0, source: 'SIAB2 API' });
+    setError('');
+    setMessage('Memuat data kartu resmi dari Data Sekolah...');
+
+    try {
+      const { payload, users: loadedUsers } = await fetchSiab2Cards({ classId: autoLoadClassId, userId: autoLoadUserId });
+      if (cancelled()) return;
+      setUsers(loadedUsers);
+      selectAllUsers();
+      setAutoLoadStatus({ loading: false, count: loadedUsers.length, source: payload.source || 'SIAB2 API' });
+      setMessage(`Data resmi dari database dimuat: ${loadedUsers.length} kartu. Kartu resmi hanya dapat dibuat dari data yang sudah terdaftar di Akun & Data Sekolah.`);
+      if (autoPdf) setPendingAutoPdf(autoLoadKey);
+    } catch (loadError) {
+      if (cancelled()) return;
+      setAutoLoadStatus({ loading: false, count: 0, source: 'SIAB2 API' });
+      setError(loadError.message || 'Gagal memuat data kartu dari Data Sekolah. Pastikan sudah login sebagai Admin TU/Operator IT.');
+    }
+  }, [autoLoadClassId, autoLoadKey, autoLoadUserId, selectAllUsers, setUsers]);
+
   useEffect(() => {
     if (!autoLoadEnabled) return undefined;
     let cancelled = false;
-
-    const loadOfficialCards = async () => {
-      setAutoLoadStatus({ loading: true, count: 0, source: 'SIAB2 API' });
-      setError('');
-      setMessage('Memuat data kartu resmi dari SIAB2...');
-
-      try {
-        const { payload, users: loadedUsers } = await fetchSiab2Cards({ classId: autoLoadClassId, userId: autoLoadUserId });
-        if (cancelled) return;
-        setUsers(loadedUsers);
-        selectAllUsers();
-        setAutoLoadStatus({ loading: false, count: loadedUsers.length, source: payload.source || 'SIAB2 API' });
-        setMessage(`Data resmi SIAB2 dimuat: ${loadedUsers.length} kartu.`);
-        if (autoPdfRequested) setPendingAutoPdf(autoLoadKey);
-      } catch (loadError) {
-        if (cancelled) return;
-        setAutoLoadStatus({ loading: false, count: 0, source: 'SIAB2 API' });
-        setError(loadError.message || 'Gagal memuat data kartu dari SIAB2. Pastikan sudah login sebagai Admin TU/Operator IT.');
-      }
-    };
-
-    loadOfficialCards();
+    loadOfficialCards({ autoPdf: autoPdfRequested, cancelled: () => cancelled });
 
     return () => {
       cancelled = true;
     };
-  }, [autoLoadClassId, autoLoadEnabled, autoLoadKey, autoLoadUserId, autoPdfRequested, selectAllUsers, setUsers]);
+  }, [autoLoadEnabled, autoPdfRequested, loadOfficialCards]);
 
   useEffect(() => {
     if (!pendingAutoPdf || pendingAutoPdf !== autoLoadKey || !readiness.validCount || autoLoadStatus.loading || isGenerating) return;
@@ -164,6 +170,52 @@ const Export = () => {
     >
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="min-w-0 space-y-4 lg:space-y-6">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#386f99]">Sumber Kartu</p>
+                <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Pilih sumber data kartu</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                  Kartu resmi hanya dapat dibuat dari data yang sudah terdaftar di Akun & Data Sekolah. CSV/manual tetap tersedia sebagai draft layout/testing dan diberi watermark.
+                </p>
+              </div>
+              <div className="rounded-full border border-slate-200 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-700">
+                {sourceBadge}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => loadOfficialCards()}
+                disabled={autoLoadStatus.loading || isGenerating || isGeneratingSvg}
+                className={`rounded-3xl border p-4 text-left transition ${sourceMode === 'database' ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white hover:bg-slate-50'} disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <div className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.16em] text-emerald-700">
+                  {autoLoadStatus.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                  Ambil dari Data Sekolah
+                </div>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
+                  Sumber resmi DB-backed. Data berasal dari database dan QR resmi schoolhub:qr:v1:QR_... dari endpoint SIAB2.
+                </p>
+              </button>
+
+              <Link
+                to="/import"
+                onClick={() => setSourceMode('csv-draft')}
+                className={`rounded-3xl border p-4 text-left transition ${sourceMode === 'csv-draft' || hasDraftCards ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              >
+                <div className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.16em] text-amber-700">
+                  <AlertCircle className="h-4 w-4" />
+                  Import CSV Draft
+                </div>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
+                  Untuk layout/testing. Data CSV tidak dianggap valid oleh sistem jika belum cocok dengan database.
+                </p>
+              </Link>
+            </div>
+          </div>
+
           <div className="min-w-0 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm sm:rounded-[32px]">
             <div className="bg-[#071018] p-4 text-white sm:p-6">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#6fa6d8]/30 bg-[#6fa6d8]/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[#b9dcf7]">
@@ -172,7 +224,7 @@ const Export = () => {
               </div>
               <h2 className="mt-4 text-2xl font-black tracking-tight">Export Kartu Resmi</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                PDF mengikuti layout A4 3×3 untuk cetak massal. SVG menghasilkan file per kartu ukuran CR80 portrait {template.dimensions.widthMm}mm × {template.dimensions.heightMm}mm tanpa ditempatkan di kertas A4.
+                PDF mengikuti layout A4 3×3 untuk cetak massal. Data resmi wajib berasal dari database; data CSV/manual akan diberi label DRAFT / TIDAK TERVERIFIKASI.
               </p>
             </div>
 
@@ -202,9 +254,15 @@ const Export = () => {
             </div>
           )}
 
-          {autoLoadEnabled && (
+          {(autoLoadEnabled || hasOfficialCards) && (
             <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
-              {autoLoadStatus.loading ? 'Memuat data kartu resmi dari SIAB2...' : `Sumber: ${autoLoadStatus.source || 'SIAB2 API'} · ${autoLoadStatus.count} kartu dimuat.`}
+              {autoLoadStatus.loading ? 'Memuat data kartu resmi dari Data Sekolah...' : `RESMI / DATABASE · Sumber: ${autoLoadStatus.source || 'SIAB2 API'} · ${hasOfficialCards ? officialCardCount : autoLoadStatus.count} kartu dimuat.`}
+            </div>
+          )}
+
+          {hasDraftCards && (
+            <div className="rounded-3xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+              DRAFT / TIDAK TERVERIFIKASI — Data CSV/manual hanya untuk draft layout/testing. Orang yang belum ada di database tidak bisa dibuatkan kartu resmi.
             </div>
           )}
 
@@ -227,7 +285,7 @@ const Export = () => {
                 <div>
                   <p className="font-black text-amber-950">Ada data belum lengkap</p>
                   <p className="mt-1 text-sm leading-6 text-amber-900">
-                    Export hanya memakai data valid. Perbaiki data invalid di CSV/import agar semua kartu tercetak.
+                    Export hanya memakai data valid. Perbaiki data invalid di sumber data. Jika memakai CSV, hasil tetap berstatus draft sampai data cocok dengan database.
                   </p>
                   <ul className="mt-3 space-y-2 text-sm text-amber-900">
                     {readiness.invalidUsers.slice(0, 5).map((item) => (

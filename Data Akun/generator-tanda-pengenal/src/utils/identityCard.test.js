@@ -6,6 +6,8 @@ import {
   formatBirthInfo,
   getCanonicalAllowedField,
   getCardRoleLabel,
+  getCardSourceLabel,
+  isDraftCard,
   isSensitiveFieldName,
   isStudentCardUser,
   isSensitiveQrValue,
@@ -68,8 +70,48 @@ test('normalizes CSV row using allowed fields and opaque QR fallback', () => {
   assert.equal(user.qr_value.includes(user.nama.toUpperCase()), false);
   assert.equal(user.qr_value.includes(user.kelas), false);
   assert.equal(validateCardUser(user).isValid, true);
+  assert.equal(user.card_source, 'csv-draft');
+  assert.equal(user.card_source_label, 'DRAFT / TIDAK TERVERIFIKASI');
+  assert.equal(user.is_official, 'false');
+  assert.equal(getCardSourceLabel(user), 'DRAFT / TIDAK TERVERIFIKASI');
+  assert.equal(isDraftCard(user), true);
   assertOnlyAllowedFields(user);
   assertNoForbiddenKeys(user);
+});
+
+test('CSV rows cannot self-assert official database source', () => {
+  const user = normalizeIdentityRow({
+    nama: 'Aisyah Putri',
+    nisn: '1234567890',
+    qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',
+    source: 'database',
+    resmi: 'true',
+  });
+
+  assert.equal(user.card_source, 'csv-draft');
+  assert.equal(user.is_official, 'false');
+  assert.equal(getCardSourceLabel(user), 'DRAFT / TIDAK TERVERIFIKASI');
+  assert.equal(isDraftCard(user), true);
+});
+
+test('database-backed cards keep official source metadata after sanitization', () => {
+  const user = sanitizeUser({
+    id: 'credential-1',
+    nama: 'Aisyah Putri',
+    nisn: '1234567890',
+    qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',
+    card_source: 'database',
+    is_official: 'true',
+    password: 'pass123',
+  });
+
+  assert.equal(user.card_source, 'database');
+  assert.equal(user.card_source_label, 'RESMI / DATABASE');
+  assert.equal(user.is_official, 'true');
+  assert.equal(getCardSourceLabel(user), 'RESMI / DATABASE');
+  assert.equal(isDraftCard(user), false);
+  assertNoForbiddenKeys(user);
+  assertNoForbiddenValues(user);
 });
 
 test('student card label ignores class so printed cards survive class promotion', () => {

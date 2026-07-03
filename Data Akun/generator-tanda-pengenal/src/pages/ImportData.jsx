@@ -110,7 +110,12 @@ const ImportData = () => {
       return;
     }
 
-    setUsers(validationReport.validUsers);
+    setUsers(validationReport.validUsers.map((user) => ({
+      ...user,
+      card_source: 'csv-draft',
+      card_source_label: 'DRAFT / TIDAK TERVERIFIKASI',
+      is_official: 'false',
+    })));
     setImported(true);
   };
 
@@ -146,8 +151,8 @@ const ImportData = () => {
 
   return (
     <Layout
-      title="Import Data Siswa"
-      subtitle="Masukkan data wajib untuk kartu tanda pengenal resmi vertikal SIAB2"
+      title="Import CSV Draft"
+      subtitle="CSV/manual hanya untuk draft layout/testing, bukan sumber kartu resmi"
     >
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="min-w-0 space-y-4 lg:space-y-6">
@@ -157,7 +162,7 @@ const ImportData = () => {
               <div>
                 <p className="font-black">Privasi data siswa</p>
                 <p className="mt-1 text-sm leading-6">
-                  Gunakan hanya file CSV resmi. Jangan impor kolom password, token, secret, cookie, atau data sensitif lain. Data tersimpan sementara di browser perangkat ini.
+                  Gunakan CSV hanya untuk draft layout/testing. Kartu resmi harus diambil dari Data Sekolah/database. Jangan impor kolom password, token, secret, cookie, atau data sensitif lain. Data tersimpan sementara di browser perangkat ini.
                 </p>
               </div>
             </div>
@@ -168,11 +173,11 @@ const ImportData = () => {
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#071018] px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[#b9dcf7]">
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  Format Resmi
+                  Format Draft
                 </div>
-                <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">Upload CSV Kartu Identitas</h2>
+                <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">Upload CSV Draft Kartu Identitas</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                  Generator sekarang fokus ke kartu resmi portrait. Field wajib harus lengkap agar kartu bisa diexport.
+                  Field wajib harus lengkap agar draft bisa diexport. Hasil CSV/manual akan diberi watermark DRAFT / TIDAK TERVERIFIKASI sampai data diambil dari database.
                 </p>
               </div>
               <button
