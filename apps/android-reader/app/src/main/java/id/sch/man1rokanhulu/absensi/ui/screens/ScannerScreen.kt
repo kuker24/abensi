@@ -158,7 +158,7 @@ fun ScannerScreen(
                                                 actionLabel = summary.actionLabel
                                             )
                                         )
-                                        FeedbackData(friendlyScanTitle(true, friendly), friendly.ifBlank { "Scan diterima." }, FeedbackTone.SUCCESS)
+                                        FeedbackData(summary.actionLabel ?: friendlyScanTitle(true, friendly), summary.feedbackMessage ?: friendly.ifBlank { "Scan diterima." }, FeedbackTone.SUCCESS)
                                     } else {
                                         historyStore.add(
                                             ScanHistoryEntry(
@@ -412,28 +412,81 @@ private fun scannerDarkButtonColors() = ButtonDefaults.buttonColors(
     disabledContentColor = Color.White.copy(alpha = 0.58f)
 )
 
-private data class ServerScanSummary(
+internal data class ServerScanSummary(
     val displayName: String? = null,
     val displayMeta: String? = null,
-    val actionLabel: String? = null
+    val actionLabel: String? = null,
+    val feedbackMessage: String? = null
 )
 
-private fun parseServerScanSummary(body: String): ServerScanSummary = runCatching {
+internal fun parseServerScanSummary(body: String): ServerScanSummary = runCatching {
     val obj = JSONObject(body.ifBlank { "{}" })
     val user = obj.optJSONObject("user")
     val item = obj.optJSONObject("item")
     val name = user?.optString("fullName")?.ifBlank { null }
-    val role = user?.optString("role")?.ifBlank { null }?.replace('_', ' ')
+    val roleRaw = user?.optString("role")?.ifBlank { null }
+    val role = roleRaw?.replace('_', ' ')
     val className = user?.optString("className")?.ifBlank { null }
+    val cardStatus = user?.optString("cardStatus")?.ifBlank { null }
     val action = obj.optString("action").ifBlank { null }
     val kind = obj.optString("kind").ifBlank { null }
     val prayer = item?.optString("prayerType")?.ifBlank { null }
     val actionLabel = when {
         !action.isNullOrBlank() -> action
         kind == "PRAYER" && !prayer.isNullOrBlank() -> prayer.lowercase().replaceFirstChar { it.uppercase() }
-        kind == "CHECK_ONLY" -> "Cek QR"
+        kind == "CHECK_ONLY" -> "Cek Identitas"
         else -> kind
+    }
+    if (kind == "CHECK_ONLY" && user != null) {
+        return@runCatching buildCheckOnlySummary(
+            name = name,
+            roleRaw = roleRaw,
+            className = className,
+            cardStatus = cardStatus,
+            nis = user.optString("nis").ifBlank { null },
+            nip = user.optString("nip").ifBlank { null },
+            birthDate = user.optString("birthDate").ifBlank { null }
+        )
     }
     val meta = listOfNotNull(role, className).joinToString(" · ").ifBlank { null }
     ServerScanSummary(name, meta, actionLabel)
 }.getOrDefault(ServerScanSummary())
+
+internal fun buildCheckOnlySummary(
+    name: String?,
+    roleRaw: String?,
+    className: String?,
+    cardStatus: String?,
+    nis: String?,
+    nip: String?,
+    birthDate: String?
+): ServerScanSummary {
+    val role = roleRaw?.replace('_', ' ')
+    val lines = if (roleRaw == "SISWA") {
+        listOfNotNull(
+            name?.let { "Nama: $it" },
+            nis?.let { "NIS: $it" },
+            birthDate?.let { "Tanggal lahir: $it" },
+            className?.let { "Kelas: $it" },
+            cardStatus?.let { "Status kartu: $it" }
+        )
+    } else {
+        listOfNotNull(
+            name?.let { "Nama: $it" },
+            nip?.let { "NIP: $it" },
+            role?.let { "Role/Jabatan: $it" },
+            cardStatus?.let { "Status kartu: $it" }
+        )
+    }
+    val meta = if (roleRaw == "SISWA") {
+        listOfNotNull("SISWA", className, nis?.let { "NIS $it" }).joinToString(" · ").ifBlank { null }
+    } else {
+        listOfNotNull(role, nip?.let { "NIP $it" }).joinToString(" · ").ifBlank { null }
+    }
+    return ServerScanSummary(
+        displayName = name,
+        displayMeta = meta,
+        actionLabel = "Cek Identitas",
+        feedbackMessage = lines.joinToString("\n").ifBlank { "QR valid. Tidak ada presensi yang dicatat." }
+    )
+}

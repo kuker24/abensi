@@ -280,7 +280,7 @@ export class QrCredentialsService {
     const items = await this.prisma.qrCredential.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }],
-      include: { user: { select: { id: true, fullName: true, username: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } },
+      include: { user: { select: { id: true, fullName: true, username: true, nis: true, nip: true, birthDate: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } },
       take: 1000
     }) as any[];
     const cards = items.map((item) => {
@@ -295,7 +295,10 @@ export class QrCredentialsService {
         fullName: item.user.fullName,
         nama: item.user.fullName,
         username: item.user.username,
-        nisn: item.user.username,
+        nis: item.user.nis,
+        nip: item.user.nip,
+        birthDate: item.user.birthDate ? item.user.birthDate.toISOString().slice(0, 10) : null,
+        nisn: item.user.nis ?? item.user.username,
         role: item.user.role,
         roleLabel: isStudent ? 'SISWA' : displayRole,
         displayRole,
@@ -337,7 +340,7 @@ export class QrCredentialsService {
     const codeHash = qrCodeHash(qrCode);
     const credential = await this.prisma.qrCredential.findUnique({
       where: { codeHash },
-      include: { user: { select: { id: true, username: true, fullName: true, role: true, active: true, cardStatus: true } } }
+      include: { user: { select: { id: true, username: true, fullName: true, nis: true, nip: true, birthDate: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } }
     }) as any;
     if (!credential) throw new NotFoundException('QR credential tidak ditemukan.');
     if (credential.status !== QrCredentialStatus.ACTIVE) throw new ForbiddenException('QR credential tidak aktif.');

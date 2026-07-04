@@ -470,7 +470,7 @@ describe('AttendanceGateService adaptive QR scan', () => {
   });
 
   it('CHECK_ONLY official QR membaca identitas online tanpa membuat log absensi', async () => {
-    const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, cardStatus: CardStatus.ACTIVE, role: Role.SISWA, enrollments: [{ schoolClass: { code: 'X-A', name: 'Kelas X A' } }] };
+    const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', nis: '12345', nip: null, birthDate: new Date('2010-01-31T00:00:00.000Z'), active: true, cardStatus: CardStatus.ACTIVE, role: Role.SISWA, enrollments: [{ schoolClass: { code: 'X-A', name: 'Kelas X A' } }] };
     const prisma = makePrisma(user);
     const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
     const signatures = new DeviceSignatureService(prisma, redis);
@@ -487,8 +487,38 @@ describe('AttendanceGateService adaptive QR scan', () => {
       ok: true,
       readOnly: true,
       attendanceRecorded: false,
-      user: { fullName: 'Siswa Satu', username: 'siswa1', role: Role.SISWA, active: true, cardStatus: CardStatus.ACTIVE, className: null }
+      user: { fullName: 'Siswa Satu', role: Role.SISWA, active: true, cardStatus: CardStatus.ACTIVE, className: 'Kelas X A', nis: '12345', nip: null, birthDate: '2010-01-31' }
     });
+    expect((result as any).user).not.toHaveProperty('id');
+    expect((result as any).user).not.toHaveProperty('username');
+    expect((result as any).user).not.toHaveProperty('address');
+    expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
+    expect(prisma.__tx.prayerAttendanceLog.create).not.toHaveBeenCalled();
+  });
+
+  it('CHECK_ONLY official QR guru mengembalikan NIP tanpa tanggal lahir dan tanpa log absensi', async () => {
+    const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', nis: null, nip: '198001012006041001', birthDate: new Date('1980-01-01T00:00:00.000Z'), active: true, cardStatus: CardStatus.ACTIVE, role: Role.GURU_MAPEL, enrollments: [] };
+    const prisma = makePrisma(user);
+    const redis = { get: jest.fn().mockResolvedValue(null), setPx: jest.fn() } as any;
+    const signatures = new DeviceSignatureService(prisma, redis);
+    const secret = signatures.generateReaderSecret();
+    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', deviceId: 'android-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.CHECK_ONLY], appVersion: '1.0.0', appVersionCode: 1, readerSecretCiphertext: signatures.encryptSecret(secret) }]);
+    const qrCredentials = { findActiveByQrCode: jest.fn().mockResolvedValue({ id: 'qr-guru-1', user }) } as any;
+    const service = new AttendanceGateService(prisma, signatures, undefined, undefined, qrCredentials, { getAndroidReaderVersion: jest.fn().mockResolvedValue({ minSupportedVersionCode: 1 }) } as any);
+    const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_7F3K9X2P8LQ1', scanMode: AndroidReaderMode.CHECK_ONLY, appVersionCode: 1 };
+
+    const result = await service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-check-only-guru', '/api/v1/attendance/qr-reader-scan'));
+
+    expect(result).toMatchObject({
+      kind: 'CHECK_ONLY',
+      ok: true,
+      readOnly: true,
+      attendanceRecorded: false,
+      user: { fullName: 'Guru Satu', role: Role.GURU_MAPEL, active: true, cardStatus: CardStatus.ACTIVE, className: null, nis: null, nip: '198001012006041001', birthDate: null }
+    });
+    expect((result as any).user).not.toHaveProperty('id');
+    expect((result as any).user).not.toHaveProperty('username');
+    expect((result as any).user).not.toHaveProperty('address');
     expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
     expect(prisma.__tx.prayerAttendanceLog.create).not.toHaveBeenCalled();
   });

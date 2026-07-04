@@ -9,6 +9,18 @@ export class CreateUserDto {
   @IsString()
   fullName!: string;
 
+  @IsOptional()
+  @IsString()
+  nis?: string;
+
+  @IsOptional()
+  @IsString()
+  nip?: string;
+
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
+
   @IsString()
   @MinLength(8)
   password!: string;
@@ -25,6 +37,18 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(3)
   fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  nis?: string;
+
+  @IsOptional()
+  @IsString()
+  nip?: string;
+
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
 
   @IsOptional()
   @IsString()
@@ -55,6 +79,18 @@ export class ImportUserRowDto {
 
   @IsString()
   fullName!: string;
+
+  @IsOptional()
+  @IsString()
+  nis?: string;
+
+  @IsOptional()
+  @IsString()
+  nip?: string;
+
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
 
   @IsEnum(Role)
   role!: Role;

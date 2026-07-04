@@ -472,7 +472,7 @@ export class AttendanceGateService {
         });
         return true;
       });
-      return { kind: 'CHECK_ONLY', ok: result, readOnly: true, attendanceRecorded: false, message: 'QR valid. Tidak ada presensi yang dicatat.', user: this.scanUserPayload(user), serverTime: scannedAt.toISOString() };
+      return { kind: 'CHECK_ONLY', ok: result, readOnly: true, attendanceRecorded: false, message: 'QR valid. Tidak ada presensi yang dicatat.', user: this.scanUserPayload(user, true), serverTime: scannedAt.toISOString() };
     }
 
     if (GATE_QR_ANDROID_MODES.has(requestedMode)) {
@@ -560,9 +560,20 @@ export class AttendanceGateService {
     return { ...result, message: 'Pulang tercatat.', action: 'Pulang' };
   }
 
-  private scanUserPayload(user: { id: string; fullName: string; username: string; role: Role; active?: boolean; cardStatus?: CardStatus | null; enrollments?: Array<{ schoolClass?: { code?: string; name?: string } | null }> }) {
-    const schoolClass = user.role === Role.SISWA ? null : user.enrollments?.[0]?.schoolClass;
-    return { id: user.id, fullName: user.fullName, username: user.username, role: user.role, active: user.active ?? true, cardStatus: user.cardStatus ?? null, className: schoolClass?.name || schoolClass?.code || null };
+  private scanUserPayload(user: { id: string; fullName: string; username: string; nis?: string | null; nip?: string | null; birthDate?: Date | null; role: Role; active?: boolean; cardStatus?: CardStatus | null; enrollments?: Array<{ schoolClass?: { code?: string; name?: string } | null }> }, includeBiodata = false) {
+    const schoolClass = includeBiodata && user.role === Role.SISWA ? user.enrollments?.[0]?.schoolClass : user.role === Role.SISWA ? null : user.enrollments?.[0]?.schoolClass;
+    const base = { id: user.id, fullName: user.fullName, username: user.username, role: user.role, active: user.active ?? true, cardStatus: user.cardStatus ?? null, className: schoolClass?.name || schoolClass?.code || null };
+    if (!includeBiodata) return base;
+    return {
+      fullName: user.fullName,
+      role: user.role,
+      active: user.active ?? true,
+      cardStatus: user.cardStatus ?? null,
+      className: schoolClass?.name || schoolClass?.code || null,
+      nis: user.role === Role.SISWA ? user.nis ?? null : null,
+      nip: user.role === Role.SISWA ? null : user.nip ?? null,
+      birthDate: user.role === Role.SISWA && user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null
+    };
   }
 
   private cutoffDateFor(value: Date, time: string | null | undefined) {

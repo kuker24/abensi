@@ -24,8 +24,8 @@ class ReaderUxTest {
 
         assertEquals(ReaderDeviceKind.MIXED, readerDeviceKind(modes))
         assertEquals("HP Scanner", readerDeviceTitle(modes))
-        assertEquals("Pilih Mode Gerbang atau Mode Mushola", readerModeSummary(modes))
-        assertEquals(listOf("GERBANG", "MUSHOLA"), selectableScanModes(modes))
+        assertEquals("Pilih Mode Gerbang, Mode Mushola, atau Cek Identitas", readerModeSummary(modes))
+        assertEquals(listOf("GERBANG", "MUSHOLA", "CHECK_ONLY"), selectableScanModes(modes))
         assertEquals("GERBANG", effectiveScanMode(modes, "GATE_OUT"))
         assertEquals("MUSHOLA", effectiveScanMode(modes, "MUSHOLA"))
         assertTrue(showManualModePicker(modes))
@@ -51,6 +51,18 @@ class ReaderUxTest {
         assertEquals("Mode Mushola tersedia", readerModeSummary(modes))
         assertEquals("MUSHOLA", effectiveScanMode(modes, "CHECK_ONLY"))
         assertFalse(showManualModePicker(modes))
+    }
+
+
+    @Test
+    fun checkOnlyLabelAndModeStaySelectable() {
+        val modes = listOf("CHECK_ONLY")
+
+        assertEquals(ReaderDeviceKind.CHECK_ONLY, readerDeviceKind(modes))
+        assertEquals("Cek Identitas", readerDeviceTitle(modes))
+        assertEquals("Mode: Cek Identitas", readerModeSummary(modes))
+        assertEquals(listOf("CHECK_ONLY"), selectableScanModes(modes))
+        assertEquals("CHECK_ONLY", effectiveScanMode(modes, "GERBANG"))
     }
 
     @Test

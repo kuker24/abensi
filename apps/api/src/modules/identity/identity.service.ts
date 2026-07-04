@@ -22,6 +22,29 @@ const ACCOUNT_DELETE_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const ACCOUNT_DELETE_RATE_LIMIT_MAX = 10;
 const ACCOUNT_DELETE_RATE_LIMITS = new Map<string, { count: number; resetAt: number }>();
 
+function cleanOptionalText(value?: string | null) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text || null;
+}
+
+function parseOptionalDate(value?: string | null) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const local = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/.exec(text);
+  const normalized = iso
+    ? `${iso[1]}-${iso[2]}-${iso[3]}`
+    : local
+      ? `${local[3]}-${local[2].padStart(2, '0')}-${local[1].padStart(2, '0')}`
+      : null;
+  if (!normalized) throw new BadRequestException('Tanggal lahir harus format YYYY-MM-DD.');
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized) {
+    throw new BadRequestException('Tanggal lahir tidak valid.');
+  }
+  return date;
+}
+
 type AccountDeleteMode = 'auto' | 'archive-only' | 'hard-delete-only-if-safe';
 type AccountDeleteAction = 'HARD_DELETE' | 'ARCHIVE' | 'REJECT';
 type AccountDeleteTarget = { id: string; username: string; fullName: string; role: Role; active: boolean; cardStatus: CardStatus; archivedAt: Date | null };
@@ -50,6 +73,9 @@ export class IdentityService {
           id: true,
           username: true,
           fullName: true,
+          nis: true,
+          nip: true,
+          birthDate: true,
           role: true,
           active: true,
           cardStatus: true,
@@ -308,6 +334,9 @@ export class IdentityService {
         data: {
           username: payload.username,
           fullName: payload.fullName,
+          nis: cleanOptionalText(payload.nis),
+          nip: cleanOptionalText(payload.nip),
+          birthDate: parseOptionalDate(payload.birthDate),
           passwordHash,
           mustChangePassword: true,
           role: payload.role,
@@ -317,6 +346,9 @@ export class IdentityService {
           id: true,
           username: true,
           fullName: true,
+          nis: true,
+          nip: true,
+          birthDate: true,
           role: true,
           cardStatus: true,
           active: true
@@ -350,6 +382,7 @@ export class IdentityService {
     }
 
     const passwordHash = payload.password ? await bcrypt.hash(payload.password, 10) : undefined;
+    const birthDate = payload.birthDate !== undefined ? parseOptionalDate(payload.birthDate) : undefined;
     const shouldRevokeSessions = Boolean(passwordHash || payload.role !== undefined || payload.active !== undefined);
 
     return this.prisma.$transaction(async (tx) => {
@@ -358,6 +391,9 @@ export class IdentityService {
         where: { id: userId },
         data: {
           ...(payload.fullName !== undefined ? { fullName: payload.fullName } : {}),
+          ...(payload.nis !== undefined ? { nis: cleanOptionalText(payload.nis) } : {}),
+          ...(payload.nip !== undefined ? { nip: cleanOptionalText(payload.nip) } : {}),
+          ...(payload.birthDate !== undefined ? { birthDate } : {}),
           ...(passwordHash ? { passwordHash, passwordChangedAt: null, mustChangePassword: true } : {}),
           ...(payload.role !== undefined ? { role: payload.role } : {}),
           ...(payload.cardStatus !== undefined ? { cardStatus: payload.cardStatus } : {}),
@@ -369,6 +405,9 @@ export class IdentityService {
           id: true,
           username: true,
           fullName: true,
+          nis: true,
+          nip: true,
+          birthDate: true,
           role: true,
           cardStatus: true,
           active: true,
@@ -406,6 +445,9 @@ export class IdentityService {
           id: before.id,
           username: before.username,
           fullName: before.fullName,
+          nis: before.nis,
+          nip: before.nip,
+          birthDate: before.birthDate,
           role: before.role,
           cardStatus: before.cardStatus,
           active: before.active
@@ -756,6 +798,10 @@ export class IdentityService {
       index: index + 1,
       username: row.username?.trim(),
       fullName: row.fullName?.trim(),
+      nis: cleanOptionalText(row.nis),
+      nip: cleanOptionalText(row.nip),
+      birthDate: row.birthDate?.trim() || '',
+      parsedBirthDate: null as Date | null,
       role: row.role,
       password: row.password?.trim() || '',
       errors: [] as string[]
@@ -771,6 +817,9 @@ export class IdentityService {
     for (const row of normalized) {
       if (!row.username) row.errors.push('username wajib');
       if (!row.fullName) row.errors.push('fullName wajib');
+      if (row.birthDate) {
+        try { row.parsedBirthDate = parseOptionalDate(row.birthDate); } catch (error) { row.errors.push(error instanceof Error ? error.message : 'Tanggal lahir tidak valid'); }
+      }
       if (!Object.values(Role).includes(row.role)) row.errors.push('role tidak valid');
       if (row.role === Role.DEVELOPER) row.errors.push('role DEVELOPER hanya dibuat dari seed/env atau akun developer.');
       if (existingSet.has(row.username)) row.errors.push('username sudah ada');
@@ -794,21 +843,24 @@ export class IdentityService {
       return { committed: false, ...preview };
     }
 
-    const prepared = await Promise.all(rows.map(async (row) => ({ row, passwordHash: await bcrypt.hash(row.password!.trim(), 10) })));
+    const prepared = await Promise.all(rows.map(async (row) => ({ row, passwordHash: await bcrypt.hash(row.password!.trim(), 10), birthDate: parseOptionalDate(row.birthDate) })));
 
     return this.prisma.$transaction(async (tx) => {
       const created = [];
-      for (const { row, passwordHash } of prepared) {
+      for (const { row, passwordHash, birthDate } of prepared) {
         created.push(await tx.user.create({
           data: {
             username: row.username.trim(),
             fullName: row.fullName.trim(),
+            nis: cleanOptionalText(row.nis),
+            nip: cleanOptionalText(row.nip),
+            birthDate,
             role: row.role,
             passwordHash,
             mustChangePassword: true,
             cardStatus: CardStatus.ACTIVE
           },
-          select: { id: true, username: true, fullName: true, role: true, active: true }
+          select: { id: true, username: true, fullName: true, nis: true, nip: true, birthDate: true, role: true, active: true }
         }));
       }
 
