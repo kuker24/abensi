@@ -12,7 +12,7 @@ test('builds official SIAB2 card export endpoints without putting QR data in URL
   assert.equal(buildSiab2CardExportPath({ userId: 'user-1', classId: 'kelas-1' }), '/qr-credentials/export/users/user-1/card');
 });
 
-test('maps student cards without class for stable identity card display', () => {
+test('maps student cards with dynamic class from official export data', () => {
   const users = mapSiab2CardsPayload({
     generatedAt: '2026-07-02T00:00:00.000Z',
     cards: [
@@ -41,7 +41,7 @@ test('maps student cards without class for stable identity card display', () => 
 
   assert.equal(users[0].nama, 'Aisyah Putri');
   assert.equal(users[0].role, 'student');
-  assert.equal(users[0].kelas, '');
+  assert.equal(users[0].kelas, 'X A · IPA');
   assert.equal(users[0].qr_value, 'schoolhub:qr:v1:QR_ABCDEFGHIJKL');
   assert.equal(users[0].card_source, 'database');
   assert.equal(users[0].card_source_label, 'RESMI / DATABASE');

@@ -286,7 +286,7 @@ export class QrCredentialsService {
     const cards = items.map((item) => {
       const qrCode = this.signatures.decryptSecret(item.codeCiphertext) || null;
       const isStudent = item.user.role === Role.SISWA;
-      const schoolClass = isStudent ? null : item.user.enrollments?.[0]?.schoolClass || null;
+      const schoolClass = item.user.enrollments?.[0]?.schoolClass || null;
       const className = schoolClass ? `${schoolClass.code} · ${schoolClass.name}` : null;
       const displayRole = printableRole(item.user.role);
       return {
