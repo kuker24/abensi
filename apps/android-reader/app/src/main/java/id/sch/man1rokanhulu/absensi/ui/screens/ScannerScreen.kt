@@ -423,14 +423,14 @@ internal fun parseServerScanSummary(body: String): ServerScanSummary = runCatchi
     val obj = JSONObject(body.ifBlank { "{}" })
     val user = obj.optJSONObject("user")
     val item = obj.optJSONObject("item")
-    val name = user?.optString("fullName")?.ifBlank { null }
-    val roleRaw = user?.optString("role")?.ifBlank { null }
+    val name = safeOptString(user, "fullName")
+    val roleRaw = safeOptString(user, "role")
     val role = roleRaw?.replace('_', ' ')
-    val className = user?.optString("className")?.ifBlank { null }
-    val cardStatus = user?.optString("cardStatus")?.ifBlank { null }
-    val action = obj.optString("action").ifBlank { null }
-    val kind = obj.optString("kind").ifBlank { null }
-    val prayer = item?.optString("prayerType")?.ifBlank { null }
+    val className = safeOptString(user, "className")
+    val cardStatus = safeOptString(user, "cardStatus")
+    val action = safeOptString(obj, "action")
+    val kind = safeOptString(obj, "kind")
+    val prayer = safeOptString(item, "prayerType")
     val actionLabel = when {
         !action.isNullOrBlank() -> action
         kind == "PRAYER" && !prayer.isNullOrBlank() -> prayer.lowercase().replaceFirstChar { it.uppercase() }
@@ -443,14 +443,28 @@ internal fun parseServerScanSummary(body: String): ServerScanSummary = runCatchi
             roleRaw = roleRaw,
             className = className,
             cardStatus = cardStatus,
-            nis = user.optString("nis").ifBlank { null },
-            nip = user.optString("nip").ifBlank { null },
-            birthDate = user.optString("birthDate").ifBlank { null }
+            nis = safeOptString(user, "nis"),
+            nip = safeOptString(user, "nip"),
+            birthDate = safeOptString(user, "birthDate")
         )
     }
     val meta = listOfNotNull(role, className).joinToString(" · ").ifBlank { null }
     ServerScanSummary(name, meta, actionLabel)
 }.getOrDefault(ServerScanSummary())
+
+private fun safeOptString(obj: JSONObject?, key: String): String? {
+    val value = obj?.opt(key) ?: return null
+    if (value == JSONObject.NULL) return null
+    return cleanIdentityText(value.toString())
+}
+
+private fun cleanIdentityText(value: String?): String? {
+    val text = value?.trim().orEmpty()
+    if (text.isBlank()) return null
+    if (text.equals("null", ignoreCase = true)) return null
+    if (text.equals("undefined", ignoreCase = true)) return null
+    return text
+}
 
 internal fun buildCheckOnlySummary(
     name: String?,
@@ -461,30 +475,37 @@ internal fun buildCheckOnlySummary(
     nip: String?,
     birthDate: String?
 ): ServerScanSummary {
-    val role = roleRaw?.replace('_', ' ')
-    val lines = if (roleRaw == "SISWA") {
+    val safeName = cleanIdentityText(name)
+    val safeRoleRaw = cleanIdentityText(roleRaw)
+    val safeClassName = cleanIdentityText(className)
+    val safeCardStatus = cleanIdentityText(cardStatus)
+    val safeNis = cleanIdentityText(nis)
+    val safeNip = cleanIdentityText(nip)
+    val safeBirthDate = cleanIdentityText(birthDate)
+    val role = safeRoleRaw?.replace('_', ' ')
+    val lines = if (safeRoleRaw == "SISWA") {
         listOfNotNull(
-            name?.let { "Nama: $it" },
-            nis?.let { "NIS: $it" },
-            birthDate?.let { "Tanggal lahir: $it" },
-            className?.let { "Kelas: $it" },
-            cardStatus?.let { "Status kartu: $it" }
+            safeName?.let { "Nama: $it" },
+            safeNis?.let { "NIS: $it" },
+            safeBirthDate?.let { "Tanggal lahir: $it" },
+            safeClassName?.let { "Kelas: $it" },
+            safeCardStatus?.let { "Status kartu: $it" }
         )
     } else {
         listOfNotNull(
-            name?.let { "Nama: $it" },
-            nip?.let { "NIP: $it" },
+            safeName?.let { "Nama: $it" },
+            safeNip?.let { "NIP: $it" },
             role?.let { "Role/Jabatan: $it" },
-            cardStatus?.let { "Status kartu: $it" }
+            safeCardStatus?.let { "Status kartu: $it" }
         )
     }
-    val meta = if (roleRaw == "SISWA") {
-        listOfNotNull("SISWA", className, nis?.let { "NIS $it" }).joinToString(" · ").ifBlank { null }
+    val meta = if (safeRoleRaw == "SISWA") {
+        listOfNotNull("SISWA", safeClassName, safeNis?.let { "NIS $it" }).joinToString(" · ").ifBlank { null }
     } else {
-        listOfNotNull(role, nip?.let { "NIP $it" }).joinToString(" · ").ifBlank { null }
+        listOfNotNull(role, safeNip?.let { "NIP $it" }).joinToString(" · ").ifBlank { null }
     }
     return ServerScanSummary(
-        displayName = name,
+        displayName = safeName,
         displayMeta = meta,
         actionLabel = "Cek Identitas",
         feedbackMessage = lines.joinToString("\n").ifBlank { "QR valid. Tidak ada presensi yang dicatat." }
