@@ -34,9 +34,9 @@ export const mapSiab2CardToGeneratorUser = (card = {}, index = 0) => {
   return {
     id: cleanString(card.userId || card.id) || `siab2_card_${index + 1}`,
     nama: fullName,
-    nisn: cleanString(card.nisn || card.username || card.shortCode),
+    nisn: cleanString(card.nisn || card.nis || (isStudent ? card.username : card.nip) || card.shortCode),
     role: isStudent ? 'student' : 'teacher',
-    kelas: isStudent ? '' : cleanString(card.className || card.classCode || card.level),
+    kelas: cleanString(card.className || card.classCode || card.level),
     jurusan: cleanString(card.program),
     status: cleanString(card.status || card.cardStatus) || 'Aktif',
     qr_value: qrValue,

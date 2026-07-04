@@ -146,7 +146,7 @@ describe('QrCredentialsService stable student identity cards', () => {
     });
   });
 
-  it('exports student card data without class fields for long-term printing', async () => {
+  it('exports student card data with dynamic display class fields for printing', async () => {
     const prisma = makePrisma({
       credentials: [
         {
@@ -182,8 +182,8 @@ describe('QrCredentialsService stable student identity cards', () => {
       nisn: '1234567890',
       role: Role.SISWA,
       roleLabel: 'SISWA',
-      className: null,
-      classCode: null,
+      className: 'X-A · Kelas X A',
+      classCode: 'X-A',
       level: 'SISWA',
       qrCode: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',
       qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL',

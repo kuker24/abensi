@@ -1,12 +1,50 @@
-export const CARD_WIDTH_MM = 55;
-export const CARD_HEIGHT_MM = 85;
-export const CARD_PIXEL_WIDTH = 208;
-export const CARD_PIXEL_HEIGHT = 321;
+export const CARD_WIDTH_MM = 53.98;
+export const CARD_HEIGHT_MM = 85.6;
+export const CARD_PIXEL_WIDTH = 324;
+export const CARD_PIXEL_HEIGHT = 514;
 
-const safeText = (value, fallback = '—') => {
+export const safeText = (value, fallback = '—') => {
   const text = String(value ?? '').trim();
   return text || fallback;
 };
+
+const normalizeRole = (role) => String(role || '').trim().toLowerCase();
+
+export const getCardRoleLabel = (user = {}) => {
+  const rawRole = user?.roleLabel || user?.displayRole || user?.role || '';
+  const role = normalizeRole(rawRole).replace(/[_.-]+/g, ' ');
+
+  if (role.includes('guru piket')) return 'GURU PIKET';
+  if (role.includes('kepala')) return 'KEPALA SEKOLAH';
+  if (role.includes('operator')) return 'OPERATOR IT';
+  if (role.includes('admin') || role === 'tu' || role.includes('admin tu')) return 'ADMIN TU';
+  if (role.includes('guru') || role.includes('teacher')) return 'GURU';
+  if (role.includes('pegawai') || role.includes('staff') || role.includes('staf')) return 'PEGAWAI';
+  if (role.includes('siswa') || role.includes('student')) return 'SISWA';
+  if (role.includes('developer')) return 'DEVELOPER';
+
+  return safeText(rawRole || 'MAN 1 ROKAN HULU').toUpperCase();
+};
+
+export const getCardSubLabel = (user = {}) => {
+  const roleLabel = getCardRoleLabel(user);
+  if (roleLabel === 'SISWA') return 'Peserta Didik';
+  if (roleLabel === 'GURU' || roleLabel === 'GURU PIKET') return 'Guru / Tendik';
+  if (roleLabel === 'KEPALA SEKOLAH') return 'Kepala Madrasah';
+  if (roleLabel === 'ADMIN TU' || roleLabel === 'OPERATOR IT') return 'Admin / Operator';
+  return 'Anggota';
+};
+
+export const getCardIdentityNumber = (user = {}) => {
+  const roleLabel = getCardRoleLabel(user);
+  if (roleLabel === 'SISWA') return safeText(user?.nisn || user?.nis || user?.idNumber || user?.username, 'ID belum ada');
+  return safeText(user?.nip || user?.idNumber || user?.username, 'ID belum ada');
+};
+
+export const getCardLevel = (user = {}) => safeText(
+  user?.className || user?.classCode || user?.kelas || user?.level || user?.raw?.['Kelas/Jabatan'],
+  'MAN 1 Rokan Hulu'
+);
 
 export const getQrPayload = (user) => {
   const explicitQr = safeText(
