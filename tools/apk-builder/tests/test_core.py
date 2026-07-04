@@ -42,6 +42,12 @@ def test_increment_version_code():
     assert core.increment_version_code() == 8
 
 
+def test_default_profile_matches_current_android_reader_version():
+    profile = BuildProfile()
+    assert profile.version_name == '1.2.0'
+    assert profile.version_code == 4
+
+
 def test_output_apk_naming():
     core = ApkBuilderCore(BuildProfile(app_display_name='SIAB2 Reader', version_name='1.0.0', version_code=1, build_type='release'))
     assert core.output_apk_name() == 'SIAB2-Reader-v1.0.0-code1-release.apk'

@@ -15,6 +15,6 @@ else
   apk="$release_dir/app-release-unsigned.apk"
   suffix="release-unsigned"
 fi
-friendly="$PWD/output/Absensi-MAN-1-Rokan-Hulu-v${version_name:-1.1.1}-code${version_code:-3}-$suffix.apk"
+friendly="$PWD/output/Absensi-MAN-1-Rokan-Hulu-v${version_name:-1.2.0}-code${version_code:-4}-$suffix.apk"
 cp -f "$apk" "$friendly"
 printf '\nAPK release siap di folder:\n%s\n\nSalinan APK:\n%s\n' "$release_dir" "$friendly"

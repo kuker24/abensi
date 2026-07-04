@@ -44,11 +44,7 @@ Launcher akan otomatis:
 - membuat environment Python,
 - membuka aplikasi **SIAB2 APK Builder**.
 
-Di laptop ini JDK yang dipakai otomatis adalah:
-
-```text
-/home/fahmi/.local/jdks/jdk-17
-```
+Jika auto-detect gagal, operator IT dapat mengatur `JAVA_HOME`, `ANDROID_HOME`, atau `ANDROID_SDK_ROOT` sesuai lokasi instalasi JDK/Android SDK di laptop tersebut.
 
 ## Langkah 1 — Cek Kesiapan Laptop
 

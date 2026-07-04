@@ -6,6 +6,7 @@ set -euo pipefail
 
 find_jdk() {
   local candidates=(
+    "${JAVA_HOME:-}"
     "/usr/lib/jvm/java-17-openjdk"
     "/usr/lib/jvm/java-21-openjdk"
     "$HOME/.local/jdks/jdk-17"
@@ -16,7 +17,7 @@ find_jdk() {
   )
   local dir
   for dir in "${candidates[@]}"; do
-    if [ -x "$dir/bin/java" ]; then
+    if [ -n "$dir" ] && [ -x "$dir/bin/java" ]; then
       local version
       version=$("$dir/bin/java" -version 2>&1 | head -1 || true)
       if [[ "$version" == *'"17.'* || "$version" == *'"21.'* ]]; then

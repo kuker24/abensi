@@ -240,6 +240,14 @@ fun ReaderApp(
         }
     }
 
+    fun queueRetryMessage(result: QueueRetryResult): String = "${result.sent} terkirim, ${result.rejected} ditolak server, ${result.failed} masih menunggu internet."
+
+    fun queueRetryFeedback(result: QueueRetryResult): FeedbackData = FeedbackData(
+        title = if (result.failed == 0) "Antrean Diproses" else "Sebagian Tertunda",
+        message = queueRetryMessage(result),
+        tone = if (result.failed == 0) FeedbackTone.SUCCESS else FeedbackTone.PENDING
+    )
+
     suspend fun retryQueue(): QueueRetryResult {
         var sent = 0
         var rejected = 0
@@ -360,12 +368,7 @@ fun ReaderApp(
                 onHistory = { route = Route.HISTORY },
                 onRetryQueue = {
                     scope.launch {
-                        val result = retryQueue()
-                        lastFeedback = FeedbackData(
-                            title = if (result.failed == 0) "Antrean Diproses" else "Sebagian Tertunda",
-                            message = "${result.sent} terkirim, ${result.rejected} ditolak server, ${result.failed} masih menunggu internet.",
-                            tone = if (result.failed == 0) FeedbackTone.SUCCESS else FeedbackTone.PENDING
-                        )
+                        lastFeedback = queueRetryFeedback(retryQueue())
                     }
                 }
             )
@@ -398,7 +401,9 @@ fun ReaderApp(
                     onBack = { route = Route.HOME },
                     onHelp = { route = Route.HELP },
                     onRetryQueue = {
-                        scope.launch { retryQueue() }
+                        queueRetryFeedback(retryQueue()).also { feedback ->
+                            lastFeedback = feedback
+                        }
                     },
                     onProvisioningLost = {
                         config.clearDevice()
@@ -411,7 +416,9 @@ fun ReaderApp(
                 api = api,
                 queueCount = queueCount,
                 onClearQueue = { scope.launch { runCatching { queueRepo.clear() }; refreshQueueCount() } },
-                onRetryQueue = { scope.launch { retryQueue() } },
+                onRetryQueue = {
+                    queueRetryMessage(retryQueue())
+                },
                 onCheckUpdate = { checkForUpdate(manual = true) },
                 updateStatus = updateMessage,
                 onBack = { route = Route.HOME },

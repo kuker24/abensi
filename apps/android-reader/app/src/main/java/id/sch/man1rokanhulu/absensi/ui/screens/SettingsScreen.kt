@@ -38,7 +38,7 @@ fun SettingsScreen(
     api: SchoolHubApiClient,
     queueCount: Int,
     onClearQueue: () -> Unit,
-    onRetryQueue: () -> Unit,
+    onRetryQueue: suspend () -> String,
     onCheckUpdate: () -> Unit = {},
     updateStatus: String? = null,
     onBack: () -> Unit,
@@ -143,7 +143,15 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (queueCount > 0) {
-                    SecondaryActionButton(text = "Kirim Ulang Sekarang", onClick = onRetryQueue)
+                    SecondaryActionButton(
+                        text = "Kirim Ulang Sekarang",
+                        onClick = {
+                            scope.launch {
+                                status = "Mengirim ulang antrean…"
+                                status = onRetryQueue()
+                            }
+                        }
+                    )
                     OutlinedButton(
                         onClick = { showClearQueueDialog = true },
                         modifier = Modifier.fillMaxWidth()
@@ -183,9 +191,14 @@ fun SettingsScreen(
     }
 
     if (showResetDialog) {
+        val resetMessage = if (queueCount > 0) {
+            "Ada $queueCount scan belum terkirim. Kirim antrean dulu sebelum reset agar data tidak hilang. Reset tetap akan menghapus aktivasi HP dan data rahasia di HP."
+        } else {
+            "Reset akan menghapus aktivasi HP ini. Data rahasia di HP akan dihapus dan tidak bisa dipulihkan. HP perlu diaktifkan ulang oleh admin."
+        }
         ConfirmDialog(
             title = "Reset HP Scanner?",
-            message = "Reset akan menghapus aktivasi HP ini. Data rahasia di HP akan dihapus dan tidak bisa dipulihkan. HP perlu diaktifkan ulang oleh admin.",
+            message = resetMessage,
             confirmLabel = "Hapus & Reset",
             destructive = true,
             onConfirm = {

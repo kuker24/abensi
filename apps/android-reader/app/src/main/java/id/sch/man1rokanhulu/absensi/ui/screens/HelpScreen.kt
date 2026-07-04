@@ -77,7 +77,18 @@ fun HelpScreen(onBack: () -> Unit) {
                 "Scan offline disimpan otomatis sampai 100 antrean.",
                 "Lihat jumlah antrean di layar utama dan layar scanner.",
                 "Tekan 'Kirim Ulang Antrean' setelah internet pulih.",
+                "Jika ada yang ditolak server, scan itu tidak dikirim ulang terus-menerus.",
                 "Jangan reset aktivasi sebelum antrean kosong, supaya data tidak hilang."
+            )
+        )
+
+        HelpSection(
+            "Update APK wajib",
+            listOf(
+                "Jika muncul layar 'Update APK Wajib', scan tidak bisa dilanjutkan sampai update selesai.",
+                "Tekan Download / Install, lalu konfirmasi di layar installer Android.",
+                "Aktivasi HP, antrean offline, dan secret reader tidak hilang saat update.",
+                "Jika diminta, aktifkan izin install dari sumber tidak dikenal di Pengaturan HP."
             )
         )
 

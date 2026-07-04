@@ -49,6 +49,11 @@ fun ForcedUpdateScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
+                Text(
+                    "Tekan Download / Install, lalu konfirmasi pemasangan di installer Android. Jika diminta, aktifkan izin install dari sumber tidak dikenal.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
                 if (!info.releaseNotes.isNullOrBlank()) Text(info.releaseNotes, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                 if (!message.isNullOrBlank()) Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                 PrimaryActionButton(text = if (busy) "Menyiapkan update…" else "Download / Install", loading = busy, onClick = onInstall)

@@ -119,8 +119,8 @@ class BuildProfile:
     app_display_name: str = DEFAULT_APP_NAME
     application_id: str = DEFAULT_APP_ID
     server_base_url: str = DEFAULT_SERVER
-    version_name: str = "1.1.1"
-    version_code: int = 3
+    version_name: str = "1.2.0"
+    version_code: int = 4
     build_type: str = "debug"
     icon_file: str = ""
     output_dir: str = ""
@@ -421,7 +421,7 @@ class ApkBuilderCore:
         return payload
 
     def apply_web_version_to_profile(self, metadata: dict[str, Any]) -> None:
-        latest_name = str(metadata.get("latestVersionName") or self.profile.version_name or "1.1.1")
+        latest_name = str(metadata.get("latestVersionName") or self.profile.version_name or "1.2.0")
         latest_code = int(metadata.get("latestVersionCode") or self.profile.version_code or 1)
         min_supported = int(metadata.get("minSupportedVersionCode") or 1)
         self.profile.version_name = latest_name
