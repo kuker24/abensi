@@ -328,7 +328,7 @@ export function TeacherLeavePage({ notify }) {
 
 export function TeacherRecapPage() {
   const [month, setMonth] = useState(monthNow());
-  const data = useRemote(() => Promise.resolve({ items: [] }), [month]);
-  return <div className="content"><PageHead eyebrow="LAPORAN GURU" title="Laporan Kelas Saya" sub="Ringkasan kelas yang Anda ajar pada bulan yang dipilih." actions={<label className="input compact"><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Pilih bulan" /></label>} /><div className="grid g-2"><Card title="Grafik rekap" sub="Perbandingan antar kelas ampuan."><HorizontalBarList data={data.data} /></Card><Card title="Tabel rekap" sub="Data per kelas/sesi bulan yang dipilih"><AttendanceTableState state={data} /></Card></div></div>;
+  const unavailable = <EmptyState title="Rekap kelas belum tersedia" sub="Laporan bulanan per kelas membutuhkan akses Admin/TU. Gunakan menu Isi Presensi, Perbaiki Presensi, atau Kehadiran Saya untuk melihat data yang tersedia untuk guru." />;
+  return <div className="content"><PageHead eyebrow="LAPORAN GURU" title="Laporan Kelas Saya" sub="Ringkasan kelas yang Anda ajar pada bulan yang dipilih." actions={<label className="input compact"><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Pilih bulan" /></label>} /><div className="grid g-2"><Card title="Grafik rekap" sub="Perbandingan antar kelas ampuan.">{unavailable}</Card><Card title="Tabel rekap" sub="Data per kelas/sesi bulan yang dipilih">{unavailable}</Card></div></div>;
 }
 
