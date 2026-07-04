@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,12 +102,19 @@ fun ScannerScreen(
     val latestMode by rememberUpdatedState(mode)
     val deviceTitle = readerDeviceTitle(allowedModes)
     val deviceSummary = readerModeSummary(allowedModes)
-    var feedback by remember { mutableStateOf(FeedbackData("Siap Scan", "Arahkan QR ke kamera. Tahan stabil sampai berbunyi.", FeedbackTone.IDLE)) }
+    var feedback by remember { mutableStateOf(scannerPausedFeedback()) }
     var busy by remember { mutableStateOf(false) }
     var torchOn by remember { mutableStateOf(false) }
-    var paused by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(true) }
+    var scannerArmed by remember { mutableStateOf(false) }
     var confirmModeChange by remember { mutableStateOf(false) }
     var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
+
+    LaunchedEffect(mode) {
+        paused = true
+        scannerArmed = false
+        feedback = scannerPausedFeedback()
+    }
 
     DisposableEffect(config.keepScreenOn) {
         val activity = context as? ComponentActivity
@@ -133,7 +141,7 @@ fun ScannerScreen(
                     val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                     val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build().also {
                         it.setAnalyzer(ContextCompat.getMainExecutor(ctx), BarcodeAnalyzer { raw ->
-                            if (paused) return@BarcodeAnalyzer
+                            if (!shouldProcessScan(paused = paused, armed = scannerArmed, busy = busy)) return@BarcodeAnalyzer
                             if (!scanGate.tryStart(raw)) return@BarcodeAnalyzer
                             busy = true
                             feedback = FeedbackData("Memproses…", "Tunggu sebentar. QR sedang dicek ke server.", FeedbackTone.PROCESSING)
@@ -281,10 +289,22 @@ fun ScannerScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = { paused = !paused },
+                        onClick = {
+                            if (paused) {
+                                scannerArmed = true
+                                paused = false
+                                feedback = FeedbackData("Siap Scan", "Arahkan QR ke kamera. Tahan stabil sampai berbunyi.", FeedbackTone.IDLE)
+                            } else {
+                                paused = true
+                                scannerArmed = false
+                                feedback = scannerPausedFeedback()
+                            }
+                        },
                         modifier = Modifier.weight(1f).height(50.dp),
                         colors = if (paused) scannerPrimaryButtonColors() else scannerDarkButtonColors()
-                    ) { Text(if (paused) "Mulai Scan" else "Jeda Scan") }
+                    ) {
+                        Text(if (paused) "Mulai Scan" else "Jeda Scan")
+                    }
                     Button(
                         onClick = {
                             torchOn = !torchOn
@@ -314,7 +334,12 @@ fun ScannerScreen(
                         colors = scannerDarkButtonColors()
                     ) { Text("Bantuan") }
                     Button(
-                        onClick = { confirmModeChange = true },
+                        onClick = {
+                            paused = true
+                            scannerArmed = false
+                            feedback = scannerPausedFeedback()
+                            confirmModeChange = true
+                        },
                         modifier = Modifier.weight(1f).height(50.dp),
                         colors = scannerDarkButtonColors()
                     ) { Text("Ubah Mode") }
@@ -328,6 +353,9 @@ fun ScannerScreen(
                 message = "Scan akan ditutup agar operator memilih Mode Gerbang atau Mode Mushola.",
                 confirmLabel = "Ubah Mode",
                 onConfirm = {
+                    paused = true
+                    scannerArmed = false
+                    feedback = scannerPausedFeedback()
                     confirmModeChange = false
                     callbacks.onBack()
                 },
@@ -418,6 +446,14 @@ internal data class ServerScanSummary(
     val actionLabel: String? = null,
     val feedbackMessage: String? = null
 )
+
+internal fun scannerPausedFeedback() = FeedbackData(
+    "Scan Belum Aktif",
+    "Pastikan QR tidak berada di depan kamera, lalu tekan Mulai Scan.",
+    FeedbackTone.IDLE
+)
+
+internal fun shouldProcessScan(paused: Boolean, armed: Boolean, busy: Boolean) = armed && !paused && !busy
 
 internal fun parseServerScanSummary(body: String): ServerScanSummary = runCatching {
     val obj = JSONObject(body.ifBlank { "{}" })
