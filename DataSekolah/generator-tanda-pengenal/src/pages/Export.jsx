@@ -7,17 +7,16 @@ import {
   CheckCircle,
   Loader2,
   AlertCircle,
-  FileText,
-  ArrowRight,
+    ArrowRight,
 } from 'lucide-react';
 import { Layout } from '../components/layout';
 import IDCard from '../components/cards/IDCard';
 import { CARD_PIXEL_HEIGHT, CARD_PIXEL_WIDTH, getQrPayload } from '../components/cards/cardConfig';
 import { useStore } from '../store/useStore';
-import { generatePDF, downloadPDF, getPrintLayout } from '../utils/pdfGenerator';
+import { generatePDF, downloadPDF, printPDF, getPrintLayout } from '../utils/pdfGenerator';
 import { parseBackendQrExportText } from '../utils/csvParser';
 
-const PREVIEW_SCALE = 0.7;
+const PREVIEW_SCALE = 0.52;
 const THUMB_SCALE = 0.45;
 
 const Export = () => {
@@ -43,12 +42,16 @@ const Export = () => {
   const officialQrCount = usersToExport.filter((user) => getQrPayload(user).startsWith('schoolhub:qr:v1:')).length;
   const fallbackQrCount = usersToExport.length - officialQrCount;
 
-  const downloadPdfForUsers = useCallback(async (targetUsers) => {
-    if (!targetUsers.length) return;
+  const createCardPdfBlob = useCallback(async (targetUsers) => {
+    if (!targetUsers.length) {
+      setError('Belum ada kartu untuk dicetak.');
+      return null;
+    }
+
     const officialCount = targetUsers.filter((user) => getQrPayload(user).startsWith('schoolhub:qr:v1:')).length;
     if (officialCount !== targetUsers.length) {
       setError('Masih ada QR fallback. Ambil QR resmi dulu sebelum cetak produksi.');
-      return;
+      return null;
     }
 
     setIsGenerating(true);
@@ -57,25 +60,43 @@ const Export = () => {
     setProgress({ current: 0, total: targetUsers.length });
 
     try {
-      const blob = await generatePDF(targetUsers, {
+      return await generatePDF(targetUsers, {
         schoolName: settings.schoolName,
         programName: settings.programName,
         onProgress: (p) => setProgress(p),
       });
-
-      const filename = `kartu-ehadir-${exportScopeLabel}-${new Date().toISOString().split('T')[0]}.pdf`;
-      downloadPDF(blob, filename);
-
-      setSuccess(true);
-      addActivityLog(`Exported ${targetUsers.length} SIAB2 ID cards to PDF`);
-      setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       setError(err.message || 'Gagal membuat PDF');
+      return null;
     } finally {
       setIsGenerating(false);
       setProgress(null);
     }
-  }, [addActivityLog, exportScopeLabel, settings.programName, settings.schoolName]);
+  }, [settings.programName, settings.schoolName]);
+
+  const downloadPdfForUsers = useCallback(async (targetUsers) => {
+    const blob = await createCardPdfBlob(targetUsers);
+    if (!blob) return false;
+
+    const filename = `kartu-ehadir-${exportScopeLabel}-${new Date().toISOString().split('T')[0]}.pdf`;
+    downloadPDF(blob, filename);
+
+    setSuccess(true);
+    addActivityLog(`Exported ${targetUsers.length} SIAB2 ID cards to PDF`);
+    setTimeout(() => setSuccess(false), 5000);
+    return true;
+  }, [addActivityLog, createCardPdfBlob, exportScopeLabel]);
+
+  const printPdfForUsers = useCallback(async (targetUsers) => {
+    const blob = await createCardPdfBlob(targetUsers);
+    if (!blob) return false;
+
+    printPDF(blob);
+    setSuccess(true);
+    addActivityLog(`Opened ${targetUsers.length} SIAB2 ID card PDF for printing`);
+    setTimeout(() => setSuccess(false), 5000);
+    return true;
+  }, [addActivityLog, createCardPdfBlob]);
 
   useEffect(() => {
     const autoLoad = searchParams.get('autoLoad') === '1';
@@ -113,7 +134,7 @@ const Export = () => {
 
   const handleGeneratePDF = () => downloadPdfForUsers(usersToExport);
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => printPdfForUsers(usersToExport);
 
   return (
     <Layout title="Export PDF" subtitle="Download dan cetak kartu SIAB2 ukuran 5,5 × 8,5 cm">
@@ -217,11 +238,11 @@ const Export = () => {
 
                   <button
                     onClick={handlePrint}
-                    disabled={usersToExport.length === 0}
+                    disabled={isGenerating || usersToExport.length === 0 || fallbackQrCount > 0}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <Printer className="w-5 h-5" />
-                    Cetak Preview
+                    Cetak PDF Kartu
                   </button>
                 </div>
 
@@ -246,7 +267,7 @@ const Export = () => {
                 {success && (
                   <div className="mt-4 p-3 bg-primary-50 border border-green-200 rounded-lg flex items-center gap-2">
                     <CheckCircle className="w-5 h-5 text-primary-500" />
-                    <span className="text-sm text-green-700">PDF berhasil didownload!</span>
+                    <span className="text-sm text-green-700">PDF kartu berhasil diproses.</span>
                   </div>
                 )}
 
@@ -265,7 +286,7 @@ const Export = () => {
                   <h3 className="text-lg font-semibold text-gray-900">Preview Layout</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <Eye className="w-4 h-4" />
-                    Preview cetak A4
+                    Preview layar, bukan hasil cetak final
                   </div>
                 </div>
 
@@ -290,16 +311,6 @@ const Export = () => {
                           />
                         </div>
                       ))}
-                      {usersToExport.length < layout.cardsPerPage &&
-                        Array.from({ length: layout.cardsPerPage - usersToExport.length }).map((_, i) => (
-                          <div
-                            key={`empty-${i}`}
-                            className="border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center bg-gray-50"
-                            style={{ height: CARD_PIXEL_HEIGHT * PREVIEW_SCALE }}
-                          >
-                            <FileText className="w-8 h-8 text-gray-300" />
-                          </div>
-                        ))}
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-gray-100 text-center text-xs text-gray-400">

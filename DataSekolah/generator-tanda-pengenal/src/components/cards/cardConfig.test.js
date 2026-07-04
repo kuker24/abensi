@@ -47,3 +47,12 @@ test('IDCard source keeps QR in main panel before name band and has no legacy bo
   assert.match(source, /KARTU TANDA PENGENAL RESMI/);
   assert.match(source, /Kartu Tanda Pengenal SIAB2/);
 });
+
+test('Export print action uses generated card PDF instead of browser whole-page print', () => {
+  const source = readFileSync(new URL('../../pages/Export.jsx', import.meta.url), 'utf8');
+  assert.match(source, /printPDF\(blob\)/);
+  assert.doesNotMatch(source, /window\.print\(/);
+  assert.doesNotMatch(source, /<FileText className=/);
+  assert.match(source, /Preview layar, bukan hasil cetak final/);
+  assert.match(source, /const PREVIEW_SCALE = 0\.52/);
+});
