@@ -16,6 +16,9 @@ type NormalizedStudentImportRow = {
   className: string;
   yearLabel: string;
   password: string;
+  nis: string | null;
+  birthDate: Date | null;
+  birthDateInput: string;
   generatedUsername: boolean;
   generatedPassword: boolean;
   existingUser: boolean;
@@ -28,6 +31,8 @@ const STUDENT_IMPORT_USERNAME_KEYS = ['username', 'Username', 'Nama akun', 'Nama
 const STUDENT_IMPORT_CLASS_KEYS = ['classCode', 'Kelas/Jabatan', 'Kelas', 'kelas', 'Class', 'Level', 'level'];
 const STUDENT_IMPORT_CLASS_NAME_KEYS = ['className', 'Nama Kelas', 'Class Name'];
 const STUDENT_IMPORT_PASSWORD_KEYS = ['password', 'Password', 'Kata Sandi', 'Kata sandi'];
+const STUDENT_IMPORT_NIS_KEYS = ['nis', 'NIS', 'nisn', 'NISN'];
+const STUDENT_IMPORT_BIRTH_DATE_KEYS = ['birthDate', 'Tanggal Lahir', 'tanggal_lahir', 'Tanggal lahir'];
 const STUDENT_IMPORT_YEAR_KEYS = ['yearLabel', 'Tahun Ajaran', 'Tahun ajaran'];
 const STUDENT_IMPORT_ROLE_KEYS = ['role', 'Role', 'Peran'];
 
@@ -41,6 +46,25 @@ function pickValue(row: Record<string, unknown>, keys: string[]) {
 
 function cleanImportText(value: string) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+
+function parseOptionalBirthDate(value: string) {
+  const text = cleanImportText(value);
+  if (!text) return { value: null as Date | null, error: null as string | null, input: '' };
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const local = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/.exec(text);
+  const normalized = iso
+    ? `${iso[1]}-${iso[2]}-${iso[3]}`
+    : local
+      ? `${local[3]}-${local[2].padStart(2, '0')}-${local[1].padStart(2, '0')}`
+      : null;
+  if (!normalized) return { value: null, error: 'Tanggal lahir harus format YYYY-MM-DD.', input: text };
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized) {
+    return { value: null, error: 'Tanggal lahir tidak valid.', input: text };
+  }
+  return { value: date, error: null, input: normalized };
 }
 
 function currentYearLabel() {
@@ -431,6 +455,8 @@ export class AcademicService {
       const rawUsername = cleanImportText(pickValue(row, STUDENT_IMPORT_USERNAME_KEYS)).toLowerCase();
       const classCode = cleanImportText(pickValue(row, STUDENT_IMPORT_CLASS_KEYS));
       const className = cleanImportText(pickValue(row, STUDENT_IMPORT_CLASS_NAME_KEYS)) || classCode;
+      const nis = cleanImportText(pickValue(row, STUDENT_IMPORT_NIS_KEYS)) || null;
+      const birthDate = parseOptionalBirthDate(pickValue(row, STUDENT_IMPORT_BIRTH_DATE_KEYS));
       const yearLabel = cleanImportText(pickValue(row, STUDENT_IMPORT_YEAR_KEYS)) || currentYearLabel();
       const role = cleanImportText(pickValue(row, STUDENT_IMPORT_ROLE_KEYS) || 'SISWA').toUpperCase();
       const passwordInput = cleanImportText(pickValue(row, STUDENT_IMPORT_PASSWORD_KEYS));
@@ -439,6 +465,7 @@ export class AcademicService {
 
       if (!fullName) errors.push('Nama lengkap wajib diisi');
       if (!classCode) errors.push('Kelas wajib diisi');
+      if (birthDate.error) errors.push(birthDate.error);
       if (role && role !== 'SISWA' && role !== 'STUDENT') errors.push('Import ini khusus siswa. Role harus SISWA.');
 
       let username = rawUsername || uniqueUsername(`siswa.${slugUsername(fullName)}`, usedUsernames);
@@ -466,6 +493,9 @@ export class AcademicService {
         className,
         yearLabel,
         password,
+        nis,
+        birthDate: birthDate.value,
+        birthDateInput: birthDate.input,
         generatedUsername,
         generatedPassword,
         existingUser: Boolean(existing),
@@ -527,6 +557,8 @@ export class AcademicService {
             data: {
               username: row.username,
               fullName: row.fullName,
+              nis: row.nis,
+              birthDate: row.birthDate,
               role: Role.SISWA,
               passwordHash: await bcrypt.hash(row.password, 10),
               cardStatus: CardStatus.ACTIVE
@@ -535,6 +567,9 @@ export class AcademicService {
           result.createdUsers += 1;
           credentialRows.push({ fullName: row.fullName, username: row.username, temporaryPassword: row.password, classCode: row.classCode, note: row.generatedPassword ? 'Password dibuat otomatis' : 'Password dari file' });
         } else {
+          if (row.nis || row.birthDate) {
+            student = await tx.user.update({ where: { id: student.id }, data: { ...(row.nis ? { nis: row.nis } : {}), ...(row.birthDate ? { birthDate: row.birthDate } : {}) } });
+          }
           result.existingUsers += 1;
           credentialRows.push({ fullName: student.fullName, username: student.username, temporaryPassword: '', classCode: row.classCode, note: 'Akun sudah ada; password tidak diubah' });
         }

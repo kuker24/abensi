@@ -121,6 +121,14 @@ export class ImportStudentRowDto {
 
   @IsOptional()
   @IsString()
+  nis?: string;
+
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
+
+  @IsOptional()
+  @IsString()
   role?: string;
 
   @IsOptional()

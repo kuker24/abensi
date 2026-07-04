@@ -51,6 +51,26 @@ class SchoolHubApiClientTest {
         }
     }
 
+    @Test fun scanQrCanSendCheckOnlyMode() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(403).setHeader("content-type", "text/plain").setBody("forbidden"))
+        server.start()
+        try {
+            val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
+            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "CHECK_ONLY", "android-1", "shrsec_test")
+            val request = server.takeRequest()
+            val body = request.body.readUtf8()
+
+            assertFalse(result.ok)
+            assertEquals(403, result.statusCode)
+            assertTrue(body.contains("\"scanMode\":\"CHECK_ONLY\""))
+            assertFalse(body.contains("\"mode\""))
+            assertNotNull(request.getHeader("x-reader-signature"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
     @Test fun versionParsesLegacyResponseWithoutUpdateCenterFields() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "application/json").setBody("{\"latestVersionName\":\"1.1.1\",\"latestVersionCode\":3,\"minSupportedVersionCode\":1,\"forceUpdate\":false,\"releaseNotes\":\"Legacy\"}"))

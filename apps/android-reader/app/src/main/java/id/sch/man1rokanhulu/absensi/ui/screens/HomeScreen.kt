@@ -36,6 +36,7 @@ import id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus
 import id.sch.man1rokanhulu.absensi.ui.components.PrimaryActionButton
 import id.sch.man1rokanhulu.absensi.ui.components.SecondaryActionButton
 import id.sch.man1rokanhulu.absensi.ui.components.StatusBar
+import id.sch.man1rokanhulu.absensi.ui.components.modeHelp
 import id.sch.man1rokanhulu.absensi.ui.components.modeLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -68,6 +69,7 @@ fun HomeScreen(
     val scanModes = selectableScanModes(allowedModes)
     val canScanGerbang = scanModes.contains("GERBANG")
     val canScanMushola = scanModes.contains("MUSHOLA")
+    val canCheckIdentity = scanModes.contains("CHECK_ONLY")
     val lastEntry = recentEntries.firstOrNull()
 
     PullToRefreshBox(
@@ -91,7 +93,7 @@ fun HomeScreen(
             Text("Pilih Mode Scan", style = MaterialTheme.typography.headlineMedium)
             Text(config.deviceName.ifBlank { "HP Scanner" }, style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Satu aplikasi untuk Mode Gerbang atau Mode Mushola.",
+                "Satu aplikasi untuk Mode Gerbang, Mode Mushola, dan Cek Identitas.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -117,7 +119,7 @@ fun HomeScreen(
                     Text(modeSummary, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("2 HP scanner fleksibel", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
-                        "Pilih mode sesuai waktu operasional. Saat pagi/pulang kedua HP bisa sama-sama Mode Gerbang. Saat sholat kedua HP bisa sama-sama Mode Mushola.",
+                        "Pilih mode sesuai kebutuhan. Mode Cek Identitas hanya membaca biodata terbatas dan tidak mencatat presensi.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -142,7 +144,16 @@ fun HomeScreen(
                 )
             }
 
-            if (!canScanGerbang && !canScanMushola) {
+            if (canCheckIdentity) {
+                ModeActionCard(
+                    title = "Cek Identitas",
+                    helper = modeHelp("CHECK_ONLY"),
+                    primary = !canScanGerbang && !canScanMushola,
+                    onClick = { onMode("CHECK_ONLY"); onStart() }
+                )
+            }
+
+            if (!canScanGerbang && !canScanMushola && !canCheckIdentity) {
                 PrimaryActionButton(text = "CEK QR", onClick = { onMode(currentMode); onStart() })
             }
 

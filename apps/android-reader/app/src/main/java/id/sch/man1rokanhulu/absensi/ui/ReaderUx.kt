@@ -16,7 +16,7 @@ fun selectableScanModes(allowedModes: List<String>): List<String> {
     val result = mutableListOf<String>()
     if (normalized.contains("GERBANG")) result.add("GERBANG")
     if (normalized.contains("MUSHOLA")) result.add("MUSHOLA")
-    if (result.isEmpty() && normalized.contains("CHECK_ONLY")) result.add("CHECK_ONLY")
+    if (normalized.contains("CHECK_ONLY")) result.add("CHECK_ONLY")
     return result.ifEmpty { listOf("GERBANG", "MUSHOLA") }
 }
 
@@ -35,14 +35,14 @@ fun readerDeviceKind(allowedModes: List<String>): ReaderDeviceKind {
 
 fun readerDeviceTitle(allowedModes: List<String>): String = when (readerDeviceKind(allowedModes)) {
     ReaderDeviceKind.GATE, ReaderDeviceKind.MUSHOLA, ReaderDeviceKind.MIXED -> "HP Scanner"
-    ReaderDeviceKind.CHECK_ONLY -> "Mode Cek QR"
+    ReaderDeviceKind.CHECK_ONLY -> "Cek Identitas"
 }
 
 fun readerModeSummary(allowedModes: List<String>): String = when (readerDeviceKind(allowedModes)) {
     ReaderDeviceKind.GATE -> "Mode Gerbang tersedia"
     ReaderDeviceKind.MUSHOLA -> "Mode Mushola tersedia"
-    ReaderDeviceKind.CHECK_ONLY -> "Mode: Cek Saja"
-    ReaderDeviceKind.MIXED -> "Pilih Mode Gerbang atau Mode Mushola"
+    ReaderDeviceKind.CHECK_ONLY -> "Mode: Cek Identitas"
+    ReaderDeviceKind.MIXED -> "Pilih Mode Gerbang, Mode Mushola, atau Cek Identitas"
 }
 
 fun effectiveScanMode(allowedModes: List<String>, currentMode: String): String {
@@ -61,14 +61,14 @@ fun showManualModePicker(allowedModes: List<String>): Boolean = selectableScanMo
 fun scanModeTitle(mode: String): String = when (normalizeMode(mode)) {
     "GERBANG" -> "Mode Gerbang"
     "MUSHOLA" -> "Mode Mushola"
-    "CHECK_ONLY" -> "Mode Cek QR"
+    "CHECK_ONLY" -> "Mode Cek Identitas"
     else -> "Mode Scan"
 }
 
 fun scanModeHelper(mode: String): String = when (normalizeMode(mode)) {
     "GERBANG" -> "Scan datang/pulang."
     "MUSHOLA" -> "Scan sholat siswa."
-    "CHECK_ONLY" -> "Cek QR tanpa mencatat presensi."
+    "CHECK_ONLY" -> "Cek identitas tanpa mencatat presensi."
     else -> "Arahkan QR ke kamera."
 }
 
