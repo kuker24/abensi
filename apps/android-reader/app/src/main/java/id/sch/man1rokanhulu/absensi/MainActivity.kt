@@ -375,6 +375,7 @@ fun ReaderApp(
                 config = config,
                 api = api,
                 queueCount = queueCount,
+                connection = connection,
                 historyStore = historyStore,
                 cameraPermissionGranted = cameraPermissionGranted,
                 requestCameraPermission = requestCameraPermission,

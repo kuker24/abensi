@@ -7,21 +7,17 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import id.sch.man1rokanhulu.absensi.BuildConfig
+import id.sch.man1rokanhulu.absensi.network.HttpClientProvider
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 
 object ApkUpdateInstaller {
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+    private val http = HttpClientProvider.download
 
     fun trustedDownloadUrl(baseUrl: String, downloadUrl: String?, releaseBuild: Boolean = !BuildConfig.DEBUG): String? {
         if (downloadUrl.isNullOrBlank()) return null

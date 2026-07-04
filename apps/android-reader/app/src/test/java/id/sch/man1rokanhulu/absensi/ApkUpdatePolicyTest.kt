@@ -39,4 +39,32 @@ class ApkUpdatePolicyTest {
         assertNull(ApkUpdateInstaller.trustedDownloadUrl(base, "http://absensi.man1rokanhulu.cloud/apk.apk", releaseBuild = true))
         assertNull(ApkUpdateInstaller.trustedDownloadUrl(base, "https://example.com/apk.apk", releaseBuild = true))
     }
+
+    @Test fun debugBuildAllowsHttpSameHostDownloadUrls() {
+        val base = "http://127.0.0.1:3000"
+        assertEquals(
+            "http://127.0.0.1:3000/api/v1/mobile/android-reader/releases/apk_1/download",
+            ApkUpdateInstaller.trustedDownloadUrl(base, "/api/v1/mobile/android-reader/releases/apk_1/download", releaseBuild = false)
+        )
+        assertEquals(
+            "http://127.0.0.1:3000/apk.apk",
+            ApkUpdateInstaller.trustedDownloadUrl(base, "http://127.0.0.1:3000/apk.apk", releaseBuild = false)
+        )
+    }
+
+    @Test fun trustedDownloadUrlRejectsNullBlankAndWrongHostInputs() {
+        val base = "https://absensi.man1rokanhulu.cloud"
+        assertNull(ApkUpdateInstaller.trustedDownloadUrl(base, null, releaseBuild = true))
+        assertNull(ApkUpdateInstaller.trustedDownloadUrl(base, "", releaseBuild = true))
+        assertNull(ApkUpdateInstaller.trustedDownloadUrl(base, "   ", releaseBuild = true))
+        assertNull(ApkUpdateInstaller.trustedDownloadUrl(base, "https://evil.example/apk.apk", releaseBuild = false))
+    }
+
+    @Test fun trustedDownloadUrlPreservesBasePortAndQueryString() {
+        val base = "https://absensi.man1rokanhulu.cloud:8443"
+        assertEquals(
+            "https://absensi.man1rokanhulu.cloud:8443/download/apk.apk?version=4",
+            ApkUpdateInstaller.trustedDownloadUrl(base, "/download/apk.apk?version=4", releaseBuild = true)
+        )
+    }
 }

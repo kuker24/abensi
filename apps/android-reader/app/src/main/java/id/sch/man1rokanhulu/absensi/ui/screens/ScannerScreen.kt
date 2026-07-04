@@ -29,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,7 +67,6 @@ import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
 import id.sch.man1rokanhulu.absensi.ui.scanModeHelper
 import id.sch.man1rokanhulu.absensi.ui.scanModeTitle
 import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.IOException
@@ -89,6 +87,7 @@ fun ScannerScreen(
     config: LocalConfig,
     api: SchoolHubApiClient,
     queueCount: Int,
+    connection: ConnectionStatus,
     historyStore: ScanHistoryStore,
     cameraPermissionGranted: Boolean,
     requestCameraPermission: () -> Unit,
@@ -104,7 +103,6 @@ fun ScannerScreen(
     val deviceSummary = readerModeSummary(allowedModes)
     var feedback by remember { mutableStateOf(FeedbackData("Siap Scan", "Arahkan QR ke kamera. Tahan stabil sampai berbunyi.", FeedbackTone.IDLE)) }
     var busy by remember { mutableStateOf(false) }
-    var connection by remember { mutableStateOf(ConnectionStatus.CHECKING) }
     var torchOn by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var confirmModeChange by remember { mutableStateOf(false) }
@@ -114,22 +112,6 @@ fun ScannerScreen(
         val activity = context as? ComponentActivity
         if (config.keepScreenOn) activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            val started = System.currentTimeMillis()
-            connection = runCatching {
-                val ok = api.health()
-                val elapsed = System.currentTimeMillis() - started
-                when {
-                    !ok -> ConnectionStatus.OFFLINE
-                    elapsed > 1800 -> ConnectionStatus.SLOW
-                    else -> ConnectionStatus.ONLINE
-                }
-            }.getOrDefault(ConnectionStatus.OFFLINE)
-            delay(15_000)
-        }
     }
 
     if (!cameraPermissionGranted) {

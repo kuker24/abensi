@@ -1,8 +1,6 @@
 package id.sch.man1rokanhulu.absensi.data
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
 
 enum class ScanHistoryStatus {
     SENT,
@@ -37,22 +35,7 @@ class ScanHistoryStore(context: Context) {
 
     fun list(): List<ScanHistoryEntry> {
         val raw = prefs.getString(KEY, null) ?: return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            (0 until array.length()).map { i ->
-                val obj = array.getJSONObject(i)
-                ScanHistoryEntry(
-                    timestamp = obj.optLong("ts"),
-                    mode = obj.optString("mode"),
-                    status = runCatching { ScanHistoryStatus.valueOf(obj.optString("status", "QUEUED")) }.getOrDefault(ScanHistoryStatus.QUEUED),
-                    maskedCode = obj.optString("masked"),
-                    message = obj.optString("message"),
-                    displayName = obj.optString("displayName").ifBlank { null },
-                    displayMeta = obj.optString("displayMeta").ifBlank { null },
-                    actionLabel = obj.optString("actionLabel").ifBlank { null }
-                )
-            }
-        }.getOrDefault(emptyList())
+        return fromStorageJson(raw)
     }
 
     fun add(entry: ScanHistoryEntry) {
@@ -67,20 +50,7 @@ class ScanHistoryStore(context: Context) {
     }
 
     private fun save(entries: List<ScanHistoryEntry>) {
-        val array = JSONArray()
-        entries.forEach { entry ->
-            val obj = JSONObject()
-            obj.put("ts", entry.timestamp)
-            obj.put("mode", entry.mode)
-            obj.put("status", entry.status.name)
-            obj.put("masked", entry.maskedCode)
-            obj.put("message", entry.message)
-            obj.put("displayName", entry.displayName ?: "")
-            obj.put("displayMeta", entry.displayMeta ?: "")
-            obj.put("actionLabel", entry.actionLabel ?: "")
-            array.put(obj)
-        }
-        prefs.edit().putString(KEY, array.toString()).apply()
+        prefs.edit().putString(KEY, toStorageJson(entries)).apply()
     }
 
     companion object {
@@ -90,6 +60,86 @@ class ScanHistoryStore(context: Context) {
         fun maskQr(rawQr: String): String {
             val tail = rawQr.takeLast(4).ifBlank { "????" }
             return "•••• $tail"
+        }
+
+        fun toStorageJson(entries: List<ScanHistoryEntry>): String = entries.joinToString(prefix = "[", postfix = "]") { entry ->
+            "{" + listOf(
+                "\"ts\":${entry.timestamp}",
+                "\"mode\":${jsonString(entry.mode)}",
+                "\"status\":${jsonString(entry.status.name)}",
+                "\"masked\":${jsonString(entry.maskedCode)}",
+                "\"message\":${jsonString(entry.message)}"
+            ).joinToString(",") + "}"
+        }
+
+        private fun jsonString(value: String): String = buildString {
+            append('"')
+            value.forEach { char ->
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(char)
+                }
+            }
+            append('"')
+        }
+
+        fun fromStorageJson(raw: String): List<ScanHistoryEntry> = runCatching {
+            parseObjects(raw).map { obj ->
+                ScanHistoryEntry(
+                    timestamp = longField(obj, "ts") ?: 0L,
+                    mode = stringField(obj, "mode").orEmpty(),
+                    status = runCatching { ScanHistoryStatus.valueOf(stringField(obj, "status") ?: "QUEUED") }.getOrDefault(ScanHistoryStatus.QUEUED),
+                    maskedCode = stringField(obj, "masked").orEmpty(),
+                    message = stringField(obj, "message").orEmpty()
+                )
+            }
+        }.getOrDefault(emptyList())
+
+        private fun parseObjects(raw: String): List<String> {
+            val trimmed = raw.trim().removePrefix("[").removeSuffix("]").trim()
+            if (trimmed.isBlank()) return emptyList()
+            val objects = mutableListOf<String>()
+            var depth = 0
+            var start = -1
+            trimmed.forEachIndexed { index, char ->
+                if (char == '{') {
+                    if (depth == 0) start = index
+                    depth += 1
+                } else if (char == '}') {
+                    depth -= 1
+                    if (depth == 0 && start >= 0) objects.add(trimmed.substring(start, index + 1))
+                }
+            }
+            return objects
+        }
+
+        private fun stringField(obj: String, name: String): String? = Regex("\"$name\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").find(obj)?.groupValues?.getOrNull(1)?.let(::unescapeJsonString)
+
+        private fun longField(obj: String, name: String): Long? = Regex("\"$name\"\\s*:\\s*(-?\\d+)").find(obj)?.groupValues?.getOrNull(1)?.toLongOrNull()
+
+        private fun unescapeJsonString(value: String): String = buildString {
+            var escaping = false
+            value.forEach { char ->
+                if (escaping) {
+                    append(
+                        when (char) {
+                            'n' -> '\n'
+                            'r' -> '\r'
+                            't' -> '\t'
+                            else -> char
+                        }
+                    )
+                    escaping = false
+                } else if (char == '\\') {
+                    escaping = true
+                } else {
+                    append(char)
+                }
+            }
         }
 
         fun entry(mode: String, status: ScanHistoryStatus, opaqueCode: String, message: String): ScanHistoryEntry = ScanHistoryEntry(

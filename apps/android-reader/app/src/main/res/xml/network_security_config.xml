@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        PR101B: release traffic must stay HTTPS-only. Certificate pinning is not
+        active yet because field devices need a documented certificate rotation
+        and backup-pin recovery procedure before pins can be safely enforced.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

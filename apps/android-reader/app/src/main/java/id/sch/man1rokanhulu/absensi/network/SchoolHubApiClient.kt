@@ -6,20 +6,15 @@ import id.sch.man1rokanhulu.absensi.security.Signer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
 class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val http = HttpClientProvider.shared
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     data class ProvisionResult(val deviceId: String, val readerId: String?, val readerSecret: String, val allowedModes: List<String>)

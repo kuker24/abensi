@@ -13,7 +13,7 @@ class OfflineQueueRepository(context: Context) {
         if (count >= 100) return false
         db.pendingScans().insert(
             PendingScan(
-                qrCodeMasked = mask(qrCode),
+                qrCodeMasked = maskQrForStorage(qrCode),
                 qrCodeEncrypted = crypto.encrypt(qrCode),
                 mode = mode,
                 createdAt = System.currentTimeMillis()
@@ -27,5 +27,7 @@ class OfflineQueueRepository(context: Context) {
     suspend fun clear() = db.pendingScans().clear()
     suspend fun count(): Int = db.pendingScans().count()
 
-    private fun mask(qrCode: String): String = if (qrCode.length > 16) qrCode.take(16) + "…" + qrCode.takeLast(4) else qrCode
+    companion object {
+        fun maskQrForStorage(qrCode: String): String = ScanHistoryStore.maskQr(qrCode)
+    }
 }
