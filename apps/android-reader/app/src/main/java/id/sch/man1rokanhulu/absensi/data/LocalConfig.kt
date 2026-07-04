@@ -1,23 +1,17 @@
 package id.sch.man1rokanhulu.absensi.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import id.sch.man1rokanhulu.absensi.BuildConfig
+import java.io.File
+import java.security.KeyStore
 import java.util.UUID
 
-class LocalConfig(context: Context) {
+class LocalConfig(private val context: Context) {
     private val plain = context.getSharedPreferences("schoolhub-reader-config", Context.MODE_PRIVATE)
-    private val secure by lazy {
-        val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-        EncryptedSharedPreferences.create(
-            context,
-            "schoolhub-reader-secure",
-            key,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    }
+    private val secure by lazy { openSecurePreferences(recovered = false) }
 
     var serverUrl: String
         get() = plain.getString("serverUrl", BuildConfig.SERVER_BASE_URL) ?: BuildConfig.SERVER_BASE_URL
@@ -85,7 +79,7 @@ class LocalConfig(context: Context) {
         set(value) = plain.edit().putString("locationLabel", value.trim()).apply()
 
     var readerSecret: String?
-        get() = secure.getString("readerSecret", null)
+        get() = runCatching { secure.getString("readerSecret", null) }.getOrNull()
         set(value) {
             val edit = secure.edit()
             if (value.isNullOrBlank()) edit.remove("readerSecret") else edit.putString("readerSecret", value)
@@ -98,8 +92,46 @@ class LocalConfig(context: Context) {
 
     fun clearDevice() {
         deviceId = null
-        readerSecret = null
+        runCatching { readerSecret = null }
         plain.edit()
+            .remove("allowedModes")
+            .remove("locationLabel")
+            .remove("lastQueueFlushAt")
+            .apply()
+    }
+
+    private fun openSecurePreferences(recovered: Boolean): SharedPreferences {
+        val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        return try {
+            EncryptedSharedPreferences.create(
+                context,
+                "schoolhub-reader-secure",
+                key,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (error: Exception) {
+            if (recovered) throw error
+            resetSecurePreferences()
+            openSecurePreferences(recovered = true)
+        }
+    }
+
+    private fun resetSecurePreferences() {
+        runCatching { context.deleteSharedPreferences("schoolhub-reader-secure") }
+        runCatching { context.deleteSharedPreferences("__androidx_security_crypto_encrypted_prefs_key_keyset__") }
+        runCatching { context.deleteSharedPreferences("__androidx_security_crypto_encrypted_prefs_value_keyset__") }
+        runCatching { File(context.applicationInfo.dataDir, "shared_prefs/schoolhub-reader-secure.xml").delete() }
+        runCatching { File(context.applicationInfo.dataDir, "shared_prefs/__androidx_security_crypto_encrypted_prefs_key_keyset__.xml").delete() }
+        runCatching { File(context.applicationInfo.dataDir, "shared_prefs/__androidx_security_crypto_encrypted_prefs_value_keyset__.xml").delete() }
+        runCatching {
+            KeyStore.getInstance("AndroidKeyStore").apply {
+                load(null)
+                deleteEntry("_androidx_security_master_key_")
+            }
+        }
+        plain.edit()
+            .remove("deviceId")
             .remove("allowedModes")
             .remove("locationLabel")
             .remove("lastQueueFlushAt")
