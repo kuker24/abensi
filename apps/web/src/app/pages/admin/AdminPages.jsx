@@ -243,7 +243,9 @@ export function StudentDailyCompletenessPage({ notify }) {
   const [classId, setClassId] = useState('');
   const [status, setStatus] = useState('');
   const [missingRequirement, setMissingRequirement] = useState('');
-  const classes = useRemote(() => apiFetch('/academic/classes?page=1&limit=200'), []);
+  const currentRole = readStoredUser()?.role;
+  const canFetchClasses = currentRole === 'ADMIN_TU' || currentRole === 'OPERATOR_IT' || currentRole === 'DEVELOPER';
+  const classes = useRemote(() => canFetchClasses ? apiFetch('/academic/classes?page=1&limit=200') : Promise.resolve({ items: [] }), [canFetchClasses]);
   const state = useRemote(() => apiFetch(`/reports/student-daily-completeness${qs({ from: date, to: date, classId, status, missingRequirement, page: 1, limit: 200 })}`), [date, classId, status, missingRequirement]);
   const summary = studentDailySummary(state.data);
   async function exportReport() {
