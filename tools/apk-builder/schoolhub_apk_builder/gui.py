@@ -144,8 +144,8 @@ class MainWindow(QMainWindow):
         ))
         form = QFormLayout()
         self.app_name = QLineEdit(DEFAULT_APP_NAME)
-        self.version_name = QLineEdit("1.1.1")
-        self.version_code = QSpinBox(); self.version_code.setMinimum(1); self.version_code.setMaximum(999999); self.version_code.setValue(1)
+        self.version_name = QLineEdit("1.2.0")
+        self.version_code = QSpinBox(); self.version_code.setMinimum(1); self.version_code.setMaximum(999999); self.version_code.setValue(4)
         self.simple_build_type = QComboBox()
         self.simple_build_type.addItem("APK Percobaan — untuk uji coba HP internal", "debug")
         self.simple_build_type.addItem("APK Resmi Sekolah — release/signed", "release")
@@ -270,7 +270,7 @@ class MainWindow(QMainWindow):
             app_display_name=self.app_name.text().strip() or DEFAULT_APP_NAME,
             application_id=self.app_id.text().strip() or DEFAULT_APP_ID,
             server_base_url=self.server.text().strip(),
-            version_name=self.version_name.text().strip() or "1.1.1",
+            version_name=self.version_name.text().strip() or "1.2.0",
             version_code=self.version_code.value(),
             build_type=self.simple_build_type.currentData() or "debug",
             icon_file=self.icon.text().strip(),

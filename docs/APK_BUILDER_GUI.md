@@ -47,11 +47,7 @@ Double click:
 tools\apk-builder\jalankan-apk-builder.bat
 ```
 
-Launcher otomatis memilih JDK 17/21 dan Android SDK jika sudah ada di laptop, membuat `.venv`, install dependency Python, lalu membuka GUI. Di laptop ini JDK siap pakai ditemukan di:
-
-```text
-/home/fahmi/.local/jdks/jdk-17
-```
+Launcher otomatis memilih JDK 17/21 dan Android SDK jika sudah ada di laptop, membuat `.venv`, install dependency Python, lalu membuka GUI. Jika auto-detect gagal, operator IT dapat mengatur `JAVA_HOME`, `ANDROID_HOME`, atau `ANDROID_SDK_ROOT` sesuai lokasi instalasi di laptop tersebut.
 
 ## Fitur Mode Mudah
 
@@ -126,8 +122,8 @@ Custom via `gradle.properties`:
 SCHOOLHUB_APP_NAME=SIAB2 Reader
 SCHOOLHUB_APPLICATION_ID=id.sch.man1rokanhulu.absensi
 SCHOOLHUB_SERVER_BASE_URL=https://absensi.man1rokanhulu.cloud
-SCHOOLHUB_VERSION_NAME=1.1.1
-SCHOOLHUB_VERSION_CODE=3
+SCHOOLHUB_VERSION_NAME=1.2.0
+SCHOOLHUB_VERSION_CODE=4
 ```
 
 ## Keamanan

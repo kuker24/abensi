@@ -76,7 +76,7 @@ data class ScannerCallbacks(
     val onModeChange: (String) -> Unit,
     val onBack: () -> Unit,
     val onHelp: () -> Unit,
-    val onRetryQueue: () -> Unit,
+    val onRetryQueue: suspend () -> FeedbackData,
     val onProvisioningLost: () -> Unit = {}
 )
 
@@ -297,7 +297,13 @@ fun ScannerScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     if (queueCount > 0) {
                         Button(
-                            onClick = callbacks.onRetryQueue,
+                            onClick = {
+                                scope.launch {
+                                    feedback = FeedbackData("Mengirim Antrean…", "Mencoba mengirim ulang scan yang menunggu internet.", FeedbackTone.PROCESSING)
+                                    val retryFeedback = callbacks.onRetryQueue()
+                                    feedback = retryFeedback
+                                }
+                            },
                             modifier = Modifier.weight(1f).height(50.dp),
                             colors = scannerPrimaryButtonColors()
                         ) { Text("Kirim ($queueCount)") }

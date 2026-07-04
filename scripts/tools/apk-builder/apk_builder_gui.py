@@ -196,8 +196,8 @@ def run_build(task: str, build_type: str = "debug"):
                 # Copy APK to output
                 OUTPUT_DIR.mkdir(exist_ok=True)
                 props = read_gradle_props()
-                vname = props.get("SCHOOLHUB_VERSION_NAME", "1.1.1")
-                vcode = props.get("SCHOOLHUB_VERSION_CODE", "3")
+                vname = props.get("SCHOOLHUB_VERSION_NAME", "1.2.0")
+                vcode = props.get("SCHOOLHUB_VERSION_CODE", "4")
 
                 if build_type == "debug":
                     src = ANDROID_DIR / "app/build/outputs/apk/debug/app-debug.apk"
@@ -594,8 +594,8 @@ class BuilderHandler(http.server.BaseHTTPRequestHandler):
         html = html.replace("{{SDK_PATH}}", sdk or "-")
         html = html.replace("{{SDK_PLATFORMS}}", sdk_platforms or "-")
         html = html.replace("{{APP_NAME}}", props.get("SCHOOLHUB_APP_NAME", "SIAB2 Reader"))
-        html = html.replace("{{VERSION}}", props.get("SCHOOLHUB_VERSION_NAME", "1.1.1"))
-        html = html.replace("{{VERSION_CODE}}", props.get("SCHOOLHUB_VERSION_CODE", "3"))
+        html = html.replace("{{VERSION}}", props.get("SCHOOLHUB_VERSION_NAME", "1.2.0"))
+        html = html.replace("{{VERSION_CODE}}", props.get("SCHOOLHUB_VERSION_CODE", "4"))
         html = html.replace("{{SERVER_URL}}", props.get("SCHOOLHUB_SERVER_BASE_URL", ""))
         html = html.replace("{{APK_LIST}}", apk_html)
         html = html.replace("{{NO_APK_DISPLAY}}", "display:none;" if apks else "")
