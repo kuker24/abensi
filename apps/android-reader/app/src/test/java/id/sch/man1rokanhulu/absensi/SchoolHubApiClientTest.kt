@@ -15,6 +15,7 @@ class SchoolHubApiClientTest {
 
     @Test fun releaseBuildRequiresHttpsServerUrl() {
         assertTrue(api.validateServerUrl("https://ehadir.example.sch.id", releaseBuild = true))
+        assertTrue(api.validateServerUrl("  https://ehadir.example.sch.id  ", releaseBuild = true))
         assertFalse(api.validateServerUrl("http://ehadir.example.sch.id", releaseBuild = true))
     }
 
