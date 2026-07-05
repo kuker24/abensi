@@ -21,7 +21,8 @@ function makePrisma() {
       delete: jest.fn()
     },
     session: { count: jest.fn().mockResolvedValue(0) },
-    classEnrollment: { count: jest.fn().mockResolvedValue(0) },
+    schoolClass: { upsert: jest.fn() },
+    classEnrollment: { count: jest.fn().mockResolvedValue(0), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     gateLog: { count: jest.fn().mockResolvedValue(0) },
     studentAttendance: { count: jest.fn().mockResolvedValue(0) },
     teacherSessionPresence: { count: jest.fn().mockResolvedValue(0) },
@@ -50,9 +51,12 @@ function makePrisma() {
     $transaction: jest.fn(async (fn) => {
       const tx = {
         user: {
+          create: prisma.user.create,
           update: prisma.user.update,
           delete: jest.fn().mockResolvedValue({})
         },
+        schoolClass: { upsert: prisma.schoolClass.upsert },
+        classEnrollment: { create: prisma.classEnrollment.create, findFirst: prisma.classEnrollment.findFirst, update: prisma.classEnrollment.update },
         authSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         qrCredential: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         smartCard: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -218,6 +222,42 @@ describe('IdentityService', () => {
     for (const slip of result.slips) {
       expect(safeJson(auditCall)).not.toContain(slip.initialPassword);
     }
+  });
+
+
+
+  it('previews school import rows without exposing legacy passwords', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([]);
+    const service = new IdentityService(prisma);
+
+    const preview = await service.previewSchoolImport([
+      { __sheetName: 'Kelas 10 - KELAS X A', nis: '1001', nama_lengkap: 'Siswa Satu', Password: 'legacy123' }
+    ], 'student-class', { academicYear: '2026/2027' });
+
+    expect(preview.summary).toEqual(expect.objectContaining({ total: 1, valid: 1, invalid: 0, generatedPasswordCount: 1 }));
+    expect(preview.rows[0]).toEqual(expect.objectContaining({ action: 'create', classCode: 'X A', username: 'siswa.1001', ignoredLegacyPassword: true }));
+    expect(safeJson(preview)).not.toContain('legacy123');
+  });
+
+  it('commits school import with generated one-time slips and no plaintext password in audit', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.schoolClass.upsert.mockResolvedValue({ id: 'class-1', code: 'X A', name: 'X A' });
+    prisma.user.create.mockResolvedValue({ id: 'student-1', username: 'siswa.1001', fullName: 'Siswa Satu', role: Role.SISWA });
+    prisma.classEnrollment.create.mockResolvedValue({ id: 'enroll-1' });
+    const service = new IdentityService(prisma);
+
+    const result = await service.commitSchoolImport([
+      { __sheetName: 'Kelas 10 - KELAS X A', nis: '1001', nama_lengkap: 'Siswa Satu' }
+    ], 'student-class', { source: 'student-class', academicYear: '2026/2027', reason: 'Import data sekolah awal.', confirmText: 'IMPORT DATA SEKOLAH' }, actor) as any;
+
+    expect(result.committed).toBe(true);
+    expect(result.slips).toHaveLength(1);
+    expect(result.slips[0].initialPassword).toHaveLength(14);
+    expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ passwordHash: expect.stringMatching(/^hash:length:14/), mustChangePassword: false, passwordChangedAt: null }) }));
+    expect(prisma.classEnrollment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ classId: 'class-1', studentId: 'student-1' }) }));
+    expect(safeJson(prisma.auditEntry.create.mock.calls)).not.toContain(result.slips[0].initialPassword);
   });
 
   it('rejects empty and oversized account login slip batches', async () => {

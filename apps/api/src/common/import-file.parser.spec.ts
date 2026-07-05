@@ -26,7 +26,31 @@ describe('parseImportFile', () => {
       buffer
     });
 
-    expect(rows).toEqual([{ type: 'class', code: 'X-A', name: 'X A', yearLabel: '2026/2027' }]);
+    expect(rows).toEqual([{ __sheetName: 'Import', type: 'class', code: 'X-A', name: 'X A', yearLabel: '2026/2027' }]);
+  });
+
+
+
+  it('parses all XLSX sheets and keeps the sheet name for school imports', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheetA = workbook.addWorksheet('Kelas 10 - KELAS X A');
+    sheetA.addRow(['nis', 'nama_lengkap']);
+    sheetA.addRow(['1001', 'Siswa Satu']);
+    const sheetB = workbook.addWorksheet('Kelas 10 - KELAS X B');
+    sheetB.addRow(['nis', 'nama_lengkap']);
+    sheetB.addRow(['1002', 'Siswa Dua']);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    const rows = await parseImportFile({
+      originalname: 'kelas.xlsx',
+      mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer
+    });
+
+    expect(rows).toEqual([
+      { __sheetName: 'Kelas 10 - KELAS X A', nis: '1001', nama_lengkap: 'Siswa Satu' },
+      { __sheetName: 'Kelas 10 - KELAS X B', nis: '1002', nama_lengkap: 'Siswa Dua' }
+    ]);
   });
 
   it('rejects unsupported formats', async () => {
