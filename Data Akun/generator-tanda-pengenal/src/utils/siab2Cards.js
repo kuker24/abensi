@@ -54,6 +54,24 @@ export const mapSiab2CardsPayload = (payload = {}) => {
   return cards.map((card, index) => mapSiab2CardToGeneratorUser({ ...card, generatedAt: payload.generatedAt }, index));
 };
 
+export const EMPTY_OFFICIAL_CARD_RESULT_MESSAGE = 'Data resmi dari endpoint kosong. Pastikan QR sudah dibuat dan URL tidak memakai classId/userId stale.';
+
+export const buildSiab2CardLoadScope = ({ mode = 'manual', classId = '', userId = '' } = {}) => {
+  if (mode === 'auto') return { classId: cleanString(classId), userId: cleanString(userId) };
+  return { classId: '', userId: '' };
+};
+
+export const buildSiab2CardLoadMessage = ({ count = 0, classId = '', userId = '' } = {}) => {
+  if (cleanString(userId)) return `Data resmi pengguna dimuat: ${count} kartu.`;
+  if (cleanString(classId)) return `Data resmi kelas dimuat: ${count} kartu.`;
+  return `Data resmi dari database dimuat: ${count} kartu.`;
+};
+
+export const ensureNonEmptySiab2Cards = (users = []) => {
+  if (!Array.isArray(users) || users.length === 0) throw new Error(EMPTY_OFFICIAL_CARD_RESULT_MESSAGE);
+  return users;
+};
+
 const parseJsonResponse = async (response) => {
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
@@ -77,4 +95,10 @@ export const fetchSiab2Cards = async ({ classId = '', userId = '', apiBase = get
 
   const payload = await parseJsonResponse(response);
   return { payload, users: mapSiab2CardsPayload(payload), path };
+};
+
+export const fetchRequiredSiab2Cards = async (options = {}) => {
+  const result = await fetchSiab2Cards(options);
+  ensureNonEmptySiab2Cards(result.users);
+  return result;
 };
