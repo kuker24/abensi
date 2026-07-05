@@ -308,7 +308,7 @@ function ResolveFlagModal({ flag, onClose, onDone }) {
 }
 
 const MASTER_DATA_TAB_GROUPS = [
-  { label: 'Siswa', tabs: [['student-import', 'Import Data Sekolah'], ['students', 'Daftar Siswa'], ['enroll', 'Daftarkan Manual']] },
+  { label: 'Siswa', tabs: [['student-import', 'Import Data'], ['students', 'Daftar Siswa'], ['enroll', 'Daftarkan Manual']] },
   { label: 'Akun', tabs: [['users', 'Buat/Edit Akun'], ['account-slips', 'Lembar Akun Login']] },
   { label: 'Akademik', tabs: [['classes', 'Kelas'], ['subjects', 'Mapel'], ['years', 'Tahun Ajaran'], ['semesters', 'Semester'], ['rooms', 'Ruang']] },
   { label: 'Bantuan & Lanjutan', tabs: [['schedule-help', 'Cara Pakai'], ['import', 'Impor Lanjutan']] }
@@ -404,7 +404,7 @@ function TabBar({ value, onChange, groups, options }) {
     if (event.key === 'Home') { event.preventDefault(); onChange(tabs[0][0]); window.requestAnimationFrame(() => document.getElementById(`master-data-tab-${tabs[0][0]}`)?.focus()); }
     if (event.key === 'End') { event.preventDefault(); onChange(tabs[tabs.length - 1][0]); window.requestAnimationFrame(() => document.getElementById(`master-data-tab-${tabs[tabs.length - 1][0]}`)?.focus()); }
   }
-  return <div className="master-data-tabs-wrap" aria-label="Navigasi data sekolah"><div className="master-data-tab-fade" aria-hidden="true" /><div className="tabs master-data-tabs" role="tablist" aria-label="Tab Master Data" onKeyDown={onKeyDown}>{groups.map((group) => <div className="master-data-tab-group" key={group.label}><span className="master-data-tab-group-label">{group.label}</span>{group.tabs.map(([v, label]) => <button id={`master-data-tab-${v}`} type="button" role="tab" aria-selected={value === v} aria-controls={`master-data-panel-${v}`} tabIndex={value === v ? 0 : -1} key={v} className={`btn sm ${value === v ? 'primary' : 'ghost'}`} onClick={() => onChange(v)}>{label}</button>)}</div>)}</div></div>;
+  return <div className="master-data-tabs-wrap" aria-label="Navigasi data sekolah"><div className="master-data-tab-fade" aria-hidden="true" /><div className="tabs master-data-tabs" role="tablist" aria-label="Tab Master Data" onKeyDown={onKeyDown}>{groups.map((group) => <div className="master-data-tab-group" key={group.label}><span className="master-data-tab-group-label">{group.label}</span>{group.tabs.map(([v, label]) => <button id={`master-data-tab-${v}`} type="button" role="tab" aria-label={v === 'student-import' ? 'Import Data Sekolah' : undefined} aria-selected={value === v} aria-controls={`master-data-panel-${v}`} tabIndex={value === v ? 0 : -1} key={v} className={`btn sm ${value === v ? 'primary' : 'ghost'}`} onClick={() => onChange(v)}>{label}</button>)}</div>)}</div></div>;
 }
 
 function UsersPanel({ notify }) {
