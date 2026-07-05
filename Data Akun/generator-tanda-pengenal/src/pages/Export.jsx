@@ -19,15 +19,17 @@ import { getCardTemplate } from '../utils/cardTemplates';
 import { getReadinessSummary } from '../utils/identityCard';
 import { downloadPDF, generatePDF, printPDF } from '../utils/pdfGenerator';
 import { buildSiab2CardLoadMessage, buildSiab2CardLoadScope, fetchRequiredSiab2Cards } from '../utils/siab2Cards';
-import { downloadSVGCards } from '../utils/svgGenerator';
+import { downloadPNGCards, downloadSVGCards } from '../utils/svgGenerator';
 
 const Export = () => {
   const { users, selectedUsers, getSelectedUsers, cardSettings, setUsers, selectAllUsers } = useStore();
   const [searchParams] = useSearchParams();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingSvg, setIsGeneratingSvg] = useState(false);
+  const [isGeneratingPng, setIsGeneratingPng] = useState(false);
   const [progress, setProgress] = useState(null);
   const [svgProgress, setSvgProgress] = useState(null);
+  const [pngProgress, setPngProgress] = useState(null);
   const [pdfBlob, setPdfBlob] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -114,6 +116,31 @@ const Export = () => {
     }
   };
 
+  const handleGeneratePNG = async () => {
+    if (!readiness.validCount) {
+      setError('Tidak ada data valid untuk export PNG. Lengkapi nama, NISN, dan QR.');
+      return;
+    }
+
+    setIsGeneratingPng(true);
+    setPngProgress({ current: 0, total: readiness.validCount });
+    setError('');
+    setMessage('');
+
+    try {
+      const total = await downloadPNGCards(readiness.validUsers, {
+        settings: cardSettings,
+        onProgress: (nextProgress) => setPngProgress(nextProgress),
+      });
+
+      setMessage(`PNG berhasil dibuat: ${total} file kartu ukuran ${template.dimensions.renderWidthPx}×${template.dimensions.renderHeightPx}px, tanpa layout A4.`);
+    } catch (generateError) {
+      setError(generateError.message || 'Gagal membuat PNG.');
+    } finally {
+      setIsGeneratingPng(false);
+    }
+  };
+
   const handlePrint = () => {
     if (!pdfBlob) {
       setError('Generate PDF dulu sebelum print.');
@@ -163,11 +190,12 @@ const Export = () => {
 
   const progressPercent = progress?.total ? Math.round((progress.current / progress.total) * 100) : 0;
   const svgProgressPercent = svgProgress?.total ? Math.round((svgProgress.current / svgProgress.total) * 100) : 0;
+  const pngProgressPercent = pngProgress?.total ? Math.round((pngProgress.current / pngProgress.total) * 100) : 0;
 
   return (
     <Layout
-      title="Export PDF / SVG Print-Ready"
-      subtitle="Cetak massal A4 atau export SVG per kartu ukuran CR80 murni"
+      title="Export PDF / SVG / PNG Print-Ready"
+      subtitle="PDF untuk cetak massal; SVG/PNG card-only untuk satu asset kartu CR80"
     >
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="min-w-0 space-y-4 lg:space-y-6">
@@ -225,7 +253,7 @@ const Export = () => {
               </div>
               <h2 className="mt-4 text-2xl font-black tracking-tight">Export Kartu Resmi</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                PDF mengikuti layout A4 3×3 untuk cetak massal. Data resmi wajib berasal dari database; data CSV/manual akan diberi label DRAFT / TIDAK TERVERIFIKASI.
+                PDF mengikuti layout A4 3×3 untuk cetak massal. SVG/PNG dibuat card-only per kartu. Data resmi wajib berasal dari database; data CSV/manual akan diberi label DRAFT / TIDAK TERVERIFIKASI.
               </p>
             </div>
 
@@ -243,7 +271,7 @@ const Export = () => {
                 <p className="mt-2 text-3xl font-black text-rose-800">{readiness.invalidCount}</p>
               </div>
               <div className="rounded-3xl bg-[#eef7ff] p-4">
-                <p className="text-xs font-black uppercase tracking-widest text-[#386f99]">SVG kartu</p>
+                <p className="text-xs font-black uppercase tracking-widest text-[#386f99]">SVG/PNG kartu</p>
                 <p className="mt-2 text-3xl font-black text-[#173a55]">{readiness.validCount}</p>
               </div>
             </div>
@@ -273,7 +301,7 @@ const Export = () => {
               <div>
                 <p className="font-black">Privasi sebelum mencetak</p>
                 <p className="mt-1 text-sm leading-6">
-                  Pastikan perangkat aman, jangan bagikan PDF/SVG mentah ke kanal publik, dan hapus data lokal setelah selesai mencetak.
+                  Pastikan perangkat aman, jangan bagikan PDF/SVG/PNG mentah ke kanal publik, dan hapus data lokal setelah selesai mencetak.
                 </p>
               </div>
             </div>
@@ -303,7 +331,7 @@ const Export = () => {
           <div className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[32px] sm:p-6">
             <h2 className="text-xl font-black text-slate-950">Aksi Export</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              PDF dibuat untuk A4 3×3. SVG dibuat per kartu sesuai ukuran CR80 asli, cocok untuk proses cetak kartu yang membutuhkan file ukuran kartu langsung.
+              PDF dibuat untuk A4 3×3. SVG/PNG dibuat per kartu sesuai ukuran CR80 asli, cocok untuk proses cetak kartu yang membutuhkan file ukuran kartu langsung tanpa wrapper halaman.
             </p>
 
             {isGenerating && (
@@ -342,6 +370,24 @@ const Export = () => {
               </div>
             )}
 
+            {isGeneratingPng && (
+              <div className="mt-5 rounded-3xl border border-[#6fa6d8]/30 bg-[#eef7ff] p-4">
+                <div className="mb-2 flex items-center justify-between text-sm font-bold text-[#173a55]">
+                  <span>Membuat PNG per kartu...</span>
+                  <span>{pngProgressPercent}%</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-white">
+                  <div
+                    className="h-full rounded-full bg-[#6fa6d8] transition-all"
+                    style={{ width: `${pngProgressPercent}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs font-semibold text-[#386f99]">
+                  {pngProgress?.current || 0} / {pngProgress?.total || readiness.validCount} file PNG dibuat
+                </p>
+              </div>
+            )}
+
             {message && (
               <div className="mt-5 flex items-start gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0" />
@@ -360,7 +406,7 @@ const Export = () => {
               <button
                 type="button"
                 onClick={handleGeneratePDF}
-                disabled={isGenerating || isGeneratingSvg || !readiness.validCount}
+                disabled={isGenerating || isGeneratingSvg || isGeneratingPng || !readiness.validCount}
                 className="inline-flex min-w-0 items-center gap-2 rounded-2xl bg-[#071018] px-4 py-3 text-sm font-black text-white transition hover:bg-[#13283a] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
               >
                 {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
@@ -369,7 +415,7 @@ const Export = () => {
               <button
                 type="button"
                 onClick={handleGenerateSVG}
-                disabled={isGenerating || isGeneratingSvg || !readiness.validCount}
+                disabled={isGenerating || isGeneratingSvg || isGeneratingPng || !readiness.validCount}
                 className="inline-flex min-w-0 items-center gap-2 rounded-2xl bg-[#0d3047] px-4 py-3 text-sm font-black text-white transition hover:bg-[#173a55] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
               >
                 {isGeneratingSvg ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCode2 className="h-4 w-4" />}
@@ -377,8 +423,17 @@ const Export = () => {
               </button>
               <button
                 type="button"
+                onClick={handleGeneratePNG}
+                disabled={isGenerating || isGeneratingSvg || isGeneratingPng || !readiness.validCount}
+                className="inline-flex min-w-0 items-center gap-2 rounded-2xl bg-[#386f99] px-4 py-3 text-sm font-black text-white transition hover:bg-[#245476] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
+              >
+                {isGeneratingPng ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {isGeneratingPng ? 'Membuat PNG' : 'Download PNG Kartu'}
+              </button>
+              <button
+                type="button"
                 onClick={handlePrint}
-                disabled={!pdfBlob || isGenerating || isGeneratingSvg}
+                disabled={!pdfBlob || isGenerating || isGeneratingSvg || isGeneratingPng}
                 className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
               >
                 <Printer className="h-4 w-4" />
