@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  EMPTY_OFFICIAL_CARD_RESULT_MESSAGE,
   buildSiab2CardExportPath,
+  buildSiab2CardLoadMessage,
+  buildSiab2CardLoadScope,
+  fetchRequiredSiab2Cards,
   fetchSiab2Cards,
   mapSiab2CardsPayload,
 } from './siab2Cards.js';
@@ -10,6 +14,24 @@ test('builds official SIAB2 card export endpoints without putting QR data in URL
   assert.equal(buildSiab2CardExportPath(), '/qr-credentials/export/cards');
   assert.equal(buildSiab2CardExportPath({ classId: 'kelas 7A' }), '/qr-credentials/export/class/kelas%207A/cards');
   assert.equal(buildSiab2CardExportPath({ userId: 'user-1', classId: 'kelas-1' }), '/qr-credentials/export/users/user-1/card');
+});
+
+test('manual DB card load ignores stale class/user URL scope and fetches all cards', () => {
+  const scope = buildSiab2CardLoadScope({ mode: 'manual', classId: 'stale-class', userId: 'stale-user' });
+
+  assert.deepEqual(scope, { classId: '', userId: '' });
+  assert.equal(buildSiab2CardExportPath(scope), '/qr-credentials/export/cards');
+  assert.equal(buildSiab2CardLoadMessage({ count: 312, ...scope }), 'Data resmi dari database dimuat: 312 kartu.');
+});
+
+test('autoLoad keeps class/user URL scope for deep-link exports', () => {
+  const classScope = buildSiab2CardLoadScope({ mode: 'auto', classId: 'kelas 7A', userId: '' });
+  const userScope = buildSiab2CardLoadScope({ mode: 'auto', classId: 'kelas-1', userId: 'user-1' });
+
+  assert.equal(buildSiab2CardExportPath(classScope), '/qr-credentials/export/class/kelas%207A/cards');
+  assert.equal(buildSiab2CardLoadMessage({ count: 31, ...classScope }), 'Data resmi kelas dimuat: 31 kartu.');
+  assert.equal(buildSiab2CardExportPath(userScope), '/qr-credentials/export/users/user-1/card');
+  assert.equal(buildSiab2CardLoadMessage({ count: 1, ...userScope }), 'Data resmi pengguna dimuat: 1 kartu.');
 });
 
 test('maps student cards with dynamic class from official export data', () => {
@@ -39,6 +61,7 @@ test('maps student cards with dynamic class from official export data', () => {
     ],
   });
 
+  assert.equal(users.length, 2);
   assert.equal(users[0].nama, 'Aisyah Putri');
   assert.equal(users[0].role, 'student');
   assert.equal(users[0].kelas, 'X A · IPA');
@@ -54,6 +77,46 @@ test('rejects official card payloads that contain credential fields', () => {
   assert.throws(() => mapSiab2CardsPayload({
     cards: [{ nama: 'Aisyah', nisn: '1', passwordHash: 'secret', qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL' }],
   }), /field kredensial terlarang/i);
+});
+
+test('manual DB load fetches all cards even when stale URL scope exists', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    return new Response(JSON.stringify({ cards: [{ nama: 'Aisyah', nisn: '1', role: 'SISWA', qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL' }] }), { status: 200 });
+  };
+
+  const scope = buildSiab2CardLoadScope({ mode: 'manual', classId: 'stale-class', userId: 'stale-user' });
+  const result = await fetchRequiredSiab2Cards({ ...scope, apiBase: '/api/v1', fetchImpl });
+
+  assert.equal(calls[0].url, '/api/v1/qr-credentials/export/cards');
+  assert.equal(calls[0].options.credentials, 'include');
+  assert.equal(result.users.length, 1);
+});
+
+test('autoLoad scoped DB loads keep class and user endpoints', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    return new Response(JSON.stringify({ cards: [{ nama: 'Aisyah', nisn: '1', role: 'SISWA', qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL' }] }), { status: 200 });
+  };
+
+  await fetchRequiredSiab2Cards({ ...buildSiab2CardLoadScope({ mode: 'auto', classId: 'kelas 7A' }), apiBase: '/api/v1', fetchImpl });
+  await fetchRequiredSiab2Cards({ ...buildSiab2CardLoadScope({ mode: 'auto', userId: 'user-1' }), apiBase: '/api/v1', fetchImpl });
+
+  assert.deepEqual(calls, [
+    '/api/v1/qr-credentials/export/class/kelas%207A/cards',
+    '/api/v1/qr-credentials/export/users/user-1/card',
+  ]);
+});
+
+test('empty official card response throws actionable error instead of silent zero success', async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({ cards: [] }), { status: 200 });
+
+  await assert.rejects(
+    () => fetchRequiredSiab2Cards({ apiBase: '/api/v1', fetchImpl }),
+    (error) => error.message === EMPTY_OFFICIAL_CARD_RESULT_MESSAGE,
+  );
 });
 
 test('fetchSiab2Cards uses credentials and retries once after refresh', async () => {

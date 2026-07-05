@@ -18,7 +18,7 @@ import { useStore } from '../store/useStore';
 import { getCardTemplate } from '../utils/cardTemplates';
 import { getReadinessSummary } from '../utils/identityCard';
 import { downloadPDF, generatePDF, printPDF } from '../utils/pdfGenerator';
-import { fetchSiab2Cards } from '../utils/siab2Cards';
+import { buildSiab2CardLoadMessage, buildSiab2CardLoadScope, fetchRequiredSiab2Cards } from '../utils/siab2Cards';
 import { downloadSVGCards } from '../utils/svgGenerator';
 
 const Export = () => {
@@ -123,19 +123,20 @@ const Export = () => {
     printPDF(pdfBlob);
   };
 
-  const loadOfficialCards = useCallback(async ({ autoPdf = false, cancelled = () => false } = {}) => {
+  const loadOfficialCards = useCallback(async ({ autoPdf = false, cancelled = () => false, mode = 'manual' } = {}) => {
+    const scope = buildSiab2CardLoadScope({ mode, classId: autoLoadClassId, userId: autoLoadUserId });
     setSourceMode('database');
     setAutoLoadStatus({ loading: true, count: 0, source: 'SIAB2 API' });
     setError('');
     setMessage('Memuat data kartu resmi dari Data Sekolah...');
 
     try {
-      const { payload, users: loadedUsers } = await fetchSiab2Cards({ classId: autoLoadClassId, userId: autoLoadUserId });
+      const { payload, users: loadedUsers } = await fetchRequiredSiab2Cards(scope);
       if (cancelled()) return;
       setUsers(loadedUsers);
       selectAllUsers();
       setAutoLoadStatus({ loading: false, count: loadedUsers.length, source: payload.source || 'SIAB2 API' });
-      setMessage(`Data resmi dari database dimuat: ${loadedUsers.length} kartu. Kartu resmi hanya dapat dibuat dari data yang sudah terdaftar di Akun & Data Sekolah.`);
+      setMessage(`${buildSiab2CardLoadMessage({ count: loadedUsers.length, ...scope })} Kartu resmi hanya dapat dibuat dari data yang sudah terdaftar di Akun & Data Sekolah.`);
       if (autoPdf) setPendingAutoPdf(autoLoadKey);
     } catch (loadError) {
       if (cancelled()) return;
@@ -147,7 +148,7 @@ const Export = () => {
   useEffect(() => {
     if (!autoLoadEnabled) return undefined;
     let cancelled = false;
-    loadOfficialCards({ autoPdf: autoPdfRequested, cancelled: () => cancelled });
+    loadOfficialCards({ autoPdf: autoPdfRequested, cancelled: () => cancelled, mode: 'auto' });
 
     return () => {
       cancelled = true;
