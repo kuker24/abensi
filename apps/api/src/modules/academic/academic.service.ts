@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { CardStatus, Prisma, Role } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
-import { addCalendarDays, businessDateKey, businessDayBounds } from '../../common/business-time';
+import { addCalendarDays, businessDateKey } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAcademicYearDto, CreateClassDto, CreateRoomDto, CreateSemesterDto, CreateStudentDto, CreateSubjectDto, ImportAcademicRowDto, ImportStudentRowDto, UpdateAcademicYearDto, UpdateClassDto, UpdateRoomDto, UpdateSemesterDto, UpdateSubjectDto } from './academic.dto';
@@ -113,11 +113,16 @@ function temporaryPassword() {
 }
 
 function dbDateFromBusinessKey(key: string) {
-  return businessDayBounds(key).date;
+  // ClassEnrollment effective dates use @db.Date, so compare against the DB date
+  // representation instead of the Jakarta business-day timestamp window start.
+  return new Date(`${key}T00:00:00.000Z`);
 }
 
 function schoolBusinessDate(value: Date | string = new Date()) {
-  return dbDateFromBusinessKey(typeof value === 'string' ? businessDateKey(new Date(value)) : businessDateKey(value));
+  const key = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value
+    : businessDateKey(value instanceof Date ? value : new Date(value));
+  return dbDateFromBusinessKey(key);
 }
 
 function previousBusinessDate(value: Date) {
