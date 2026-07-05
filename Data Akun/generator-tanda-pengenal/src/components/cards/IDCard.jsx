@@ -34,8 +34,8 @@ const IDCard = ({
   const qrValue = buildQrValue(user);
   const validation = validateCardUser(user);
   const roleLabel = getCardRoleLabel(user);
-  const sourceLabel = getCardSourceLabel(user);
   const draftCard = isDraftCard(user);
+  const draftSourceLabel = draftCard ? getCardSourceLabel(user) : '';
   const issuerLabelText = resolvedSettings.issuerLabel?.toLowerCase().includes('tanda pengenal')
     ? 'Kartu Digital Madrasah'
     : resolvedSettings.issuerLabel || 'Kartu Digital Madrasah';
@@ -60,9 +60,11 @@ const IDCard = ({
           DRAFT
         </div>
       )}
-      <div className={`absolute right-4 top-4 z-40 rounded-full border px-2.5 py-1 text-[7px] font-black uppercase tracking-[0.14em] ${draftCard ? 'border-rose-300 bg-rose-50/95 text-rose-700' : 'border-emerald-300 bg-emerald-50/95 text-emerald-700'}`}>
-        {sourceLabel}
-      </div>
+      {draftCard && (
+        <div className="absolute right-4 top-4 z-40 rounded-full border border-rose-300 bg-rose-50/95 px-2.5 py-1 text-[7px] font-black uppercase tracking-[0.14em] text-rose-700">
+          {draftSourceLabel}
+        </div>
+      )}
       <header className="relative h-[108px] bg-white px-5 py-4 text-[#071018]">
         <div className="flex h-full flex-col items-center justify-center text-center">
           <div className="flex items-center justify-center gap-3">
