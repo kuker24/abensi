@@ -180,19 +180,51 @@ describe('AcademicService', () => {
     }));
   });
 
-  it('lists only enrollments valid for today instead of treating active=true as open ended', async () => {
-    const prisma = makePrisma();
-    prisma.user.count.mockResolvedValue(1);
-    prisma.user.findMany.mockResolvedValue([]);
-    const service = new AcademicService(prisma);
+  it('uses date-only UTC midnight for roster enrollment visibility', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-04T18:00:00.000Z'));
+    try {
+      const prisma = makePrisma();
+      prisma.user.count.mockResolvedValue(1);
+      prisma.user.findMany.mockResolvedValue([]);
+      const service = new AcademicService(prisma);
 
-    await service.listStudents({ page: 1, limit: 10, skip: 0 }, 'class-1');
+      await service.listStudents({ page: 1, limit: 10, skip: 0 }, 'class-1');
 
-    expect(prisma.user.count).toHaveBeenCalledWith({ where: expect.objectContaining({
-      enrollments: { some: expect.objectContaining({ classId: 'class-1', active: true, administrativeStatus: 'ACTIVE', effectiveFrom: expect.objectContaining({ lte: expect.any(Date) }) }) }
-    }) });
-    expect(prisma.user.count.mock.calls[0][0].where.enrollments.some.OR).toEqual([{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }]);
-    expect(prisma.user.findMany.mock.calls[0][0].select.enrollments.where).toEqual(expect.objectContaining({ active: true, administrativeStatus: 'ACTIVE' }));
+      const where = prisma.user.count.mock.calls[0][0].where;
+      const enrollmentWhere = where.enrollments.some;
+      const selectedEnrollmentWhere = prisma.user.findMany.mock.calls[0][0].select.enrollments.where;
+      expect(enrollmentWhere).toEqual(expect.objectContaining({ classId: 'class-1', active: true, administrativeStatus: 'ACTIVE' }));
+      expect(enrollmentWhere.effectiveFrom.lte.toISOString()).toBe('2026-07-05T00:00:00.000Z');
+      expect(enrollmentWhere.OR[1].effectiveTo.gte.toISOString()).toBe('2026-07-05T00:00:00.000Z');
+      expect(selectedEnrollmentWhere).toEqual(expect.objectContaining({
+        active: true,
+        administrativeStatus: 'ACTIVE',
+        effectiveFrom: { lte: enrollmentWhere.effectiveFrom.lte },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: enrollmentWhere.effectiveFrom.lte } }]
+      }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not hide imported enrollments effective on the same business date', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-04T18:00:00.000Z'));
+    try {
+      const prisma = makePrisma();
+      const importedEffectiveFrom = new Date('2026-07-05T00:00:00.000Z');
+      prisma.user.count.mockResolvedValue(1);
+      prisma.user.findMany.mockResolvedValue([{ id: 'siswa-1', enrollments: [{ effectiveFrom: importedEffectiveFrom, effectiveTo: null, active: true, administrativeStatus: 'ACTIVE' }] }]);
+      const service = new AcademicService(prisma);
+
+      const result = await service.listStudents({ page: 1, limit: 10, skip: 0 }, 'class-1');
+
+      const enrollmentWhere = prisma.user.count.mock.calls[0][0].where.enrollments.some;
+      expect(importedEffectiveFrom.getTime()).toBeLessThanOrEqual(enrollmentWhere.effectiveFrom.lte.getTime());
+      expect(result.meta.total).toBe(1);
+      expect(result.items[0].enrollments[0].effectiveFrom).toBe(importedEffectiveFrom);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('administratively cancels an enrollment without mutating its effective dates', async () => {
