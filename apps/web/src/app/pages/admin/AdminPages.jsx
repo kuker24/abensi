@@ -308,7 +308,7 @@ function ResolveFlagModal({ flag, onClose, onDone }) {
 }
 
 const MASTER_DATA_TAB_GROUPS = [
-  { label: 'Siswa', tabs: [['student-import', 'Import Siswa'], ['students', 'Daftar Siswa'], ['enroll', 'Daftarkan Manual']] },
+  { label: 'Siswa', tabs: [['student-import', 'Import Data'], ['students', 'Daftar Siswa'], ['enroll', 'Daftarkan Manual']] },
   { label: 'Akun', tabs: [['users', 'Buat/Edit Akun'], ['account-slips', 'Lembar Akun Login']] },
   { label: 'Akademik', tabs: [['classes', 'Kelas'], ['subjects', 'Mapel'], ['years', 'Tahun Ajaran'], ['semesters', 'Semester'], ['rooms', 'Ruang']] },
   { label: 'Bantuan & Lanjutan', tabs: [['schedule-help', 'Cara Pakai'], ['import', 'Impor Lanjutan']] }
@@ -318,7 +318,7 @@ const MASTER_DATA_TABS = MASTER_DATA_TAB_GROUPS.flatMap((group) => group.tabs);
 const MASTER_DATA_TAB_VALUES = new Set(MASTER_DATA_TABS.map(([value]) => value));
 
 const MASTER_DATA_HELP = {
-  'student-import': { title: 'Urutan paling mudah', items: ['Upload CSV siswa di tab Import Siswa.', 'Klik Periksa, lalu Simpan & Siapkan QR.', 'Buka Daftar Pengguna di Master Data, lalu klik Kartu untuk membuka generator cetak.'] },
+  'student-import': { title: 'Urutan aman import sekolah', items: ['Upload CSV/XLSX siswa/guru/tendik, lalu Preview dulu.', 'Commit import hanya setelah valid; password dibuat otomatis dan tampil sekali.', 'QR dibuat manual setelah review data, lalu generator kartu mengambil dari database.'] },
   students: { title: 'Cek daftar siswa', items: ['Gunakan filter kelas untuk verifikasi anggota kelas.', 'Jika siswa belum muncul, cek akun siswa dan pendaftaran kelas.'] },
   users: { title: 'Kelola akun aman', items: ['Buat akun dengan password sementara, lalu minta pengguna mengganti password.', 'Nonaktifkan akun yang tidak dipakai; jangan hapus jika sudah punya riwayat.'] },
   'account-slips': { title: 'Lembar akun login', items: ['Generate password awal dari endpoint khusus, bukan dari flow buat/edit akun.', 'Password hanya tampil sekali di layar cetak dan tidak disimpan di browser.'] },
@@ -404,7 +404,7 @@ function TabBar({ value, onChange, groups, options }) {
     if (event.key === 'Home') { event.preventDefault(); onChange(tabs[0][0]); window.requestAnimationFrame(() => document.getElementById(`master-data-tab-${tabs[0][0]}`)?.focus()); }
     if (event.key === 'End') { event.preventDefault(); onChange(tabs[tabs.length - 1][0]); window.requestAnimationFrame(() => document.getElementById(`master-data-tab-${tabs[tabs.length - 1][0]}`)?.focus()); }
   }
-  return <div className="master-data-tabs-wrap" aria-label="Navigasi data sekolah"><div className="master-data-tab-fade" aria-hidden="true" /><div className="tabs master-data-tabs" role="tablist" aria-label="Tab Master Data" onKeyDown={onKeyDown}>{groups.map((group) => <div className="master-data-tab-group" key={group.label}><span className="master-data-tab-group-label">{group.label}</span>{group.tabs.map(([v, label]) => <button id={`master-data-tab-${v}`} type="button" role="tab" aria-selected={value === v} aria-controls={`master-data-panel-${v}`} tabIndex={value === v ? 0 : -1} key={v} className={`btn sm ${value === v ? 'primary' : 'ghost'}`} onClick={() => onChange(v)}>{label}</button>)}</div>)}</div></div>;
+  return <div className="master-data-tabs-wrap" aria-label="Navigasi data sekolah"><div className="master-data-tab-fade" aria-hidden="true" /><div className="tabs master-data-tabs" role="tablist" aria-label="Tab Master Data" onKeyDown={onKeyDown}>{groups.map((group) => <div className="master-data-tab-group" key={group.label}><span className="master-data-tab-group-label">{group.label}</span>{group.tabs.map(([v, label]) => <button id={`master-data-tab-${v}`} type="button" role="tab" aria-label={v === 'student-import' ? 'Import Data Sekolah' : undefined} aria-selected={value === v} aria-controls={`master-data-panel-${v}`} tabIndex={value === v ? 0 : -1} key={v} className={`btn sm ${value === v ? 'primary' : 'ghost'}`} onClick={() => onChange(v)}>{label}</button>)}</div>)}</div></div>;
 }
 
 function UsersPanel({ notify }) {
@@ -798,40 +798,58 @@ function StudentImportPanel({ notify }) {
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  function formData() { const data = new FormData(); if (file) data.append('file', file); return data; }
+  const [form, setForm] = useState({ source: 'student-class', academicYear: '2026/2027', updateExisting: true, resetPasswordForExisting: false, reason: 'Import data sekolah awal SIAB2.', confirmText: '' });
+  const summary = preview?.summary || result?.summary || {};
+  const rows = preview?.rows || result?.rows || [];
+  function set(key, value) { setForm((current) => ({ ...current, [key]: value })); }
+  function formData() {
+    const data = new FormData();
+    if (file) data.append('file', file);
+    data.append('source', form.source);
+    data.append('academicYear', form.academicYear);
+    data.append('updateExisting', String(Boolean(form.updateExisting)));
+    data.append('resetPasswordForExisting', String(Boolean(form.resetPasswordForExisting)));
+    data.append('reason', form.reason);
+    data.append('confirmText', form.confirmText);
+    return data;
+  }
   function downloadTemplate() {
     downloadCsvFile([
-      { 'Nama Lengkap': 'AHMAD FAUZI', Username: '', 'Kelas/Jabatan': 'X A', Password: '', Role: 'SISWA' },
-      { 'Nama Lengkap': 'SITI AISYAH', Username: 'siti.aisyah', 'Kelas/Jabatan': 'X A', Password: 'Rahasia#123', Role: 'SISWA' }
-    ], `template-import-siswa-${today()}.csv`);
+      { nis: '1001', nama_lengkap: 'NAMA SISWA CONTOH', tanggal_lahir: '2010-02-01', __sheetName: 'Kelas 10 - KELAS X A' },
+      { NIP: '198001012006041001', 'NAMA LENGKAP': 'NAMA GURU CONTOH', 'TIPE USER': 'guru', 'TANGGAL LAHIR': '1980-01-01' }
+    ], `template-import-data-sekolah-${today()}.csv`);
   }
-  function downloadAccounts(rows) {
-    const safeRows = (rows || []).map((row) => ({ Nama: row.fullName, Username: row.username, PasswordSementara: row.temporaryPassword || '(tidak diubah)', Kelas: row.classCode, Catatan: row.note }));
-    if (safeRows.length) downloadCsvFile(safeRows, `akun-siswa-sementara-${today()}.csv`);
+  function downloadSlips(slips) {
+    const safeRows = (slips || []).map((row) => ({ Nama: row.fullName, Username: row.username, PasswordAwal: row.initialPassword, Role: row.role }));
+    if (safeRows.length) downloadCsvFile(safeRows, `lembar-akun-import-${today()}.csv`);
   }
   async function previewImport() {
     setLoading(true);
     setResult(null);
-    try { setPreview(await apiFetch('/academic/students/import/file/preview', { method: 'POST', body: formData() })); }
-    finally { setLoading(false); }
+    try {
+      const data = await apiFetch('/identity/school-import/file/preview', { method: 'POST', body: formData() });
+      setPreview(data);
+      notify(`${data.summary?.valid || 0} baris valid, ${data.summary?.invalid || 0} perlu diperbaiki.`, data.summary?.invalid ? 'warn' : 'ok');
+    } finally { setLoading(false); }
   }
   async function commitImport() {
-    if (!await riskConfirm('Simpan siswa, buat kelas yang belum ada, daftarkan ke kelas, dan siapkan QR?')) return;
+    if (!preview) return notify('Preview file dulu sebelum commit.', 'warn');
+    if (preview.summary?.invalid > 0) return notify('Masih ada baris invalid. Perbaiki file dulu.', 'warn');
+    if (form.confirmText !== 'IMPORT DATA SEKOLAH') return notify('Ketik IMPORT DATA SEKOLAH untuk konfirmasi.', 'warn');
+    if (!await riskConfirm('Commit import data sekolah? Password awal akan tampil sekali dan QR tetap dibuat manual setelah review.', 'Commit Import')) return;
     setLoading(true);
     try {
-      const data = await apiFetch('/academic/students/import/file/commit', { method: 'POST', body: formData() });
+      const data = await apiFetch('/identity/school-import/file/commit', { method: 'POST', body: formData() });
       setResult(data);
       if (data.committed) {
-        const qr = await apiFetch('/qr-credentials/bulk-generate', { method: 'POST', body: JSON.stringify({ label: 'QR SIAB2', onlyMissing: true }) });
-        setResult({ ...data, qr });
-        downloadAccounts(data.credentialRows);
-        notify(`Import siswa selesai. ${data.result?.createdUsers || 0} akun baru, ${qr.count || 0} QR baru.`);
+        downloadSlips(data.slips);
+        notify(`Import selesai: ${data.createdCount || 0} akun baru, ${data.updatedCount || 0} update, QR belum dibuat.`, 'ok');
       } else {
         notify('Import belum disimpan karena masih ada kesalahan.', 'warn');
       }
     } finally { setLoading(false); }
   }
-  return <Card title="Import Siswa Massal" sub="Upload CSV sederhana. Username/password boleh kosong, sistem akan membuat otomatis."><div className="import-upload-grid"><Field label="File CSV/XLSX siswa"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }} /></Field><div className="import-action-row"><Btn type="button" variant="ghost" onClick={downloadTemplate}><Download size={14} /> Download Template</Btn><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Periksa File</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Simpan & Siapkan QR</Btn></div></div><SimpleHelpBox title="Format paling simpel" items={['Kolom wajib: Nama Lengkap dan Kelas/Jabatan.', 'Username boleh kosong; sistem membuat otomatis.', 'Password boleh kosong; sistem membuat password sementara dan mengunduh daftar akun.']} />{preview && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {preview.summary?.valid ?? 0}</Pill><Pill tone="bad">Error {preview.summary?.invalid ?? 0}</Pill><Pill>Akun baru {preview.summary?.newUsers ?? 0}</Pill><Pill>Kelas baru {preview.summary?.newClasses ?? 0}</Pill><Pill>Username otomatis {preview.summary?.generatedUsernames ?? 0}</Pill><Pill>Password otomatis {preview.summary?.generatedPasswords ?? 0}</Pill></div><DataTable rows={preview.rows || []} columns={[{ header: 'Baris', key: 'index' }, { header: 'Nama', key: 'fullName' }, { header: 'Username', key: 'username' }, { header: 'Kelas', key: 'classCode' }, { header: 'Status', render: (r) => r.existingUser ? 'Akun sudah ada' : 'Akun baru' }, { header: 'Kesalahan', render: (r) => r.errors?.join(', ') || 'Aman' }]} /></div>}{result?.committed && <div style={{ marginTop: 16 }}><SimpleHelpBox title="Import selesai" items={[`${result.result?.createdUsers || 0} akun siswa baru dibuat.`, `${result.result?.existingUsers || 0} akun lama dipakai ulang.`, `${result.result?.enrollments || 0} pendaftaran kelas dipastikan.`, `${result.qr?.count || 0} QR baru dibuat untuk yang belum punya.`]} /><Btn type="button" onClick={() => downloadAccounts(result.credentialRows)}><Download size={14} /> Download Ulang Daftar Akun</Btn></div>}</Card>;
+  return <Card title="Import Data Sekolah SIAB2" sub="Upload CSV/XLSX siswa, guru, dan tenaga kependidikan. Password sumber diabaikan; SIAB2 membuat password awal 14 karakter dan QR dibuat manual setelah review."><div className="import-upload-grid"><Field label="Jenis sumber"><SelectInput value={form.source} onChange={(e) => { set('source', e.target.value); setPreview(null); setResult(null); }}><option value="student-class">File kelas siswa XLSX/CSV</option><option value="staff">File guru & tenaga kependidikan</option><option value="legacy-siab1">CSV SIAB1 lama untuk referensi</option></SelectInput></Field><Field label="Tahun ajaran"><TextInput value={form.academicYear} onChange={(e) => set('academicYear', e.target.value)} placeholder="2026/2027" /></Field><Field label="File CSV/XLSX"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }} /></Field><div className="import-action-row"><Btn type="button" variant="ghost" onClick={downloadTemplate}><Download size={14} /> Template</Btn><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Preview</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Commit Import</Btn></div></div><div className="form-grid" style={{ marginTop: 12 }}><label className="checkline"><input type="checkbox" checked={Boolean(form.updateExisting)} onChange={(e) => set('updateExisting', e.target.checked)} /> Update data akun existing tanpa reset password</label><label className="checkline"><input type="checkbox" checked={Boolean(form.resetPasswordForExisting)} onChange={(e) => set('resetPasswordForExisting', e.target.checked)} /> Reset password existing juga</label><Field label="Alasan commit" hint="minimal 10 karakter"><TextInput value={form.reason} onChange={(e) => set('reason', e.target.value)} /></Field><Field label="Ketik IMPORT DATA SEKOLAH"><TextInput value={form.confirmText} onChange={(e) => set('confirmText', e.target.value)} /></Field></div><SimpleHelpBox title="Aturan aman import" items={["Kolom Password dari SIAB1/file lama diabaikan total.", "Password awal dibuat server-side format mudah diingat 14 karakter dan hanya tampil sekali.", "Akun existing tidak direset kecuali checkbox reset diaktifkan.", "QR tidak dibuat otomatis; generate QR manual setelah data direview."]} />{(preview || result) && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {summary.valid ?? 0}</Pill><Pill tone={summary.invalid ? 'bad' : 'ok'}>Invalid {summary.invalid ?? 0}</Pill><Pill>Total {summary.total ?? 0}</Pill><Pill>Buat {summary.actions?.create ?? result?.createdCount ?? 0}</Pill><Pill>Update {summary.actions?.update ?? result?.updatedCount ?? 0}</Pill><Pill>Skip {summary.actions?.skip ?? result?.skippedCount ?? 0}</Pill><Pill>Password baru {summary.generatedPasswordCount ?? result?.slips?.length ?? 0}</Pill><Pill>QR manual</Pill></div><DataTable rows={rows.slice(0, 200)} columns={[{ header: 'Baris', key: 'index' }, { header: 'Nama', key: 'fullName' }, { header: 'Username', key: 'username' }, { header: 'Role', render: (r) => <StatusPill status={r.role} /> }, { header: 'Kelas/NIP', render: (r) => r.classCode || r.nip || '—' }, { header: 'Aksi', render: (r) => <Pill tone={r.action === 'invalid' ? 'bad' : r.action === 'create' ? 'ok' : r.action === 'update' ? 'warn' : ''}>{r.action || '—'}</Pill> }, { header: 'Catatan', render: (r) => [...(r.errors || []), ...(r.warnings || [])].slice(0, 2).join(' · ') || 'Aman' }]} />{rows.length > 200 && <p className="muted">Menampilkan 200 baris pertama dari {rows.length} baris.</p>}</div>}{result?.committed && <div style={{ marginTop: 16 }}><SimpleHelpBox title="Import selesai" items={[`${result.createdCount || 0} akun baru dibuat.`, `${result.updatedCount || 0} akun existing diupdate.`, `${result.enrollmentsCreated || 0} enrollment dibuat, ${result.enrollmentsUpdated || 0} dipindah kelas.`, 'Lanjut generate QR manual setelah review data.']} /><Btn type="button" onClick={() => downloadSlips(result.slips)}><Download size={14} /> Download ulang lembar akun</Btn></div>}</Card>;
 }
 
 function ImportPanel({ notify }) {

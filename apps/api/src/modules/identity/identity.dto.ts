@@ -107,6 +107,50 @@ export class ImportUsersDto {
   rows!: ImportUserRowDto[];
 }
 
+
+export class SchoolImportOptionsDto {
+  @IsOptional()
+  @IsString()
+  academicYear?: string;
+
+  @IsOptional()
+  @IsIn([true, false, 'true', 'false', '1', '0'])
+  updateExisting?: boolean | 'true' | 'false' | '1' | '0';
+
+  @IsOptional()
+  @IsIn([true, false, 'true', 'false', '1', '0'])
+  resetPasswordForExisting?: boolean | 'true' | 'false' | '1' | '0';
+}
+
+export class SchoolImportFileOptionsDto extends SchoolImportOptionsDto {
+  @IsString()
+  @IsIn(['legacy-siab1', 'student-class', 'staff'])
+  source!: 'legacy-siab1' | 'student-class' | 'staff';
+}
+
+export class SchoolImportRowsDto extends SchoolImportFileOptionsDto {
+  @IsArray()
+  rows!: Record<string, string>[];
+}
+
+export class SchoolImportFileCommitDto extends SchoolImportFileOptionsDto {
+  @IsString()
+  @MinLength(10)
+  reason!: string;
+
+  @IsString()
+  confirmText!: string;
+}
+
+export class SchoolImportCommitDto extends SchoolImportRowsDto {
+  @IsString()
+  @MinLength(10)
+  reason!: string;
+
+  @IsString()
+  confirmText!: string;
+}
+
 export class PermanentDeleteUserDto {
   @IsString()
   confirmUsername!: string;

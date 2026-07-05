@@ -61,26 +61,59 @@ function parseCsv(buffer: Buffer): ImportRow[] {
   });
 }
 
+
+const XLSX_HEADER_HINTS = ['username', 'fullname', 'full name', 'nama', 'nis', 'nisn', 'nip', 'role', 'kelas', 'jabatan', 'tipe user', 'code', 'name', 'yearlabel'];
+
+function headerScore(values: string[]) {
+  const text = values.join(' ').toLowerCase();
+  const nonEmpty = values.filter(Boolean).length;
+  return XLSX_HEADER_HINTS.filter((hint) => text.includes(hint)).length * 10 + Math.min(nonEmpty, 10);
+}
+
+function detectHeaderRow(sheet: ExcelJS.Worksheet) {
+  let bestRow = 1;
+  let bestScore = -1;
+  const maxRows = Math.min(10, sheet.rowCount || 1);
+  for (let rowNumber = 1; rowNumber <= maxRows; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+    const values: string[] = [];
+    row.eachCell((cell, colNumber) => {
+      values[colNumber - 1] = normalizeCell(cell.value);
+    });
+    const score = headerScore(values);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = rowNumber;
+    }
+  }
+  return bestRow;
+}
+
 async function parseXlsx(buffer: Buffer): Promise<ImportRow[]> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
-  const sheet = workbook.worksheets[0];
-  if (!sheet) return [];
-  const headerRow = sheet.getRow(1);
-  const headers: string[] = [];
-  headerRow.eachCell((cell, colNumber) => {
-    headers[colNumber - 1] = normalizeCell(cell.value);
-  });
   const rows: ImportRow[] = [];
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    const item: ImportRow = {};
-    headers.forEach((header, index) => {
-      if (!header) return;
-      item[header] = normalizeCell(row.getCell(index + 1).value);
+
+  for (const sheet of workbook.worksheets) {
+    const headerRowNumber = detectHeaderRow(sheet);
+    const headerRow = sheet.getRow(headerRowNumber);
+    const headers: string[] = [];
+    headerRow.eachCell((cell, colNumber) => {
+      headers[colNumber - 1] = normalizeCell(cell.value);
     });
-    if (Object.values(item).some(Boolean)) rows.push(item);
-  });
+    if (headers.every((header) => !header)) continue;
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber <= headerRowNumber) return;
+      const item: ImportRow = { __sheetName: sheet.name };
+      headers.forEach((header, index) => {
+        if (!header) return;
+        item[header] = normalizeCell(row.getCell(index + 1).value);
+      });
+      if (Object.entries(item).some(([key, value]) => key !== '__sheetName' && Boolean(value))) rows.push(item);
+    });
+  }
+
   return rows;
 }
 

@@ -203,7 +203,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await page.goto('/admin/master-data?tab=users');
     await expect(page.getByRole('tab', { name: 'Buat/Edit Akun' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByText('Kelola akun aman')).toBeVisible();
-    await expect(page.getByText('Upload CSV siswa di tab Import Siswa.')).toHaveCount(0);
+    await expect(page.getByText('Upload CSV siswa di tab Import Data Sekolah.')).toHaveCount(0);
     const userLayout = await page.locator('.master-data-user-layout').evaluate((node) => {
       const form = node.querySelector('.master-data-form-panel')?.getBoundingClientRect();
       const list = node.querySelector('.master-data-list-panel')?.getBoundingClientRect();
@@ -239,7 +239,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: 'Ruang' })).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Home');
-    await expect(page.getByRole('tab', { name: 'Import Siswa' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Import Data Sekolah' })).toHaveAttribute('aria-selected', 'true');
 
     await page.goto('/admin/master-data?tab=semesters');
     await expect(page.getByRole('tab', { name: 'Semester' })).toHaveAttribute('aria-selected', 'true');
@@ -248,7 +248,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await expect(page.locator('select[aria-label="Tahun Ajaran"] option')).toContainText(['Pilih tahun ajaran', /Tahun Ajaran 2026\/2027/]);
 
     await page.goto('/admin/master-data?tab=unknown-tab');
-    await expect(page.getByRole('tab', { name: 'Import Siswa' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Import Data Sekolah' })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('master data stacks responsively without page overflow on mobile', async ({ page }) => {

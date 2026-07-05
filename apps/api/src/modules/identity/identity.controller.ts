@@ -11,7 +11,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { IMPORT_FILE_INTERCEPTOR_OPTIONS, parseImportFile, type ImportUploadFile } from '../../common/import-file.parser';
 import { extractRequestMeta } from '../../common/request-meta';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ConfigureAccountDeletePinDto, CreateUserDto, DeleteAccountsDto, GenerateAccountSlipsDto, ImportUserRowDto, ImportUsersDto, PermanentDeleteUserDto, PreviewAccountDeleteDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
+import { ConfigureAccountDeletePinDto, CreateUserDto, DeleteAccountsDto, GenerateAccountSlipsDto, ImportUserRowDto, ImportUsersDto, PermanentDeleteUserDto, PreviewAccountDeleteDto, SchoolImportCommitDto, SchoolImportFileCommitDto, SchoolImportFileOptionsDto, SchoolImportRowsDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
 import { IdentityService } from './identity.service';
 
 @Controller('identity')
@@ -106,6 +106,43 @@ export class IdentityController {
   ) {
     const rows = await parseImportFile(file);
     return this.identityService.commitUsersImport(rows as unknown as ImportUserRowDto[], user);
+  }
+
+
+  @Post('school-import/preview')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  previewSchoolImport(@Body() body: SchoolImportRowsDto) {
+    return this.identityService.previewSchoolImport(body.rows, body.source, body);
+  }
+
+  @Post('school-import/commit')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  commitSchoolImport(@Body() body: SchoolImportCommitDto, @CurrentUser() user: { sub: string; role: string }) {
+    return this.identityService.commitSchoolImport(body.rows, body.source, body, user);
+  }
+
+  @Post('school-import/file/preview')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
+  async previewSchoolImportFile(@UploadedFile() file: ImportUploadFile, @Body() body: SchoolImportFileOptionsDto) {
+    const rows = await parseImportFile(file);
+    return this.identityService.previewSchoolImport(rows, body.source, body);
+  }
+
+  @Post('school-import/file/commit')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
+  @Capabilities('users.manage')
+  @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
+  async commitSchoolImportFile(
+    @UploadedFile() file: ImportUploadFile,
+    @Body() body: SchoolImportFileCommitDto,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    const rows = await parseImportFile(file);
+    return this.identityService.commitSchoolImport(rows, body.source, body, user);
   }
 
   @Post('account-slips/generate')

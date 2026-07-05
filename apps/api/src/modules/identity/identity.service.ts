@@ -2,11 +2,14 @@ import { BadRequestException, ConflictException, ForbiddenException, HttpExcepti
 import { CardStatus, Prisma, QrCredentialStatus, Role } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ConfigureAccountDeletePinDto, CreateUserDto, DeleteAccountsDto, GenerateAccountSlipsDto, ImportUserRowDto, PermanentDeleteUserDto, PreviewAccountDeleteDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
+import { ConfigureAccountDeletePinDto, CreateUserDto, DeleteAccountsDto, GenerateAccountSlipsDto, ImportUserRowDto, PermanentDeleteUserDto, PreviewAccountDeleteDto, SchoolImportFileCommitDto, SchoolImportRowsDto, UpdateMeDto, UpdateUserDto } from './identity.dto';
 import bcrypt from 'bcryptjs';
 import { writeAudit } from '../../common/audit-log';
 import type { RequestMeta } from '../../common/request-meta';
 import { generateAccountSlipPassword } from './account-slip-password.util';
+import { generateSchoolImportPassword } from './school-import/password-policy';
+import { normalizeSchoolImportRows, summarizeNormalizedRows } from './school-import/school-import.normalizer';
+import type { RawImportRow, SchoolImportPreviewRow, SchoolImportSourceKind } from './school-import/school-import.types';
 
 const ACCOUNT_SLIP_CREATOR_ROLES = new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]);
 const ACCOUNT_SLIP_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
@@ -16,6 +19,8 @@ const ACCOUNT_DELETE_ACTOR_ROLES = new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]
 const ACCOUNT_DELETE_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
 const ACCOUNT_DELETE_SENSITIVE_ROLES = new Set<Role>([Role.DEVELOPER, Role.ADMIN_TU, Role.OPERATOR_IT]);
 const MAX_ACCOUNT_DELETE_USERS = 50;
+const MAX_SCHOOL_IMPORT_ROWS = 5000;
+const SCHOOL_IMPORT_CONFIRM_TEXT = 'IMPORT DATA SEKOLAH';
 const ACCOUNT_DELETE_CONFIRM_TEXT = 'HAPUS AKUN';
 const ACCOUNT_DELETE_PIN_SETTING_ID = 1;
 const ACCOUNT_DELETE_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -25,6 +30,10 @@ const ACCOUNT_DELETE_RATE_LIMITS = new Map<string, { count: number; resetAt: num
 function cleanOptionalText(value?: string | null) {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim();
   return text || null;
+}
+
+function schoolImportFlag(value: unknown) {
+  return value === true || value === 'true' || value === '1';
 }
 
 function parseOptionalDate(value?: string | null) {
@@ -875,6 +884,240 @@ export class IdentityService {
       });
 
       return { committed: true, createdCount: created.length, items: created };
+    });
+  }
+
+  private normalizeSchoolImport(rows: RawImportRow[], source: SchoolImportSourceKind, options: Pick<SchoolImportRowsDto, 'academicYear' | 'updateExisting' | 'resetPasswordForExisting'>) {
+    if (!Array.isArray(rows)) throw new BadRequestException('rows wajib berupa array.');
+    if (rows.length === 0) throw new BadRequestException('File import tidak berisi baris data.');
+    if (rows.length > MAX_SCHOOL_IMPORT_ROWS) throw new BadRequestException(`Jumlah baris terlalu banyak. Maksimal ${MAX_SCHOOL_IMPORT_ROWS} baris.`);
+    const normalized = normalizeSchoolImportRows(rows, source, {
+      academicYear: options.academicYear,
+      updateExisting: schoolImportFlag(options.updateExisting),
+      resetPasswordForExisting: schoolImportFlag(options.resetPasswordForExisting)
+    });
+    summarizeNormalizedRows(normalized);
+    return normalized;
+  }
+
+  async previewSchoolImport(rows: RawImportRow[], source: SchoolImportSourceKind, options: Pick<SchoolImportRowsDto, 'academicYear' | 'updateExisting' | 'resetPasswordForExisting'> = {}) {
+    const normalized = this.normalizeSchoolImport(rows, source, options);
+    const usernames = [...new Set(normalized.map((row) => row.username).filter(Boolean))];
+    const nisValues = [...new Set(normalized.map((row) => row.nis).filter(Boolean) as string[])];
+    const nipValues = [...new Set(normalized.map((row) => row.nip).filter(Boolean) as string[])];
+    const orFilters = [
+      usernames.length ? { username: { in: usernames } } : undefined,
+      nisValues.length ? { nis: { in: nisValues } } : undefined,
+      nipValues.length ? { nip: { in: nipValues } } : undefined
+    ].filter(Boolean) as Prisma.UserWhereInput[];
+    const existingUsers = orFilters.length > 0
+      ? await this.prisma.user.findMany({
+        where: { OR: orFilters },
+        select: { id: true, username: true, nis: true, nip: true, role: true, active: true, archivedAt: true }
+      })
+      : [];
+    const byUsername = new Map(existingUsers.map((user) => [user.username, user]));
+    const byNis = new Map(existingUsers.filter((user) => user.nis).map((user) => [user.nis as string, user]));
+    const byNip = new Map(existingUsers.filter((user) => user.nip).map((user) => [user.nip as string, user]));
+    const updateExisting = schoolImportFlag(options.updateExisting);
+    const resetExisting = schoolImportFlag(options.resetPasswordForExisting);
+
+    const previewRows: SchoolImportPreviewRow[] = normalized.map(({ fingerprint: _fingerprint, ...row }) => {
+      const existingByIdentifier = row.nis ? byNis.get(row.nis) : row.nip ? byNip.get(row.nip) : null;
+      const existingByUsername = byUsername.get(row.username);
+      const existing = existingByIdentifier || existingByUsername;
+      const errors = [...row.errors];
+      if (existingByIdentifier && existingByUsername && existingByIdentifier.id !== existingByUsername.id) errors.push('username sudah dipakai akun lain');
+      if (!existingByIdentifier && existingByUsername && (row.nis || row.nip)) errors.push('username sudah ada untuk NIS/NIP berbeda');
+      if (existing?.archivedAt) errors.push('akun existing sudah archived');
+      const invalid = errors.length > 0;
+      const action = invalid ? 'invalid' : existing ? (updateExisting ? 'update' : 'skip') : 'create';
+      return {
+        ...row,
+        errors,
+        action,
+        existingUserId: existing?.id ?? null,
+        passwordWillBeGenerated: action === 'create' || (action === 'update' && resetExisting),
+        passwordWillBeReset: action === 'update' && resetExisting
+      };
+    });
+
+    const classCodes = new Set(previewRows.filter((row) => row.action === 'create' || row.action === 'update').map((row) => row.classCode).filter(Boolean));
+    const roleDistribution = previewRows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.role] = (acc[row.role] || 0) + 1;
+      return acc;
+    }, {});
+    const actions = previewRows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.action] = (acc[row.action] || 0) + 1;
+      return acc;
+    }, {});
+
+    return {
+      source,
+      academicYear: options.academicYear || '2026/2027',
+      passwordPolicy: 'server-generated 14-character memorable password; source password columns ignored',
+      qrGeneration: 'manual-after-review',
+      rows: previewRows,
+      summary: {
+        total: previewRows.length,
+        valid: previewRows.filter((row) => row.errors.length === 0).length,
+        invalid: previewRows.filter((row) => row.errors.length > 0).length,
+        actions,
+        roleDistribution,
+        classCount: classCodes.size,
+        ignoredLegacyPasswordCount: previewRows.filter((row) => row.ignoredLegacyPassword).length,
+        generatedPasswordCount: previewRows.filter((row) => row.passwordWillBeGenerated).length,
+        resetExistingPasswordCount: previewRows.filter((row) => row.passwordWillBeReset).length
+      }
+    };
+  }
+
+  async commitSchoolImport(rows: RawImportRow[], source: SchoolImportSourceKind, options: SchoolImportFileCommitDto, actor: { sub: string; role: string }) {
+    if (!new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]).has(actor.role as Role)) throw new ForbiddenException('Import data sekolah hanya untuk ADMIN_TU atau DEVELOPER.');
+    if (options.confirmText !== SCHOOL_IMPORT_CONFIRM_TEXT) throw new BadRequestException(`confirmText wajib '${SCHOOL_IMPORT_CONFIRM_TEXT}'.`);
+    if (!options.reason || options.reason.trim().length < 10) throw new BadRequestException('reason minimal 10 karakter.');
+    const preview = await this.previewSchoolImport(rows, source, options);
+    if (preview.summary.invalid > 0) return { committed: false, ...preview };
+
+    const creatable = preview.rows.filter((row) => row.action === 'create');
+    const updatable = preview.rows.filter((row) => row.action === 'update');
+    const now = new Date();
+    const preparedPasswords = new Map<number, { plaintext: string; hash: string }>();
+    for (const row of [...creatable, ...updatable.filter((row) => row.passwordWillBeReset)]) {
+      const plaintext = generateSchoolImportPassword();
+      preparedPasswords.set(row.index, { plaintext, hash: await bcrypt.hash(plaintext, 10) });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const classes = new Map<string, { id: string; code: string; name: string }>();
+      const classRows = [...creatable, ...updatable].filter((row) => row.subjectType === 'student' && row.classCode);
+      for (const row of classRows) {
+        const code = row.classCode!;
+        if (classes.has(code)) continue;
+        const schoolClass = await tx.schoolClass.upsert({
+          where: { code },
+          update: { name: row.className || code, yearLabel: row.yearLabel || options.academicYear || '2026/2027' },
+          create: { code, name: row.className || code, yearLabel: row.yearLabel || options.academicYear || '2026/2027' },
+          select: { id: true, code: true, name: true }
+        });
+        classes.set(code, schoolClass);
+      }
+
+      const created: Array<{ id: string; username: string; fullName: string; role: Role; initialPassword: string }> = [];
+      const updated: Array<{ id: string; username: string; fullName: string; role: Role; initialPassword?: string }> = [];
+      let enrollmentsCreated = 0;
+      let enrollmentsUpdated = 0;
+
+      for (const row of creatable) {
+        const password = preparedPasswords.get(row.index);
+        if (!password) throw new BadRequestException('Password import gagal dibuat.');
+        const user = await tx.user.create({
+          data: {
+            username: row.username,
+            fullName: row.fullName,
+            nis: cleanOptionalText(row.nis),
+            nip: cleanOptionalText(row.nip),
+            birthDate: parseOptionalDate(row.birthDate),
+            passwordHash: password.hash,
+            role: row.role,
+            active: true,
+            cardStatus: CardStatus.ACTIVE,
+            mustChangePassword: false,
+            passwordChangedAt: null
+          },
+          select: { id: true, username: true, fullName: true, role: true }
+        });
+        created.push({ ...user, initialPassword: password.plaintext });
+        if (row.subjectType === 'student' && row.classCode) {
+          const schoolClass = classes.get(row.classCode);
+          if (schoolClass) {
+            await tx.classEnrollment.create({
+              data: { classId: schoolClass.id, studentId: user.id, effectiveFrom: now, active: true, administrativeStatus: 'ACTIVE', createdById: actor.sub }
+            });
+            enrollmentsCreated += 1;
+          }
+        }
+      }
+
+      for (const row of updatable) {
+        const data: Prisma.UserUpdateInput = {
+          fullName: row.fullName,
+          nis: cleanOptionalText(row.nis),
+          nip: cleanOptionalText(row.nip),
+          birthDate: parseOptionalDate(row.birthDate),
+          role: row.role,
+          active: true,
+          cardStatus: CardStatus.ACTIVE
+        };
+        const password = preparedPasswords.get(row.index);
+        if (password) {
+          data.passwordHash = password.hash;
+          data.mustChangePassword = false;
+          data.passwordChangedAt = null;
+          data.sessionVersion = { increment: 1 };
+        }
+        const user = await tx.user.update({
+          where: { id: row.existingUserId! },
+          data,
+          select: { id: true, username: true, fullName: true, role: true }
+        });
+        updated.push(password ? { ...user, initialPassword: password.plaintext } : user);
+        if (row.subjectType === 'student' && row.classCode) {
+          const schoolClass = classes.get(row.classCode);
+          if (schoolClass) {
+            const active = await tx.classEnrollment.findFirst({ where: { studentId: user.id, active: true, administrativeStatus: 'ACTIVE' } });
+            if (!active) {
+              await tx.classEnrollment.create({ data: { classId: schoolClass.id, studentId: user.id, effectiveFrom: now, active: true, administrativeStatus: 'ACTIVE', createdById: actor.sub } });
+              enrollmentsCreated += 1;
+            } else if (active.classId !== schoolClass.id) {
+              await tx.classEnrollment.update({ where: { id: active.id }, data: { active: false, effectiveTo: now, administrativeStatus: 'TRANSFERRED', endedById: actor.sub, endedReason: 'school-import-class-update' } });
+              await tx.classEnrollment.create({ data: { classId: schoolClass.id, studentId: user.id, effectiveFrom: now, active: true, administrativeStatus: 'ACTIVE', createdById: actor.sub } });
+              enrollmentsUpdated += 1;
+            }
+          }
+        }
+      }
+
+      const slipRows = [
+        ...created,
+        ...updated.filter((row) => Boolean(row.initialPassword)).map((row) => ({ ...row, initialPassword: row.initialPassword! }))
+      ];
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'identity',
+        action: 'school_import.committed',
+        resource: 'user',
+        resourceId: 'bulk-school-import',
+        reason: options.reason,
+        after: {
+          source,
+          academicYear: preview.academicYear,
+          createdCount: created.length,
+          updatedCount: updated.length,
+          skippedCount: preview.rows.filter((row) => row.action === 'skip').length,
+          enrollmentsCreated,
+          enrollmentsUpdated,
+          generatedPasswordCount: slipRows.length,
+          qrGeneration: 'manual-after-review',
+          roleDistribution: preview.summary.roleDistribution
+        } as Prisma.InputJsonValue
+      });
+
+      return {
+        committed: true,
+        source,
+        academicYear: preview.academicYear,
+        createdCount: created.length,
+        updatedCount: updated.length,
+        skippedCount: preview.rows.filter((row) => row.action === 'skip').length,
+        enrollmentsCreated,
+        enrollmentsUpdated,
+        qrGeneration: 'manual-after-review',
+        passwordPolicy: preview.passwordPolicy,
+        slips: slipRows.map((row) => ({ userId: row.id, fullName: row.fullName, username: row.username, role: row.role, initialPassword: row.initialPassword }))
+      };
     });
   }
 
