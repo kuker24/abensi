@@ -54,7 +54,10 @@
     "verify:post-migration": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify_post_migration.ts",
     "test:upgrade-migrations": "bash scripts/test_upgrade_migrations.sh",
     "validate:final": "bash scripts/validate_final.sh",
-    "validate:deployment-evidence": "node scripts/validate_deployment_evidence.mjs"
+    "validate:deployment-evidence": "node scripts/validate_deployment_evidence.mjs",
+    "uat:attendance-live": "node scripts/attendance_live_uat_readiness.mjs",
+    "test:attendance-live-uat": "node scripts/test_attendance_live_uat_readiness.mjs",
+    "uat:attendance-live:db": "bash scripts/attendance_live_uat_db_readonly.sh"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
