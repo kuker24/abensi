@@ -133,7 +133,7 @@ describe('Master Data account delete guard', () => {
 });
 
 describe('HP Scanner Android operator UI', () => {
-  it('clarifies the two physical scanner model without role-specific HP labels', async () => {
+  it('clarifies the four target reader model without role-specific HP labels', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);
       if (url.includes('/device-readers')) return new Response(JSON.stringify({ items: [], meta: { page: 1, limit: 200, total: 0, totalPages: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -142,10 +142,12 @@ describe('HP Scanner Android operator UI', () => {
 
     render(<DevicesPage notify={vi.fn()} />);
 
-    expect(await screen.findByText('2 HP scanner fleksibel')).toBeInTheDocument();
-    expect(screen.getAllByText('HP Scanner 1').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('HP Scanner 2').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Kedua HP bisa dipakai untuk Mode Gerbang atau Mode Mushola sesuai kebutuhan/i)).toBeInTheDocument();
+    expect(await screen.findByText('4 HP reader terkontrol')).toBeInTheDocument();
+    expect(screen.getAllByText('READER_DEV_TEST_01').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('READER_IDENTITY_01').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('READER_GATE_PRAYER_01').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('READER_GATE_PRAYER_02').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Dua HP khusus CHECK_ONLY/i)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/HP Guru|HP Siswa|HP Staff|HP Kepala|Scanner Guru|Scanner Siswa/i);
   });
 
@@ -200,18 +202,29 @@ describe('HP Scanner Android operator UI', () => {
     const fetchMock = vi.fn(async (input) => {
       const url = String(input);
       if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
-      if (url.includes('/device-readers/android/provision/start')) {
+      if (url.includes('/device-readers/reader-dev/android/provision-code')) {
         return new Response(JSON.stringify({
-          item: { id: 'pending-reader', name: 'HP Pending', hasProvisioningToken: true, hasReaderSecret: false },
+          item: { id: 'reader-dev', name: 'READER_DEV_TEST_01', allowedModes: ['CHECK_ONLY'], hasProvisioningToken: true, hasReaderSecret: true },
           provisionToken: 'shrp_activationCodeOnlyForThisFlow',
           provisioningQr: 'schoolhub:reader-provision:v1:shrp_activationCodeOnlyForThisFlow',
           expiresAt: new Date(Date.now() + 15 * 60_000).toISOString()
         }), { status: 201, headers: { 'content-type': 'application/json' } });
       }
+      if (url.includes('/device-readers/reader-gate-1/android/provision-code')) {
+        return new Response(JSON.stringify({
+          item: { id: 'reader-gate-1', name: 'READER_GATE_PRAYER_01', allowedModes: ['GERBANG', 'MUSHOLA'], hasProvisioningToken: true, hasReaderSecret: true },
+          provisionToken: 'shrp_gatePrayerActivationCode',
+          provisioningQr: 'schoolhub:reader-provision:v1:shrp_gatePrayerActivationCode',
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString()
+        }), { status: 201, headers: { 'content-type': 'application/json' } });
+      }
       if (url.includes('/device-readers')) {
         return new Response(JSON.stringify({
-          items: [{ id: 'reader-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-1', name: 'HP Scanner 1', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'GERBANG', hasReaderSecret: true }],
-          meta: { page: 1, limit: 200, total: 1, totalPages: 1 }
+          items: [
+            { id: 'reader-dev', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: ['CHECK_ONLY'], lastUsedMode: null, hasReaderSecret: true },
+            { id: 'reader-gate-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_GATE_PRAYER_01', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'GERBANG', hasReaderSecret: true }
+          ],
+          meta: { page: 1, limit: 200, total: 2, totalPages: 1 }
         }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -220,18 +233,18 @@ describe('HP Scanner Android operator UI', () => {
 
     render(<DevicesPage notify={notify} />);
 
-    expect(await screen.findByText('Gerbang & Mushola')).toBeInTheDocument();
+    expect(await screen.findByText('Cek Identitas')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /Buat Kode Aktivasi/i }));
-    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP Scanner 1, lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP mapping READER_DEV_TEST_01, lalu masukkan kode aktivasi.')).toBeInTheDocument();
     expect(screen.getByText('shrp_activationCodeOnlyForThisFlow')).toBeInTheDocument();
-    const firstProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/android/provision/start'));
+    const firstProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/reader-dev/android/provision-code'));
     expect(JSON.parse(String(firstProvisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /HP Scanner 2.*Mode Gerbang\/Mushola dipilih dari aplikasi/i }));
+    fireEvent.click(screen.getByRole('button', { name: /READER_GATE_PRAYER_01.*Gerbang\/Mushola controlled UAT/i }));
     fireEvent.click(screen.getByRole('button', { name: /Buat Kode Aktivasi/i }));
-    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP Scanner 2, lalu masukkan kode aktivasi.')).toBeInTheDocument();
-    const provisionCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/device-readers/android/provision/start'));
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP mapping READER_GATE_PRAYER_01, lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    const provisionCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/android/provision-code'));
     expect(JSON.parse(String(provisionCalls.at(-1)?.[1]?.body))).not.toHaveProperty('allowedModes');
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
   });
@@ -267,8 +280,8 @@ describe('HP Scanner Android operator UI', () => {
     expect(within(inactiveRow).getByRole('button', { name: 'Aktifkan lagi' })).toBeInTheDocument();
 
     fireEvent.click(within(pendingRow).getByRole('button', { name: 'Buat kode baru' }));
-    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/device-readers/android/provision/start'))).toBe(true));
-    const replaceProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/android/provision/start'));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/device-readers/pending-1/android/provision-code'))).toBe(true));
+    const replaceProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/pending-1/android/provision-code'));
     expect(JSON.parse(String(replaceProvisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
   });
 });

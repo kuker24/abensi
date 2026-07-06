@@ -26,7 +26,7 @@ function makePrisma() {
       create: jest.fn(async ({ data }) => ({ id: data.id ?? 'reader-1', status: data.status ?? DeviceReaderStatus.ACTIVE, type: data.type ?? ReaderType.GATE, allowedModes: data.allowedModes ?? [], ...data })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'reader-1', deviceId: 'android-1', name: 'Android', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY], provisioningTokenHash: null, readerSecretCiphertext: 'enc-secret' }),
-      update: jest.fn()
+      update: jest.fn(async ({ data, where }) => ({ id: where.id ?? 'reader-1', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: data.allowedModes ?? [], ...data }))
     }
   };
   const prisma = {
@@ -101,6 +101,53 @@ describe('DeviceReaderService credential security', () => {
     expect(data.allowedModes).toEqual([AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
   });
 
+  it('creates a short-lived activation code for an approved PR128 target reader without storing plaintext', async () => {
+    const prisma = makePrisma();
+    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-dev', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] }]);
+    prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    const result = await service.issueAndroidProvisionCode('READER_DEV_TEST_01', { expiresInMinutes: 10 }, actor);
+    const data = prisma.__tx.deviceReader.update.mock.calls[0][0].data;
+
+    expect(result.provisionToken).toMatch(/^shrp_/);
+    expect(result.provisioningQr).toBe(`schoolhub:reader-provision:v1:${result.provisionToken}`);
+    expect(data.provisioningTokenHash).toBe(readerCredentialDigest(result.provisionToken));
+    expect(data.provisioningTokenHash).not.toBe(result.provisionToken);
+    expect(data.allowedModes).toEqual([AndroidReaderMode.CHECK_ONLY]);
+    expect(data.provisioningExpiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('supports the approved 4-reader activation mapping', async () => {
+    const targets = [
+      ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
+      ['READER_IDENTITY_01', [AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]],
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]]
+    ] as const;
+
+    for (const [deviceId, modes] of targets) {
+      const prisma = makePrisma();
+      prisma.deviceReader.findMany.mockResolvedValue([{ id: `id-${deviceId}`, deviceId, name: deviceId, status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] }]);
+      prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
+      const service = new DeviceReaderService(prisma, makeSignatures());
+
+      await service.issueAndroidProvisionCode(deviceId, {}, actor);
+
+      expect(prisma.__tx.deviceReader.update.mock.calls[0][0].data.allowedModes).toEqual(modes);
+    }
+  });
+
+  it('rejects activation code creation for non-target or revoked readers', async () => {
+    const nonTarget = makePrisma();
+    nonTarget.deviceReader.findMany.mockResolvedValue([{ id: 'reader-other', deviceId: 'android-other', name: 'Android Other', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [] }]);
+    await expect(new DeviceReaderService(nonTarget, makeSignatures()).issueAndroidProvisionCode('android-other', {}, actor)).rejects.toBeInstanceOf(BadRequestException);
+
+    const revoked = makePrisma();
+    revoked.deviceReader.findMany.mockResolvedValue([{ id: 'reader-revoked', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', status: DeviceReaderStatus.REVOKED, type: ReaderType.QR_ANDROID, allowedModes: [] }]);
+    await expect(new DeviceReaderService(revoked, makeSignatures()).issueAndroidProvisionCode('READER_DEV_TEST_01', {}, actor)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('completes provisioning with current HMAC token and clears token atomically', async () => {
     const prisma = makePrisma();
     const signatures = makeSignatures();
@@ -116,6 +163,43 @@ describe('DeviceReaderService credential security', () => {
       where: expect.objectContaining({ id: 'reader-1', provisioningTokenHash: { in: expect.arrayContaining([readerCredentialDigest(token), createHash('sha256').update(token).digest('hex')]) } }),
       data: expect.objectContaining({ status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID, provisioningTokenHash: null, provisioningExpiresAt: null })
     }));
+  });
+
+  it('completes target activation by returning stable reader deviceId and mapped modes', async () => {
+    const prisma = makePrisma();
+    const token = 'shrp_targetProvisionToken_12345';
+    const reader = {
+      id: 'reader-identity',
+      deviceId: 'READER_IDENTITY_01',
+      name: 'READER_IDENTITY_01',
+      status: DeviceReaderStatus.ACTIVE,
+      type: ReaderType.QR_ANDROID,
+      allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY],
+      provisioningTokenHash: readerCredentialDigest(token),
+      provisioningExpiresAt: new Date(Date.now() + 60_000)
+    };
+    prisma.deviceReader.findMany.mockResolvedValue([reader]);
+    prisma.__tx.deviceReader.findUniqueOrThrow.mockResolvedValue({ ...reader, allowedModes: [AndroidReaderMode.CHECK_ONLY], provisioningTokenHash: null });
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    const result = await service.completeAndroidProvision({ provisionToken: token, deviceId: 'android-install-id', deviceName: 'HP Operator' });
+    const data = prisma.__tx.deviceReader.updateMany.mock.calls[0][0].data;
+
+    expect(data.deviceId).toBe('READER_IDENTITY_01');
+    expect(data.name).toBe('READER_IDENTITY_01');
+    expect(data.allowedModes).toEqual([AndroidReaderMode.CHECK_ONLY]);
+    expect(result.deviceId).toBe('READER_IDENTITY_01');
+    expect(result.allowedModes).toEqual([AndroidReaderMode.CHECK_ONLY]);
+  });
+
+  it('rejects a reused one-time activation code after it is claimed', async () => {
+    const prisma = makePrisma();
+    const token = 'shrp_reusedProvisionToken_12345';
+    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-used', deviceId: 'READER_GATE_PRAYER_01', name: 'READER_GATE_PRAYER_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA], provisioningTokenHash: readerCredentialDigest(token), provisioningExpiresAt: new Date(Date.now() + 60_000) }]);
+    prisma.__tx.deviceReader.updateMany.mockResolvedValue({ count: 0 });
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    await expect(service.completeAndroidProvision({ provisionToken: token, deviceId: 'android-install-id' })).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('supports legacy SHA-256 provisioning token once without storing new legacy hashes', async () => {
@@ -173,7 +257,7 @@ describe('DeviceReaderService credential security', () => {
     await expect(new DeviceReaderService(revoked, makeSignatures()).completeAndroidProvision({ provisionToken: token, deviceId: 'android-1' })).rejects.toBeInstanceOf(ForbiddenException);
 
     const raced = makePrisma();
-    raced.deviceReader.findMany.mockResolvedValue([{ id: 'reader-raced', name: 'Raced', provisioningTokenHash: readerCredentialDigest(token), status: DeviceReaderStatus.INACTIVE, provisioningExpiresAt: new Date(Date.now() + 60_000) }]);
+    raced.deviceReader.findMany.mockResolvedValue([{ id: 'reader-raced', name: 'Raced', type: ReaderType.QR_ANDROID, allowedModes: [], provisioningTokenHash: readerCredentialDigest(token), status: DeviceReaderStatus.INACTIVE, provisioningExpiresAt: new Date(Date.now() + 60_000) }]);
     raced.__tx.deviceReader.updateMany.mockResolvedValue({ count: 0 });
     await expect(new DeviceReaderService(raced, makeSignatures()).completeAndroidProvision({ provisionToken: token, deviceId: 'android-1' })).rejects.toBeInstanceOf(ConflictException);
   });

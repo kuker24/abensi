@@ -7,7 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { canonicalJson } from '../security/canonical-json';
 import { DeviceSignatureService, credentialHashMatches, normalizedReaderIdentifier, readerCandidateWhere, readerCredentialDigest, readerCredentialDigestCandidates, readerLookupLimit, uniqueReaderMatch, type ReaderSignatureHeaders } from '../security/device-signature.service';
 import { StepUpAuthService } from '../security/step-up-auth.service';
-import { AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
+import { AndroidProvisionCodeDto, AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
 
 function mintReaderCredential() {
   return `shr_${randomBytes(16).toString('hex')}`;
@@ -27,8 +27,8 @@ function generateProvisionToken() {
   return `shrp_${randomBytes(24).toString('base64url')}`;
 }
 
-export const MAX_ACTIVE_ANDROID_READERS = 2;
-export const ANDROID_READER_LIMIT_MESSAGE = 'Batas HP scanner aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.';
+export const MAX_ACTIVE_ANDROID_READERS = 4;
+export const ANDROID_READER_LIMIT_MESSAGE = 'Batas HP scanner aktif sudah penuh. Cabut salah satu dari 4 HP dulu untuk mengganti perangkat.';
 
 const MAX_PROVISION_TOKEN_LENGTH = 128;
 const ANDROID_READER_ONLINE_WINDOW_MS = Number(process.env.ANDROID_READER_ONLINE_WINDOW_MS ?? '120000');
@@ -64,11 +64,33 @@ function defaultModes(type?: ReaderType) {
   return [];
 }
 
+const PR128_READER_TARGET_MODES = new Map<string, AndroidReaderMode[]>([
+  ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
+  ['READER_IDENTITY_01', [AndroidReaderMode.CHECK_ONLY]],
+  ['READER_GATE_PRAYER_01', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]],
+  ['READER_GATE_PRAYER_02', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]]
+]);
+
 function effectiveAllowedModes(type: ReaderType, requested?: AndroidReaderMode[] | null) {
-  // QR_ANDROID is a physical phone identity only; it must not be permanently bound
-  // to Gerbang or Mushola. The APK chooses GERBANG/MUSHOLA at scan time.
+  // QR_ANDROID legacy provisioning stays flexible. Targeted PR128 activation
+  // codes pin the four production readers to their approved modes separately.
   if (type === ReaderType.QR_ANDROID) return defaultModes(ReaderType.QR_ANDROID);
   return requested ?? defaultModes(type);
+}
+
+function targetReaderKey(reader: { deviceId?: string | null; name?: string | null }) {
+  return [reader.deviceId, reader.name].map((value) => String(value || '').trim()).find((value) => PR128_READER_TARGET_MODES.has(value)) ?? null;
+}
+
+function targetAllowedModes(reader: { deviceId?: string | null; name?: string | null; allowedModes?: AndroidReaderMode[] | null; type?: ReaderType | null }) {
+  const targetKey = targetReaderKey(reader);
+  if (targetKey) return PR128_READER_TARGET_MODES.get(targetKey)!;
+  return effectiveAllowedModes(reader.type ?? ReaderType.QR_ANDROID, reader.allowedModes ?? undefined);
+}
+
+function stableProvisionedDeviceId(reader: { deviceId?: string | null; name?: string | null }, fallbackDeviceId: string) {
+  const existing = targetReaderKey(reader) ?? normalizedReaderIdentifier(reader.deviceId);
+  return existing || fallbackDeviceId;
 }
 
 function clampProvisionMinutes(value?: number) {
@@ -263,6 +285,52 @@ export class DeviceReaderService {
     }
   }
 
+  async issueAndroidProvisionCode(id: string, payload: AndroidProvisionCodeDto, actor: Actor) {
+    const normalized = normalizedReaderIdentifier(id);
+    if (!normalized) throw new NotFoundException('Reader tidak ditemukan.');
+    const token = generateProvisionToken();
+    const expiresAt = new Date(Date.now() + clampProvisionMinutes(payload.expiresInMinutes) * 60_000);
+    const candidates = await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(normalized), take: readerLookupLimit() });
+    const match = uniqueReaderMatch(candidates, normalized);
+    if (match.status !== 'matched') throw new NotFoundException('Reader tidak ditemukan.');
+    const reader = match.reader;
+    if (reader.type !== ReaderType.QR_ANDROID) throw new BadRequestException('Kode aktivasi hanya untuk HP Android reader.');
+    if (reader.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
+    if (!targetReaderKey(reader)) throw new BadRequestException('Kode aktivasi PR128 hanya untuk 4 reader produksi yang disetujui.');
+    const allowedModes = targetAllowedModes(reader);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.assertAndroidReaderActiveSlotAvailable(tx, reader.id);
+      const item = await tx.deviceReader.update({
+        where: { id: reader.id },
+        data: {
+          platform: DevicePlatform.ANDROID,
+          type: ReaderType.QR_ANDROID,
+          allowedModes,
+          provisioningTokenHash: readerCredentialDigest(token),
+          provisioningExpiresAt: expiresAt,
+          updatedById: actor.sub
+        }
+      });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'device',
+        action: 'reader.android.activation_code.created',
+        resource: 'deviceReader',
+        resourceId: item.id,
+        after: { ...this.redact(item), activationCodeReturnedOnce: true, activationCodeExpiresAt: expiresAt, targetModes: allowedModes } as Prisma.InputJsonValue
+      });
+      return item;
+    });
+    return {
+      item: this.redact(updated),
+      provisionToken: token,
+      provisioningQr: `schoolhub:reader-provision:v1:${token}`,
+      expiresAt,
+      message: 'Kode aktivasi hanya tampil sekali. Input ke APK resmi, jangan screenshot atau bagikan.'
+    };
+  }
+
   async startAndroidProvision(payload: AndroidProvisionStartDto, actor: Actor) {
     const token = generateProvisionToken();
     const expiresAt = new Date(Date.now() + clampProvisionMinutes(payload.expiresInMinutes) * 60_000);
@@ -317,6 +385,10 @@ export class DeviceReaderService {
     const now = new Date();
     if (reader.provisioningExpiresAt && reader.provisioningExpiresAt <= now) throw new ForbiddenException('Token provisioning sudah kedaluwarsa.');
     if (reader.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
+    if (reader.type !== ReaderType.QR_ANDROID) throw new BadRequestException('Token provisioning tidak cocok untuk HP Android reader.');
+    const provisionedDeviceId = stableProvisionedDeviceId(reader, deviceId);
+    const provisionedName = targetReaderKey(reader) ? reader.name : payload.deviceName || reader.name;
+    const allowedModes = targetAllowedModes(reader);
     const secret = this.signatures?.generateReaderSecret() ?? `shrsec_${randomBytes(32).toString('base64url')}`;
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
     const tokenHashes = readerCredentialDigestCandidates(provisionToken);
@@ -331,8 +403,8 @@ export class DeviceReaderService {
             OR: [{ provisioningExpiresAt: null }, { provisioningExpiresAt: { gt: now } }]
           },
           data: {
-            deviceId,
-            name: payload.deviceName || reader.name,
+            deviceId: provisionedDeviceId,
+            name: provisionedName,
             status: DeviceReaderStatus.ACTIVE,
             readerSecretCiphertext: encrypted,
             readerSecretKeyVersion: { increment: 1 },
@@ -340,7 +412,7 @@ export class DeviceReaderService {
             appVersion: payload.appVersion,
             appVersionCode: payload.appVersionCode,
             platform: DevicePlatform.ANDROID,
-            allowedModes: defaultModes(ReaderType.QR_ANDROID),
+            allowedModes,
             provisionedAt: now,
             provisioningTokenHash: null,
             provisioningExpiresAt: null,

@@ -3,7 +3,7 @@
 ## Tahap 1 — Beta 1 kelas
 
 1. Generate QR credential untuk 1 kelas pilot.
-2. Provision maksimal 2 HP Scanner fleksibel (`GERBANG` + `MUSHOLA`).
+2. Provision maksimal 4 HP reader produksi: 2 `CHECK_ONLY` untuk verifikasi/koneksi dan 2 `GERBANG` + `MUSHOLA` untuk controlled UAT.
 3. Uji kedua HP sama-sama di Mode Gerbang untuk datang/pulang.
 4. Uji kedua HP sama-sama di Mode Mushola untuk Dhuha/Dzuhur/Ashar.
 5. Cek audit, `GateLog`, `PrayerAttendanceLog`, dan `ReconciliationFlag`.
