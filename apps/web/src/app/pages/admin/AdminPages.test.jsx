@@ -142,12 +142,14 @@ describe('HP Scanner Android operator UI', () => {
 
     render(<DevicesPage notify={vi.fn()} />);
 
-    expect(await screen.findByText('4 HP reader terkontrol')).toBeInTheDocument();
+    expect(await screen.findByText('Aktivasi Android Reader')).toBeInTheDocument();
     expect(screen.getAllByText('READER_DEV_TEST_01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('READER_IDENTITY_01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('READER_GATE_PRAYER_01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('READER_GATE_PRAYER_02').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Dua HP khusus CHECK_ONLY/i)).toBeInTheDocument();
+    expect(screen.getByText(/API key dan signing secret tidak ditampilkan di web/i)).toBeInTheDocument();
+    expect(screen.queryByText('Alat Lama')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tambah Alat Pembaca')).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/HP Guru|HP Siswa|HP Staff|HP Kepala|Scanner Guru|Scanner Siswa/i);
   });
 
@@ -160,9 +162,9 @@ describe('HP Scanner Android operator UI', () => {
             id: 'reader-monitor-1',
             type: 'QR_ANDROID',
             status: 'ACTIVE',
-            deviceId: 'android-1',
-            name: 'HP Scanner 1',
-            locationName: 'Fleksibel',
+            deviceId: 'READER_GATE_PRAYER_01',
+            name: 'READER_GATE_PRAYER_01',
+            locationName: 'PR127 Gate Prayer 01',
             allowedModes: ['GERBANG', 'MUSHOLA'],
             currentMode: 'MUSHOLA',
             monitoringStatus: 'OFFLINE',
@@ -189,7 +191,7 @@ describe('HP Scanner Android operator UI', () => {
     expect(row).toBeTruthy();
     expect(within(row).getByText('Offline')).toBeInTheDocument();
     expect(within(row).getByText('5')).toBeInTheDocument();
-    expect(within(row).getByText('Mushola')).toBeInTheDocument();
+    expect(within(row).getByText('Gerbang & Mushola')).toBeInTheDocument();
     expect(within(row).getByText('1.2.3 (7)')).toBeInTheDocument();
     expect(within(row).getByText('18%')).toBeInTheDocument();
     expect(within(row).getByText('OFFLINE')).toBeInTheDocument();
@@ -233,17 +235,17 @@ describe('HP Scanner Android operator UI', () => {
 
     render(<DevicesPage notify={notify} />);
 
-    expect(await screen.findByText('Cek Identitas')).toBeInTheDocument();
+    expect((await screen.findAllByText('Cek Identitas')).length).toBeGreaterThan(0);
     fireEvent.click(await screen.findByRole('button', { name: /Buat Kode Aktivasi/i }));
-    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP mapping READER_DEV_TEST_01, lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Buka aplikasi SIAB2 Reader di HP untuk READER_DEV_TEST_01.')).toBeInTheDocument();
     expect(screen.getByText('shrp_activationCodeOnlyForThisFlow')).toBeInTheDocument();
     const firstProvisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/reader-dev/android/provision-code'));
     expect(JSON.parse(String(firstProvisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /READER_GATE_PRAYER_01.*Gerbang\/Mushola controlled UAT/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Gerbang\/Mushola 01.*READER_GATE_PRAYER_01/i }));
     fireEvent.click(screen.getByRole('button', { name: /Buat Kode Aktivasi/i }));
-    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Install aplikasi SIAB2 Reader di HP mapping READER_GATE_PRAYER_01, lalu masukkan kode aktivasi.')).toBeInTheDocument();
+    expect(await screen.findByText((_content, node) => node?.tagName === 'LI' && node.textContent === 'Buka aplikasi SIAB2 Reader di HP untuk READER_GATE_PRAYER_01.')).toBeInTheDocument();
     const provisionCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/android/provision-code'));
     expect(JSON.parse(String(provisionCalls.at(-1)?.[1]?.body))).not.toHaveProperty('allowedModes');
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
@@ -252,9 +254,10 @@ describe('HP Scanner Android operator UI', () => {
   it('shows safe secret copy and does not offer Aktifkan lagi for pending unprovisioned readers', async () => {
     const notify = vi.fn();
     const readers = [
-      { id: 'pending-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: null, name: 'HP Scanner 1 Pending', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'] },
-      { id: 'active-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'android-active', name: 'HP Scanner 1 Aktif', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'GERBANG' },
-      { id: 'inactive-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'android-inactive', name: 'HP Scanner 2 Nonaktif', locationName: 'Fleksibel', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'MUSHOLA' }
+      { id: 'pending-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: null, name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: ['CHECK_ONLY'] },
+      { id: 'active-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_GATE_PRAYER_01', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'GERBANG' },
+      { id: 'inactive-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'READER_GATE_PRAYER_02', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: ['GERBANG', 'MUSHOLA'], lastUsedMode: 'MUSHOLA' },
+      { id: 'legacy-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'legacy-android', name: 'Legacy Android', locationName: 'Legacy', allowedModes: ['GERBANG', 'MUSHOLA'] }
     ];
     const fetchMock = vi.fn(async (input) => {
       const url = String(input);
@@ -267,10 +270,12 @@ describe('HP Scanner Android operator UI', () => {
 
     render(<DevicesPage notify={notify} />);
 
-    expect(await screen.findByText('Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.')).toBeInTheDocument();
-    const pendingRow = screen.getByText('HP Scanner 1 Pending').closest('tr');
-    const activeRow = screen.getByText('HP Scanner 1 Aktif').closest('tr');
-    const inactiveRow = screen.getByText('HP Scanner 2 Nonaktif').closest('tr');
+    expect(await screen.findByText(/API key dan signing secret tidak ditampilkan di web/i)).toBeInTheDocument();
+    const readerListCard = screen.getByText('Daftar 4 Reader Android Resmi').closest('.card');
+    const pendingRow = within(readerListCard).getByText('READER_DEV_TEST_01').closest('tr');
+    const activeRow = within(readerListCard).getByText('READER_GATE_PRAYER_01').closest('tr');
+    const inactiveRow = within(readerListCard).getByText('READER_GATE_PRAYER_02').closest('tr');
+    expect(screen.queryByText('Legacy Android')).not.toBeInTheDocument();
 
     expect(within(pendingRow).getByText('Menunggu aktivasi HP')).toBeInTheDocument();
     expect(within(pendingRow).queryByRole('button', { name: 'Aktifkan lagi' })).not.toBeInTheDocument();
