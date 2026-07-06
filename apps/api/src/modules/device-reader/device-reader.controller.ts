@@ -8,7 +8,7 @@ import { RolesGuard } from '../../common/roles.guard';
 import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
+import { AndroidProvisionCodeDto, AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
 import { DeviceReaderService } from './device-reader.service';
 
 function pagination(page?: string, limit?: string) {
@@ -74,6 +74,12 @@ export class DeviceReaderAdminController {
   @Capabilities('devices.manage')
   startAndroidProvision(@Body() body: AndroidProvisionStartDto, @CurrentUser() user: { sub: string; role: Role }) {
     return this.readerService.startAndroidProvision(body, user);
+  }
+
+  @Post(':id/android/provision-code')
+  @Capabilities('devices.manage')
+  issueAndroidProvisionCode(@Param('id') id: string, @Body() body: AndroidProvisionCodeDto, @CurrentUser() user: { sub: string; role: Role }) {
+    return this.readerService.issueAndroidProvisionCode(id, body, user);
   }
 
   @Post(':id/rotate-secret')

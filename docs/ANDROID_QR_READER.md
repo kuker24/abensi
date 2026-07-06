@@ -66,21 +66,36 @@ apps/android-reader/app/build/outputs/apk/debug
 
 ## Provisioning perangkat
 
+PR128 menetapkan maksimal 4 HP reader produksi aktif:
+
+| Reader | Fungsi | Mode APK |
+|---|---|---|
+| `READER_DEV_TEST_01` | Uji koneksi/developer | `CHECK_ONLY` |
+| `READER_IDENTITY_01` | Verifikasi identitas | `CHECK_ONLY` |
+| `READER_GATE_PRAYER_01` | Gerbang/mushola UAT | `GERBANG`, `MUSHOLA` |
+| `READER_GATE_PRAYER_02` | Gerbang/mushola backup | `GERBANG`, `MUSHOLA` |
+
+SOP setup operator:
+
 1. Admin buka web `/admin/devices`.
-2. Pilih tab **Aktivasi HP Scanner**.
-3. Pilih **HP Scanner 1** atau **HP Scanner 2**; keduanya otomatis mendapat Mode Gerbang dan Mode Mushola.
-4. Klik **Buat Kode Aktivasi**.
-5. Buka APK di HP.
-6. Isi server URL.
-7. Tempel kode aktivasi dari admin.
-8. APK memanggil:
+2. Pilih reader target di daftar **Alat Pembaca**.
+3. Klik **Kode Aktivasi** pada reader target.
+4. Kode aktivasi tampil sekali dan kedaluwarsa singkat; jangan screenshot, share ke chat, log, tiket, atau artifact.
+5. Operator buka APK resmi di HP target.
+6. Pastikan waktu HP otomatis/sinkron, internet stabil, dan izin kamera aktif.
+7. Isi server URL production.
+8. Tempel kode aktivasi langsung di APK.
+9. APK memanggil:
 
 ```http
 POST /api/v1/device-readers/android/provision/complete
 ```
 
-9. Server mengembalikan `deviceId`, `readerSecret`, dan daftar mode sekali saja.
-10. APK menyimpan secret di encrypted storage/Android Keystore.
+10. Server mengembalikan `deviceId`, `readerSecret`, dan daftar mode sekali saja.
+11. APK menyimpan secret di encrypted storage/Android Keystore.
+12. Admin cek `lastSeenAt`/heartbeat reader; lanjut controlled live UAT hanya setelah ada approval terpisah.
+
+Catatan keamanan: activation code adalah one-time use dan short-lived. API key/signing secret mentah tidak ditempel ke HP dan tidak boleh dicatat di log/operator chat.
 
 ## Cara scan untuk operator awam
 
@@ -94,13 +109,13 @@ POST /api/v1/device-readers/android/provision/complete
 
 Scanner berjalan terus-menerus. Setelah satu siswa hijau, siswa berikutnya bisa langsung scan tanpa keluar masuk menu.
 
-## Mode fleksibel 2 HP scanner
+## Mode fleksibel 4 HP scanner
 
-APK mendukung penggunaan seperti kiosk fleksibel:
+APK mendukung penggunaan seperti kiosk terkontrol:
 
-- Maksimal 2 HP scanner aktif di server.
-- Kedua HP dapat sama-sama memilih **Mode Gerbang** saat pagi/pulang.
-- Kedua HP dapat sama-sama memilih **Mode Mushola** saat jadwal sholat.
+- Maksimal 4 HP scanner aktif di server.
+- 2 HP `CHECK_ONLY` hanya untuk uji koneksi/verifikasi identitas tanpa mutasi absensi.
+- 2 HP `GERBANG,MUSHOLA` dapat memilih **Mode Gerbang** saat pagi/pulang atau **Mode Mushola** saat jadwal sholat.
 - Layar tetap menyala saat scanner aktif.
 - Kamera tetap aktif terus selama halaman scanner dibuka.
 - Tombol **Ubah Mode** menutup scanner agar operator memilih mode dari layar utama.

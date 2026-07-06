@@ -155,13 +155,13 @@ Catatan:
 1. Buka web admin.
 2. Masuk ke `/admin/devices`.
 3. Buka tab **Aktivasi HP Scanner**.
-4. Pilih **HP Scanner 1** atau **HP Scanner 2**, lalu buat kode aktivasi.
-5. Buka APK di HP.
-6. Isi server URL.
-7. Tempel kode aktivasi dari admin.
-8. Mulai uji **Scan Gerbang** dan **Scan Mushola** sesuai kebutuhan operasional.
+4. Pilih salah satu dari 4 reader target (`READER_DEV_TEST_01`, `READER_IDENTITY_01`, `READER_GATE_PRAYER_01`, `READER_GATE_PRAYER_02`), lalu buat kode aktivasi.
+5. Buka APK di HP sesuai mapping.
+6. Isi server URL production.
+7. Tempel kode aktivasi dari admin; jangan screenshot/share ke chat/log.
+8. Pastikan status heartbeat/seen muncul sebelum live scan.
 
-Kedua HP scanner bersifat fleksibel: saat pagi/pulang keduanya bisa dipakai Mode Gerbang, dan saat sholat keduanya bisa dipakai Mode Mushola.
+Dua HP pertama hanya `CHECK_ONLY` untuk uji koneksi/verifikasi identitas. Dua HP `READER_GATE_PRAYER_*` dapat dipakai Mode Gerbang/Mushola hanya setelah approval controlled UAT terpisah.
 
 ## Troubleshooting Singkat
 

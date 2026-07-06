@@ -121,6 +121,14 @@ export class AndroidProvisionStartDto {
   expiresInMinutes?: number;
 }
 
+export class AndroidProvisionCodeDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  expiresInMinutes?: number;
+}
+
 export class AndroidProvisionCompleteDto {
   @IsString()
   provisionToken!: string;
