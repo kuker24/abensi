@@ -893,11 +893,11 @@ export function SchedulePage({ notify }) {
 }
 export function DevicesPage({ notify }) {
   const [tab, setTab] = useState('android');
-  const options = [['android', 'Aktivasi HP Scanner'], ['qr', 'Cetak Kartu'], ['apk', 'APK Update Center'], ['version', 'Versi Manual'], ['cards', 'Kartu RFID'], ['readers', 'Alat Lama'], ['scan', 'Input Manual Cadangan']];
+  const options = [['android', 'Aktivasi 4 HP Reader'], ['qr', 'Cetak Kartu'], ['apk', 'APK Update Center'], ['version', 'Versi Manual'], ['cards', 'Kartu RFID'], ['scan', 'Input Manual Cadangan']];
   const pageCopy = tab === 'qr'
     ? { title: 'Cetak Kartu SIAB2', sub: 'Pilih kelas, sistem melengkapi QR resmi, lalu cetak kartu siap pakai.' }
-    : { title: 'HP Scanner & Kartu', sub: 'Kelola 4 HP reader sekolah sesuai mapping CHECK_ONLY dan GERBANG/MUSHOLA.' };
-  return <div className="content"><PageHead eyebrow="PERANGKAT ABSENSI" title={pageCopy.title} sub={pageCopy.sub} /><TabBar value={tab} onChange={setTab} options={options} />{tab === 'android' && <AndroidReaderPanel notify={notify} />}{tab === 'qr' && <QrCredentialPanel notify={notify} />}{tab === 'apk' && <AndroidApkUpdatePanel notify={notify} />}{tab === 'version' && <MobileVersionPanel notify={notify} />}{tab === 'cards' && <CardsPanel notify={notify} />}{tab === 'readers' && <ReadersPanel notify={notify} />}{tab === 'scan' && <ManualQrScanPanel notify={notify} />}</div>;
+    : { title: 'Aktivasi 4 HP Reader', sub: 'Fokus ke 4 reader produksi resmi; alat lama disembunyikan agar operator tidak salah pilih.' };
+  return <div className="content"><PageHead eyebrow="PERANGKAT ABSENSI" title={pageCopy.title} sub={pageCopy.sub} /><TabBar value={tab} onChange={setTab} options={options} />{tab === 'android' && <AndroidReaderPanel notify={notify} />}{tab === 'qr' && <QrCredentialPanel notify={notify} />}{tab === 'apk' && <AndroidApkUpdatePanel notify={notify} />}{tab === 'version' && <MobileVersionPanel notify={notify} />}{tab === 'cards' && <CardsPanel notify={notify} />}{tab === 'scan' && <ManualQrScanPanel notify={notify} />}</div>;
 }
 
 export function AndroidApkUpdatePage({ notify }) {
@@ -995,11 +995,16 @@ const CHECK_ONLY_ANDROID_MODES = ['CHECK_ONLY'];
 const GATE_PRAYER_ANDROID_MODES = ['GERBANG', 'MUSHOLA'];
 
 const ANDROID_READER_PRESETS = [
-  { key: 'dev-test', icon: <Smartphone size={26} />, title: 'READER_DEV_TEST_01', desc: 'Developer test only. Mode CHECK_ONLY.', name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: CHECK_ONLY_ANDROID_MODES },
-  { key: 'identity', icon: <Smartphone size={26} />, title: 'READER_IDENTITY_01', desc: 'Verifikasi identitas only. Mode CHECK_ONLY.', name: 'READER_IDENTITY_01', locationName: 'PR127 Identity Check', allowedModes: CHECK_ONLY_ANDROID_MODES },
-  { key: 'gate-prayer-1', icon: <Smartphone size={26} />, title: 'READER_GATE_PRAYER_01', desc: 'Gerbang/Mushola controlled UAT.', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: GATE_PRAYER_ANDROID_MODES },
-  { key: 'gate-prayer-2', icon: <Smartphone size={26} />, title: 'READER_GATE_PRAYER_02', desc: 'Gerbang/Mushola backup.', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: GATE_PRAYER_ANDROID_MODES }
+  { key: 'dev-test', icon: <Smartphone size={26} />, title: 'READER_DEV_TEST_01', shortTitle: 'Dev Test', desc: 'Cek koneksi APK; tidak mencatat absensi.', name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: CHECK_ONLY_ANDROID_MODES, tone: 'safe' },
+  { key: 'identity', icon: <ShieldCheck size={26} />, title: 'READER_IDENTITY_01', shortTitle: 'Identitas', desc: 'Verifikasi kartu/identitas; tanpa absensi.', name: 'READER_IDENTITY_01', locationName: 'PR127 Identity Check', allowedModes: CHECK_ONLY_ANDROID_MODES, tone: 'safe' },
+  { key: 'gate-prayer-1', icon: <DoorOpen size={26} />, title: 'READER_GATE_PRAYER_01', shortTitle: 'Gerbang/Mushola 01', desc: 'Reader live UAT utama setelah approval.', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' },
+  { key: 'gate-prayer-2', icon: <Building2 size={26} />, title: 'READER_GATE_PRAYER_02', shortTitle: 'Gerbang/Mushola 02', desc: 'Reader live UAT kedua setelah approval.', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' }
 ];
+
+function presetForReader(reader) {
+  const key = String(reader?.deviceId || reader?.name || '').trim();
+  return ANDROID_READER_PRESETS.find((preset) => preset.name === key) || null;
+}
 
 function androidModeLabel(mode) {
   return ANDROID_MODE_LABELS[mode] || statusLabel(mode);
@@ -1079,7 +1084,7 @@ function AndroidReaderPanel({ notify }) {
   const [result, setResult] = useState(null);
   const [selectedPreset, setSelectedPreset] = useState('dev-test');
   const [now, setNow] = useState(Date.now());
-  const [form, set, reset] = useForm({ name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: CHECK_ONLY_ANDROID_MODES, expiresInMinutes: 15, revokeReason: 'HP scanner dicabut oleh admin.' });
+  const [form, set, reset] = useForm({ name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: CHECK_ONLY_ANDROID_MODES, expiresInMinutes: 15, revokeReason: 'HP reader dicabut oleh admin.' });
 
   useEffect(() => {
     if (!result?.expiresAt) return;
@@ -1089,7 +1094,7 @@ function AndroidReaderPanel({ notify }) {
 
   function applyPreset(preset) {
     setSelectedPreset(preset.key);
-    reset({ name: preset.name, locationName: preset.locationName, allowedModes: preset.allowedModes, expiresInMinutes: 15, revokeReason: 'HP scanner dicabut oleh admin.' });
+    reset({ name: preset.name, locationName: preset.locationName, allowedModes: preset.allowedModes, expiresInMinutes: 15, revokeReason: 'HP reader dicabut oleh admin.' });
     setResult(null);
   }
 
@@ -1109,12 +1114,14 @@ function AndroidReaderPanel({ notify }) {
   }
 
   async function revoke(row) {
-    if (!await riskConfirm('Cabut HP scanner ini? HP tersebut tidak bisa scan lagi sampai diaktivasi ulang.')) return;
+    if (!await riskConfirm('Cabut HP reader ini? HP tersebut tidak bisa scan lagi sampai diaktivasi ulang.')) return;
     await apiFetch(`/device-readers/${row.id}/revoke`, { method: 'POST', body: JSON.stringify({ reason: form.revokeReason }) });
-    readers.refresh(); notify('HP scanner dicabut.');
+    readers.refresh(); notify('HP reader dicabut.');
   }
 
   async function replacePendingProvision(row) {
+    const preset = presetForReader(row);
+    if (preset) applyPreset(preset);
     if (!await riskConfirm('Buat kode aktivasi baru untuk HP target ini? Kode lama otomatis tidak dipakai setelah kode baru dibuat.')) return;
     const data = await apiFetch(`/device-readers/${row.id}/android/provision-code`, { method: 'POST', body: JSON.stringify({ expiresInMinutes: Number(form.expiresInMinutes) || 15 }) });
     setResult(data); readers.refresh(); notify('Kode aktivasi baru dibuat. Salin kode ke aplikasi HP.');
@@ -1122,21 +1129,24 @@ function AndroidReaderPanel({ notify }) {
 
   async function status(row, value) {
     await apiFetch(`/devices/readers/${row.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: value }) });
-    readers.refresh(); notify(value === 'ACTIVE' ? 'HP scanner diaktifkan lagi.' : 'HP scanner dinonaktifkan.');
+    readers.refresh(); notify(value === 'ACTIVE' ? 'HP reader diaktifkan lagi.' : 'HP reader dinonaktifkan.');
   }
 
   const activationCode = activationCodeOf(result);
   const remainingMs = result?.expiresAt ? new Date(result.expiresAt).getTime() - now : 0;
   const expired = Boolean(result?.expiresAt && remainingMs <= 0);
   const androidItems = itemsOf(readers.data).filter((row) => row.type === 'QR_ANDROID');
+  const targetAndroidItems = androidItems.filter((row) => presetForReader(row));
   const activeAndroidCount = androidItems.filter((row) => row.status === 'ACTIVE').length;
-  const onlineAndroidCount = androidItems.filter((row) => androidMonitorStatus(row) === 'ONLINE').length;
-  const offlineAndroidCount = androidItems.filter((row) => androidMonitorStatus(row) === 'OFFLINE').length;
-  const pendingQueueTotal = androidItems.reduce((sum, row) => sum + (Number(row.pendingQueueCount) || 0), 0);
+  const targetActiveCount = targetAndroidItems.filter((row) => row.status === 'ACTIVE').length;
+  const onlineAndroidCount = targetAndroidItems.filter((row) => androidMonitorStatus(row) === 'ONLINE').length;
+  const offlineAndroidCount = targetAndroidItems.filter((row) => androidMonitorStatus(row) === 'OFFLINE').length;
+  const pendingQueueTotal = targetAndroidItems.reduce((sum, row) => sum + (Number(row.pendingQueueCount) || 0), 0);
   const MAX_ACTIVE_ANDROID_READERS = 4;
   const limitReached = activeAndroidCount > MAX_ACTIVE_ANDROID_READERS;
-  const selectedScannerName = ANDROID_READER_PRESETS.find((preset) => preset.key === selectedPreset)?.title || form.name || 'HP Scanner';
-  const androidRows = { ...readers, data: { ...(readers.data || {}), items: androidItems } };
+  const selectedScannerName = ANDROID_READER_PRESETS.find((preset) => preset.key === selectedPreset)?.title || form.name || 'Reader target';
+  const selectedTarget = androidItems.find((row) => row.deviceId === form.name || row.name === form.name);
+  const targetRows = { ...readers, data: { ...(readers.data || {}), items: targetAndroidItems } };
 
   function renderAndroidReaderActions(r) {
     if (r.status === 'REVOKED') return <span className="muted">Sudah dicabut</span>;
@@ -1144,7 +1154,70 @@ function AndroidReaderPanel({ notify }) {
     return <div className="row"><Btn size="sm" onClick={() => replacePendingProvision(r)}><QrCode size={12} /> Kode Aktivasi</Btn><Btn size="sm" onClick={() => status(r, r.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')}>{r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan lagi'}</Btn><Btn size="sm" variant="danger" onClick={() => revoke(r)}>Cabut</Btn></div>;
   }
 
-  return <div className="android-activation-page"><div className="activation-hero"><div><Pill tone="ok"><Smartphone size={13} /> Mode fleksibel</Pill><h2>4 HP reader terkontrol</h2><p>Dua HP khusus CHECK_ONLY untuk uji koneksi/verifikasi identitas. Dua HP GERBANG/MUSHOLA dipakai untuk controlled UAT setelah approval terpisah.</p></div><div className="activation-safe"><ShieldCheck size={20} /><span>Kunci rahasia tidak ditampilkan di web; setelah aktivasi disimpan aman di HP.</span></div></div><div className="wizard-steps"><div className="wizard-step active"><b>1</b><span>Pilih HP fisik</span></div><div className="wizard-step active"><b>2</b><span>Buat kode aktivasi</span></div><div className={`wizard-step ${activationCode ? 'active' : ''}`}><b>3</b><span>Tempel kode di aplikasi HP</span></div></div><div className="grid activation-grid"><Card title={`1. Pilih HP Scanner (${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS} aktif)`} sub={limitReached ? 'Batas 4 HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Pilih salah satu dari 4 reader target produksi. Mode dikunci oleh server sesuai mapping.'}><div className="preset-grid">{ANDROID_READER_PRESETS.map((preset) => <button key={preset.key} type="button" className={`preset-card ${selectedPreset === preset.key ? 'selected' : ''}`} onClick={() => applyPreset(preset)}><span className="preset-icon">{preset.icon}</span><b>{preset.title}</b><small>{preset.desc}</small></button>)}</div><div className="simple-summary scanner-summary"><div><span>Nama HP</span><b>{form.name}</b></div><div><span>Lokasi</span><b>{form.locationName}</b></div><div><span>Mode tersedia</span><b>{androidModesText(form.allowedModes)}</b></div></div></Card><Card title="2. Buat kode aktivasi" sub="Kode ini berlaku sebentar dan hanya untuk mengaktifkan satu HP scanner."><div className="activation-form-simple"><Field label="Reader target"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} disabled /></Field><Field label="Label lokasi"><TextInput value={form.locationName} onChange={(e) => set('locationName', e.target.value)} disabled /></Field><Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field><Btn variant="primary" type="button" disabled={limitReached} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn></div><div className="security-note"><AlertTriangle size={16} /><span>Jangan kirim kode ini ke grup umum. Kode hanya untuk mengaktifkan 1 HP scanner.</span></div></Card>{activationCode && <Card title="3. Masukkan kode di aplikasi HP" sub="Salin kode ini, lalu tempel di kolom Kode Aktivasi dari Admin pada aplikasi Android."><div className={`activation-code-card ${expired ? 'expired' : ''}`}><div className="activation-code-label"><Clock size={15} /> {formatRemaining(remainingMs)}</div><div className="activation-code-value">{activationCode}</div><div className="copy-actions"><Btn type="button" variant="primary" onClick={copyActivationCode} disabled={expired}><Copy size={15} /> Salin Kode</Btn><Btn type="button" onClick={startProvision}><RefreshCw size={15} /> Buat Kode Baru</Btn></div></div><ol className="activation-instructions"><li>Install aplikasi <b>{BRAND.androidReaderLabel}</b> di HP mapping {selectedScannerName}, lalu masukkan kode aktivasi.</li><li>Isi alamat web production jika diminta.</li><li>Tempel kode ini ke kolom <b>Kode Aktivasi dari Admin</b>; jangan screenshot/share.</li><li>Tekan <b>Aktifkan HP Ini</b>. Setelah aktif, cek heartbeat/seen sebelum live scan.</li></ol></Card>}</div><div className="activation-help-grid"><Card title="Mode Gerbang"><p>Untuk datang/pulang siswa, guru, staf, dan kepala. Scan pertama hari itu menjadi Datang, scan berikutnya menjadi Pulang.</p></Card><Card title="Mode Mushola"><p>Untuk scan sholat/ibadah siswa. Non-siswa ditolak aman.</p></Card><Card title="4 HP reader sekolah"><p>CHECK_ONLY tidak mencatat absensi. Hanya reader GERBANG/MUSHOLA yang boleh dipakai untuk live scan setelah approval UAT terpisah.</p></Card></div><div className="grid g-4 reader-monitor-summary"><StatCardPremium icon={<Wifi size={18} />} label="HP online" value={`${onlineAndroidCount}/${activeAndroidCount}`} sub="Heartbeat ±2 menit terakhir" tone={onlineAndroidCount === activeAndroidCount && activeAndroidCount > 0 ? 'ok' : 'warn'} /><StatCardPremium icon={<AlertTriangle size={18} />} label="HP offline" value={offlineAndroidCount} sub="Perlu cek internet/aplikasi" tone={offlineAndroidCount > 0 ? 'bad' : 'ok'} /><StatCardPremium icon={<ListChecks size={18} />} label="Antrean offline" value={pendingQueueTotal} sub="Scan tersimpan di HP" tone={pendingQueueTotal > 0 ? 'warn' : 'ok'} /></div><Card title={`HP Scanner Aktif: ${activeAndroidCount} / ${MAX_ACTIVE_ANDROID_READERS}`} sub={limitReached ? 'Batas 4 HP aktif sudah penuh. Cabut salah satu HP dulu untuk mengganti perangkat.' : 'Pantau online/offline, antrean offline, heartbeat, versi app, baterai, jaringan, dan mode terakhir tiap HP.'}><div className="android-reader-table"><AsyncTable state={androidRows} empty="Belum ada HP scanner Android" columns={[{ header: 'Nama HP', render: (r) => r.name || 'HP Scanner' }, { header: 'Status HP', render: (r) => <div className="reader-monitor-cell"><Pill tone={androidMonitorTone(androidMonitorStatus(r))}>{androidMonitorLabel(androidMonitorStatus(r))}</Pill><AndroidReaderStatusBadge reader={r} /></div> }, { header: 'Antrean', render: (r) => <span className={(r.pendingQueueCount || 0) > 0 ? 'reader-queue-warn' : ''}>{r.pendingQueueCount ?? 0}</span> }, { header: 'Mode terakhir', render: (r) => androidLastUsedModeText(r.currentMode || r.lastUsedMode) }, { header: 'Heartbeat / Flush', render: (r) => <div className="reader-monitor-cell"><span>{formatDateTime(r.lastHeartbeatAt || r.lastSeenAt)}</span><small>Flush: {formatDateTime(r.lastQueueFlushAt)}</small></div> }, { header: 'Versi', render: (r) => r.appVersion ? `${r.appVersion}${r.appVersionCode ? ` (${r.appVersionCode})` : ''}` : '—' }, { header: 'Baterai/Jaringan', render: (r) => <div className="reader-monitor-cell"><span>{r.batteryLevel == null ? 'Baterai —' : `${r.batteryLevel}%`}</span><small>{r.networkStatus || 'Jaringan —'}</small></div> }, { header: 'Peringatan', render: (r) => androidWarningText(r) || 'Aman' }]} onRow={(r) => renderAndroidReaderActions(r)} /></div></Card></div>;
+  return <div className="android-activation-page">
+    <div className="activation-hero activation-hero-clean">
+      <div>
+        <Pill tone="ok"><ShieldCheck size={13} /> 4 reader resmi</Pill>
+        <h2>Aktivasi Android Reader</h2>
+        <p>Pilih salah satu dari 4 reader produksi. Operator cukup membuat <b>Kode Aktivasi</b>, lalu memasukkannya di APK resmi. API key dan signing secret tidak ditampilkan di web.</p>
+      </div>
+      <div className="activation-safe"><ShieldCheck size={20} /><span>Live scan tetap dikunci SOP: tunggu heartbeat/seen semua HP dan approval UAT terpisah.</span></div>
+    </div>
+
+    <div className="grid g-4 reader-monitor-summary">
+      <StatCardPremium icon={<Smartphone size={18} />} label="Target aktif" value={`${targetActiveCount}/${MAX_ACTIVE_ANDROID_READERS}`} sub="Hanya 4 mapping resmi" tone={targetActiveCount === MAX_ACTIVE_ANDROID_READERS ? 'ok' : 'warn'} />
+      <StatCardPremium icon={<Wifi size={18} />} label="HP online" value={`${onlineAndroidCount}/${targetActiveCount}`} sub="Heartbeat ±2 menit terakhir" tone={onlineAndroidCount === targetActiveCount && targetActiveCount > 0 ? 'ok' : 'warn'} />
+      <StatCardPremium icon={<AlertTriangle size={18} />} label="HP offline" value={offlineAndroidCount} sub="Perlu cek internet/aplikasi" tone={offlineAndroidCount > 0 ? 'bad' : 'ok'} />
+      <StatCardPremium icon={<ListChecks size={18} />} label="Antrean offline" value={pendingQueueTotal} sub="Scan tersimpan di HP" tone={pendingQueueTotal > 0 ? 'warn' : 'ok'} />
+    </div>
+
+    <div className="wizard-steps activation-steps-clean">
+      <div className="wizard-step active"><b>1</b><span>Pilih reader resmi</span></div>
+      <div className="wizard-step active"><b>2</b><span>Buat kode singkat</span></div>
+      <div className={`wizard-step ${activationCode ? 'active' : ''}`}><b>3</b><span>Tempel di APK</span></div>
+      <div className="wizard-step"><b>4</b><span>Cek heartbeat</span></div>
+    </div>
+
+    <div className="grid activation-grid-clean">
+      <Card title="1. Pilih reader target" sub="Tidak ada pilihan bebas. Mapping mode dikunci oleh server agar operator tidak salah memilih HP.">
+        <div className="target-reader-grid">
+          {ANDROID_READER_PRESETS.map((preset) => {
+            const row = androidItems.find((item) => item.deviceId === preset.name || item.name === preset.name);
+            const monitor = row ? androidMonitorStatus(row) : 'PENDING';
+            return <button key={preset.key} type="button" className={`target-reader-card ${preset.tone} ${selectedPreset === preset.key ? 'selected' : ''}`} onClick={() => applyPreset(preset)}>
+              <span className="preset-icon">{preset.icon}</span>
+              <span className="target-reader-copy"><b>{preset.shortTitle}</b><code>{preset.title}</code><small>{preset.desc}</small></span>
+              <span className="target-reader-meta"><Pill tone={androidMonitorTone(monitor)}>{row ? androidMonitorLabel(monitor) : 'Belum ada row'}</Pill><em>{androidModesText(preset.allowedModes)}</em></span>
+            </button>;
+          })}
+        </div>
+        <div className="simple-summary selected-reader-summary">
+          <div><span>Reader dipilih</span><b>{form.name}</b></div>
+          <div><span>Lokasi</span><b>{form.locationName}</b></div>
+          <div><span>Mode server</span><b>{androidModesText(form.allowedModes)}</b></div>
+          <div><span>Status row</span><b>{selectedTarget ? androidMonitorLabel(androidMonitorStatus(selectedTarget)) : 'Belum ada di database'}</b></div>
+        </div>
+      </Card>
+
+      <Card title="2. Buat kode aktivasi" sub="Kode berlaku singkat dan hanya untuk 1 HP. Tidak ada API key/signing secret yang perlu ditempel manual.">
+        <div className="activation-form-simple">
+          <Field label="Reader target"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} disabled /></Field>
+          <Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field>
+          <Btn variant="primary" type="button" disabled={limitReached || !selectedTarget} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn>
+        </div>
+        <div className="security-note"><AlertTriangle size={16} /><span>Kode hanya untuk operator yang memegang HP. Jangan screenshot/share ke grup umum.</span></div>
+      </Card>
+
+      {activationCode && <Card title="3. Masukkan kode di aplikasi HP" sub="Salin kode ini, lalu tempel di kolom Kode Aktivasi dari Admin pada aplikasi Android.">
+        <div className={`activation-code-card ${expired ? 'expired' : ''}`}><div className="activation-code-label"><Clock size={15} /> {formatRemaining(remainingMs)}</div><div className="activation-code-value">{activationCode}</div><div className="copy-actions"><Btn type="button" variant="primary" onClick={copyActivationCode} disabled={expired}><Copy size={15} /> Salin Kode</Btn><Btn type="button" onClick={startProvision}><RefreshCw size={15} /> Buat Kode Baru</Btn></div></div>
+        <ol className="activation-instructions"><li>Buka aplikasi <b>{BRAND.androidReaderLabel}</b> di HP untuk <b>{selectedScannerName}</b>.</li><li>Isi alamat web production jika diminta.</li><li>Tempel kode ke kolom <b>Kode Aktivasi dari Admin</b>; jangan screenshot/share.</li><li>Tekan <b>Aktifkan HP Ini</b>, lalu tunggu heartbeat/seen sebelum live scan.</li></ol>
+      </Card>}
+    </div>
+
+    <Card title="Daftar 4 Reader Android Resmi" sub="Tabel ini hanya menampilkan 4 reader target PR128. Panel alat lama tidak ditampilkan di halaman operator agar tidak rancu.">
+      <div className="android-reader-table target-reader-table"><AsyncTable state={targetRows} empty="4 reader target belum ditemukan di database" columns={[{ header: 'Reader', render: (r) => <div className="reader-monitor-cell"><b>{presetForReader(r)?.shortTitle || r.name || 'Reader'}</b><small>{r.deviceId || r.name || '—'}</small></div> }, { header: 'Mode', render: (r) => androidModesText(r.allowedModes) }, { header: 'Status HP', render: (r) => <div className="reader-monitor-cell"><Pill tone={androidMonitorTone(androidMonitorStatus(r))}>{androidMonitorLabel(androidMonitorStatus(r))}</Pill><AndroidReaderStatusBadge reader={r} /></div> }, { header: 'Antrean', render: (r) => <span className={(r.pendingQueueCount || 0) > 0 ? 'reader-queue-warn' : ''}>{r.pendingQueueCount ?? 0}</span> }, { header: 'Heartbeat / Flush', render: (r) => <div className="reader-monitor-cell"><span>{formatDateTime(r.lastHeartbeatAt || r.lastSeenAt)}</span><small>Flush: {formatDateTime(r.lastQueueFlushAt)}</small></div> }, { header: 'Versi', render: (r) => r.appVersion ? `${r.appVersion}${r.appVersionCode ? ` (${r.appVersionCode})` : ''}` : '—' }, { header: 'Baterai/Jaringan', render: (r) => <div className="reader-monitor-cell"><span>{r.batteryLevel == null ? 'Baterai —' : `${r.batteryLevel}%`}</span><small>{r.networkStatus || 'Jaringan —'}</small></div> }, { header: 'Peringatan', render: (r) => androidWarningText(r) || 'Aman' }]} onRow={(r) => renderAndroidReaderActions(r)} /></div>
+    </Card>
+  </div>;
 }
 
 function formatBytes(bytes) {
