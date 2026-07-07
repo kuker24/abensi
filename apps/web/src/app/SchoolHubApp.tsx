@@ -889,6 +889,7 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [backendSsoEnabled, setBackendSsoEnabled] = useState(false);
   const toastIdRef = useRef(0);
+  const authEpochRef = useRef(0);
 
   // WorkOS SSO intentionally does not create local users in the browser.
   // SSO must complete via backend token exchange/callback and /auth/me.
@@ -920,6 +921,7 @@ function App() {
   useEffect(() => { setRiskConfirmHandler(({ title, message }) => new Promise((resolve) => setConfirmDialog({ title, message, resolve }))); return () => setRiskConfirmHandler(null); }, []);
   useEffect(() => {
     const onExpired = () => {
+      authEpochRef.current += 1;
       setUser(null);
       setSessionChecked(true);
       notify('Sesi masuk habis. Silakan masuk ulang.', 'bad');
@@ -936,22 +938,23 @@ function App() {
     }
 
     let cancelled = false;
+    const requestEpoch = authEpochRef.current;
     setSessionChecked(false);
-    apiFetch<{ user: User }>('/auth/me')
+    apiFetch<{ user: User }>('/auth/me', { suppressAuthExpired: true })
       .then((response) => {
-        if (cancelled) return;
+        if (cancelled || authEpochRef.current !== requestEpoch) return;
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         setUser(response.user);
         // Keep the canonical SIAB2 login route stable for explicit re-authentication and E2E/visual checks.
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled || authEpochRef.current !== requestEpoch) return;
         localStorage.removeItem(USER_KEY);
         setUser(null);
         if (!isLoginRoutePath(window.location.pathname) && !isPublicRoutePath(window.location.pathname) && !isLegacySiab2RoutePath(window.location.pathname)) go(SIAB2_LOGIN_PATH);
       })
       .finally(() => {
-        if (!cancelled) setSessionChecked(true);
+        if (!cancelled && authEpochRef.current === requestEpoch) setSessionChecked(true);
       });
 
     return () => { cancelled = true; };
@@ -964,9 +967,12 @@ function App() {
   }, [path, user]);
   useEffect(() => { if (sessionChecked && !readStoredUser() && !isLoginRoutePath(path) && !isPublicRoutePath(path) && !isLegacySiab2RoutePath(path)) go(SIAB2_LOGIN_PATH); }, [path, sessionChecked]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
+    const loginEpoch = authEpochRef.current + 1;
+    authEpochRef.current = loginEpoch;
     try {
       localStorage.removeItem(USER_KEY);
       const response = await apiFetch<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password, expectedRole: selectedRole }) });
+      if (authEpochRef.current !== loginEpoch) return;
       const actualRoleArea = loginAreaForRole(response.user?.role);
       if (!response.user || actualRoleArea !== selectedRole) {
         try { await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }); } catch { /* best effort: hapus cookie sesi yang baru dibuat */ }
@@ -980,6 +986,7 @@ function App() {
       setUser(response.user);
       go(defaultPathFor(response.user));
     } catch (err) {
+      if (authEpochRef.current !== loginEpoch) return;
       const message = err instanceof Error ? err.message : 'Login gagal. Periksa koneksi atau kredensial Anda.';
       const friendlyMessage = message.includes('tidak sesuai pilihan peran')
         ? `Akun ini bukan akun ${loginAreaLabel(selectedRole)}. Pilih tab yang sesuai atau gunakan akun ${loginAreaLabel(selectedRole)}.`
@@ -992,6 +999,7 @@ function App() {
   }
   async function logout() {
     if (!await riskConfirm('Anda akan keluar dari sesi SIAB2. Lanjutkan?', 'Keluar dari akun')) return;
+    authEpochRef.current += 1;
     try { await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }); } catch { /* tetap keluar lokal jika server tidak bisa dihubungi */ }
     localStorage.removeItem(USER_KEY);
     setSessionChecked(true);

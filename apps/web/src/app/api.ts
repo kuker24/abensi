@@ -104,30 +104,35 @@ async function refreshAuth(): Promise<boolean> {
   return refreshPromise;
 }
 
-export async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { accept: 'application/json', ...(options.headers as Record<string, string> | undefined) };
-  if (options.body && !(options.body instanceof FormData)) headers['content-type'] = 'application/json';
-  if (isUnsafeMethod(options.method) && path !== '/auth/login' && path !== '/auth/refresh') {
+export interface ApiFetchOptions extends RequestInit {
+  suppressAuthExpired?: boolean;
+}
+
+export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  const { suppressAuthExpired = false, ...requestOptions } = options;
+  const headers: Record<string, string> = { accept: 'application/json', ...(requestOptions.headers as Record<string, string> | undefined) };
+  if (requestOptions.body && !(requestOptions.body instanceof FormData)) headers['content-type'] = 'application/json';
+  if (isUnsafeMethod(requestOptions.method) && path !== '/auth/login' && path !== '/auth/refresh') {
     const csrfToken = await ensureCsrfToken();
     if (csrfToken) headers['x-csrf-token'] = csrfToken;
   }
-  let response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+  let response = await fetch(`${API_BASE}${path}`, { ...requestOptions, headers, credentials: 'include' });
   const canRefresh = path !== '/auth/login' && path !== '/auth/refresh';
   let authExpiredNotified = false;
   if (response.status === 401 && canRefresh) {
     if (await refreshAuth()) {
-      if (isUnsafeMethod(options.method)) {
+      if (isUnsafeMethod(requestOptions.method)) {
         delete headers['x-csrf-token'];
         const csrfToken = await ensureCsrfToken();
         if (csrfToken) headers['x-csrf-token'] = csrfToken;
       }
-      response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
-    } else {
+      response = await fetch(`${API_BASE}${path}`, { ...requestOptions, headers, credentials: 'include' });
+    } else if (!suppressAuthExpired) {
       notifyAuthExpired();
       authExpiredNotified = true;
     }
   }
-  if (response.status === 401 && canRefresh && !authExpiredNotified) notifyAuthExpired();
+  if (response.status === 401 && canRefresh && !authExpiredNotified && !suppressAuthExpired) notifyAuthExpired();
   const contentType = response.headers.get('content-type') || '';
   const text = contentType.includes('application/json') ? await response.text() : '';
   const data = text ? JSON.parse(text) : null;
