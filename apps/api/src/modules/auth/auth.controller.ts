@@ -1,10 +1,10 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { extractRequestMeta } from '../../common/request-meta';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, LoginDto } from './dto.login';
+import { ChangePasswordDto, ClearLoginLockoutDto, LoginDto, LoginLockoutStatusQueryDto } from './dto.login';
 import { csrfCookieOptions, CSRF_COOKIE, generateCsrfToken } from '../../common/csrf';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -73,6 +73,26 @@ export class AuthController {
     const csrfToken = generateCsrfToken();
     response.cookie(CSRF_COOKIE, csrfToken, csrfCookieOptions());
     return { csrfToken };
+  }
+
+  @Get('admin/login-lockout')
+  @UseGuards(JwtAuthGuard)
+  loginLockoutStatus(
+    @CurrentUser() user: { sub: string; role: Role },
+    @Query() query: LoginLockoutStatusQueryDto,
+    @Req() request: Request
+  ) {
+    return this.authService.getLoginLockoutStatus(query.username, user, extractRequestMeta(request));
+  }
+
+  @Post('admin/login-lockout/clear')
+  @UseGuards(JwtAuthGuard)
+  clearLoginLockout(
+    @CurrentUser() user: { sub: string; role: Role },
+    @Body() body: ClearLoginLockoutDto,
+    @Req() request: Request
+  ) {
+    return this.authService.clearLoginLockout(body.username, body.reason, user, extractRequestMeta(request));
   }
 
   @Get('me')

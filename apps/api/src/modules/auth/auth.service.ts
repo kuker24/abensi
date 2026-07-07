@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,6 +16,8 @@ const REFRESH_TTL_MS = Number(process.env.REFRESH_TTL_MS ?? String(7 * 24 * 60 *
 
 type AttemptState = { count: number; firstFailedAt: number; lockedUntil?: number };
 type LoginArea = 'admin' | 'guru' | 'siswa';
+type LoginSecurityActor = { sub: string; role: Role };
+type LoginLimitBucket = 'account' | 'accountCurrentNetwork' | 'legacyCurrentNetwork';
 const loginAttempts = new Map<string, AttemptState>();
 
 function safeKey(username: string, ip?: string | null) {
@@ -53,6 +55,20 @@ function roleToLoginArea(role: Role): LoginArea {
   return 'admin';
 }
 
+function loginLimitKeys(username: string, ip?: string | null) {
+  return [safeKey(username, ip), accountOnlyKey(username)];
+}
+
+function loginLimitCleanupKeys(username: string, ip?: string | null) {
+  return Array.from(new Set([...loginLimitKeys(username, ip), ipOnlyKey(ip)]));
+}
+
+function bucketLabel(index: number): LoginLimitBucket {
+  if (index === 0) return 'accountCurrentNetwork';
+  if (index === 1) return 'account';
+  return 'legacyCurrentNetwork';
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -63,7 +79,7 @@ export class AuthService {
 
   async login(username: string, password: string, meta: RequestMeta = {}, expectedRole?: LoginArea) {
     const normalizedUsername = username.trim();
-    const attemptKeys = [safeKey(normalizedUsername, meta.requestIp), accountOnlyKey(normalizedUsername), ipOnlyKey(meta.requestIp)];
+    const attemptKeys = loginLimitKeys(normalizedUsername, meta.requestIp);
     const now = Date.now();
     const lockedUntil = await this.getMaxLockedUntil(attemptKeys, now);
 
@@ -214,6 +230,72 @@ export class AuthService {
     });
   }
 
+
+  async getLoginLockoutStatus(username: string, actor: LoginSecurityActor, meta: RequestMeta = {}) {
+    this.assertCanManageLoginLockouts(actor);
+    const normalizedUsername = this.normalizeLockoutUsername(username);
+    const targetUser = await this.prisma.user.findUnique({
+      where: { username: normalizedUsername },
+      select: { id: true, username: true, fullName: true, role: true, active: true }
+    });
+    const now = Date.now();
+    const buckets = await this.readLoginLimitBuckets(loginLimitCleanupKeys(normalizedUsername, meta.requestIp), now);
+    const checkedBuckets = buckets.filter((bucket) => bucket.bucket !== 'legacyCurrentNetwork');
+    const lockedUntil = Math.max(0, ...checkedBuckets.map((bucket) => bucket.lockedUntil ?? 0)) || null;
+    const failedCount = Math.max(0, ...checkedBuckets.map((bucket) => bucket.failedCount));
+    return {
+      username: normalizedUsername,
+      user: targetUser ? { id: targetUser.id, username: targetUser.username, fullName: targetUser.fullName, role: targetUser.role, active: targetUser.active } : null,
+      lockout: {
+        locked: Boolean(lockedUntil && lockedUntil > now),
+        lockedUntil: lockedUntil ? new Date(lockedUntil).toISOString() : null,
+        failedCount,
+        maxFailedAttempts: MAX_FAILED_ATTEMPTS,
+        windowMs: LOGIN_WINDOW_MS,
+        lockMs: LOGIN_LOCK_MS,
+        buckets: buckets.map((bucket) => ({
+          bucket: bucket.bucket,
+          failedCount: bucket.failedCount,
+          locked: Boolean(bucket.lockedUntil && bucket.lockedUntil > now),
+          lockedUntil: bucket.lockedUntil ? new Date(bucket.lockedUntil).toISOString() : null
+        }))
+      }
+    };
+  }
+
+  async clearLoginLockout(username: string, reason: string, actor: LoginSecurityActor, meta: RequestMeta = {}) {
+    this.assertCanManageLoginLockouts(actor);
+    const normalizedUsername = this.normalizeLockoutUsername(username);
+    const normalizedReason = reason?.trim();
+    if (!normalizedReason || normalizedReason.length < 8) throw new HttpException('Alasan minimal 8 karakter.', HttpStatus.BAD_REQUEST);
+    const before = await this.getLoginLockoutStatus(normalizedUsername, actor, meta);
+    const keys = loginLimitCleanupKeys(normalizedUsername, meta.requestIp);
+    await this.clearFailedAttempt(keys);
+    const after = await this.getLoginLockoutStatus(normalizedUsername, actor, meta);
+    await this.prisma.$transaction(async (tx) => {
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'auth',
+        action: 'auth.login_lockout.cleared',
+        resource: before.user ? 'user' : 'authSession',
+        resourceId: before.user?.id ?? normalizedUsername,
+        reason: normalizedReason,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: {
+          username: normalizedUsername,
+          targetUserId: before.user?.id ?? null,
+          targetRole: before.user?.role ?? null,
+          before: before.lockout,
+          after: after.lockout,
+          clearedBuckets: ['account', 'accountCurrentNetwork', 'legacyCurrentNetwork']
+        } as Prisma.InputJsonValue
+      });
+    });
+    return { ok: true, username: normalizedUsername, user: before.user, before: before.lockout, after: after.lockout };
+  }
+
   async changePassword(userId: string, actorRole: Role, currentPassword: string, newPassword: string, meta: RequestMeta = {}) {
     if (currentPassword === newPassword) throw new HttpException('Password baru harus berbeda.', HttpStatus.BAD_REQUEST);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -304,16 +386,43 @@ export class AuthService {
 
   private async getMaxLockedUntil(keys: string[], now: number) {
     let max: number | null = null;
-    for (const key of keys) {
-      const redisLockedUntil = await this.redis.get(lockKey(key));
-      if (redisLockedUntil) {
-        const parsed = Number(redisLockedUntil);
-        if (Number.isFinite(parsed) && parsed > now) max = Math.max(max ?? 0, parsed);
-      }
-      const currentAttempt = loginAttempts.get(key);
-      if (currentAttempt?.lockedUntil && currentAttempt.lockedUntil > now) max = Math.max(max ?? 0, currentAttempt.lockedUntil);
+    for (const bucket of await this.readLoginLimitBuckets(keys, now)) {
+      if (bucket.lockedUntil && bucket.lockedUntil > now) max = Math.max(max ?? 0, bucket.lockedUntil);
     }
     return max;
+  }
+
+  private async readLoginLimitBuckets(keys: string[], now: number) {
+    const buckets: Array<{ bucket: LoginLimitBucket; failedCount: number; lockedUntil: number | null }> = [];
+    for (const [index, key] of keys.entries()) {
+      const redisLockedUntil = await this.redis.get(lockKey(key));
+      const redisAttempts = await this.redis.get(attemptsKey(key));
+      const parsedRedisLockedUntil = redisLockedUntil ? Number(redisLockedUntil) : null;
+      const memoryAttempt = loginAttempts.get(key);
+      const memoryInWindow = memoryAttempt && now - memoryAttempt.firstFailedAt <= LOGIN_WINDOW_MS ? memoryAttempt : null;
+      const lockedUntilValues = [
+        Number.isFinite(parsedRedisLockedUntil) ? parsedRedisLockedUntil : null,
+        memoryInWindow?.lockedUntil ?? null
+      ].filter((value): value is number => typeof value === 'number' && value > now);
+      buckets.push({
+        bucket: bucketLabel(index),
+        failedCount: Math.max(Number(redisAttempts ?? 0) || 0, memoryInWindow?.count ?? 0),
+        lockedUntil: lockedUntilValues.length ? Math.max(...lockedUntilValues) : null
+      });
+    }
+    return buckets;
+  }
+
+  private normalizeLockoutUsername(username: string) {
+    const normalized = username?.trim();
+    if (!normalized) throw new HttpException('Username wajib diisi.', HttpStatus.BAD_REQUEST);
+    return normalized;
+  }
+
+  private assertCanManageLoginLockouts(actor: LoginSecurityActor) {
+    if (!([Role.ADMIN_TU, Role.DEVELOPER] as Role[]).includes(actor.role)) {
+      throw new ForbiddenException('Hanya Admin TU atau Developer yang dapat membuka kunci login.');
+    }
   }
 
   private async clearFailedAttempt(keys: string[]) {
