@@ -22,3 +22,20 @@ export class ChangePasswordDto {
   @MinLength(12)
   newPassword!: string;
 }
+
+
+export class LoginLockoutStatusQueryDto {
+  @IsString()
+  @MinLength(1)
+  username!: string;
+}
+
+export class ClearLoginLockoutDto {
+  @IsString()
+  @MinLength(1)
+  username!: string;
+
+  @IsString()
+  @MinLength(8)
+  reason!: string;
+}

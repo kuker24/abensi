@@ -102,6 +102,57 @@ function studentDailySummary(data) {
   return data?.summary || data?.studentCompleteness || {};
 }
 
+
+export function AccountSecurityPage({ notify }) {
+  const [username, setUsername] = useState('');
+  const [reason, setReason] = useState('Admin membuka kunci login setelah verifikasi pengguna.');
+  const [state, setState] = useState({ loading: false, error: '', data: null });
+  const lookup = async () => {
+    const value = username.trim();
+    if (!value) {
+      notify?.('Isi username akun yang akan dicek.', 'bad');
+      return;
+    }
+    setState({ loading: true, error: '', data: null });
+    try {
+      const data = await apiFetch(`/auth/admin/login-lockout${qs({ username: value })}`);
+      setState({ loading: false, error: '', data });
+    } catch (error) {
+      setState({ loading: false, error: error.message || 'Gagal mengecek keamanan akun.', data: null });
+    }
+  };
+  const clearLockout = async () => {
+    const value = username.trim();
+    if (!value) {
+      notify?.('Isi username akun yang akan dibuka.', 'bad');
+      return;
+    }
+    if (!reason.trim() || reason.trim().length < 8) {
+      notify?.('Alasan minimal 8 karakter.', 'bad');
+      return;
+    }
+    if (!await riskConfirm('Buka kunci login akun ini? Password tidak diubah dan tindakan dicatat di audit log.', 'Buka kunci login')) return;
+    setState((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const data = await apiFetch('/auth/admin/login-lockout/clear', {
+        method: 'POST',
+        body: JSON.stringify({ username: value, reason: reason.trim() })
+      });
+      setState({ loading: false, error: '', data });
+      notify?.('Kunci login berhasil dibuka. Pengguna dapat mencoba login kembali.', 'ok');
+    } catch (error) {
+      setState((prev) => ({ ...prev, loading: false, error: error.message || 'Gagal membuka kunci login.' }));
+    }
+  };
+  const lockout = state.data?.after || state.data?.lockout;
+  const targetUser = state.data?.user;
+  const lockedUntilText = lockout?.lockedUntil ? formatDateTime(lockout.lockedUntil) : '—';
+  const bucketRows = lockout?.buckets || [];
+  return <div className="content account-security-page"><PageHead eyebrow="KEAMANAN AKUN" title="Buka Kunci Login" sub="Pulihkan akun yang terkena batas percobaan masuk tanpa melihat atau mengubah password." actions={<Btn onClick={lookup} loading={state.loading}><RefreshCw size={14} /> Cek Akun</Btn>} />
+    <div className="grid g-2"><Card title="Cari akun" sub="Masukkan username akun sekolah. Fitur ini hanya menghapus lockout login, bukan mengganti password."><div className="form-grid"><Field label="Username"><TextInput value={username} placeholder="contoh: admin.tu" onChange={(event) => setUsername(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') lookup(); }} /></Field><Field label="Alasan tindakan"><TextInput value={reason} onChange={(event) => setReason(event.target.value)} /></Field><Btn variant="primary" loading={state.loading} onClick={lookup}><ShieldCheck size={14} /> Cek Status</Btn><Btn variant="danger" disabled={state.loading || !state.data} onClick={clearLockout}><KeyRound size={14} /> Buka Kunci Login</Btn></div><SimpleHelpBox title="Aturan aman" items={['Tidak ada bypass password: pengguna tetap harus memasukkan password yang benar.', 'Tindakan ini dicatat di audit log beserta alasan operator.', 'Lockout jaringan lama ikut dibersihkan untuk jaringan admin saat ini agar recovery operasional lebih cepat.']} /></Card>
+    <Card title="Status login" sub="Ringkasan batas percobaan masuk untuk akun yang dicek.">{state.loading ? <LoadingState label="Mengecek keamanan akun…" /> : state.error ? <ErrorState error={state.error} onRetry={lookup} /> : !state.data ? <FriendlyEmptyState icon={<ShieldCheck size={22} />} title="Belum ada akun dicek" desc="Isi username lalu klik Cek Status." /> : <div className="account-security-status"><div className="grid g-3 cards-grid"><StatCardPremium icon={<Users size={18} />} label="Akun" value={targetUser?.fullName || state.data.username} sub={targetUser ? `${targetUser.username} · ${statusLabel(targetUser.role)}` : 'Username tidak ditemukan'} /><StatCardPremium icon={<AlertTriangle size={18} />} label="Status" value={lockout?.locked ? 'Terkunci' : 'Normal'} sub={lockout?.locked ? `Sampai ${lockedUntilText}` : 'Tidak ada lockout aktif'} tone={lockout?.locked ? 'bad' : 'ok'} /><StatCardPremium icon={<Clock size={18} />} label="Percobaan" value={lockout?.failedCount ?? 0} sub={`Batas ${lockout?.maxFailedAttempts ?? '—'} kali`} /><StatCardPremium icon={<ShieldCheck size={18} />} label="Aksi" value={state.data.ok ? 'Dibuka' : 'Siap'} sub={state.data.ok ? 'Counter sudah direset' : 'Gunakan bila akun terkunci'} tone={state.data.ok ? 'ok' : ''} /></div><DataTable rows={bucketRows} columns={[{ header: 'Bucket', render: (row) => row.bucket === 'account' ? 'Akun' : row.bucket === 'accountCurrentNetwork' ? 'Akun + jaringan saat ini' : 'Jaringan lama (cleanup)' }, { header: 'Percobaan', render: (row) => row.failedCount ?? 0 }, { header: 'Status', render: (row) => <StatusPill status={row.locked ? 'TERKUNCI' : 'NORMAL'} /> }, { header: 'Terkunci sampai', render: (row) => row.lockedUntil ? formatDateTime(row.lockedUntil) : '—' }]} /></div>}</Card></div></div>;
+}
+
 export function AdminDashboard() {
   const dashboard = useRemote(() => apiFetch('/reports/dashboard'), []);
   const trend = useRemote(() => apiFetch('/reports/trend?days=7'), []);

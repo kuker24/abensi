@@ -18,6 +18,7 @@ import {
   FileText,
   Flag,
   Home,
+  KeyRound,
   LayoutDashboard,
   ListChecks,
   Lock,
@@ -69,6 +70,7 @@ const AdminDashboard = lazyPage(loadAdminPages, 'AdminDashboard');
 const AnomalyPage = lazyPage(loadAdminPages, 'AnomalyPage');
 const AuditPage = lazyPage(loadAdminPages, 'AuditPage');
 const AndroidApkUpdatePage = lazyPage(loadAdminPages, 'AndroidApkUpdatePage');
+const AccountSecurityPage = lazyPage(loadAdminPages, 'AccountSecurityPage');
 const DeveloperControlPage = lazyPage(loadAdminPages, 'DeveloperControlPage');
 const DevicesPage = lazyPage(loadAdminPages, 'DevicesPage');
 const HelpPage = lazyPage(loadAdminPages, 'HelpPage');
@@ -176,6 +178,7 @@ export const ROUTES = [
   { path: '/admin/schedule', area: 'Admin/TU', title: 'Jadwal Kelas', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['schedules.read'], render: ({ notify }) => <SchedulePage notify={notify} /> },
   { path: '/admin/devices', area: 'Admin/TU', title: 'HP Scanner & Kartu', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: ({ notify }) => <DevicesPage notify={notify} /> },
   { path: '/admin/android-apk-update', area: 'Admin/TU', title: 'APK Update Center', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.manage'], render: ({ notify }) => <AndroidApkUpdatePage notify={notify} /> },
+  { path: '/admin/account-security', area: 'Admin/TU', title: 'Keamanan Akun', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['users.manage'], render: ({ notify }) => <AccountSecurityPage notify={notify} /> },
   { path: '/admin/reports', area: 'Admin/TU', title: 'Laporan Sekolah', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'DEVELOPER'], capabilities: ['reports.school.read'], render: ({ notify }) => <ReportsPage notify={notify} /> },
   { path: '/admin/live-monitor', area: 'Admin/TU', title: 'Aktivitas Sekarang', roles: ['ADMIN_TU', 'KEPALA_SEKOLAH', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <LiveMonitorPage /> },
   { path: '/admin/settings', area: 'Admin/TU', title: 'Aturan Absensi', roles: ['ADMIN_TU', 'OPERATOR_IT', 'DEVELOPER'], capabilities: ['settings.read'], render: ({ notify }) => <SettingsPage notify={notify} /> },
@@ -213,7 +216,7 @@ const NAV_ITEMS_BY_ROLE: Record<NavKey, NavItem[]> = {
   admin: [
     navItem('MULAI HARI INI', '/admin/dashboard', LayoutDashboard, 'Ringkasan Hari Ini'), navItem('MULAI HARI INI', '/admin/sessions', Radar, 'Cek Sesi Kelas'), navItem('MULAI HARI INI', '/admin/anomaly', Flag, 'Cek Masalah'), navItem('MULAI HARI INI', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
     navItem('KERJA HARIAN', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('KERJA HARIAN', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('KERJA HARIAN', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('KERJA HARIAN', '/admin/history', BookOpen, 'Riwayat Scan'), navItem('KERJA HARIAN', '/admin/picket', ListChecks, 'Catatan Piket'), navItem('KERJA HARIAN', '/admin/teacher-leaves', CheckSquare, 'Izin Guru'), navItem('DATA SEKOLAH', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA SEKOLAH', '/admin/schedule', Calendar, 'Jadwal Kelas'),
-    navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN & SISTEM', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN & SISTEM', '/admin/help', BookOpen, 'Panduan'), navItem('BANTUAN & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('BANTUAN & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan')
+    navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN & SISTEM', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN & SISTEM', '/admin/help', BookOpen, 'Panduan'), navItem('BANTUAN & SISTEM', '/admin/account-security', KeyRound, 'Keamanan Akun'), navItem('BANTUAN & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('BANTUAN & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan')
   ],
   principal: [
     navItem('PANTAUAN', '/admin/principal-dashboard', LayoutDashboard, 'Ringkasan Kepala Sekolah'), navItem('PANTAUAN', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('PANTAUAN', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('PANTAUAN', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('PANTAUAN', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Kepala Sekolah')
@@ -223,7 +226,7 @@ const NAV_ITEMS_BY_ROLE: Record<NavKey, NavItem[]> = {
   ],
   developer: [
     navItem('KONTROL', '/admin/developer-control', Shield, 'Pusat Kontrol'), navItem('KONTROL', '/admin/dashboard', LayoutDashboard, 'Ringkasan Admin'), navItem('KONTROL', '/admin/it-dashboard', Radar, 'Cek Sistem'), navItem('KONTROL', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'),
-    navItem('DATA & SISTEM', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA & SISTEM', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('DATA & SISTEM', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('DATA & SISTEM', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('DATA & SISTEM', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('DATA & SISTEM', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('DATA & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('DATA & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan'),
+    navItem('DATA & SISTEM', '/admin/master-data', Users, 'Akun & Data Sekolah'), navItem('DATA & SISTEM', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('DATA & SISTEM', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('DATA & SISTEM', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('DATA & SISTEM', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('DATA & SISTEM', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('DATA & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('DATA & SISTEM', '/admin/account-security', KeyRound, 'Keamanan Akun'), navItem('DATA & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan'),
     navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Developer')
   ],
   picket: [

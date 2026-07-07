@@ -47,6 +47,10 @@ describe('typed route registry', () => {
     expect(canAccessRoute('/admin/android-apk-update', user('ADMIN_TU'))).toBe(true);
     expect(canAccessRoute('/admin/android-apk-update', user('OPERATOR_IT'))).toBe(true);
     expect(canAccessRoute('/admin/android-apk-update', user('SISWA'))).toBe(false);
+    expect(canAccessRoute('/admin/account-security', user('ADMIN_TU'))).toBe(true);
+    expect(canAccessRoute('/admin/account-security', user('DEVELOPER'))).toBe(true);
+    expect(canAccessRoute('/admin/account-security', user('OPERATOR_IT'))).toBe(false);
+    expect(canAccessRoute('/admin/account-security', user('SISWA'))).toBe(false);
     expect(canAccessRoute('/siswa/dashboard', user('SISWA'))).toBe(true);
     expect(canAccessRoute('/guru/presensi', user('GURU_MAPEL'))).toBe(true);
   });
