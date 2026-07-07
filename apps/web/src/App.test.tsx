@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import indexHtml from '../index.html?raw';
 import manifestRaw from '../public/site.webmanifest?raw';
@@ -132,6 +132,57 @@ describe('PRD v2.2 UI shell', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({
       body: JSON.stringify({ username: 'admin', password: 'sandi-test-aman', expectedRole: 'admin' })
     }));
+  });
+
+
+  it('keeps a successful login when a stale session check fails after submit', async () => {
+    const storage = mockStorage();
+    storage.setItem('schoolhub_user', JSON.stringify({ id: 'old', username: 'old-admin', fullName: 'Old Admin', role: 'ADMIN_TU' }));
+    window.history.replaceState({}, '', '/siab2/login');
+
+    let resolveMe: (response: Response) => void = () => undefined;
+    const staleMe = new Promise<Response>((resolve) => { resolveMe = resolve; });
+    const fetchMock = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return staleMe;
+      if (url.endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'Sesi lama habis.' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (url.endsWith('/auth/login')) {
+        return new Response(JSON.stringify({ user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ message: 'Unexpected request' }), { status: 404, headers: { 'content-type': 'application/json' } });
+    });
+    globalThis.fetch = fetchMock as any;
+
+    render(<App />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/me', expect.objectContaining({ credentials: 'include' })));
+
+    fireEvent.click(screen.getAllByText('Admin/TU')[0]);
+    fireEvent.change(screen.getByPlaceholderText('Masukkan nama akun'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByPlaceholderText('Masukkan kata sandi'), { target: { value: 'sandi-test-aman' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Masuk$/i }));
+
+    await waitFor(() => expect(window.location.pathname).toBe('/admin/dashboard'));
+
+    await act(async () => {
+      resolveMe(new Response(JSON.stringify({ message: 'Sesi lama habis.' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' }
+      }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/refresh', expect.objectContaining({ credentials: 'include' })));
+    expect(window.location.pathname).toBe('/admin/dashboard');
+    expect(window.localStorage.getItem('schoolhub_user')).toContain('Admin TU');
+    expect(screen.queryByText(/Sesi masuk habis/i)).not.toBeInTheDocument();
   });
 
   it('rejects login when selected tab does not match the account role', async () => {
