@@ -195,4 +195,48 @@ describe('QrCredentialsService stable student identity cards', () => {
     expect(result.cards[0]).not.toHaveProperty('passwordHash');
     expect(result.cards[0]).not.toHaveProperty('token');
   });
+
+  it('exports teacher card data as teacher without student-only nisn fallback', async () => {
+    const prisma = makePrisma({
+      credentials: [
+        {
+          id: 'credential-teacher-1',
+          userId: 'teacher-1',
+          status: QrCredentialStatus.ACTIVE,
+          label: 'QR SIAB2',
+          shortCode: 'TCHR001',
+          codeCiphertext: 'enc:schoolhub:qr:v1:QR_ZYXWVUTSRQPO',
+          issuedAt: new Date('2026-01-01T00:00:00.000Z'),
+          expiresAt: null,
+          user: {
+            id: 'teacher-1',
+            fullName: 'Guru Satu',
+            username: 'guru.satu',
+            nis: null,
+            nip: '198001012006041001',
+            role: Role.GURU_MAPEL,
+            active: true,
+            cardStatus: 'ACTIVE',
+            enrollments: []
+          }
+        }
+      ]
+    });
+    const service = new QrCredentialsService(prisma, makeSignatures());
+
+    const result = await service.exportCards({ userId: 'teacher-1' });
+
+    expect(result.cards).toHaveLength(1);
+    expect(result.cards[0]).toMatchObject({
+      fullName: 'Guru Satu',
+      username: 'guru.satu',
+      role: Role.GURU_MAPEL,
+      roleLabel: 'Guru',
+      displayRole: 'Guru',
+      nisn: null,
+      nip: '198001012006041001',
+      level: 'Guru / Pegawai MAN 1 Rokan Hulu',
+      qr_value: 'schoolhub:qr:v1:QR_ZYXWVUTSRQPO'
+    });
+  });
 });

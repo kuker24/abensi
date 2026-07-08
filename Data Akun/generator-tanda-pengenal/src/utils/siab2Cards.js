@@ -30,11 +30,14 @@ export const mapSiab2CardToGeneratorUser = (card = {}, index = 0) => {
   const isStudent = isStudentRole(role) || isStudentRole(card.roleLabel) || cleanString(card.displayRole).toUpperCase() === 'SISWA';
   const fullName = cleanString(card.nama || card.fullName || card.name);
   const qrValue = cleanString(card.qr_value || card.qrCode || card.qr || card.code);
+  const identityNumber = isStudent
+    ? cleanString(card.nisn || card.nis || card.username || card.shortCode)
+    : cleanString(card.nip || card.nisn || card.nis || card.username || card.shortCode);
 
   return {
     id: cleanString(card.userId || card.id) || `siab2_card_${index + 1}`,
     nama: fullName,
-    nisn: cleanString(card.nisn || card.nis || (isStudent ? card.username : card.nip) || card.shortCode),
+    nisn: identityNumber,
     role: isStudent ? 'student' : 'teacher',
     kelas: cleanString(card.className || card.classCode || card.level),
     jurusan: cleanString(card.program),

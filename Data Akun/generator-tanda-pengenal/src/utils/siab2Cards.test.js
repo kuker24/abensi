@@ -73,6 +73,31 @@ test('maps student cards with dynamic class from official export data', () => {
   assert.equal(users[1].kelas, 'Guru Piket');
 });
 
+test('maps official teacher card as teacher and prefers NIP over student-only identity fields', () => {
+  const [teacher] = mapSiab2CardsPayload({
+    generatedAt: '2026-07-02T00:00:00.000Z',
+    cards: [
+      {
+        id: 'cred-teacher',
+        userId: 'teacher-1',
+        nama: 'Guru Satu',
+        username: 'guru.satu',
+        nip: '198001012006041001',
+        nisn: null,
+        role: 'GURU_MAPEL',
+        roleLabel: 'Guru',
+        displayRole: 'Guru',
+        level: 'Guru / Pegawai MAN 1 Rokan Hulu',
+        qr_value: 'schoolhub:qr:v1:QR_ZYXWVUTSRQPO',
+      },
+    ],
+  });
+
+  assert.equal(teacher.role, 'teacher');
+  assert.equal(teacher.nisn, '198001012006041001');
+  assert.equal(teacher.kelas, 'Guru / Pegawai MAN 1 Rokan Hulu');
+});
+
 test('rejects official card payloads that contain credential fields', () => {
   assert.throws(() => mapSiab2CardsPayload({
     cards: [{ nama: 'Aisyah', nisn: '1', passwordHash: 'secret', qr_value: 'schoolhub:qr:v1:QR_ABCDEFGHIJKL' }],
