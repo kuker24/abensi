@@ -298,7 +298,7 @@ export class QrCredentialsService {
         nis: item.user.nis,
         nip: item.user.nip,
         birthDate: item.user.birthDate ? item.user.birthDate.toISOString().slice(0, 10) : null,
-        nisn: item.user.nis ?? item.user.username,
+        nisn: isStudent ? item.user.nis ?? item.user.username : null,
         role: item.user.role,
         roleLabel: isStudent ? 'SISWA' : displayRole,
         displayRole,
