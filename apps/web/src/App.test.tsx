@@ -135,6 +135,28 @@ describe('PRD v2.2 UI shell', () => {
   });
 
 
+  it('redirects an authenticated login-page session to the dashboard', async () => {
+    const storage = mockStorage();
+    storage.setItem('schoolhub_user', JSON.stringify({ id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' }));
+    window.history.replaceState({}, '', '/siab2/login');
+
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) {
+        return new Response(JSON.stringify({ user: { id: 'u1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ message: 'Unexpected request' }), { status: 404, headers: { 'content-type': 'application/json' } });
+    }) as any;
+
+    render(<App />);
+
+    await waitFor(() => expect(window.location.pathname).toBe('/admin/dashboard'));
+    expect(window.localStorage.getItem('schoolhub_user')).toContain('Admin TU');
+  });
+
   it('keeps a successful login when a stale session check fails after submit', async () => {
     const storage = mockStorage();
     storage.setItem('schoolhub_user', JSON.stringify({ id: 'old', username: 'old-admin', fullName: 'Old Admin', role: 'ADMIN_TU' }));

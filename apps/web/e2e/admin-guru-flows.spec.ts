@@ -691,6 +691,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     expect(pageOverflow).toBe(false);
 
+    await page.evaluate((userKey) => window.localStorage.removeItem(userKey), USER_KEY);
     await page.goto('/siab2/login');
     const submitBtn = await page.getByRole('button', { name: /^Masuk/ }).boundingBox();
     expect(submitBtn).not.toBeNull();
