@@ -969,6 +969,9 @@ function App() {
     }
   }, [path, user]);
   useEffect(() => { if (sessionChecked && !readStoredUser() && !isLoginRoutePath(path) && !isPublicRoutePath(path) && !isLegacySiab2RoutePath(path)) go(SIAB2_LOGIN_PATH); }, [path, sessionChecked]);
+  useEffect(() => {
+    if (sessionChecked && user && isLoginRoutePath(path)) go(defaultPathFor(user));
+  }, [path, sessionChecked, user]);
   async function handleLogin(selectedRole: LoginRole, username: string, password: string) {
     const loginEpoch = authEpochRef.current + 1;
     authEpochRef.current = loginEpoch;
