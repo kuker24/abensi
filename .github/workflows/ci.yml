@@ -66,6 +66,8 @@ jobs:
             apps/api/package-lock.json
             apps/web/package-lock.json
             apps/worker/package-lock.json
+      - run: npm run security:private-artifacts
+      - run: npm run test:private-artifacts
       - run: npm ci
       - run: npm ci --prefix apps/api
       - run: npm ci --prefix apps/web

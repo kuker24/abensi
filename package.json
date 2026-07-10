@@ -39,6 +39,8 @@
     "smoke:post-deploy": "node scripts/post_deploy_smoke.mjs",
     "test:https-ci-fixture": "bash scripts/https_ci_fixture.sh",
     "security:secrets": "bash scripts/secret_scan.sh",
+    "security:private-artifacts": "node scripts/private_artifact_guard.mjs",
+    "test:private-artifacts": "node scripts/test_private_artifact_guard.mjs",
     "security:container-scan": "bash scripts/container_scan.sh",
     "security:sbom": "bash scripts/generate_sbom.sh",
     "security:license": "bash scripts/license_policy_check.sh",

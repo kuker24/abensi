@@ -87,3 +87,7 @@ backups/
 # Local/CI generated artifacts
 artifacts/
 apps/api/.prisma-generate/
+
+# Local private school exports; keep PII and generated reports outside Git
+/DataSekolah/Absensi-Private-Reports/
+/DataSekolah/**/*.xlsx
