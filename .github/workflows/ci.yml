@@ -406,6 +406,7 @@ jobs:
           AUDIT_BOUNDARY_TEST_DATABASE_URL='postgresql://schoolhub:schoolhub_test_password@127.0.0.1:5432/schoolhub_audit_boundary_ci' \
           AUDIT_BOUNDARY_TEST_CONFIRM='RUN_LOCAL_DESTRUCTIVE_TEST' \
           npm run test:audit-trust-boundary:local
+          node -e "const report=require('./artifacts/integration/audit-trust-boundary-local.json'); if (report.status !== 'PASS' || report.executed !== true || report.failCount !== 0) process.exit(1);"
       - if: always()
         name: Clean up audit trust-boundary local database
         env:

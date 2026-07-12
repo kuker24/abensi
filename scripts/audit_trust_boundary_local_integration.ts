@@ -69,11 +69,32 @@ async function resolveOnlyLoopback(hostname: string) {
   }
 }
 
-async function verifyConnectedServerLoopback(prisma: PrismaClient) {
-  const rows = await prisma.$queryRawUnsafe<Array<{ server_address: string | null }>>(
-    'SELECT inet_server_addr()::text AS server_address'
+export function isApprovedConnectedTestServer(input: {
+  serverAddress: string | null;
+  serverPort: number;
+  databaseName: string;
+  expectedDatabaseName: string;
+  allowCiContainerBridge: boolean;
+}) {
+  const addressApproved = input.serverAddress !== null && (
+    isLoopbackAddress(input.serverAddress) ||
+    (input.allowCiContainerBridge && /^172\.(?:1[6-9]|2\d|3[01])\./.test(input.serverAddress))
   );
-  return rows.length === 1 && rows[0].server_address !== null && isLoopbackAddress(rows[0].server_address);
+  return addressApproved && input.serverPort === 5432 && input.databaseName === input.expectedDatabaseName;
+}
+
+async function verifyConnectedTestServer(prisma: PrismaClient, expectedDatabaseName: string) {
+  const rows = await prisma.$queryRawUnsafe<Array<{ server_address: string | null; server_port: number; database_name: string }>>(
+    'SELECT inet_server_addr()::text AS server_address, inet_server_port()::int AS server_port, current_database()::text AS database_name'
+  );
+  const row = rows[0];
+  return rows.length === 1 && Boolean(row) && isApprovedConnectedTestServer({
+    serverAddress: row.server_address,
+    serverPort: Number(row.server_port),
+    databaseName: row.database_name,
+    expectedDatabaseName,
+    allowCiContainerBridge: process.env.CI === 'true'
+  });
 }
 
 async function getSafeLocalDatabaseUrl(): Promise<LocalDatabaseUrlValidation> {
@@ -168,15 +189,17 @@ export async function runAuditTrustBoundaryLocalIntegration() {
     const report = createSanitizedLocalIntegrationReport(target.reason, false, []);
     writeSanitizedLocalIntegrationReport(report);
     console.log(JSON.stringify(report));
+    process.exitCode = 1;
     return;
   }
 
   const connectionGuard = new PrismaClient({ datasources: { db: { url: target.url } } });
   try {
-    if (!await verifyConnectedServerLoopback(connectionGuard)) {
-      const report = createSanitizedLocalIntegrationReport('SKIPPED_CONNECTED_SERVER_NOT_LOOPBACK', false, []);
+    if (!await verifyConnectedTestServer(connectionGuard, target.databaseName)) {
+      const report = createSanitizedLocalIntegrationReport('SKIPPED_CONNECTED_SERVER_NOT_APPROVED', false, []);
       writeSanitizedLocalIntegrationReport(report);
       console.log(JSON.stringify(report));
+      process.exitCode = 1;
       return;
     }
   } catch {

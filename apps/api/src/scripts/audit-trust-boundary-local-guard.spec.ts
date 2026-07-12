@@ -1,5 +1,6 @@
 import {
   createSanitizedLocalIntegrationReport,
+  isApprovedConnectedTestServer,
   validateAuditTrustBoundaryLocalDatabaseUrl,
   writeSanitizedLocalIntegrationReport
 } from '../../../../scripts/audit_trust_boundary_local_integration';
@@ -57,6 +58,15 @@ describe('local audit trust-boundary and preflight endpoint guards', () => {
 
   it.each([undefined, '', 'not-a-url', 'https://db.example.test/schoolhub', 'postgresql:///schoolhub'])('returns unavailable endpoint sentinel for invalid input', (value) => {
     expect(parseSanitizedDatabaseEndpoint(value)).toBeNull();
+  });
+
+  it('accepts Docker bridge server identity only in CI for exact disposable database', () => {
+    const target = { serverAddress: '172.18.0.2', serverPort: 5432, databaseName: 'schoolhub_audit_boundary_ci', expectedDatabaseName: 'schoolhub_audit_boundary_ci' };
+    expect(isApprovedConnectedTestServer({ ...target, allowCiContainerBridge: true })).toBe(true);
+    expect(isApprovedConnectedTestServer({ ...target, allowCiContainerBridge: false })).toBe(false);
+    expect(isApprovedConnectedTestServer({ ...target, allowCiContainerBridge: true, databaseName: 'postgres' })).toBe(false);
+    expect(isApprovedConnectedTestServer({ ...target, allowCiContainerBridge: true, serverAddress: '203.0.113.10' })).toBe(false);
+    expect(isApprovedConnectedTestServer({ ...target, allowCiContainerBridge: true, serverPort: 6432 })).toBe(false);
   });
 
   it('uses half-open timestamp ranges for teacher, class, and non-null room overlap checks', () => {
