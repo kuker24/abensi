@@ -18,6 +18,17 @@ function argValue(name: string, fallback: string) {
 
 type CheckResult = { name: string; severity: ReadinessSeverity; count: number; details: unknown[] };
 
+export const GATE_LOG_ARCHIVE_PARITY_SQL = `
+  SELECT
+    COUNT(*)::bigint AS archive_count,
+    COUNT(report.id)::bigint AS report_archived_count
+  FROM "GateLogArchive" archive
+  LEFT JOIN "BusinessDateBackfillReport" report
+    ON report."sourceTable" = 'GateLog'
+   AND report."rowId" = archive."originalGateLogId"
+   AND report."migrationVersion" = archive."migrationVersion"
+`;
+
 async function appendQueryCheck<T extends Record<string, unknown>>(
   prisma: PrismaClient,
   checks: CheckResult[],
@@ -167,29 +178,24 @@ async function main() {
       checks.push(createReadinessQueryFailure('audit_chain_integrity'));
     }
 
-    const archiveRows = await prisma.$queryRawUnsafe<Array<{ archive_count: bigint; report_deleted_count: bigint }>>(`
-      SELECT
-        (SELECT COUNT(*)::bigint FROM "GateLogArchive") AS archive_count,
-        COALESCE((
-          SELECT SUM((details->>'archivedCount')::bigint)
-          FROM "BusinessDateBackfillReport"
-          WHERE category IN ('GATELOG_DEDUPLICATION', 'GATELOG_ARCHIVE')
-        ), 0)::bigint AS report_deleted_count
-    `).catch(() => null);
+    const archiveRows = await prisma.$queryRawUnsafe<Array<{ archive_count: bigint; report_archived_count: bigint }>>(
+      GATE_LOG_ARCHIVE_PARITY_SQL
+    ).catch(() => null);
     if (archiveRows === null) {
       checks.push(createReadinessQueryFailure('gate_log_archive_parity'));
     } else {
-      const archive = archiveRows[0] ?? { archive_count: 0n, report_deleted_count: 0n };
+      const archive = archiveRows[0] ?? { archive_count: 0n, report_archived_count: 0n };
       const archiveCount = Number(archive.archive_count);
-      const reportDeletedCount = Number(archive.report_deleted_count);
+      const reportArchivedCount = Number(archive.report_archived_count);
+      const parityMismatch = archiveCount !== reportArchivedCount;
       checks.push(createSanitizedReadinessCheck({
         name: 'gate_log_archive_parity',
-        severity: reportDeletedCount > 0 && archiveCount !== reportDeletedCount ? 'BLOCKING' : 'INFO',
-        count: reportDeletedCount > 0 && archiveCount !== reportDeletedCount ? 1 : 0,
+        severity: parityMismatch ? 'BLOCKING' : 'INFO',
+        count: parityMismatch ? 1 : 0,
         details: [{
           category: 'gate_log_archive_parity',
           count: archiveCount,
-          eventCount: reportDeletedCount
+          eventCount: reportArchivedCount
         }]
       }));
     }

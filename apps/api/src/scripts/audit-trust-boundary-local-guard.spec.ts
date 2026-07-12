@@ -10,6 +10,7 @@ import {
   createActiveSessionScheduleOverlapCheck,
   parseSanitizedDatabaseEndpoint
 } from '../../../../scripts/preflight_production_readiness';
+import { GATE_LOG_ARCHIVE_PARITY_SQL } from '../../../../scripts/verify_post_migration';
 
 describe('local audit trust-boundary and preflight endpoint guards', () => {
   it('does not execute destructive integration main while imported and accepts disposable PostgreSQL URL shape', () => {
@@ -82,6 +83,14 @@ describe('local audit trust-boundary and preflight endpoint guards', () => {
       { category: 'session_schedule_overlap', scope: 'room', count: 3 }
     ]);
     expect(JSON.stringify(check.toDetails(rows))).not.toMatch(/(?:id|name|email|username|payload)/i);
+  });
+
+  it('checks archive parity through existing report columns without exposing row identifiers', () => {
+    expect(GATE_LOG_ARCHIVE_PARITY_SQL).toContain('report."sourceTable" = \'GateLog\'');
+    expect(GATE_LOG_ARCHIVE_PARITY_SQL).toContain('report."rowId" = archive."originalGateLogId"');
+    expect(GATE_LOG_ARCHIVE_PARITY_SQL).toContain('report."migrationVersion" = archive."migrationVersion"');
+    expect(GATE_LOG_ARCHIVE_PARITY_SQL).not.toMatch(/\b(?:category|details)\b/i);
+    expect(GATE_LOG_ARCHIVE_PARITY_SQL).not.toContain('SELECT archive."originalGateLogId"');
   });
 
   it('writes only sanitized local integration counts and test booleans', () => {
