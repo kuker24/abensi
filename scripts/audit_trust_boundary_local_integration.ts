@@ -218,12 +218,15 @@ export async function runAuditTrustBoundaryLocalIntegration() {
   let prisma: PrismaClient | null = null;
   let competingPrisma: PrismaClient | null = null;
   let temporaryWorkspaceRemoved = false;
+  let integrationStage = 'prepare_migrations';
   try {
     const localPrismaDirectory = copyPreBoundaryMigrations(tempRoot);
     const schemaPath = join(localPrismaDirectory, 'schema.prisma');
 
     // Empty DB: deploy pre-boundary schema, then structural-only 0041 once.
+    integrationStage = 'empty_database_pre_boundary_migration';
     runMigrations(localPrismaDirectory, ['migrate', 'deploy', '--schema', schemaPath], target.url);
+    integrationStage = 'empty_database_boundary_migration';
     migrateLocalTestDatabase(localPrismaDirectory, schemaPath, target.url);
     prisma = new PrismaClient({ datasources: { db: { url: target.url } } });
     results.push({
@@ -234,6 +237,7 @@ export async function runAuditTrustBoundaryLocalIntegration() {
     prisma = null;
 
     // Reset executes only after URL, DNS, confirmation, and connected-server checks succeed.
+    integrationStage = 'populated_database_reset';
     rmSync(join(localPrismaDirectory, 'migrations', TRUST_BOUNDARY_MIGRATION), { recursive: true, force: true });
     runMigrations(localPrismaDirectory, ['migrate', 'reset', '--force', '--skip-generate', '--skip-seed', '--schema', schemaPath], target.url);
     prisma = new PrismaClient({ datasources: { db: { url: target.url } } });
@@ -241,6 +245,7 @@ export async function runAuditTrustBoundaryLocalIntegration() {
     const firstHash = hashAuditEntry(null, firstPayload);
     const secondPayload = canonicalize({ action: 'synthetic.audit.2' }) as Prisma.InputJsonValue;
     const historicalAnomalyHash = createHash('sha256').update('audit-boundary-local-known-anomaly').digest('hex');
+    integrationStage = 'populate_historical_fixture';
     await prisma.auditEntry.createMany({
       data: [
         { id: 'audit-boundary-local-1', sequence: 1n, action: 'synthetic.audit.1', resource: 'synthetic', resourceId: '1', canonicalPayload: firstPayload, prevHash: null, entryHash: firstHash, hashVersion: 1 },
@@ -257,6 +262,7 @@ export async function runAuditTrustBoundaryLocalIntegration() {
     await prisma.$disconnect();
     prisma = null;
 
+    integrationStage = 'populated_database_boundary_migration';
     migrateLocalTestDatabase(localPrismaDirectory, schemaPath, target.url);
     prisma = new PrismaClient({ datasources: { db: { url: target.url } } });
     const historicalAfter = await prisma.auditEntry.findMany({ orderBy: { sequence: 'asc' } });
@@ -265,6 +271,7 @@ export async function runAuditTrustBoundaryLocalIntegration() {
 
     const approvalInput = { incidentCode: 'AUDIT_BOUNDARY_LOCAL_TEST', expectedLatestSequence: 2n, expectedLastTrustedSequence: 1n, approvalReference: 'CHG-AUDIT-LOCAL-001', dryRun: false, confirm: true };
     competingPrisma = new PrismaClient({ datasources: { db: { url: target.url } } });
+    integrationStage = 'concurrent_approval';
     const approvalSettlements = await Promise.allSettled([
       approveAuditTrustBoundary(prisma as never, approvalInput),
       approveAuditTrustBoundary(competingPrisma as never, approvalInput)
@@ -287,6 +294,7 @@ export async function runAuditTrustBoundaryLocalIntegration() {
       detail: `approved=${approvedCount};rejected=${rejectedCount}`
     });
 
+    integrationStage = 'trigger_enforcement';
     const [epochOne, epochTwo] = await prisma.auditChainEpoch.findMany({ orderBy: { epochNumber: 'asc' } });
     await expectRejected('epoch_delete_trigger_rejects_forensic_mutation', () => prisma!.auditChainEpoch.delete({ where: { id: epochOne.id } }), results);
     await expectRejected('epoch_update_trigger_rejects_non_close_transition', () => prisma!.auditChainEpoch.update({ where: { id: epochTwo.id }, data: { startSequence: 999n } }), results);
@@ -298,7 +306,7 @@ export async function runAuditTrustBoundaryLocalIntegration() {
       }
     }), results);
   } catch {
-    results.push({ name: 'local_integration_execution', ok: false, detail: 'LOCAL_INTEGRATION_EXECUTION_FAILED' });
+    results.push({ name: `local_integration_${integrationStage}`, ok: false, detail: 'LOCAL_INTEGRATION_EXECUTION_FAILED' });
   } finally {
     await competingPrisma?.$disconnect();
     await prisma?.$disconnect();
