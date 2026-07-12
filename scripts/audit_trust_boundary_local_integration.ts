@@ -263,10 +263,27 @@ export async function runAuditTrustBoundaryLocalIntegration() {
 
     const approvalInput = { incidentCode: 'AUDIT_BOUNDARY_LOCAL_TEST', expectedLatestSequence: 2n, expectedLastTrustedSequence: 1n, approvalReference: 'CHG-AUDIT-LOCAL-001', dryRun: false, confirm: true };
     competingPrisma = new PrismaClient({ datasources: { db: { url: target.url } } });
-    const approvals = await Promise.all([approveAuditTrustBoundary(prisma as never, approvalInput), approveAuditTrustBoundary(competingPrisma as never, approvalInput)]);
-    const approvedCount = approvals.filter((result) => result.status === 'APPROVED').length;
-    const rejectedCount = approvals.filter((result) => result.status === 'REJECTED').length;
-    results.push({ name: 'concurrent_approval_database_locking', ok: approvedCount === 1 && rejectedCount === 1, detail: `approved=${approvedCount};rejected=${rejectedCount}` });
+    const approvalSettlements = await Promise.allSettled([
+      approveAuditTrustBoundary(prisma as never, approvalInput),
+      approveAuditTrustBoundary(competingPrisma as never, approvalInput)
+    ]);
+    const approvedCount = approvalSettlements.filter((settlement) => settlement.status === 'fulfilled' && settlement.value.status === 'APPROVED').length;
+    // Competing serializable transaction may reject at PostgreSQL commit instead
+    // of returning BOUNDARY_ALREADY_EXISTS. Both outcomes prove second approval
+    // did not commit; persisted cardinality below remains authoritative.
+    const rejectedCount = approvalSettlements.filter((settlement) => (
+      settlement.status === 'rejected' || settlement.value.status === 'REJECTED'
+    )).length;
+    const [persistedIncidentCount, persistedEpochCount, persistedBoundaryCount] = await Promise.all([
+      prisma.auditIntegrityIncident.count(),
+      prisma.auditChainEpoch.count(),
+      prisma.auditEntry.count({ where: { action: 'audit.trust_boundary.approved' } })
+    ]);
+    results.push({
+      name: 'concurrent_approval_database_locking',
+      ok: approvedCount === 1 && rejectedCount === 1 && persistedIncidentCount === 1 && persistedEpochCount === 2 && persistedBoundaryCount === 1,
+      detail: `approved=${approvedCount};rejected=${rejectedCount}`
+    });
 
     const [epochOne, epochTwo] = await prisma.auditChainEpoch.findMany({ orderBy: { epochNumber: 'asc' } });
     await expectRejected('epoch_delete_trigger_rejects_forensic_mutation', () => prisma!.auditChainEpoch.delete({ where: { id: epochOne.id } }), results);
