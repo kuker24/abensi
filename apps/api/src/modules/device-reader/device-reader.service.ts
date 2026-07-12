@@ -486,7 +486,7 @@ export class DeviceReaderService {
         where: { id },
         data: {
           status: payload.status,
-          ...(before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE ? { platform: DevicePlatform.ANDROID, allowedModes: defaultModes(ReaderType.QR_ANDROID) } : {})
+          ...(before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE ? { platform: DevicePlatform.ANDROID, allowedModes: targetAllowedModes(before) } : {})
         }
       });
       await writeAudit(tx, {

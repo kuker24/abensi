@@ -43,6 +43,15 @@ function printableLevel(role: Role, className?: string | null) {
   return 'MAN 1 Rokan Hulu';
 }
 
+function activeEnrollmentValidityWhere(asOf: Date): Prisma.ClassEnrollmentWhereInput {
+  return {
+    active: true,
+    administrativeStatus: 'ACTIVE',
+    effectiveFrom: { lte: asOf },
+    OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }]
+  };
+}
+
 @Injectable()
 export class QrCredentialsService {
   constructor(
@@ -273,20 +282,42 @@ export class QrCredentialsService {
   }
 
   async exportCards(params: { classId?: string; userId?: string }) {
+    const asOf = businessDayBounds().date;
+    const activeEnrollmentWhere = activeEnrollmentValidityWhere(asOf);
     const userWhere: Prisma.UserWhereInput = { active: true };
-    if (params.classId) userWhere.enrollments = { some: { classId: params.classId } };
+    if (params.classId) userWhere.enrollments = { some: { classId: params.classId, ...activeEnrollmentWhere } };
     if (params.userId) userWhere.id = params.userId;
     const where: Prisma.QrCredentialWhereInput = { status: QrCredentialStatus.ACTIVE, user: userWhere };
     const items = await this.prisma.qrCredential.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }],
-      include: { user: { select: { id: true, fullName: true, username: true, nis: true, nip: true, birthDate: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            nis: true,
+            nip: true,
+            birthDate: true,
+            role: true,
+            active: true,
+            cardStatus: true,
+            enrollments: {
+              where: activeEnrollmentWhere,
+              include: { schoolClass: true },
+              orderBy: { effectiveFrom: 'desc' },
+              take: 1
+            }
+          }
+        }
+      },
       take: 1000
-    }) as any[];
+    });
     const cards = items.map((item) => {
       const qrCode = this.signatures.decryptSecret(item.codeCiphertext) || null;
       const isStudent = item.user.role === Role.SISWA;
-      const schoolClass = item.user.enrollments?.[0]?.schoolClass || null;
+      const schoolClass = isStudent ? item.user.enrollments?.[0]?.schoolClass || null : null;
       const className = schoolClass ? `${schoolClass.code} · ${schoolClass.name}` : null;
       const displayRole = printableRole(item.user.role);
       return {

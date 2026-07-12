@@ -1,57 +1,113 @@
-# AGENTS.md
+# SIAB2 / SchoolHub e-Hadir
 
 ## Core Rules
-- Work carefully and make small, reviewable changes.
+- Work carefully. Keep changes small and reviewable.
 - Do not delete files unless explicitly requested.
-- Do not commit secrets, tokens, API keys, `.env`, build artifacts, local reports, or private data.
-- Prefer existing project patterns before adding new architecture.
-- Keep changes minimal and aligned with the current monorepo structure.
-- Do not push unless explicitly instructed.
-- Do not force push unless explicitly instructed.
+- Do not read, print, commit, or store secrets, tokens, API keys, `.env` contents, private keys, build artifacts, local reports, or private data.
+- Prefer existing project patterns. Keep changes aligned with monorepo structure.
+- Do not commit, push, force-push, tag, release, or deploy without explicit instruction.
+- Do not alter unrelated user changes.
 
-## Project Snapshot
-- Product: SIAB2 / SchoolHub e-Hadir attendance system for MAN 1 Rokan Hulu.
-- Backend: NestJS API in `apps/api` with Prisma/PostgreSQL and Redis integration.
-- Frontend: React + Vite + Tailwind app in `apps/web`.
-- Worker: Node.js reconciliation worker in `apps/worker`.
-- Shared schema/migrations: `prisma/`.
-- Deployment/config: Docker Compose, Nginx/Caddy/systemd assets under `ops/`.
+## Project Purpose
+SIAB2 / SchoolHub e-Hadir serves MAN 1 Rokan Hulu attendance: authenticated web operations, NestJS API, queued reconciliation, Android QR readers, shared authorization constants, PostgreSQL data, and deployment tooling.
 
-## Tooling
-- Use OMNI for long/noisy terminal output.
-- Use Context7 for current docs/API/framework guidance.
-- Use Serena for symbol search, references, and precise refactors when available.
-- Use existing Jest/Vitest/Node test scripts before adding new test tooling.
-- Use TypeScript typecheck for API/web changes.
-- Run `npm run prisma:generate` after Prisma schema changes or when Prisma client types are stale.
-- Use pre-commit for lightweight commit-time checks.
-- Use ADR markdown in `docs/adr/` for major technical decisions.
-- Use Semgrep CE for local static security scan.
-- Use OSV-Scanner for dependency vulnerability checks.
-- Use Gitleaks before commit/push.
-- Use Knip for JS/TS unused files/dependencies/exports.
-- Use Playwright for browser/E2E tests when UI/runtime exists.
-- Use Repomix to prepare codebase context for ChatGPT review.
-- Use StrykerJS only when the user explicitly asks for mutation testing.
+## Project State
+**IN_PROGRESS.** Runtime areas, entry points, migrations, automated checks, and deployment/UAT scripts exist. `DataSekolah/generator-tanda-pengenal/` is a production source boundary: its built static bundle is integrated into web runtime at `apps/web/public/id-card-generator/`.
 
-## Git Safety
-- Do not push unless explicitly instructed.
-- Do not force push unless explicitly instructed.
-- Do not commit generated reports, local caches, build outputs, dependency folders, or secrets.
-- Check SSH GitHub connection safely before preparing push.
-- Do not print private SSH keys or environment secrets.
+## Production Runtime Reference
+- Production deployment at `/opt/schoolhub/current` is runtime reference for deployed source, not Git history and not a Git repository.
+- Reconcile production source changes into local Git through review and scope-matched tests before any commit or later deployment; never treat runtime files as replacement Git history.
+- Any VPS-to-local synchronization must exclude `.env`, databases, uploads, logs, backups, generated artifacts, build output, caches, and runtime state. Preserve local-only files unless an explicit reviewed decision covers them.
 
-## Validation Baseline
-- Typecheck: `npm run typecheck:all`
-- API unit tests: `npm run test:api`
-- Web unit tests: `npm run test:web`
-- Worker tests: `npm run test --prefix apps/worker`
-- Build all: `npm run build:all`
-- Lint all: `npm run lint:all`
-- E2E: `npm run test:e2e`
+## Technology
+- API: NestJS 11, TypeScript, Prisma 5, PostgreSQL, Redis, Helmet, JWT and class-validator.
+- Web: React 18.3, TypeScript, Vite 8, Tailwind 3, Vitest and Playwright.
+- Worker: Node.js, BullMQ, Redis, Axios, Node test runner.
+- Android reader: Kotlin, Jetpack Compose, CameraX, ML Kit, OkHttp/Retrofit, Room, Android Keystore.
+- Shared package: dual ESM/CommonJS JavaScript API with TypeScript declarations.
+- Data layer: Prisma schema, migrations, fixtures, and TypeScript seed.
+- Operations: Docker Compose plus Caddy, Nginx, systemd, `ops/`, and `scripts/` assets.
 
-## Token Discipline
-- Do not paste full logs into chat.
-- Use OMNI for long terminal output.
-- Save local reports to ignored files.
-- Summarize only issue counts, severity, affected files, failed commands, and next recommended patches.
+## Entry Points
+- API bootstrap and module assembly: `apps/api/src/main.ts`, `apps/api/src/app.module.ts`.
+- Web bootstrap and root application: `apps/web/src/main.tsx`, `apps/web/src/App.tsx`.
+- Worker bootstrap: `apps/worker/src/index.js`.
+- Android Compose shell: `apps/android-reader/app/src/main/java/id/sch/man1rokanhulu/absensi/MainActivity.kt`.
+- Database contract and seed: `prisma/schema.prisma`, `prisma/seed.ts`.
+
+## Repository Structure
+- `apps/api/`: HTTP API, authentication, attendance domain, Prisma and Redis integration.
+- `apps/web/`: browser application and browser test suites.
+- `apps/worker/`: BullMQ reconciliation and auto-missed scheduling worker.
+- `apps/android-reader/`: operator QR scanner Android application.
+- `packages/shared/`: roles, capabilities, and API error-code package used by API and web.
+- `prisma/`: PostgreSQL schema, migrations, fixtures, and seed.
+- `ops/`, `scripts/`: deployment, health, backup, security, UAT, and operational automation.
+- `DataSekolah/generator-tanda-pengenal/`: React/Vite source for deployed identity-card generator; build output is copied into `apps/web/public/id-card-generator/` and served through SIAB2 web runtime.
+- `Data Akun/generator-tanda-pengenal/`: separately maintained React/Vite account-card generator source. Current root evidence does not identify its build as deployed static bundle; do not assume it is independently served or is production bundle source without deployment evidence.
+- `docs/`, `design/`, `tools/`, `backend/`, `web/`: supporting material or legacy/non-runtime areas. Inspect before treating as source of truth.
+
+## Global Contracts
+- API global prefix: `/api/v1`. Health paths: `/api/v1/health/live`, `/api/v1/health/ready`; metrics also expose `/metrics` and `/api/v1/metrics`.
+- API applies Helmet, CSRF protection, CORS, request IDs, and `ValidationPipe` with `whitelist`, `transform`, and `forbidNonWhitelisted`.
+- Production QR reader scans use `POST /api/v1/attendance/qr-reader-scan`. Device activation, timestamp, nonce, body hash, and HMAC signed headers protect reader requests.
+- Android reader provisioning is capped at four server-pinned production targets: two `CHECK_ONLY` readers and two `GERBANG`/`MUSHOLA` readers. Administrators issue a short-lived, one-time activation code through `POST /api/v1/device-readers/:id/android/provision-code`; reader secret and stable target modes remain server-controlled.
+- `POST /api/v1/attendance/qr-scan` remains authenticated legacy/manual flow; do not route Android reader traffic there.
+- Login-lockout status and recovery use `/api/v1/auth/admin/login-lockout`; only `ADMIN_TU` and `DEVELOPER` may clear a lockout, with an audit reason. Recovery resets limiter state only; it never bypasses or changes password verification.
+- Shared roles, capabilities, and API error codes originate in `packages/shared`; update runtime consumers and type declarations together when its public contract changes.
+- Prisma changes require migration review and generated client refresh. Never place credentials in schema, seeds, docs, or commits.
+- Production identity-card bundle source is `DataSekolah/generator-tanda-pengenal/`. Its `npm run build` output must be synchronized to `apps/web/public/id-card-generator/` before web deployment; root scripts declare no separate generator sync command.
+- Nginx protects `/id-card-generator/` and `/admin/master-data/id-card-generator/` with `auth_request /api/v1/internal/access/id-card-generator`. That internal API endpoint uses `JwtAuthGuard` and allows only `ADMIN_TU`, `DEVELOPER`, and `OPERATOR_IT`; retain source-bundle, proxy, and access-control coupling together.
+
+## Common Commands
+Run from repository root unless command says otherwise.
+
+- `npm run prisma:generate`
+- `npm run prisma:migrate`
+- `npm run prisma:seed`
+- `npm run typecheck:all`
+- `npm run test:api`
+- `npm run test:web`
+- `npm run test --prefix apps/worker`
+- `npm run test:unit`
+- `npm run build:all`
+- `npm run lint:all`
+- `npm run test:e2e`
+- `npm run test:backend-contract`
+- `npm run test:integration`
+- `npm run test:concurrency`
+- `npm run test:outbox-sse`
+- `npm run test:e2e:full-stack`
+- `npm run test:a11y`
+- `npm run test:visual`
+- `npm run security:audit`
+- `npm run security:secrets`
+- `npm run security:android`
+- `npm run uat:smoke`
+- `npm run validate:final`
+
+## Verification
+- API change: run closest Jest test, then `npm run typecheck --prefix apps/api` and/or `npm run lint --prefix apps/api`.
+- Web change: run closest Vitest/Playwright test, then `npm run typecheck --prefix apps/web` and/or `npm run lint --prefix apps/web`.
+- DataSekolah generator source change: run `npm run test --prefix 'DataSekolah/generator-tanda-pengenal'`, `npm run lint --prefix 'DataSekolah/generator-tanda-pengenal'`, and `npm run build --prefix 'DataSekolah/generator-tanda-pengenal'`; synchronize resulting bundle to `apps/web/public/id-card-generator/`, then run web checks matching static-bundle/deployment scope. Verify protected URLs with authorized and unauthorized roles when proxy or access behavior changes.
+- Worker change: run `npm run test --prefix apps/worker`; run `npm run lint --prefix apps/worker` when syntax or tests change.
+- Android change: follow `apps/android-reader/README.md`; JDK 17/21 and Android SDK required. Use `./test-jdk17.sh` or `./gradlew testDebugUnitTest` when environment permits.
+- Prisma change: review migration, run `npm run prisma:generate`, then targeted API checks. Apply migration only with environment approval.
+- Cross-service behavior: choose existing root contract, integration, full-stack, UAT, or security command matching scope. Do not run deploy commands without explicit approval.
+
+## Known Constraints
+- Production services require environment configuration and external PostgreSQL/Redis; do not inspect `.env` files.
+- Android release signing requires local keystore material; never read or commit it. Release networking requires HTTPS; debug alone may allow HTTP.
+- Operational, UAT, production-readiness, backup, restore, and deployment scripts may require real infrastructure or credentials. Treat them as manual-only unless authorized.
+- Use pre-commit for lightweight commit-time checks; run Gitleaks before a requested commit/push. Use Semgrep CE, OSV-Scanner, Knip, and Playwright only when scope needs them. Use StrykerJS only on explicit request.
+- Store ADRs under `docs/adr/` for major technical decisions. Use OMNI for long output, Context7 for current external guidance, Serena for symbol navigation/refactors, and Repomix for external review context when available.
+
+## Child DOX Index
+- `apps/api/AGENTS.md` — API ownership, HTTP and QR-reader contracts.
+- `apps/web/AGENTS.md` — web application ownership and browser checks.
+- `apps/worker/AGENTS.md` — BullMQ worker contracts and checks.
+- `apps/android-reader/AGENTS.md` — Android scanner contracts and security constraints.
+- `packages/shared/AGENTS.md` — shared public authorization contract.
+- `prisma/AGENTS.md` — data schema, migration, and seed guidance.
+- `Data Akun/generator-tanda-pengenal/AGENTS.md` — separate account-card generator source guidance; deployed-bundle source is not confirmed here.
+- `DataSekolah/generator-tanda-pengenal/AGENTS.md` — deployed school-card generator source, static-bundle synchronization, and access coupling.

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test src/components/cards/cardConfig.test.js",
+    "test": "node --test src/components/cards/cardConfig.test.js src/utils/csrf.test.js src/utils/backendQr.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

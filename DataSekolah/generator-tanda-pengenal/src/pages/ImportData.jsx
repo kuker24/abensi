@@ -16,6 +16,8 @@ import {
 import { Layout } from '../components/layout';
 import { useStore } from '../store/useStore';
 import { parseBackendQrExportText, parseDataFile, validateUsers } from '../utils/csvParser';
+import { getCsrfToken } from '../utils/csrf';
+import { bulkGenerateMissingQr } from '../utils/backendQr';
 
 const ImportData = () => {
   const navigate = useNavigate();
@@ -133,13 +135,8 @@ const ImportData = () => {
 
     try {
       if (ensureMissing) {
-        const response = await fetch('/api/v1/qr-credentials/bulk-generate', {
-          method: 'POST',
-          headers: { accept: 'application/json', 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ label: 'QR Absensi SIAB2', onlyMissing: true }),
-        });
-        if (!response.ok) throw new Error(`Gagal membuat QR yang belum ada (HTTP ${response.status})`);
+        const csrfToken = await getCsrfToken();
+        await bulkGenerateMissingQr(csrfToken);
       }
 
       const response = await fetch('/api/v1/qr-credentials/export/cards', {

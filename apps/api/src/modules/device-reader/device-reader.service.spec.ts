@@ -359,6 +359,43 @@ describe('DeviceReaderService credential security', () => {
     expect(prisma.__tx.deviceReader.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] } }));
   });
 
+  it('preserves target Android reader mode mappings when reactivating', async () => {
+    const targets = [
+      ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
+      ['READER_IDENTITY_01', [AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]],
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]]
+    ];
+
+    for (const [deviceId, allowedModes] of targets) {
+      const prisma = makePrisma();
+      const before = {
+        id: `reader-${deviceId}`,
+        deviceId,
+        name: deviceId,
+        status: DeviceReaderStatus.INACTIVE,
+        type: ReaderType.QR_ANDROID,
+        platform: DevicePlatform.HARDWARE,
+        allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]
+      };
+      prisma.deviceReader.findUnique.mockResolvedValue(before);
+      prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
+      prisma.__tx.deviceReader.update.mockResolvedValue({ ...before, status: DeviceReaderStatus.ACTIVE, platform: DevicePlatform.ANDROID, allowedModes });
+      const service = new DeviceReaderService(prisma, makeSignatures());
+
+      await service.updateStatus(before.id, { status: DeviceReaderStatus.ACTIVE }, actor);
+
+      expect(prisma.__tx.deviceReader.update).toHaveBeenCalledWith({
+        where: { id: before.id },
+        data: {
+          status: DeviceReaderStatus.ACTIVE,
+          platform: DevicePlatform.ANDROID,
+          allowedModes
+        }
+      });
+    }
+  });
+
   it('rejects reactivating Android reader when active reader limit is full', async () => {
     const prisma = makePrisma();
     prisma.deviceReader.findUnique.mockResolvedValue({ id: 'reader-inactive', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID });

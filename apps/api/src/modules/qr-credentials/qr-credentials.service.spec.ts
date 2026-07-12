@@ -37,7 +37,7 @@ function makeCredential(data: Record<string, unknown>) {
   };
 }
 
-function makePrisma(options: { user?: Record<string, unknown> | null; users?: Array<Record<string, unknown>>; credentials?: Array<Record<string, unknown>>; classes?: Array<Record<string, unknown>> } = {}) {
+function makePrisma(options: { user?: Record<string, unknown> | null; users?: Array<Record<string, unknown>>; credentials?: Array<Record<string, unknown>>; lookupCredential?: Record<string, unknown> | null; classes?: Array<Record<string, unknown>> } = {}) {
   const user = options.user ?? { id: 'student-1', fullName: 'Siswa Satu', username: '1234567890', role: Role.SISWA, active: true };
   const tx = {
     ...auditClient(),
@@ -54,7 +54,8 @@ function makePrisma(options: { user?: Record<string, unknown> | null; users?: Ar
     },
     qrCredential: {
       findFirst: jest.fn().mockResolvedValue({ id: 'credential-old', userId: 'student-1', status: QrCredentialStatus.ACTIVE }),
-      findMany: jest.fn().mockResolvedValue(options.credentials ?? [])
+      findMany: jest.fn().mockResolvedValue(options.credentials ?? []),
+      findUnique: jest.fn().mockResolvedValue(options.lookupCredential ?? null)
     },
     schoolClass: {
       findMany: jest.fn().mockResolvedValue(options.classes ?? [])
@@ -125,6 +126,31 @@ describe('QrCredentialsService stable student identity cards', () => {
     expect(data).toMatchObject({ userId: 'student-1', expiresAt: null, rotatedFromId: 'credential-old' });
   });
 
+  it('resolves an active student QR after the student moves to a new class', async () => {
+    const qrCode = 'schoolhub:qr:v1:QR_STABLE_AFTER_PROMOTION';
+    const prisma = makePrisma({
+      lookupCredential: {
+        id: 'credential-student-1',
+        status: QrCredentialStatus.ACTIVE,
+        expiresAt: null,
+        user: {
+          id: 'student-1',
+          fullName: 'Siswa Satu',
+          username: '1234567890',
+          role: Role.SISWA,
+          active: true,
+          enrollments: [{ schoolClass: { code: 'XI-A', name: 'Kelas XI A' } }]
+        }
+      }
+    });
+    const service = new QrCredentialsService(prisma, makeSignatures());
+
+    const credential = await service.findActiveByQrCode(qrCode);
+
+    expect(credential.user.enrollments[0].schoolClass.code).toBe('XI-A');
+    expect(prisma.qrCredential.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: expect.any(Object) }));
+  });
+
   it('does not require class enrollment for card print readiness', async () => {
     const prisma = makePrisma({
       users: [
@@ -179,6 +205,7 @@ describe('QrCredentialsService stable student identity cards', () => {
       fullName: 'Siswa Satu',
       nama: 'Siswa Satu',
       username: '1234567890',
+      nis: undefined,
       nisn: '1234567890',
       role: Role.SISWA,
       roleLabel: 'SISWA',
@@ -233,10 +260,35 @@ describe('QrCredentialsService stable student identity cards', () => {
       role: Role.GURU_MAPEL,
       roleLabel: 'Guru',
       displayRole: 'Guru',
+      nis: null,
       nisn: null,
       nip: '198001012006041001',
+      className: null,
+      classCode: null,
       level: 'Guru / Pegawai MAN 1 Rokan Hulu',
       qr_value: 'schoolhub:qr:v1:QR_ZYXWVUTSRQPO'
     });
+  });
+
+  it('filters class card exports to students actively enrolled on the business date', async () => {
+    const prisma = makePrisma();
+    const service = new QrCredentialsService(prisma, makeSignatures());
+
+    await service.exportCards({ classId: 'class-current' });
+
+    expect(prisma.qrCredential.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        user: expect.objectContaining({
+          enrollments: {
+            some: expect.objectContaining({
+              classId: 'class-current',
+              active: true,
+              administrativeStatus: 'ACTIVE',
+              effectiveFrom: { lte: expect.any(Date) }
+            })
+          }
+        })
+      })
+    }));
   });
 });
