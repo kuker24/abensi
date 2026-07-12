@@ -17,6 +17,43 @@ type CheckResult = {
   details: unknown[];
 };
 
+type SessionScheduleOverlapRow = { scope: string; count: number };
+
+export const ACTIVE_SESSION_SCHEDULE_OVERLAPS_SQL = `
+  WITH active AS (
+    SELECT id, "teacherId", "classId", "roomId", "startsAt", "endsAt"
+    FROM "Session"
+    WHERE status IN ('SCHEDULED', 'OPEN')
+  ), schedule_overlaps AS (
+    SELECT 'teacher' AS scope
+    FROM active a JOIN active b ON a.id < b.id AND a."teacherId" = b."teacherId" AND tsrange(a."startsAt", a."endsAt", '[)') && tsrange(b."startsAt", b."endsAt", '[)')
+    UNION ALL
+    SELECT 'class' AS scope
+    FROM active a JOIN active b ON a.id < b.id AND a."classId" = b."classId" AND tsrange(a."startsAt", a."endsAt", '[)') && tsrange(b."startsAt", b."endsAt", '[)')
+    UNION ALL
+    SELECT 'room' AS scope
+    FROM active a JOIN active b ON a.id < b.id AND a."roomId" IS NOT NULL AND a."roomId" = b."roomId" AND tsrange(a."startsAt", a."endsAt", '[)') && tsrange(b."startsAt", b."endsAt", '[)')
+  )
+  SELECT scope, COUNT(*)::int AS count
+  FROM schedule_overlaps
+  GROUP BY scope
+  ORDER BY scope
+`;
+
+export function createActiveSessionScheduleOverlapCheck() {
+  return {
+    name: 'active_session_schedule_overlaps',
+    severity: 'BLOCKING' as const,
+    sql: ACTIVE_SESSION_SCHEDULE_OVERLAPS_SQL,
+    count: (rows: SessionScheduleOverlapRow[]) => rows.reduce((total, row) => total + Number(row.count), 0),
+    toDetails: (rows: SessionScheduleOverlapRow[]) => rows.map((row) => ({
+      category: 'session_schedule_overlap',
+      scope: row.scope,
+      count: Number(row.count)
+    }))
+  };
+}
+
 function argValue(name: string, fallback: string) {
   const prefix = `${name}=`;
   const found = process.argv.find((arg) => arg.startsWith(prefix));
@@ -163,36 +200,7 @@ export async function runProductionReadinessPreflight() {
       }))
     }, prisma);
 
-    await appendQueryCheck<{ scope: string; count: number }>(checks, {
-      name: 'active_session_schedule_overlaps',
-      severity: 'BLOCKING',
-      sql: `
-        WITH active AS (
-          SELECT id, "teacherId", "classId", "roomId", "startsAt", "endsAt"
-          FROM "Session"
-          WHERE status IN ('SCHEDULED', 'OPEN')
-        ), overlaps AS (
-          SELECT 'teacher' AS scope
-          FROM active a JOIN active b ON a.id < b.id AND a."teacherId" = b."teacherId" AND tstzrange(a."startsAt", a."endsAt", '[)') && tstzrange(b."startsAt", b."endsAt", '[)')
-          UNION ALL
-          SELECT 'class' AS scope
-          FROM active a JOIN active b ON a.id < b.id AND a."classId" = b."classId" AND tstzrange(a."startsAt", a."endsAt", '[)') && tstzrange(b."startsAt", b."endsAt", '[)')
-          UNION ALL
-          SELECT 'room' AS scope
-          FROM active a JOIN active b ON a.id < b.id AND a."roomId" IS NOT NULL AND a."roomId" = b."roomId" AND tstzrange(a."startsAt", a."endsAt", '[)') && tstzrange(b."startsAt", b."endsAt", '[)')
-        )
-        SELECT scope, COUNT(*)::int AS count
-        FROM overlaps
-        GROUP BY scope
-        ORDER BY scope
-      `,
-      count: (rows) => rows.reduce((total, row) => total + Number(row.count), 0),
-      toDetails: (rows) => rows.map((row) => ({
-        category: 'session_schedule_overlap',
-        scope: row.scope,
-        count: Number(row.count)
-      }))
-    }, prisma);
+    await appendQueryCheck<SessionScheduleOverlapRow>(checks, createActiveSessionScheduleOverlapCheck(), prisma);
 
     await appendQueryCheck<{ count: number }>(checks, {
       name: 'enrollment_period_overlaps',

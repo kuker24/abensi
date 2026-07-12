@@ -2,8 +2,9 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = resolve(new URL('..', import.meta.url).pathname);
+const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const artifactRoot = resolve(repoRoot, 'artifacts/upgrade-migrations');
 const tmpRoot = resolve(repoRoot, '.tmp/upgrade-migrations');
 const LEGACY_CUTOFF = '0020_user_must_change_password';
@@ -153,6 +154,49 @@ function run(command, args, options = {}) {
     throw err;
   }
   return { status: result.status ?? 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '', output: combined };
+}
+
+export function parseSanitizedVerifierOutput(output) {
+  const jsonLines = String(output)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('{') && line.endsWith('}'));
+  if (jsonLines.length !== 1) throw new Error('Verifier output must contain exactly one JSON object.');
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonLines[0]);
+  } catch {
+    throw new Error('Verifier output is not valid JSON.');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Verifier output must be a JSON object.');
+  }
+  if (parsed.ok !== false || parsed.status !== 'FAIL' || !Array.isArray(parsed.issueCodes)) {
+    throw new Error('Verifier output does not match sanitized failure schema.');
+  }
+  if (!parsed.issueCodes.every((code) => typeof code === 'string') || !parsed.issueCodes.includes('ENTRY_HASH_MISMATCH')) {
+    throw new Error('Verifier output is missing ENTRY_HASH_MISMATCH.');
+  }
+  return parsed;
+}
+
+function assertAuditVerifierFailure(verifyResult) {
+  if (verifyResult.status === 0) return { ok: false, detail: 'verifier_exit_status=0' };
+
+  try {
+    parseSanitizedVerifierOutput(verifyResult.stdout);
+    return {
+      ok: true,
+      detail: `status=${verifyResult.status};issueCode=ENTRY_HASH_MISMATCH`
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `status=${verifyResult.status};sanitizedOutput=${error instanceof Error ? error.message : 'invalid'}`
+    };
+  }
 }
 
 function databaseUrlFor(dbName) {
@@ -355,8 +399,9 @@ function runScenario(scenario, index) {
       stage = 'audit_verify_expected_failure';
       verifyResult = runNpmScript('audit:verify-chain', dbUrl, [], true);
       logs.push({ stage, status: verifyResult.status, output: verifyResult.output });
-      ok = verifyResult.status !== 0 && verifyResult.output.includes('entryHash mismatch');
-      assertions.push({ name: 'expected_audit_verification_failure', ok, detail: `status=${verifyResult.status}` });
+      const assertion = assertAuditVerifierFailure(verifyResult);
+      ok = assertion.ok;
+      assertions.push({ name: 'expected_audit_verification_failure', ...assertion });
       return { scenario: scenario.name, ok, expect: scenario.expect, stage, startedAt, finishedAt: new Date().toISOString(), database: dbName, preflightChecks, assertions, logs };
     }
 
@@ -381,6 +426,23 @@ function runScenario(scenario, index) {
   }
 }
 
+function sanitizeScenarioResultForArtifact(result) {
+  return {
+    scenario: result.scenario,
+    ok: result.ok,
+    expect: result.expect,
+    stage: result.stage,
+    preflightChecks: result.preflightChecks,
+    assertions: (result.assertions ?? []).map((assertion) => ({
+      name: assertion.name,
+      ok: assertion.ok,
+      ...(typeof assertion.detail === 'string' && /^(?:status=\d+;issueCode=ENTRY_HASH_MISMATCH|failed=(?:true|false), contains=(?:true|false)|approved=\d+;rejected=\d+)$/.test(assertion.detail)
+        ? { detail: assertion.detail }
+        : {})
+    }))
+  };
+}
+
 function main() {
   ensureSafeEnvironment();
   rmSync(artifactRoot, { recursive: true, force: true });
@@ -393,10 +455,10 @@ function main() {
     const result = runScenario(scenario, index + 1);
     const dir = join(artifactRoot, scenario.name);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'result.json'), `${JSON.stringify({ ...result, logs: undefined }, null, 2)}\n`);
-    writeFileSync(join(dir, 'logs.json'), `${JSON.stringify(result.logs ?? [], null, 2)}\n`);
+    const sanitizedResult = sanitizeScenarioResultForArtifact(result);
+    writeFileSync(join(dir, 'result.json'), `${JSON.stringify(sanitizedResult, null, 2)}\n`, { mode: 0o600 });
     console.log(`[upgrade] ${scenario.name}: ${result.ok ? 'PASS' : 'FAIL'} (${result.stage})`);
-    return { ...result, logs: undefined };
+    return sanitizedResult;
   });
 
   const report = {
@@ -408,9 +470,15 @@ function main() {
     legacyCutoff: LEGACY_CUTOFF,
     results
   };
-  writeFileSync(join(artifactRoot, 'summary.json'), `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(join(artifactRoot, 'summary.json'), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
   console.log(JSON.stringify(report, null, 2));
   if (!report.ok) process.exit(1);
 }
 
-main();
+export function isUpgradeMigrationScenarioRunnerEntrypoint(entrypoint = process.argv[1]) {
+  return Boolean(entrypoint) && resolve(entrypoint) === fileURLToPath(import.meta.url);
+}
+
+if (isUpgradeMigrationScenarioRunnerEntrypoint()) {
+  main();
+}

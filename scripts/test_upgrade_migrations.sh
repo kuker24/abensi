@@ -8,6 +8,8 @@ fi
 
 : "${DATABASE_URL:?DATABASE_URL is required}"
 
+node scripts/run_upgrade_migration_scenarios.test.mjs
+
 # The Node runner creates one isolated PostgreSQL database per fixture scenario,
 # migrates each only through the legacy cutoff, loads populated legacy SQL,
 # runs a read-only legacy preflight, deploys remaining migrations when safe, and
