@@ -245,7 +245,11 @@ export async function runAuditTrustBoundaryLocalIntegration() {
         { id: 'audit-boundary-local-2', sequence: 2n, action: 'synthetic.audit.2', resource: 'synthetic', resourceId: '2', canonicalPayload: secondPayload, prevHash: firstHash, entryHash: 'known-historical-anomaly', hashVersion: 1 }
       ]
     });
-    await prisma.auditChainState.create({ data: { id: 1, lastSequence: 2n, lastHash: 'known-historical-anomaly', lastEntryId: 'audit-boundary-local-2' } });
+    await prisma.auditChainState.upsert({
+      where: { id: 1 },
+      create: { id: 1, lastSequence: 2n, lastHash: 'known-historical-anomaly', lastEntryId: 'audit-boundary-local-2' },
+      update: { lastSequence: 2n, lastHash: 'known-historical-anomaly', lastEntryId: 'audit-boundary-local-2' }
+    });
     const historicalBefore = await prisma.auditEntry.findMany({ orderBy: { sequence: 'asc' } });
     const historicalBeforeBytes = JSON.stringify(historicalBefore, (_key, value) => typeof value === 'bigint' ? value.toString() : value);
     await prisma.$disconnect();
