@@ -219,7 +219,9 @@ async function main() {
   }
 }
 
-main().catch(() => {
-  console.error(JSON.stringify(sanitizedReadinessError('POST_MIGRATION_VERIFICATION_FAILED')));
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch(() => {
+    console.error(JSON.stringify(sanitizedReadinessError('POST_MIGRATION_VERIFICATION_FAILED')));
+    process.exitCode = 1;
+  });
+}
