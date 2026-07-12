@@ -8,6 +8,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { approveAuditTrustBoundary } from '../apps/api/src/modules/security/audit-trust-boundary.approval';
 import { canonicalize } from '../apps/api/src/modules/security/canonical-json';
 import { hashAuditEntry } from '../apps/api/src/modules/security/audit-trust-boundary.core';
+import { createHash } from 'node:crypto';
 
 const REQUIRED_CONFIRMATION = 'RUN_LOCAL_DESTRUCTIVE_TEST';
 const TRUST_BOUNDARY_MIGRATION = '0041_audit_trust_boundary';
@@ -239,16 +240,17 @@ export async function runAuditTrustBoundaryLocalIntegration() {
     const firstPayload = canonicalize({ action: 'synthetic.audit.1' }) as Prisma.InputJsonValue;
     const firstHash = hashAuditEntry(null, firstPayload);
     const secondPayload = canonicalize({ action: 'synthetic.audit.2' }) as Prisma.InputJsonValue;
+    const historicalAnomalyHash = createHash('sha256').update('audit-boundary-local-known-anomaly').digest('hex');
     await prisma.auditEntry.createMany({
       data: [
         { id: 'audit-boundary-local-1', sequence: 1n, action: 'synthetic.audit.1', resource: 'synthetic', resourceId: '1', canonicalPayload: firstPayload, prevHash: null, entryHash: firstHash, hashVersion: 1 },
-        { id: 'audit-boundary-local-2', sequence: 2n, action: 'synthetic.audit.2', resource: 'synthetic', resourceId: '2', canonicalPayload: secondPayload, prevHash: firstHash, entryHash: 'known-historical-anomaly', hashVersion: 1 }
+        { id: 'audit-boundary-local-2', sequence: 2n, action: 'synthetic.audit.2', resource: 'synthetic', resourceId: '2', canonicalPayload: secondPayload, prevHash: firstHash, entryHash: historicalAnomalyHash, hashVersion: 1 }
       ]
     });
     await prisma.auditChainState.upsert({
       where: { id: 1 },
-      create: { id: 1, lastSequence: 2n, lastHash: 'known-historical-anomaly', lastEntryId: 'audit-boundary-local-2' },
-      update: { lastSequence: 2n, lastHash: 'known-historical-anomaly', lastEntryId: 'audit-boundary-local-2' }
+      create: { id: 1, lastSequence: 2n, lastHash: historicalAnomalyHash, lastEntryId: 'audit-boundary-local-2' },
+      update: { lastSequence: 2n, lastHash: historicalAnomalyHash, lastEntryId: 'audit-boundary-local-2' }
     });
     const historicalBefore = await prisma.auditEntry.findMany({ orderBy: { sequence: 'asc' } });
     const historicalBeforeBytes = JSON.stringify(historicalBefore, (_key, value) => typeof value === 'bigint' ? value.toString() : value);
