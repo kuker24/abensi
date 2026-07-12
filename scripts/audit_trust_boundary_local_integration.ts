@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { lookup } from 'node:dns/promises';
@@ -18,10 +18,6 @@ type Result = { name: string; ok: boolean; detail?: string };
 export type LocalDatabaseUrlValidation =
   | { ok: true; url: string; hostname: string; databaseName: string }
   | { ok: false; reason: string };
-
-function sanitizeError(error: unknown) {
-  return error instanceof Error ? error.message.replace(/(?:postgres(?:ql)?:\/\/)[^\s]+/gi, '[database-url]') : 'unknown-error';
-}
 
 function isLoopbackAddress(address: string) {
   if (address === '::1') return true;
@@ -90,10 +86,36 @@ async function getSafeLocalDatabaseUrl(): Promise<LocalDatabaseUrlValidation> {
   return resolution.ok ? candidate : resolution;
 }
 
-function writeReport(report: object) {
+function sanitizeIntegrationDetail(detail: string | undefined) {
+  const match = /^approved=(\d+);rejected=(\d+)$/.exec(detail ?? '');
+  return match ? `approved=${match[1]};rejected=${match[2]}` : undefined;
+}
+
+export function createSanitizedLocalIntegrationReport(status: string, executed: boolean, results: Result[]) {
+  const sanitizedResults = results.map((result) => {
+    const detail = sanitizeIntegrationDetail(result.detail);
+    return {
+      name: result.name,
+      ok: result.ok,
+      ...(detail ? { detail } : {})
+    };
+  });
+  return {
+    status,
+    executed,
+    resultCount: sanitizedResults.length,
+    passCount: sanitizedResults.filter((result) => result.ok).length,
+    failCount: sanitizedResults.filter((result) => !result.ok).length,
+    results: sanitizedResults
+  };
+}
+
+export function writeSanitizedLocalIntegrationReport(report: object) {
   const output = resolve('artifacts/integration/audit-trust-boundary-local.json');
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(output, 0o600);
+  return output;
 }
 
 function copyPreBoundaryMigrations(tempRoot: string) {
@@ -143,18 +165,24 @@ async function expectRejected(name: string, task: () => Promise<unknown>, result
 export async function runAuditTrustBoundaryLocalIntegration() {
   const target = await getSafeLocalDatabaseUrl();
   if (!target.ok) {
-    console.log(JSON.stringify({ status: target.reason, executed: false, reason: target.reason }));
+    const report = createSanitizedLocalIntegrationReport(target.reason, false, []);
+    writeSanitizedLocalIntegrationReport(report);
+    console.log(JSON.stringify(report));
     return;
   }
 
   const connectionGuard = new PrismaClient({ datasources: { db: { url: target.url } } });
   try {
     if (!await verifyConnectedServerLoopback(connectionGuard)) {
-      console.log(JSON.stringify({ status: 'SKIPPED_CONNECTED_SERVER_NOT_LOOPBACK', executed: false }));
+      const report = createSanitizedLocalIntegrationReport('SKIPPED_CONNECTED_SERVER_NOT_LOOPBACK', false, []);
+      writeSanitizedLocalIntegrationReport(report);
+      console.log(JSON.stringify(report));
       return;
     }
-  } catch (error) {
-    console.error(sanitizeError(error));
+  } catch {
+    const report = createSanitizedLocalIntegrationReport('LOCAL_INTEGRATION_CONNECTION_FAILED', false, []);
+    writeSanitizedLocalIntegrationReport(report);
+    console.error(JSON.stringify(report));
     process.exitCode = 1;
     return;
   } finally {
@@ -165,11 +193,12 @@ export async function runAuditTrustBoundaryLocalIntegration() {
   const results: Result[] = [];
   let prisma: PrismaClient | null = null;
   let competingPrisma: PrismaClient | null = null;
+  let temporaryWorkspaceRemoved = false;
   try {
     const localPrismaDirectory = copyPreBoundaryMigrations(tempRoot);
     const schemaPath = join(localPrismaDirectory, 'schema.prisma');
 
-    // Empty DB: 0041 must create only structure and no audit metadata rows.
+    // Empty DB: deploy pre-boundary schema, then structural-only 0041 once.
     runMigrations(localPrismaDirectory, ['migrate', 'deploy', '--schema', schemaPath], target.url);
     migrateLocalTestDatabase(localPrismaDirectory, schemaPath, target.url);
     prisma = new PrismaClient({ datasources: { db: { url: target.url } } });
@@ -222,23 +251,29 @@ export async function runAuditTrustBoundaryLocalIntegration() {
         boundaryCommitment: 'local-overlap-commitment', approvalReference: 'CHG-AUDIT-LOCAL-002', approvedAt: new Date(), activeEpochId: epochTwo.id
       }
     }), results);
-  } catch (error) {
-    results.push({ name: 'local_integration_execution', ok: false, detail: sanitizeError(error) });
+  } catch {
+    results.push({ name: 'local_integration_execution', ok: false, detail: 'LOCAL_INTEGRATION_EXECUTION_FAILED' });
   } finally {
     await competingPrisma?.$disconnect();
     await prisma?.$disconnect();
-    rmSync(tempRoot, { recursive: true, force: true });
+    try {
+      rmSync(tempRoot, { recursive: true, force: true });
+      temporaryWorkspaceRemoved = !existsSync(tempRoot);
+    } catch {
+      temporaryWorkspaceRemoved = false;
+    }
+    results.push({ name: 'temporary_workspace_cleanup', ok: temporaryWorkspaceRemoved });
   }
 
-  const report = { status: results.every((result) => result.ok) ? 'PASS' : 'FAIL', executed: true, results };
-  writeReport(report);
+  const report = createSanitizedLocalIntegrationReport(results.every((result) => result.ok) ? 'PASS' : 'FAIL', true, results);
+  writeSanitizedLocalIntegrationReport(report);
   console.log(JSON.stringify(report));
   if (report.status !== 'PASS') process.exitCode = 1;
 }
 
 if (require.main === module) {
-  runAuditTrustBoundaryLocalIntegration().catch((error: unknown) => {
-    console.error(sanitizeError(error));
+  runAuditTrustBoundaryLocalIntegration().catch(() => {
+    console.error('AUDIT_TRUST_BOUNDARY_LOCAL_INTEGRATION_FAILED');
     process.exitCode = 1;
   });
 }

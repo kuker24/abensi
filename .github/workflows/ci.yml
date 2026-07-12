@@ -393,12 +393,35 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run test:upgrade-migrations
+      - name: Run audit trust-boundary local database integration
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: schoolhub
+          PGPASSWORD: schoolhub_test_password
+        run: |
+          psql -d postgres -v ON_ERROR_STOP=1 \
+            -c 'DROP DATABASE IF EXISTS schoolhub_audit_boundary_ci WITH (FORCE);' \
+            -c 'CREATE DATABASE schoolhub_audit_boundary_ci;'
+          AUDIT_BOUNDARY_TEST_DATABASE_URL='postgresql://schoolhub:schoolhub_test_password@127.0.0.1:5432/schoolhub_audit_boundary_ci' \
+          AUDIT_BOUNDARY_TEST_CONFIRM='RUN_LOCAL_DESTRUCTIVE_TEST' \
+          npm run test:audit-trust-boundary:local
+      - if: always()
+        name: Clean up audit trust-boundary local database
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: schoolhub
+          PGPASSWORD: schoolhub_test_password
+        run: psql -d postgres -c 'DROP DATABASE IF EXISTS schoolhub_audit_boundary_ci WITH (FORCE);' || true
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: upgrade-migration-artifacts
           if-no-files-found: ignore
-          path: artifacts/upgrade-migrations/
+          path: |
+            artifacts/upgrade-migrations/
+            artifacts/integration/audit-trust-boundary-local.json
 
   security-supply-chain:
     runs-on: ubuntu-latest
