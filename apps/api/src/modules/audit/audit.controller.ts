@@ -35,7 +35,13 @@ export class AuditController {
 
   @Get('verify-chain')
   @Capabilities('audit.read')
-  verifyChain(@Query('limit') limit?: string) {
-    return this.auditChain.verify(limit ? Number(limit) : 10000);
+  verifyChain(@Query('limit') _limit?: string) {
+    return this.auditChain.integritySummary();
+  }
+
+  @Get('integrity-summary')
+  @Capabilities('audit.read')
+  integritySummary() {
+    return this.auditChain.integritySummary();
   }
 }

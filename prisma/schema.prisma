@@ -40,6 +40,19 @@ enum AttendanceReviewState {
   CORRECTED
 }
 
+enum AuditChainEpochStatus {
+  TRUSTED
+  ACTIVE_TRUSTED
+}
+
+enum AuditIntegrityIncidentStatus {
+  HISTORICAL_UNTRUSTED
+}
+
+enum AuditIntegrityIncidentReasonCode {
+  HISTORICAL_CHAIN_INTEGRITY_LOSS
+}
+
 enum AttendanceConfirmationSource {
   MANUAL_SINGLE
   MANUAL_BULK
@@ -811,11 +824,52 @@ model OutboxEvent {
 }
 
 model AuditChainState {
-  id           Int      @id
-  lastSequence BigInt   @default(0)
-  lastHash     String?
-  lastEntryId  String?
-  updatedAt    DateTime @updatedAt
+  id            Int      @id
+  lastSequence  BigInt   @default(0)
+  lastHash      String?
+  lastEntryId   String?
+  activeEpochId String?  @unique
+  updatedAt     DateTime @updatedAt
+
+  activeEpoch AuditChainEpoch? @relation("ActiveAuditChainEpoch", fields: [activeEpochId], references: [id], onDelete: Restrict)
+}
+
+model AuditChainEpoch {
+  id              String                @id @default(cuid())
+  epochNumber     Int                   @unique
+  startSequence   BigInt                @unique
+  endSequence     BigInt?
+  status          AuditChainEpochStatus
+  previousEpochId String?               @unique
+  createdAt       DateTime              @default(now())
+  closedAt        DateTime?
+
+  previousEpoch       AuditChainEpoch?        @relation("AuditChainEpochLineage", fields: [previousEpochId], references: [id], onDelete: Restrict)
+  nextEpoch           AuditChainEpoch?        @relation("AuditChainEpochLineage")
+  activeForChainState AuditChainState?        @relation("ActiveAuditChainEpoch")
+  activationIncident  AuditIntegrityIncident? @relation("AuditIntegrityIncidentActiveEpoch")
+
+  @@index([status])
+  @@index([startSequence, endSequence])
+}
+
+model AuditIntegrityIncident {
+  id                         String                           @id @default(cuid())
+  incidentCode               String                           @unique
+  status                     AuditIntegrityIncidentStatus
+  reasonCode                 AuditIntegrityIncidentReasonCode
+  previousTrustedEndSequence BigInt
+  historicalStartSequence    BigInt
+  historicalEndSequence      BigInt
+  boundaryCommitment         String                           @unique
+  approvalReference          String
+  approvedAt                 DateTime
+  activeEpochId              String                           @unique
+  createdAt                  DateTime                         @default(now())
+
+  activeEpoch AuditChainEpoch @relation("AuditIntegrityIncidentActiveEpoch", fields: [activeEpochId], references: [id], onDelete: Restrict)
+
+  @@index([historicalStartSequence, historicalEndSequence])
 }
 
 model AccountDeleteSecuritySetting {

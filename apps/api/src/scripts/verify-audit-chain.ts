@@ -1,123 +1,33 @@
 import { PrismaClient } from '@prisma/client';
-import { createHash } from 'node:crypto';
-
-const prisma = new PrismaClient();
-
-function canonicalize(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map((item) => canonicalize(item));
-  if (value && typeof value === 'object') {
-    const input = value as Record<string, unknown>;
-    return Object.keys(input)
-      .sort()
-      .reduce<Record<string, unknown>>((acc, key) => {
-        const item = input[key];
-        if (item !== undefined) acc[key] = canonicalize(item);
-        return acc;
-      }, {});
-  }
-  return value;
-}
-
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
-}
-
-function hashEntry(prevHash: string | null | undefined, canonicalPayload: unknown) {
-  return createHash('sha256')
-    .update(prevHash || 'GENESIS')
-    .update(canonicalJson(canonicalPayload))
-    .digest('hex');
-}
+import { verifyAuditTrustBoundary } from '../modules/security/audit-trust-boundary.core';
 
 async function main() {
-  const [entries, state] = await Promise.all([
-    prisma.auditEntry.findMany({ orderBy: { sequence: 'asc' } }),
-    prisma.auditChainState.findUnique({ where: { id: 1 } })
-  ]);
-
-  const errors: string[] = [];
-  let expectedSequence = 1n;
-  let previousHash: string | null = null;
-  const prevHashUses = new Map<string, number>();
-  const hashOwners = new Map<string, string[]>();
-
-  for (const entry of entries) {
-    if (!entry.entryHash) {
-      errors.push(`Missing entryHash at audit ${entry.id}`);
-    } else {
-      hashOwners.set(entry.entryHash, [...(hashOwners.get(entry.entryHash) ?? []), entry.id]);
-    }
+  const prisma = new PrismaClient();
+  try {
+    const [entries, state, epochs, incidents] = await Promise.all([
+      prisma.auditEntry.findMany({ orderBy: { sequence: 'asc' } }),
+      prisma.auditChainState.findUnique({ where: { id: 1 } }),
+      prisma.auditChainEpoch.findMany({ orderBy: { epochNumber: 'asc' } }),
+      prisma.auditIntegrityIncident.findMany({ orderBy: { createdAt: 'asc' } })
+    ]);
+    const result = verifyAuditTrustBoundary({ entries, state, epochs, incidents });
+    console.log(JSON.stringify({
+      ok: result.ok,
+      status: result.status,
+      entries: result.totalScanned,
+      trustedThroughSequence: result.trustedThroughSequence,
+      historicalUntrustedRange: result.historicalUntrustedRange,
+      activeEpoch: result.activeEpoch,
+      historicalFindings: result.historicalFindings,
+      issueCodes: result.issues.map((entry) => entry.code)
+    }));
+    if (!result.ok) process.exitCode = 1;
+  } finally {
+    await prisma.$disconnect();
   }
-
-  for (const [entryHash, owners] of hashOwners) {
-    if (owners.length > 1) errors.push(`Duplicate entryHash ${entryHash} on entries ${owners.join(', ')}`);
-  }
-
-  for (const entry of entries) {
-    if (entry.sequence !== expectedSequence) {
-      errors.push(`Sequence gap at audit ${entry.id}: expected ${expectedSequence}, got ${entry.sequence}`);
-      expectedSequence = entry.sequence;
-    }
-
-    if (entry.prevHash !== previousHash) {
-      errors.push(`prevHash mismatch at sequence ${entry.sequence}: expected ${previousHash ?? 'GENESIS'}, got ${entry.prevHash ?? 'GENESIS'}`);
-    }
-
-    if (entry.hashVersion !== 1) {
-      errors.push(`Unsupported hashVersion at sequence ${entry.sequence}: ${entry.hashVersion}`);
-    }
-
-    if (entry.prevHash && !hashOwners.has(entry.prevHash)) {
-      errors.push(`Orphan prevHash at sequence ${entry.sequence}: ${entry.prevHash}`);
-    }
-
-    if (!entry.canonicalPayload) {
-      errors.push(`Missing canonicalPayload at sequence ${entry.sequence}`);
-    } else {
-      const recalculated = hashEntry(entry.prevHash, entry.canonicalPayload);
-      if (entry.entryHash !== recalculated) {
-        errors.push(`entryHash mismatch at sequence ${entry.sequence}: expected ${recalculated}, got ${entry.entryHash}`);
-      }
-    }
-
-    const prevKey = entry.prevHash ?? 'GENESIS';
-    prevHashUses.set(prevKey, (prevHashUses.get(prevKey) ?? 0) + 1);
-    previousHash = entry.entryHash;
-    expectedSequence += 1n;
-  }
-
-  const genesisUses = prevHashUses.get('GENESIS') ?? 0;
-  if (entries.length > 0 && genesisUses !== 1) {
-    errors.push(`Expected exactly one GENESIS prevHash, found ${genesisUses}`);
-  }
-  for (const [prevHash, count] of prevHashUses) {
-    if (prevHash !== 'GENESIS' && count > 1) {
-      errors.push(`Branch detected: prevHash ${prevHash} is used by ${count} entries`);
-    }
-  }
-
-  const last = entries[entries.length - 1];
-  if (entries.length > 0) {
-    if (!state) errors.push('AuditChainState id=1 is missing');
-    if (state && state.lastSequence !== last!.sequence) errors.push(`AuditChainState.lastSequence mismatch: expected ${last!.sequence}, got ${state.lastSequence}`);
-    if (state && state.lastHash !== last!.entryHash) errors.push(`AuditChainState.lastHash mismatch: expected ${last!.entryHash}, got ${state.lastHash}`);
-    if (state && state.lastEntryId !== last!.id) errors.push(`AuditChainState.lastEntryId mismatch: expected ${last!.id}, got ${state.lastEntryId}`);
-  } else if (state && state.lastSequence !== 0n) {
-    errors.push(`Empty audit chain but AuditChainState.lastSequence is ${state.lastSequence}`);
-  }
-
-  const result = { ok: errors.length === 0, entries: entries.length, errors };
-  console.log(JSON.stringify(result, null, 2));
-  if (!result.ok) process.exit(1);
 }
 
-main()
-  .catch((error) => {
-    console.error('Audit chain verification ERROR');
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+main().catch(() => {
+  console.error(JSON.stringify({ ok: false, status: 'ERROR', code: 'AUDIT_CHAIN_VERIFICATION_FAILED' }));
+  process.exitCode = 1;
+});

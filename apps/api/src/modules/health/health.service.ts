@@ -17,12 +17,12 @@ export class HealthService {
   }
 
   private async assertRequiredSchema() {
-    const requiredTables = ['_prisma_migrations', 'User', 'Session', 'GeofencePolicy', 'AuthSession', 'GateLog', 'AuditEntry'];
+    const requiredTables = ['_prisma_migrations', 'User', 'Session', 'GeofencePolicy', 'AuthSession', 'GateLog', 'AuditEntry', 'AuditChainEpoch', 'AuditIntegrityIncident'];
     const rows = await this.prisma.$queryRaw<Array<{ table_name: string }>>`
       SELECT table_name
       FROM information_schema.tables
       WHERE table_schema = 'public'
-        AND table_name IN ('_prisma_migrations', 'User', 'Session', 'GeofencePolicy', 'AuthSession', 'GateLog', 'AuditEntry')
+        AND table_name IN ('_prisma_migrations', 'User', 'Session', 'GeofencePolicy', 'AuthSession', 'GateLog', 'AuditEntry', 'AuditChainEpoch', 'AuditIntegrityIncident')
     `;
     const present = new Set(rows.map((row) => row.table_name));
     const missing = requiredTables.filter((table) => !present.has(table));
