@@ -38,7 +38,7 @@ read_env() {
 }
 
 require_command() { command -v "$1" >/dev/null 2>&1 || { echo "Required command missing: $1" >&2; exit 1; }; }
-for cmd in docker jq openssl sha256sum stat flock df; do require_command "$cmd"; done
+for cmd in docker jq openssl sha256sum stat flock df mktemp cmp; do require_command "$cmd"; done
 docker compose version >/dev/null
 
 BACKUP_DIR="${BACKUP_DIR:-$(read_env BACKUP_DIR)}"
@@ -72,33 +72,91 @@ if ! flock -n 9; then
 fi
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
+RUN_ID="${TS}-$$-${RANDOM}${RANDOM}"
 GIT_SHA="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
 OUT="$BACKUP_DIR/schoolhub-${TS}.dump.enc"
-TMP_OUT="$OUT.tmp"
-PASSPHRASE_FILE="$(mktemp)"
-chmod 600 "$PASSPHRASE_FILE"
-printf '%s' "$PASSPHRASE" > "$PASSPHRASE_FILE"
+TMP_OUT=""
 METADATA="$OUT.metadata.json"
 CHECKSUM_FILE="$OUT.sha256"
 COMPOSE=(docker compose -f docker-compose.production.yml --env-file "$ENV_FILE")
+POSTGRES_CONTAINER_ID=""
+CONTAINER_DUMP_PATH="/tmp/schoolhub-backup-${RUN_ID}.dump"
+CONTAINER_VERIFY_PATH="/tmp/schoolhub-backup-${RUN_ID}.verify.dump"
+HOST_DUMP_FILE=""
+HOST_VERIFY_FILE=""
+PASSPHRASE_FILE=""
+BACKUP_PUBLISHED=false
 
-failure_notify() {
-  local code=$?
-  rm -f "$TMP_OUT" "$PASSPHRASE_FILE"
-  if [[ -n "$NOTIFY_HOOK" ]]; then
+if [[ -e "$OUT" || -e "$METADATA" || -e "$CHECKSUM_FILE" ]]; then
+  echo "Backup output already exists for timestamp: $OUT" >&2
+  exit 1
+fi
+
+TMP_OUT="$(mktemp "$BACKUP_DIR/.schoolhub-backup-${RUN_ID}.dump.enc.tmp.XXXXXX")"
+chmod 600 "$TMP_OUT"
+PASSPHRASE_FILE="$(mktemp "$BACKUP_DIR/.schoolhub-backup-${RUN_ID}.passphrase.XXXXXX")"
+chmod 600 "$PASSPHRASE_FILE"
+printf '%s' "$PASSPHRASE" > "$PASSPHRASE_FILE"
+
+cleanup() {
+  local code="$1"
+  trap - EXIT
+  set +e
+
+  if [[ -n "$POSTGRES_CONTAINER_ID" ]]; then
+    docker exec "$POSTGRES_CONTAINER_ID" sh -lc 'rm -f -- "$@"' sh \
+      "$CONTAINER_DUMP_PATH" "$CONTAINER_VERIFY_PATH" >/dev/null 2>&1 || true
+  fi
+
+  for path in "$TMP_OUT" "$HOST_DUMP_FILE" "$HOST_VERIFY_FILE" "$PASSPHRASE_FILE"; do
+    [[ -n "$path" ]] && rm -f -- "$path"
+  done
+
+  if (( code != 0 )) && [[ "$BACKUP_PUBLISHED" != true ]]; then
+    rm -f -- "$OUT" "$METADATA" "$CHECKSUM_FILE"
+  fi
+
+  if (( code != 0 )) && [[ -n "$NOTIFY_HOOK" ]]; then
     BACKUP_STATUS=failed BACKUP_REASON="$REASON" BACKUP_PATH="$OUT" bash -lc "$NOTIFY_HOOK" >/dev/null 2>&1 || true
   fi
+
   exit "$code"
 }
-trap failure_notify ERR
-trap 'rm -f "$PASSPHRASE_FILE"' EXIT
+trap 'cleanup "$?"' EXIT
 
-"${COMPOSE[@]}" ps postgres >/dev/null
-"${COMPOSE[@]}" exec -T postgres sh -lc 'export PGPASSWORD="$POSTGRES_PASSWORD"; pg_dump -Fc -Z 0 -U "$POSTGRES_USER" "$POSTGRES_DB"' \
-  | openssl enc -aes-256-cbc -salt -pbkdf2 -pass "file:$PASSPHRASE_FILE" -out "$TMP_OUT"
+POSTGRES_CONTAINER_ID="$("${COMPOSE[@]}" ps -q postgres)"
+if [[ -z "$POSTGRES_CONTAINER_ID" || "$POSTGRES_CONTAINER_ID" == *$'\n'* ]]; then
+  echo "Expected exactly one running postgres container from Docker Compose." >&2
+  exit 1
+fi
+if [[ "$(docker inspect --format '{{.State.Running}}' "$POSTGRES_CONTAINER_ID")" != true ]]; then
+  echo "Postgres container is not running: $POSTGRES_CONTAINER_ID" >&2
+  exit 1
+fi
 
-openssl enc -d -aes-256-cbc -pbkdf2 -pass "file:$PASSPHRASE_FILE" -in "$TMP_OUT" \
-  | "${COMPOSE[@]}" exec -T postgres sh -lc 'pg_restore --list >/dev/null'
+docker exec "$POSTGRES_CONTAINER_ID" sh -lc '
+  umask 077
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+  pg_dump -Fc -Z 0 -U "$POSTGRES_USER" -f "$1" "$POSTGRES_DB"
+' sh "$CONTAINER_DUMP_PATH"
+
+HOST_DUMP_FILE="$(mktemp "$BACKUP_DIR/.schoolhub-backup-${RUN_ID}.dump.XXXXXX")"
+docker cp "$POSTGRES_CONTAINER_ID:$CONTAINER_DUMP_PATH" "$HOST_DUMP_FILE"
+[[ -s "$HOST_DUMP_FILE" ]] || { echo "Postgres dump is empty after docker cp." >&2; exit 1; }
+
+openssl enc -aes-256-cbc -salt -pbkdf2 -pass "file:$PASSPHRASE_FILE" -in "$HOST_DUMP_FILE" -out "$TMP_OUT"
+[[ -s "$TMP_OUT" ]] || { echo "Encrypted backup is empty." >&2; exit 1; }
+
+HOST_VERIFY_FILE="$(mktemp "$BACKUP_DIR/.schoolhub-backup-${RUN_ID}.verify.XXXXXX")"
+openssl enc -d -aes-256-cbc -pbkdf2 -pass "file:$PASSPHRASE_FILE" -in "$TMP_OUT" -out "$HOST_VERIFY_FILE"
+[[ -s "$HOST_VERIFY_FILE" ]] || { echo "Decrypted backup verification file is empty." >&2; exit 1; }
+cmp -s "$HOST_DUMP_FILE" "$HOST_VERIFY_FILE" || { echo "Encrypted backup byte verification failed." >&2; exit 1; }
+
+docker cp "$HOST_VERIFY_FILE" "$POSTGRES_CONTAINER_ID:$CONTAINER_VERIFY_PATH"
+docker exec "$POSTGRES_CONTAINER_ID" sh -lc '
+  chmod 600 "$1"
+  pg_restore --list "$1" >/dev/null
+' sh "$CONTAINER_VERIFY_PATH"
 
 chmod 600 "$TMP_OUT"
 mv "$TMP_OUT" "$OUT"
@@ -118,6 +176,7 @@ jq -n \
   --argjson sizeBytes "$SIZE_BYTES" \
   '{ok:($ok=="true"),timestamp:$timestamp,reason:$reason,gitSha:$gitSha,path:$path,checksumSha256:$checksum,checksumFile:$checksumFile,sizeBytes:$sizeBytes,encrypted:true,format:"pg_dump_custom"}' > "$METADATA"
 chmod 600 "$METADATA"
+BACKUP_PUBLISHED=true
 
 # Cleanup only after a successful new backup. Simple daily retention; weekly/monthly copies can be kept by external upload/retention policy.
 find "$BACKUP_DIR" -type f \( -name 'schoolhub-*.dump.enc' -o -name 'schoolhub-*.dump.enc.sha256' -o -name 'schoolhub-*.dump.enc.metadata.json' \) -mtime +"$RETENTION_DAYS" -delete
