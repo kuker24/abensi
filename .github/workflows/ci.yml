@@ -345,7 +345,7 @@ jobs:
       - run: npm ci && npm ci --prefix apps/api && npm ci --prefix apps/web && npm ci --prefix apps/worker
       - run: npm run prisma:generate
       - run: npx prisma migrate deploy --schema prisma/schema.prisma
-      - run: npm run preflight:production -- --json=artifacts/preflight/production-readiness-preflight.json --write-sql-table
+      - run: npm run preflight:production -- --json=artifacts/preflight/production-readiness-preflight.json
       - run: npm run test:integration -- --json=artifacts/integration/postgres-integration.json
       - run: npm run test:concurrency -- --json=artifacts/concurrency/postgres-concurrency.json
       - run: npm run test:outbox-sse -- --json=artifacts/outbox-sse/outbox-sse-distributed.json

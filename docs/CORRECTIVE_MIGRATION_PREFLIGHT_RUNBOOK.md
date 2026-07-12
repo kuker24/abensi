@@ -22,7 +22,7 @@ The command checks:
 To also materialize SQL-readable rows for DBAs:
 
 ```bash
-npm run preflight:production -- --write-sql-table
+npm run preflight:production -- --json=artifacts/preflight/production-readiness-preflight.json
 ```
 
 Any blocking check exits non-zero unless `--allow-blocking` is used for report-only staging diagnostics.
