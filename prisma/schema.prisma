@@ -26,6 +26,12 @@ enum SessionStatus {
   MISSED
 }
 
+enum AndroidApkVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  REJECTED
+}
+
 enum StudentAttendanceStatus {
   HADIR
   TELAT
@@ -65,6 +71,13 @@ enum RosterCaptureSource {
   GENERATED
   OPENED
   BACKFILL
+}
+
+enum SessionRosterState {
+  PENDING
+  VERIFIED
+  BACKFILLED_UNVERIFIED
+  LEGACY_ROSTER_MISSING
 }
 
 enum TeacherSessionStatus {
@@ -219,7 +232,8 @@ model User {
   id                 String     @id @default(cuid())
   username           String     @unique
   fullName           String
-  nis                String?
+  nis                String?    @unique
+  nkd                String?    @unique
   nip                String?
   birthDate          DateTime?  @db.Date
   passwordHash       String
@@ -237,6 +251,8 @@ model User {
   updatedAt          DateTime   @updatedAt
 
   taughtSessions                        Session[]                      @relation("TeacherSessions")
+  substitutionSourceSessions            Session[]                      @relation("SessionSubstitutionSourceTeacher")
+  teachingAssignments                   TeachingAssignment[]
   enrollments                           ClassEnrollment[]
   createdClassEnrollments               ClassEnrollment[]              @relation("ClassEnrollmentCreatedBy")
   endedClassEnrollments                 ClassEnrollment[]              @relation("ClassEnrollmentEndedBy")
@@ -255,6 +271,7 @@ model User {
   updatedPicketNotes                    PicketNote[]                   @relation("PicketNoteUpdatedBy")
   audits                                AuditEntry[]                   @relation("AuditActor")
   smartCard                             SmartCard?
+  nkdRegistry                           StudentNkdRegistry?
   qrCredentials                         QrCredential[]                 @relation("QrCredentialUser")
   createdQrCredentials                  QrCredential[]                 @relation("QrCredentialCreatedBy")
   revokedQrCredentials                  QrCredential[]                 @relation("QrCredentialRevokedBy")
@@ -301,6 +318,7 @@ model SchoolClass {
   enrollments         ClassEnrollment[]
   sessions            Session[]
   weeklySchedules     WeeklySchedule[]
+  teachingAssignments TeachingAssignment[]
   reconciliationFlags ReconciliationFlag[]
 
   @@index([yearLabel])
@@ -312,8 +330,9 @@ model Subject {
   name      String
   createdAt DateTime @default(now())
 
-  sessions        Session[]
-  weeklySchedules WeeklySchedule[]
+  sessions            Session[]
+  weeklySchedules     WeeklySchedule[]
+  teachingAssignments TeachingAssignment[]
 }
 
 model AcademicYear {
@@ -326,9 +345,10 @@ model AcademicYear {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  semesters        Semester[]
-  weeklySchedules  WeeklySchedule[]
-  classEnrollments ClassEnrollment[]
+  semesters           Semester[]
+  weeklySchedules     WeeklySchedule[]
+  teachingAssignments TeachingAssignment[]
+  classEnrollments    ClassEnrollment[]
 }
 
 model Semester {
@@ -342,9 +362,10 @@ model Semester {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  academicYear     AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
-  weeklySchedules  WeeklySchedule[]
-  classEnrollments ClassEnrollment[]
+  academicYear        AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  weeklySchedules     WeeklySchedule[]
+  teachingAssignments TeachingAssignment[]
+  classEnrollments    ClassEnrollment[]
 
   @@unique([academicYearId, code])
   @@index([active])
@@ -397,41 +418,52 @@ model ClassEnrollment {
 }
 
 model Session {
-  id               String        @id @default(cuid())
-  classId          String
-  subjectId        String
-  teacherId        String
-  startsAt         DateTime
-  endsAt           DateTime
-  businessDate     DateTime      @db.Date
-  status           SessionStatus @default(SCHEDULED)
-  openedAt         DateTime?
-  closedAt         DateTime?
-  reconciledAt     DateTime?
-  weeklyScheduleId String?
-  roomId           String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                   String        @id @default(cuid())
+  classId              String
+  subjectId            String
+  teacherId            String
+  startsAt             DateTime
+  endsAt               DateTime
+  businessDate         DateTime      @db.Date
+  status               SessionStatus     @default(SCHEDULED)
+  rosterState          SessionRosterState @default(PENDING)
+  openedAt             DateTime?
+  closedAt             DateTime?
+  reconciledAt         DateTime?
+  weeklyScheduleId     String?
+  teachingAssignmentId           String?
+  substitutionSourceTeacherId    String?
+  substitutionSourceAssignmentId String?
+  roomId                         String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
-  schoolClass      SchoolClass                 @relation(fields: [classId], references: [id], onDelete: Restrict)
-  subject          Subject                     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
-  teacher          User                        @relation("TeacherSessions", fields: [teacherId], references: [id], onDelete: Restrict)
-  weeklySchedule   WeeklySchedule?             @relation(fields: [weeklyScheduleId], references: [id], onDelete: SetNull)
-  room             Room?                       @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  attendances      StudentAttendance[]
-  teacherPresence  TeacherSessionPresence[]
-  flags            ReconciliationFlag[]
-  correctionEvents AttendanceCorrectionEvent[]
-  rosters          SessionRoster[]
+  schoolClass        SchoolClass         @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subject            Subject             @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher            User                @relation("TeacherSessions", fields: [teacherId], references: [id], onDelete: Restrict)
+  weeklySchedule     WeeklySchedule?     @relation(fields: [weeklyScheduleId], references: [id], onDelete: SetNull)
+  teachingAssignment           TeachingAssignment? @relation("SessionActingTeachingAssignment", fields: [teachingAssignmentId], references: [id], onDelete: Restrict)
+  substitutionSourceTeacher    User?                @relation("SessionSubstitutionSourceTeacher", fields: [substitutionSourceTeacherId], references: [id], onDelete: Restrict)
+  substitutionSourceAssignment TeachingAssignment?  @relation("SessionSubstitutionSourceAssignment", fields: [substitutionSourceAssignmentId], references: [id], onDelete: Restrict)
+  room                         Room?                @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  attendances        StudentAttendance[]
+  teacherPresence    TeacherSessionPresence[]
+  flags              ReconciliationFlag[]
+  correctionEvents   AttendanceCorrectionEvent[]
+  rosters            SessionRoster[]
 
   @@index([startsAt])
   @@index([businessDate])
   @@index([status])
   @@index([status, startsAt])
+  @@index([rosterState, status, reconciledAt])
   @@index([classId, startsAt])
   @@index([teacherId, startsAt])
   @@index([roomId, startsAt])
   @@index([weeklyScheduleId, startsAt])
+  @@index([teachingAssignmentId, startsAt], map: "Session_teachingAssignmentId_startsAt_idx")
+  @@index([substitutionSourceTeacherId, businessDate], map: "Session_substitutionSourceTeacherId_businessDate_idx")
+  @@index([substitutionSourceAssignmentId, startsAt], map: "Session_substitutionSourceAssignmentId_startsAt_idx")
 }
 
 model StudentAttendance {
@@ -908,35 +940,65 @@ model TeacherLeave {
   @@index([substituteTeacherId, date])
 }
 
-model WeeklySchedule {
+model TeachingAssignment {
   id             String    @id @default(cuid())
-  classId        String
-  subjectId      String
   teacherId      String
-  roomId         String?
-  academicYearId String?
-  semesterId     String?
-  dayOfWeek      Int
-  startTime      String
-  endTime        String
-  effectiveFrom  DateTime
-  effectiveTo    DateTime?
-  active         Boolean   @default(true)
+  subjectId      String
+  classId        String
+  academicYearId String
+  semesterId     String
+  effectiveFrom  DateTime @db.Date
+  effectiveTo    DateTime @db.Date
+  active         Boolean  @default(true)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  schoolClass  SchoolClass   @relation(fields: [classId], references: [id], onDelete: Restrict)
-  subject      Subject       @relation(fields: [subjectId], references: [id], onDelete: Restrict)
-  teacher      User          @relation(fields: [teacherId], references: [id], onDelete: Restrict)
-  room         Room?         @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
-  semester     Semester?     @relation(fields: [semesterId], references: [id], onDelete: SetNull)
-  sessions     Session[]
+  teacher         User             @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  subject         Subject          @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  schoolClass     SchoolClass      @relation(fields: [classId], references: [id], onDelete: Restrict)
+  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  semester        Semester         @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  weeklySchedules             WeeklySchedule[]
+  sessions                    Session[]            @relation("SessionActingTeachingAssignment")
+  substitutionSourceSessions  Session[]            @relation("SessionSubstitutionSourceAssignment")
+
+  @@index([teacherId, subjectId, classId, academicYearId, semesterId, effectiveFrom, effectiveTo], map: "TeachingAssignment_teacher_subject_class_period_idx")
+  @@index([academicYearId, semesterId, active, effectiveFrom, effectiveTo], map: "TeachingAssignment_period_active_idx")
+  @@index([classId, active, effectiveFrom, effectiveTo], map: "TeachingAssignment_class_active_period_idx")
+}
+
+model WeeklySchedule {
+  id                   String    @id @default(cuid())
+  classId              String
+  subjectId            String
+  teacherId            String
+  roomId               String?
+  academicYearId       String?
+  semesterId           String?
+  teachingAssignmentId String?
+  dayOfWeek            Int
+  startTime            String
+  endTime              String
+  effectiveFrom        DateTime  @db.Date
+  effectiveTo          DateTime? @db.Date
+  active               Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  schoolClass        SchoolClass         @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subject            Subject             @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher            User                @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  room               Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  academicYear       AcademicYear?       @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  semester           Semester?           @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  teachingAssignment TeachingAssignment? @relation(fields: [teachingAssignmentId], references: [id], onDelete: Restrict)
+  sessions           Session[]
 
   @@index([dayOfWeek, active])
   @@index([classId, dayOfWeek])
   @@index([teacherId, dayOfWeek])
   @@index([active, effectiveFrom, effectiveTo])
+  @@index([teachingAssignmentId, dayOfWeek])
 }
 
 model Notification {
@@ -1165,6 +1227,14 @@ model PicketNote {
   @@index([createdById, createdAt])
 }
 
+model StudentNkdRegistry {
+  nkd        String   @id
+  userId     String?  @unique
+  assignedAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
 model SmartCard {
   id           String     @id @default(cuid())
   uid          String     @unique
@@ -1239,6 +1309,16 @@ model AndroidApkRelease {
   apkSha256               String
   apkSizeBytes            Int
   contentType             String    @default("application/vnd.android.package-archive")
+  packageName             String?
+  apkVersionName          String?
+  apkVersionCode          Int?
+  targetSdkVersion        Int?
+  isDebuggable            Boolean?
+  usesCleartextTraffic    Boolean?
+  signatureSchemeV2       Boolean?
+  signerSha256            String?
+  verificationStatus      AndroidApkVerificationStatus @default(UNVERIFIED)
+  verifiedAt              DateTime?
   isPublished             Boolean   @default(false)
   publishedAt             DateTime?
   createdById             String?
@@ -1250,6 +1330,7 @@ model AndroidApkRelease {
   updatedBy User? @relation("AndroidApkReleaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([isPublished, versionCode])
+  @@index([verificationStatus, createdAt])
   @@index([createdAt])
   @@index([createdById, createdAt])
 }
