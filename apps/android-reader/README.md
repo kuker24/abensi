@@ -10,7 +10,7 @@ Dipakai operator sekolah untuk scan QR siswa/guru dengan 2 HP scanner fisik yang
 - **Aktivasi HP Scanner** dengan langkah bernomor: Alamat Server → Nama HP → Kode Aktivasi.
 - **Tes Sambungan** sebelum simpan, dengan pesan kesalahan manusiawi.
 - **Kode Aktivasi Rahasia** disembunyikan saat diketik/tempel, dengan tombol lihat/sembunyikan.
-- **Layar Utama** menampilkan: status koneksi aktual, jumlah antrean kirim, lokasi, scan terakhir, versi aplikasi, dan pilihan **Scan Gerbang** / **Scan Mushola**.
+- **Layar Utama** menampilkan: status koneksi aktual, jumlah antrean kirim, lokasi, scan terakhir, versi aplikasi, dan pilihan **Scan Gerbang** / **Scan Mushola**. Mode Mushola mencakup Dhuha, Dzuhur, dan Ashar; server menentukan jenis sholat dari waktu scan.
 - **Mode Scan** kamera besar dengan overlay bingkai bidik, status di atas, feedback besar di bawah, serta tombol **Ubah Mode** untuk kembali memilih mode.
 - **Izin kamera aman**: jika izin kamera ditolak, aplikasi menampilkan panduan dan tombol buka pengaturan HP.
 - **Tombol cepat**: Scan Gerbang, Scan Mushola, Jeda, Lampu, Kirim Ulang Antrean, dan Ubah Mode.
@@ -21,7 +21,7 @@ Dipakai operator sekolah untuk scan QR siswa/guru dengan 2 HP scanner fisik yang
 ## Keamanan
 
 - **Reader Secret** disimpan di Android Keystore via `EncryptedSharedPreferences` (AES256-GCM). Tidak pernah ditampilkan di UI setelah disimpan.
-- **Antrean offline** dienkripsi lokal dengan AES/GCM melalui `LocalAes` (Android Keystore alias `schoolhub_pending_queue`). Scan yang gagal karena internet tetap antre; scan yang ditolak server dicatat sebagai ditolak agar tidak tertahan selamanya.
+- **Antrean offline** dienkripsi lokal dengan AES/GCM melalui `LocalAes` (Android Keystore alias `schoolhub_pending_queue`). Antrean menyimpan waktu scan asli. Baris parkir setelah 10 percobaan tidak menghambat scan lain yang sehat. Dekripsi atau QR lokal rusak dihapus lalu dicatat dengan riwayat tersanitasi; kegagalan lokal tak terduga tidak menambah percobaan dan menghentikan flush untuk investigasi. `IOException` serta HTTP `408`, `425`, `429`, dan `5xx` tetap antre, bertambah sampai maksimal 10 percobaan, lalu diparkir untuk tindakan operator; penolakan bisnis `4xx` dihapus setelah dicatat secara tersanitasi.
 - **Tanda tangan request** memakai HMAC-SHA256 dengan body-hash + timestamp + nonce di setiap scan ke server.
 - **Riwayat scan** hanya menyimpan 4 karakter terakhir kode QR (masked) — tidak ada secret/signature/nonce/raw QR yang ditulis ke storage.
 - Build release wajib HTTPS (`SchoolHubApiClient.validateServerUrl`) dan cleartext traffic dimatikan di release.
@@ -39,7 +39,7 @@ Dipakai operator sekolah untuk scan QR siswa/guru dengan 2 HP scanner fisik yang
 3. Tekan **Tes Sambungan** untuk memastikan server bisa dihubungi.
 4. Tekan **Simpan & Mulai Scan** — HP akan diaktifkan dan masuk ke layar utama.
 5. **Layar utama** menampilkan status, lokasi, dan pilihan mode scan.
-6. Pilih **Scan Gerbang** untuk datang/pulang atau **Scan Mushola** untuk sholat siswa.
+6. Pilih **Scan Gerbang** untuk datang/pulang atau **Scan Mushola** untuk Dhuha, Dzuhur, atau Ashar. Server menentukan jenis sholat.
 7. Kamera terbuka, arahkan QR siswa/guru sesuai mode yang dipilih.
 8. Tunggu sampai feedback berubah:
    - **Hijau**: scan berhasil, langsung scan siswa berikutnya.

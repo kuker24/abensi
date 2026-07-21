@@ -4,37 +4,40 @@ import java.time.LocalTime
 
 const val DEFAULT_SIAB2_SERVER_URL = "https://absensi.man1rokanhulu.cloud"
 
-enum class ReaderDeviceKind { GATE, MUSHOLA, CHECK_ONLY, MIXED }
+enum class ReaderDeviceKind { GATE, MUSHOLA, CHECK_ONLY, MIXED, UNAVAILABLE }
 
-private fun normalizeMode(mode: String): String = when (mode.trim().uppercase()) {
-    "GATE_IN", "GATE_OUT" -> "GERBANG"
-    else -> mode.trim().uppercase()
-}
+private fun normalizeMode(mode: String): String = mode.trim().uppercase()
 
+private val GATE_MODES = setOf("GATE_IN", "GATE_OUT")
+
+// Gate direction is server-pinned. Do not restore the legacy auto-detect mode.
 fun selectableScanModes(allowedModes: List<String>): List<String> {
     val normalized = allowedModes.map(::normalizeMode).toSet()
     val result = mutableListOf<String>()
-    if (normalized.contains("GERBANG")) result.add("GERBANG")
+    if (normalized.contains("GATE_IN")) result.add("GATE_IN")
+    if (normalized.contains("GATE_OUT")) result.add("GATE_OUT")
     if (normalized.contains("MUSHOLA")) result.add("MUSHOLA")
     if (normalized.contains("CHECK_ONLY")) result.add("CHECK_ONLY")
-    return result.ifEmpty { listOf("GERBANG", "MUSHOLA") }
+    return result
 }
+
+fun hasSelectableScanMode(allowedModes: List<String>): Boolean = selectableScanModes(allowedModes).isNotEmpty()
 
 fun readerDeviceKind(allowedModes: List<String>): ReaderDeviceKind {
     val modes = selectableScanModes(allowedModes).toSet()
-    val hasGate = modes.contains("GERBANG")
+    val hasGate = modes.any { it in GATE_MODES }
     val hasMushola = modes.contains("MUSHOLA")
     return when {
         hasGate && hasMushola -> ReaderDeviceKind.MIXED
         hasGate -> ReaderDeviceKind.GATE
         hasMushola -> ReaderDeviceKind.MUSHOLA
         modes.contains("CHECK_ONLY") -> ReaderDeviceKind.CHECK_ONLY
-        else -> ReaderDeviceKind.MIXED
+        else -> ReaderDeviceKind.UNAVAILABLE
     }
 }
 
 fun readerDeviceTitle(allowedModes: List<String>): String = when (readerDeviceKind(allowedModes)) {
-    ReaderDeviceKind.GATE, ReaderDeviceKind.MUSHOLA, ReaderDeviceKind.MIXED -> "HP Scanner"
+    ReaderDeviceKind.GATE, ReaderDeviceKind.MUSHOLA, ReaderDeviceKind.MIXED, ReaderDeviceKind.UNAVAILABLE -> "HP Scanner"
     ReaderDeviceKind.CHECK_ONLY -> "Cek Identitas"
 }
 
@@ -42,7 +45,8 @@ fun readerModeSummary(allowedModes: List<String>): String = when (readerDeviceKi
     ReaderDeviceKind.GATE -> "Mode Gerbang tersedia"
     ReaderDeviceKind.MUSHOLA -> "Mode Mushola tersedia"
     ReaderDeviceKind.CHECK_ONLY -> "Mode: Cek Identitas"
-    ReaderDeviceKind.MIXED -> "Pilih Mode Gerbang, Mode Mushola, atau Cek Identitas"
+    ReaderDeviceKind.MIXED -> "Pilih Scan Datang, Scan Pulang, Mode Mushola, atau Cek Identitas"
+    ReaderDeviceKind.UNAVAILABLE -> "Mode scan belum tersedia. Minta admin aktivasi ulang."
 }
 
 fun effectiveScanMode(allowedModes: List<String>, currentMode: String): String {
@@ -50,32 +54,37 @@ fun effectiveScanMode(allowedModes: List<String>, currentMode: String): String {
     val normalizedCurrent = normalizeMode(currentMode)
     return when {
         modes.contains(normalizedCurrent) -> normalizedCurrent
-        modes.contains("GERBANG") -> "GERBANG"
+        modes.contains("GATE_IN") -> "GATE_IN"
         modes.contains("MUSHOLA") -> "MUSHOLA"
-        else -> modes.firstOrNull() ?: "GERBANG"
+        else -> modes.firstOrNull().orEmpty()
     }
 }
 
 fun showManualModePicker(allowedModes: List<String>): Boolean = selectableScanModes(allowedModes).size > 1
 
 fun scanModeTitle(mode: String): String = when (normalizeMode(mode)) {
-    "GERBANG" -> "Mode Gerbang"
+    "GATE_IN" -> "Scan Gerbang Datang"
+    "GATE_OUT" -> "Scan Gerbang Pulang"
     "MUSHOLA" -> "Mode Mushola"
     "CHECK_ONLY" -> "Mode Cek Identitas"
     else -> "Mode Scan"
 }
 
 fun scanModeHelper(mode: String): String = when (normalizeMode(mode)) {
-    "GERBANG" -> "Scan datang/pulang."
-    "MUSHOLA" -> "Scan sholat siswa."
+    "GATE_IN" -> "Catat kedatangan. Scan pulang dipilih lewat menu terpisah."
+    "GATE_OUT" -> "Catat kepulangan. Hanya berlaku setelah scan datang tercatat."
+    "MUSHOLA" -> "Dhuha, Dzuhur, atau Ashar sesuai waktu server."
     "CHECK_ONLY" -> "Cek identitas tanpa mencatat presensi."
     else -> "Arahkan QR ke kamera."
 }
 
+fun prayerScanTimingHint(now: LocalTime = LocalTime.now()): String =
+    "${currentPrayerLabel(now)} menurut waktu HP. Jenis sholat ditentukan server."
+
 fun currentPrayerLabel(now: LocalTime = LocalTime.now()): String = when {
-    now.isBefore(LocalTime.of(10, 31)) -> "Dhuha"
-    now.isBefore(LocalTime.of(13, 31)) -> "Dzuhur"
-    now.isBefore(LocalTime.of(16, 31)) -> "Ashar"
+    now in LocalTime.of(7, 0)..LocalTime.of(10, 30) -> "Dhuha"
+    now in LocalTime.of(11, 45)..LocalTime.of(13, 30) -> "Dzuhur"
+    now in LocalTime.of(15, 0)..LocalTime.of(16, 30) -> "Ashar"
     else -> "Di luar jadwal"
 }
 
@@ -83,6 +92,7 @@ fun friendlyScanTitle(ok: Boolean, message: String): String {
     val lower = message.lowercase()
     return when {
         lower.contains("sudah tercatat") || lower.contains("sudah ada") -> "Sudah tercatat"
+        lower.contains("uji ") && lower.contains("berhasil") -> "Uji scan berhasil"
         lower.contains("datang tercatat") -> "Datang tercatat"
         lower.contains("pulang tercatat") -> "Pulang tercatat"
         lower.contains("sholat tercatat") -> "Sholat tercatat"

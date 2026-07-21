@@ -26,14 +26,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import id.sch.man1rokanhulu.absensi.data.LocalConfig
 import id.sch.man1rokanhulu.absensi.data.OfflineQueueRepository
+import id.sch.man1rokanhulu.absensi.data.PendingScanRetryCoordinator
+import id.sch.man1rokanhulu.absensi.data.PendingScanRetryHistoryStatus
+import id.sch.man1rokanhulu.absensi.data.PendingScanRetryOrchestrator
+import id.sch.man1rokanhulu.absensi.data.PendingScanRetryResponse
 import id.sch.man1rokanhulu.absensi.data.ScanHistoryStore
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
-import id.sch.man1rokanhulu.absensi.security.QrParser
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackData
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
 import id.sch.man1rokanhulu.absensi.ui.screens.ScannerCallbacks
 import id.sch.man1rokanhulu.absensi.ui.components.playFeedbackSound
 import id.sch.man1rokanhulu.absensi.ui.effectiveScanMode
+import id.sch.man1rokanhulu.absensi.ui.hasSelectableScanMode
 import id.sch.man1rokanhulu.absensi.ui.safeScanHistoryMessage
 import id.sch.man1rokanhulu.absensi.ui.screens.ForcedUpdateScreen
 import id.sch.man1rokanhulu.absensi.ui.screens.HelpScreen
@@ -48,7 +52,6 @@ import id.sch.man1rokanhulu.absensi.update.ApkUpdateInstaller
 import id.sch.man1rokanhulu.absensi.update.ApkUpdatePolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.IOException
 import java.time.Instant
 
 class MainActivity : ComponentActivity() {
@@ -87,7 +90,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Route { SPLASH, SETUP, HOME, SCANNER, SETTINGS, HELP, HISTORY }
 
-private data class QueueRetryResult(val sent: Int, val rejected: Int, val failed: Int)
+private data class QueueRetryResult(val sent: Int, val rejected: Int, val pending: Int, val parked: Int)
 
 private fun batteryLevelPercent(context: Context): Int? {
     val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
@@ -121,10 +124,12 @@ fun ReaderApp(
     val api = remember { SchoolHubApiClient { config.serverUrl } }
     val historyStore = remember { ScanHistoryStore(context) }
     val queueRepo = remember { OfflineQueueRepository(context) }
+    val retryCoordinator = remember { PendingScanRetryCoordinator() }
     val scope = rememberCoroutineScope()
 
     var route by remember { mutableStateOf(Route.SPLASH) }
     var queueCount by remember { mutableIntStateOf(0) }
+    var retryQueueBusy by remember { mutableStateOf(false) }
     var lastFeedback by remember { mutableStateOf<FeedbackData?>(null) }
     var connection by remember { mutableStateOf(id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.CHECKING) }
     var updateInfo by remember { mutableStateOf<SchoolHubApiClient.VersionInfo?>(null) }
@@ -167,7 +172,7 @@ fun ReaderApp(
         return info
     }
 
-    fun sendReaderStatus(statusMessage: String? = null) {
+    fun sendReaderStatus(statusMessage: String? = null, includeCurrentMode: Boolean = true) {
         val deviceId = config.deviceId
         val secret = config.readerSecret
         if (deviceId.isNullOrBlank() || secret.isNullOrBlank()) return
@@ -180,10 +185,10 @@ fun ReaderApp(
                 if (pending > 0) warnings.add("OFFLINE_QUEUE_PENDING")
                 if (battery != null && battery <= 20) warnings.add("LOW_BATTERY")
                 if (network == "OFFLINE") warnings.add("NETWORK_OFFLINE")
-                api.sendReaderStatus(
+                val result = api.sendReaderStatus(
                     SchoolHubApiClient.ReaderStatusPayload(
                         pendingQueueCount = pending,
-                        currentMode = mode,
+                        currentMode = if (includeCurrentMode) mode else null,
                         lastQueueFlushAt = config.lastQueueFlushAt,
                         batteryLevel = battery,
                         networkStatus = network,
@@ -193,6 +198,10 @@ fun ReaderApp(
                     deviceId,
                     secret
                 )
+                result?.allowedModes?.let { allowedModes ->
+                    config.allowedModesCsv = allowedModes.joinToString(",")
+                    chooseMode(effectiveScanMode(allowedModes, mode))
+                }
             }
         }
     }
@@ -240,74 +249,61 @@ fun ReaderApp(
         }
     }
 
-    fun queueRetryMessage(result: QueueRetryResult): String = "${result.sent} terkirim, ${result.rejected} ditolak server, ${result.failed} masih menunggu internet."
+    fun queueRetryMessage(result: QueueRetryResult): String = buildString {
+        append("${result.sent} terkirim, ${result.rejected} ditolak server, ${result.pending} masih menunggu.")
+        if (result.parked > 0) append(" ${result.parked} perlu tindakan operator setelah 10 percobaan.")
+    }
 
     fun queueRetryFeedback(result: QueueRetryResult): FeedbackData = FeedbackData(
-        title = if (result.failed == 0) "Antrean Diproses" else "Sebagian Tertunda",
+        title = if (result.pending == 0 && result.parked == 0) "Antrean Diproses" else "Antrean Menunggu",
         message = queueRetryMessage(result),
-        tone = if (result.failed == 0) FeedbackTone.SUCCESS else FeedbackTone.PENDING
+        tone = if (result.pending == 0 && result.parked == 0) FeedbackTone.SUCCESS else FeedbackTone.PENDING
     )
 
-    suspend fun retryQueue(): QueueRetryResult {
-        var sent = 0
-        var rejected = 0
-        var failed = 0
-        val items = runCatching { queueRepo.listForSync() }.getOrDefault(emptyList())
-        for ((entry, raw) in items) {
-            val deviceId = config.deviceId
-            val secret = config.readerSecret
-            if (deviceId.isNullOrBlank() || secret.isNullOrBlank()) break
-            try {
-                val parsed = QrParser.parse(raw)
-                val scan = api.scanQr(parsed.qrCode, entry.mode, deviceId, secret)
-                if (scan.ok) {
-                    queueRepo.delete(entry.id)
-                    historyStore.add(
-                        ScanHistoryStore.entry(
-                            mode = entry.mode,
-                            status = id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.SENT,
-                            opaqueCode = parsed.opaqueCode,
-                            message = safeScanHistoryMessage(scan.message, "Antrean terkirim.")
-                        )
-                    )
-                    sent++
-                } else {
-                    queueRepo.delete(entry.id)
-                    historyStore.add(
-                        ScanHistoryStore.entry(
-                            mode = entry.mode,
-                            status = id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.REJECTED,
-                            opaqueCode = parsed.opaqueCode,
-                            message = safeScanHistoryMessage(scan.message, "Ditolak server saat kirim ulang.")
-                        )
-                    )
-                    rejected++
-                }
-            } catch (_: IOException) {
-                failed++
-                break
-            } catch (e: Exception) {
-                queueRepo.delete(entry.id)
+    suspend fun retryQueue(): QueueRetryResult? = retryCoordinator.runIfIdle {
+        retryQueueBusy = true
+        try {
+            val result = PendingScanRetryOrchestrator(
+            queue = queueRepo,
+            credentialsAvailable = {
+                !config.deviceId.isNullOrBlank() && !config.readerSecret.isNullOrBlank()
+            },
+            send = { item, clientScannedAt ->
+                val deviceId = config.deviceId ?: error("HP belum diaktifkan.")
+                val secret = config.readerSecret ?: error("HP belum diaktifkan.")
+                val scan = api.scanQr(item.parsedQr.qrCode, item.mode, deviceId, secret, clientScannedAt)
+                PendingScanRetryResponse(scan.ok, scan.message, scan.statusCode)
+            },
+            recordHistory = { event ->
                 historyStore.add(
                     ScanHistoryStore.entry(
-                        mode = entry.mode,
-                        status = id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.REJECTED,
-                        opaqueCode = entry.qrCodeMasked,
-                        message = safeScanHistoryMessage(e.message, "Antrean rusak dan tidak bisa dikirim.")
+                        mode = event.mode,
+                        status = when (event.status) {
+                            PendingScanRetryHistoryStatus.SENT -> id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.SENT
+                            PendingScanRetryHistoryStatus.REJECTED -> id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus.REJECTED
+                        },
+                        opaqueCode = event.opaqueCode,
+                        message = event.message
                     )
                 )
-                rejected++
+            },
+            sanitizeMessage = ::safeScanHistoryMessage
+            ).flush()
+            if (result.sent > 0) config.lastQueueFlushAt = Instant.now().toString()
+            refreshQueueCount()
+            if (result.sent > 0 || result.rejected > 0 || result.pending > 0 || result.parked > 0) {
+                sendReaderStatus("Antrean offline diproses")
             }
+            QueueRetryResult(result.sent, result.rejected, result.pending, result.parked)
+        } finally {
+            retryQueueBusy = false
         }
-        if (sent > 0) config.lastQueueFlushAt = Instant.now().toString()
-        refreshQueueCount()
-        if (sent > 0 || rejected > 0 || failed > 0) sendReaderStatus("Antrean offline diproses")
-        return QueueRetryResult(sent, rejected, failed)
     }
 
     LaunchedEffect(Unit) {
         refreshQueueCount()
-        sendReaderStatus("Aplikasi dibuka")
+        // The server is authoritative: refresh modes before reporting a legacy mode.
+        sendReaderStatus("Aplikasi dibuka", includeCurrentMode = false)
         checkForUpdate(manual = false)
     }
 
@@ -346,13 +342,12 @@ fun ReaderApp(
                 route = if (!config.isProvisioned()) Route.SETUP else Route.HOME
             }
             Route.SETUP -> SetupScreen(config, api) {
-                chooseMode(effectiveScanMode(config.allowedModes(), config.allowedModes().firstOrNull() ?: "CHECK_ONLY"))
+                chooseMode(effectiveScanMode(config.allowedModes(), config.allowedModes().firstOrNull().orEmpty()))
                 route = Route.HOME
             }
             Route.HOME -> HomeScreen(
                 config = config,
                 allowedModes = config.allowedModes(),
-                currentMode = mode,
                 connection = connection,
                 queueCount = queueCount,
                 recentEntries = historyStore.list().take(5),
@@ -362,15 +357,18 @@ fun ReaderApp(
                 onInstallUpdate = ::installUpdate,
                 onDismissUpdate = { updateDismissedCode = updateInfo?.latestVersionCode ?: 0 },
                 onMode = ::chooseMode,
-                onStart = { route = Route.SCANNER },
+                onStart = {
+                    if (hasSelectableScanMode(config.allowedModes())) route = Route.SCANNER
+                },
                 onSettings = { route = Route.SETTINGS },
                 onHelp = { route = Route.HELP },
                 onHistory = { route = Route.HISTORY },
                 onRetryQueue = {
                     scope.launch {
-                        lastFeedback = queueRetryFeedback(retryQueue())
+                        retryQueue()?.let { lastFeedback = queueRetryFeedback(it) }
                     }
-                }
+                },
+                retryQueueBusy = retryQueueBusy
             )
             Route.SCANNER -> ScannerScreen(
                 mode = mode,
@@ -401,10 +399,12 @@ fun ReaderApp(
                     onBack = { route = Route.HOME },
                     onHelp = { route = Route.HELP },
                     onRetryQueue = {
-                        queueRetryFeedback(retryQueue()).also { feedback ->
-                            lastFeedback = feedback
-                        }
+                        val retryFeedback = retryQueue()?.let(::queueRetryFeedback)
+                            ?: FeedbackData("Antrean Sedang Dikirim", "Pengiriman ulang sudah berjalan. Tunggu hingga selesai.", FeedbackTone.PROCESSING)
+                        lastFeedback = retryFeedback
+                        retryFeedback
                     },
+                    retryQueueBusy = retryQueueBusy,
                     onProvisioningLost = {
                         config.clearDevice()
                         route = Route.SETUP
@@ -417,8 +417,10 @@ fun ReaderApp(
                 queueCount = queueCount,
                 onClearQueue = { scope.launch { runCatching { queueRepo.clear() }; refreshQueueCount() } },
                 onRetryQueue = {
-                    queueRetryMessage(retryQueue())
+                    retryQueue()?.let(::queueRetryMessage)
+                        ?: "Pengiriman ulang antrean sudah berjalan. Tunggu hingga selesai."
                 },
+                retryQueueBusy = retryQueueBusy,
                 onCheckUpdate = { checkForUpdate(manual = true) },
                 updateStatus = updateMessage,
                 onBack = { route = Route.HOME },

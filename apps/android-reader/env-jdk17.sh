@@ -11,6 +11,8 @@ find_jdk() {
     "/usr/lib/jvm/java-21-openjdk"
     "$HOME/.local/jdks/jdk-17"
     "$HOME/.local/jdks/jdk-21"
+    "$HOME/.local/share/jdks/temurin-17"
+    "$HOME/.local/share/jdks/temurin-21"
     "$HOME/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2"
     "$HOME/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2"
     "$HOME/android-studio/jbr"
@@ -34,10 +36,14 @@ find_sdk() {
     "${ANDROID_HOME:-}"
     "${ANDROID_SDK_ROOT:-}"
     "$HOME/Android/Sdk"
+    "$HOME/.local/share/android-sdk"
   )
   local dir
   for dir in "${candidates[@]}"; do
-    if [ -n "$dir" ] && [ -d "$dir/platforms" ]; then
+    if [ -n "$dir" ] \
+      && [ -d "$dir/platforms/android-35" ] \
+      && [ -x "$dir/build-tools/35.0.0/aapt" ] \
+      && [ -x "$dir/build-tools/35.0.0/apksigner" ]; then
       printf '%s\n' "$dir"
       return 0
     fi

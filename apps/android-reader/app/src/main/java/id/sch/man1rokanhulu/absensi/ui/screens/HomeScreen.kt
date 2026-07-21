@@ -46,7 +46,6 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     config: LocalConfig,
     allowedModes: List<String>,
-    currentMode: String,
     connection: ConnectionStatus,
     queueCount: Int,
     recentEntries: List<ScanHistoryEntry>,
@@ -60,26 +59,31 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onHelp: () -> Unit,
     onHistory: () -> Unit,
-    onRetryQueue: () -> Unit
+    onRetryQueue: () -> Unit,
+    retryQueueBusy: Boolean = false
 ) {
     var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val deviceTitle = readerDeviceTitle(allowedModes)
     val modeSummary = readerModeSummary(allowedModes)
     val scanModes = selectableScanModes(allowedModes)
-    val canScanGerbang = scanModes.contains("GERBANG")
+    val canScanDatang = scanModes.contains("GATE_IN")
+    val canScanPulang = scanModes.contains("GATE_OUT")
     val canScanMushola = scanModes.contains("MUSHOLA")
     val canCheckIdentity = scanModes.contains("CHECK_ONLY")
+    val testOnly = config.deviceId == "READER_IDENTITY_01"
     val lastEntry = recentEntries.firstOrNull()
 
     PullToRefreshBox(
-        isRefreshing = isRefreshing,
+        isRefreshing = isRefreshing || retryQueueBusy,
         onRefresh = {
-            isRefreshing = true
-            onRetryQueue()
-            scope.launch {
-                delay(1500)
-                isRefreshing = false
+            if (!retryQueueBusy) {
+                isRefreshing = true
+                onRetryQueue()
+                scope.launch {
+                    delay(1500)
+                    isRefreshing = false
+                }
             }
         }
     ) {
@@ -119,27 +123,36 @@ fun HomeScreen(
                     Text(modeSummary, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("2 HP scanner fleksibel", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
-                        "Pilih mode sesuai kebutuhan. Mode Cek Identitas hanya membaca biodata terbatas dan tidak mencatat presensi.",
+                        if (testOnly) "Semua mode di HP ini hanya untuk uji fungsi. Tidak ada presensi yang dicatat." else "Pilih mode sesuai kebutuhan. Mode Cek Identitas hanya membaca biodata terbatas dan tidak mencatat presensi.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
 
-            if (canScanGerbang) {
+            if (canScanDatang) {
                 ModeActionCard(
-                    title = "Scan Gerbang",
-                    helper = "Untuk datang/pulang siswa, guru, staf, dan kepala.",
+                    title = "Scan Gerbang Datang",
+                    helper = if (testOnly) "Uji scan kedatangan tanpa mencatat presensi." else modeHelp("GATE_IN"),
                     primary = true,
-                    onClick = { onMode("GERBANG"); onStart() }
+                    onClick = { onMode("GATE_IN"); onStart() }
+                )
+            }
+
+            if (canScanPulang) {
+                ModeActionCard(
+                    title = "Scan Gerbang Pulang",
+                    helper = if (testOnly) "Uji scan kepulangan tanpa mencatat presensi." else modeHelp("GATE_OUT"),
+                    primary = !canScanDatang,
+                    onClick = { onMode("GATE_OUT"); onStart() }
                 )
             }
 
             if (canScanMushola) {
                 ModeActionCard(
                     title = "Scan Mushola",
-                    helper = "Untuk sholat/ibadah siswa.",
-                    primary = !canScanGerbang,
+                    helper = if (testOnly) "Uji scan mushola tanpa mencatat presensi." else "Dhuha, Dzuhur, atau Ashar sesuai waktu server.",
+                    primary = !canScanDatang && !canScanPulang,
                     onClick = { onMode("MUSHOLA"); onStart() }
                 )
             }
@@ -148,13 +161,25 @@ fun HomeScreen(
                 ModeActionCard(
                     title = "Cek Identitas",
                     helper = modeHelp("CHECK_ONLY"),
-                    primary = !canScanGerbang && !canScanMushola,
+                    primary = !canScanDatang && !canScanPulang && !canScanMushola,
                     onClick = { onMode("CHECK_ONLY"); onStart() }
                 )
             }
 
-            if (!canScanGerbang && !canScanMushola && !canCheckIdentity) {
-                PrimaryActionButton(text = "CEK QR", onClick = { onMode(currentMode); onStart() })
+            if (!canScanDatang && !canScanPulang && !canScanMushola && !canCheckIdentity) {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Mode Scan Belum Tersedia", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "HP ini belum menerima mode scan yang valid dari server. Minta admin aktivasi ulang sebelum memindai QR.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        SecondaryActionButton(text = "Bantuan", onClick = onHelp)
+                    }
+                }
             }
 
             if (queueCount > 0) {
@@ -165,7 +190,11 @@ fun HomeScreen(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Antrean Kirim", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text("$queueCount scan menunggu internet. Periksa Wi-Fi, lalu kirim ulang.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        SecondaryActionButton(text = "Kirim Ulang Antrean", onClick = onRetryQueue)
+                        SecondaryActionButton(
+                            text = if (retryQueueBusy) "Mengirim Antrean…" else "Kirim Ulang Antrean",
+                            loading = retryQueueBusy,
+                            onClick = onRetryQueue
+                        )
                     }
                 }
             }

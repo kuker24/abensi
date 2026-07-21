@@ -52,6 +52,7 @@ import id.sch.man1rokanhulu.absensi.data.ScanHistoryEntry
 import id.sch.man1rokanhulu.absensi.data.ScanHistoryStatus
 import id.sch.man1rokanhulu.absensi.data.ScanHistoryStore
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
+import id.sch.man1rokanhulu.absensi.network.isRetryableScanStatus
 import id.sch.man1rokanhulu.absensi.scanner.BarcodeAnalyzer
 import id.sch.man1rokanhulu.absensi.scanner.ContinuousScanGate
 import id.sch.man1rokanhulu.absensi.security.QrParser
@@ -63,14 +64,17 @@ import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
 import id.sch.man1rokanhulu.absensi.ui.components.StatusBar
 import id.sch.man1rokanhulu.absensi.ui.friendlyScanMessage
 import id.sch.man1rokanhulu.absensi.ui.friendlyScanTitle
+import id.sch.man1rokanhulu.absensi.ui.hasSelectableScanMode
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
+import id.sch.man1rokanhulu.absensi.ui.prayerScanTimingHint
 import id.sch.man1rokanhulu.absensi.ui.scanModeHelper
 import id.sch.man1rokanhulu.absensi.ui.scanModeTitle
 import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.IOException
+import java.time.Instant
 
 data class ScannerCallbacks(
     val onResult: (FeedbackData) -> Unit,
@@ -78,6 +82,7 @@ data class ScannerCallbacks(
     val onBack: () -> Unit,
     val onHelp: () -> Unit,
     val onRetryQueue: suspend () -> FeedbackData,
+    val retryQueueBusy: Boolean = false,
     val onProvisioningLost: () -> Unit = {}
 )
 
@@ -102,6 +107,7 @@ fun ScannerScreen(
     val latestMode by rememberUpdatedState(mode)
     val deviceTitle = readerDeviceTitle(allowedModes)
     val deviceSummary = readerModeSummary(allowedModes)
+    val canScan = hasSelectableScanMode(allowedModes)
     var feedback by remember { mutableStateOf(scannerPausedFeedback()) }
     var busy by remember { mutableStateOf(false) }
     var torchOn by remember { mutableStateOf(false) }
@@ -120,6 +126,11 @@ fun ScannerScreen(
         val activity = context as? ComponentActivity
         if (config.keepScreenOn) activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
+    if (!canScan) {
+        ScannerModeUnavailableScreen(callbacks = callbacks)
+        return
     }
 
     if (!cameraPermissionGranted) {
@@ -146,11 +157,12 @@ fun ScannerScreen(
                             busy = true
                             feedback = FeedbackData("Memproses…", "Tunggu sebentar. QR sedang dicek ke server.", FeedbackTone.PROCESSING)
                             scope.launch {
+                                val scannedAt = Instant.now()
                                 val nextFeedback = try {
                                     val parsed = QrParser.parse(raw)
                                     val deviceId = config.deviceId ?: error("HP belum diaktifkan.")
                                     val secret = config.readerSecret ?: error("HP belum diaktifkan.")
-                                    val scan = api.scanQr(parsed.qrCode, latestMode, deviceId, secret)
+                                    val scan = api.scanQr(parsed.qrCode, latestMode, deviceId, secret, scannedAt)
                                     val friendly = friendlyScanMessage(scan.message)
                                     val summary = parseServerScanSummary(scan.body)
                                     if (scan.ok) {
@@ -167,6 +179,22 @@ fun ScannerScreen(
                                             )
                                         )
                                         FeedbackData(summary.actionLabel ?: friendlyScanTitle(true, friendly), summary.feedbackMessage ?: friendly.ifBlank { "Scan diterima." }, FeedbackTone.SUCCESS)
+                                    } else if (isRetryableScanStatus(scan.statusCode)) {
+                                        val saved = runCatching { queue.enqueue(raw, latestMode, scannedAt) }.getOrDefault(false)
+                                        historyStore.add(
+                                            ScanHistoryEntry(
+                                                timestamp = System.currentTimeMillis(),
+                                                mode = latestMode,
+                                                status = if (saved) ScanHistoryStatus.QUEUED else ScanHistoryStatus.REJECTED,
+                                                maskedCode = ScanHistoryStore.maskQr(parsed.opaqueCode),
+                                                message = if (saved) "Disimpan ke antrean kirim." else "Antrean penuh. Scan belum tersimpan."
+                                            )
+                                        )
+                                        if (saved) {
+                                            FeedbackData("Server Sementara Bermasalah", "Scan disimpan sementara. Akan dikirim ulang tanpa mengubah waktu scan.", FeedbackTone.PENDING)
+                                        } else {
+                                            FeedbackData("Antrean Penuh", "Scan belum tersimpan. Sambungkan internet lalu coba scan lagi.", FeedbackTone.ERROR)
+                                        }
                                     } else {
                                         historyStore.add(
                                             ScanHistoryEntry(
@@ -184,7 +212,7 @@ fun ScannerScreen(
                                         FeedbackData(friendlyScanTitle(false, friendly), friendly.ifBlank { "Scan ditolak server." }, FeedbackTone.ERROR)
                                     }
                                 } catch (e: IOException) {
-                                    val saved = runCatching { queue.enqueue(raw, latestMode) }.getOrDefault(false)
+                                    val saved = runCatching { queue.enqueue(raw, latestMode, scannedAt) }.getOrDefault(false)
                                     runCatching { QrParser.parse(raw) }.getOrNull()?.let { parsed ->
                                         historyStore.add(
                                             ScanHistoryEntry(
@@ -249,6 +277,9 @@ fun ScannerScreen(
                         Text("MODE AKTIF", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.labelLarge)
                         Text(scanModeTitle(mode), color = Color.White, style = MaterialTheme.typography.headlineSmall)
                         Text(scanModeHelper(mode), color = Color.White.copy(alpha = 0.84f), style = MaterialTheme.typography.bodyMedium)
+                        if (mode.equals("MUSHOLA", ignoreCase = true)) {
+                            Text(prayerScanTimingHint(), color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }
@@ -324,9 +355,10 @@ fun ScannerScreen(
                                     feedback = retryFeedback
                                 }
                             },
+                            enabled = !callbacks.retryQueueBusy,
                             modifier = Modifier.weight(1f).height(50.dp),
                             colors = scannerPrimaryButtonColors()
-                        ) { Text("Kirim ($queueCount)") }
+                        ) { Text(if (callbacks.retryQueueBusy) "Mengirim…" else "Kirim ($queueCount)") }
                     }
                     Button(
                         onClick = callbacks.onHelp,
@@ -350,7 +382,7 @@ fun ScannerScreen(
         if (confirmModeChange) {
             ConfirmDialog(
                 title = "Yakin ubah mode scan?",
-                message = "Scan akan ditutup agar operator memilih Mode Gerbang atau Mode Mushola.",
+                message = "Scan akan ditutup agar operator memilih mode lain (Datang, Pulang, Mushola, dsb).",
                 confirmLabel = "Ubah Mode",
                 onConfirm = {
                     paused = true
@@ -361,6 +393,51 @@ fun ScannerScreen(
                 },
                 onDismiss = { confirmModeChange = false }
             )
+        }
+    }
+}
+
+@Composable
+private fun ScannerModeUnavailableScreen(callbacks: ScannerCallbacks) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color(0xFF1E2025))
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Mode Scan Belum Tersedia",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                "HP ini belum menerima mode scan yang valid dari server. Minta admin aktivasi ulang sebelum memindai QR.",
+                color = Color.White.copy(alpha = 0.82f),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = callbacks.onHelp,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    colors = scannerDarkButtonColors()
+                ) { Text("Bantuan") }
+                Button(
+                    onClick = callbacks.onBack,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    colors = scannerDarkButtonColors()
+                ) { Text("Kembali") }
+            }
         }
     }
 }

@@ -39,11 +39,11 @@ class LocalConfig(private val context: Context) {
         set(value) = plain.edit().putString("deviceName", value).apply()
 
     var allowedModesCsv: String
-        get() = plain.getString("allowedModes", "GERBANG,MUSHOLA") ?: "GERBANG,MUSHOLA"
+        get() = plain.getString("allowedModes", "") ?: ""
         set(value) = plain.edit().putString("allowedModes", value).apply()
 
     var lastScanMode: String
-        get() = plain.getString("lastScanMode", "GERBANG") ?: "GERBANG"
+        get() = plain.getString("lastScanMode", "") ?: ""
         set(value) = plain.edit().putString("lastScanMode", value).apply()
 
     var lastQueueFlushAt: String?
@@ -88,7 +88,15 @@ class LocalConfig(private val context: Context) {
 
     fun isProvisioned(): Boolean = !deviceId.isNullOrBlank() && !readerSecret.isNullOrBlank()
 
-    fun allowedModes(): List<String> = allowedModesCsv.split(',').map { it.trim() }.filter { it.isNotBlank() }
+    fun allowedModes(): List<String> = parseAllowedModes(allowedModesCsv)
+
+    companion object {
+        internal fun parseAllowedModes(rawModes: String?): List<String> = rawModes
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+    }
 
     fun clearDevice() {
         deviceId = null

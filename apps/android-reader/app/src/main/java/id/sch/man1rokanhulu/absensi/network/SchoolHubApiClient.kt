@@ -19,6 +19,7 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
 
     data class ProvisionResult(val deviceId: String, val readerId: String?, val readerSecret: String, val allowedModes: List<String>)
     data class ScanResult(val ok: Boolean, val message: String, val color: String, val body: String, val statusCode: Int? = null)
+    data class ReaderStatusResult(val allowedModes: List<String>?)
     data class ReaderStatusPayload(
         val pendingQueueCount: Int,
         val currentMode: String? = null,
@@ -76,7 +77,7 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         }
     }
 
-    suspend fun sendReaderStatus(payload: ReaderStatusPayload, deviceId: String, secret: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun sendReaderStatus(payload: ReaderStatusPayload, deviceId: String, secret: String): ReaderStatusResult? = withContext(Dispatchers.IO) {
         val bodyMap = mutableMapOf<String, Any?>(
             "pendingQueueCount" to payload.pendingQueueCount,
             "currentMode" to payload.currentMode,
@@ -93,15 +94,19 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
         val headers = Signer.signedHeaders(deviceId, secret, "POST", path, raw)
         val requestBuilder = Request.Builder().url("${base()}$path").post(raw.toRequestBody(jsonType))
         headers.forEach { (key, value) -> requestBuilder.header(key, value) }
-        http.newCall(requestBuilder.build()).execute().use { response -> response.isSuccessful }
+        http.newCall(requestBuilder.build()).execute().use { response ->
+            if (!response.isSuccessful) return@withContext null
+            val body = response.body?.string().orEmpty()
+            ReaderStatusResult(parseAllowedModes(body))
+        }
     }
 
-    suspend fun scanQr(qrCode: String, mode: String, deviceId: String, secret: String): ScanResult = withContext(Dispatchers.IO) {
+    suspend fun scanQr(qrCode: String, mode: String, deviceId: String, secret: String, clientScannedAt: Instant): ScanResult = withContext(Dispatchers.IO) {
         val bodyMap = mapOf(
             "credentialType" to "QR",
             "qrCode" to qrCode,
             "scanMode" to mode,
-            "clientScannedAt" to Instant.now().toString(),
+            "clientScannedAt" to clientScannedAt.toString(),
             "appVersion" to BuildConfig.VERSION_NAME,
             "appVersionCode" to BuildConfig.VERSION_CODE
         )
@@ -128,6 +133,11 @@ class SchoolHubApiClient(private val baseUrlProvider: () -> String) {
     }
 
     private fun JSONArray.toList(): List<String> = (0 until length()).map { optString(it) }
+
+    private fun parseAllowedModes(text: String): List<String>? {
+        val raw = Regex("\\\"allowedModes\\\"\\s*:\\s*\\[([^]]*)]").find(text)?.groupValues?.getOrNull(1) ?: return null
+        return Regex("\\\"([^\\\"]+)\\\"").findAll(raw).map { it.groupValues[1] }.toList()
+    }
 
     internal fun parseVersionInfo(text: String): VersionInfo {
         runCatching {

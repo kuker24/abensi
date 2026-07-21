@@ -20,14 +20,20 @@ data class PendingScan(
 
 @Dao
 interface PendingScanDao {
-    @Query("SELECT * FROM pending_scans ORDER BY createdAt ASC LIMIT 50")
-    suspend fun list(): List<PendingScan>
+    @Query("SELECT * FROM pending_scans WHERE attempts < :maxAttempts ORDER BY createdAt ASC LIMIT 50")
+    suspend fun listReadyForSync(maxAttempts: Int): List<PendingScan>
+
+    @Query("SELECT COUNT(*) FROM pending_scans WHERE attempts >= :maxAttempts")
+    suspend fun countParked(maxAttempts: Int): Int
 
     @Insert
     suspend fun insert(scan: PendingScan)
 
     @Query("DELETE FROM pending_scans WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("UPDATE pending_scans SET attempts = attempts + 1 WHERE id = :id AND attempts < :maxAttempts")
+    suspend fun incrementAttemptsIfBelowMax(id: Long, maxAttempts: Int): Int
 
     @Query("DELETE FROM pending_scans")
     suspend fun clear()

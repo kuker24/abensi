@@ -1,6 +1,7 @@
 package id.sch.man1rokanhulu.absensi
 
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
+import id.sch.man1rokanhulu.absensi.network.isRetryableScanStatus
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -9,6 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 class SchoolHubApiClientTest {
     private val api = SchoolHubApiClient { "https://example.test" }
@@ -30,22 +32,25 @@ class SchoolHubApiClientTest {
         assertFalse(api.validateServerUrl("ehadir.example.sch.id", releaseBuild = false))
     }
 
-    @Test fun scanQrSendsRuntimeScanModeField() = runTest {
+    @Test fun scanQrSendsExplicitOriginalTimestampAndRuntimeScanModeField() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(403).setHeader("content-type", "text/plain").setBody("forbidden"))
         server.start()
         try {
             val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
-            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "GERBANG", "android-1", "shrsec_test")
+            val scannedAt = Instant.parse("2026-07-13T08:15:30Z")
+            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "GERBANG", "android-1", "shrsec_test", scannedAt)
             val request = server.takeRequest()
             val body = request.body.readUtf8()
 
             assertFalse(result.ok)
             assertEquals(403, result.statusCode)
             assertEquals("/api/v1/attendance/qr-reader-scan", request.path)
+            assertTrue(body.contains("\"clientScannedAt\":\"${scannedAt}\""))
             assertTrue(body.contains("\"scanMode\":\"GERBANG\""))
             assertFalse(body.contains("\"mode\""))
             assertNotNull(request.getHeader("x-reader-signature"))
+            assertNotNull(request.getHeader("x-reader-timestamp"))
         } finally {
             server.shutdown()
         }
@@ -57,7 +62,7 @@ class SchoolHubApiClientTest {
         server.start()
         try {
             val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
-            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "CHECK_ONLY", "android-1", "shrsec_test")
+            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "CHECK_ONLY", "android-1", "shrsec_test", Instant.parse("2026-07-13T08:15:30Z"))
             val request = server.takeRequest()
             val body = request.body.readUtf8()
 
@@ -69,6 +74,11 @@ class SchoolHubApiClientTest {
         } finally {
             server.shutdown()
         }
+    }
+
+    @Test fun retryableStatusesPreservePendingScanWhileBusiness4xxAreTerminal() {
+        listOf(408, 425, 429, 500, 502, 599).forEach { status -> assertTrue("HTTP $status", isRetryableScanStatus(status)) }
+        listOf(400, 401, 403, 404, 422, 499).forEach { status -> assertFalse("HTTP $status", isRetryableScanStatus(status)) }
     }
 
     @Test fun versionParsesLegacyResponseWithoutUpdateCenterFields() = runTest {
@@ -112,11 +122,11 @@ class SchoolHubApiClientTest {
 
     @Test fun sendReaderStatusPostsSignedMonitoringPayloadWithoutQueuedQr() = runTest {
         val server = MockWebServer()
-        server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "application/json").setBody("{\"ok\":true}"))
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "application/json").setBody("{\"ok\":true,\"item\":{\"allowedModes\":[\"GATE_IN\",\"GATE_OUT\",\"MUSHOLA\"]}}"))
         server.start()
         try {
             val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
-            val ok = client.sendReaderStatus(
+            val result = client.sendReaderStatus(
                 SchoolHubApiClient.ReaderStatusPayload(
                     pendingQueueCount = 4,
                     currentMode = "GERBANG",
@@ -132,7 +142,8 @@ class SchoolHubApiClientTest {
             val request = server.takeRequest()
             val body = request.body.readUtf8()
 
-            assertTrue(ok)
+            assertNotNull(result)
+            assertEquals(listOf("GATE_IN", "GATE_OUT", "MUSHOLA"), result?.allowedModes)
             assertEquals("/api/v1/device-readers/android/status", request.path)
             assertTrue(body.contains("\"pendingQueueCount\":4"))
             assertTrue(body.contains("\"currentMode\":\"GERBANG\""))
@@ -156,7 +167,7 @@ class SchoolHubApiClientTest {
         server.start()
         try {
             val client = SchoolHubApiClient { server.url("/").toString().removeSuffix("/") }
-            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "GERBANG", "android-1", "shrsec_test")
+            val result = client.scanQr("schoolhub:qr:v1:QR_TEST", "GERBANG", "android-1", "shrsec_test", Instant.parse("2026-07-13T08:15:30Z"))
 
             assertFalse(result.ok)
             assertEquals(401, result.statusCode)

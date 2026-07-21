@@ -46,6 +46,19 @@ class ScanHistoryStoreTest {
         assertNull(entry.actionLabel)
     }
 
+    @Test fun storageJsonDoesNotPersistRawQrOrReaderSecret() {
+        val rawQr = "schoolhub:qr:v1:QR_TOPSECRETCODE"
+        val readerSecret = "reader-secret-must-never-persist"
+        val raw = ScanHistoryStore.toStorageJson(
+            listOf(ScanHistoryStore.entry("GERBANG", ScanHistoryStatus.REJECTED, rawQr, "Ditolak"))
+        )
+
+        assertFalse(raw.contains(rawQr))
+        assertFalse(raw.contains(readerSecret))
+        assertFalse(raw.contains("TOPSECRET"))
+        assertTrue(raw.contains("•••• CODE"))
+    }
+
     @Test fun storageJsonDoesNotPersistDisplayNameOrDisplayMeta() {
         val raw = ScanHistoryStore.toStorageJson(
             listOf(

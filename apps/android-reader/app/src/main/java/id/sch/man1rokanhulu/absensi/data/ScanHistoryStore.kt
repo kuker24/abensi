@@ -1,6 +1,10 @@
 package id.sch.man1rokanhulu.absensi.data
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 enum class ScanHistoryStatus {
     SENT,
@@ -32,26 +36,32 @@ data class ScanHistoryEntry(
  */
 class ScanHistoryStore(context: Context) {
     private val prefs = context.getSharedPreferences("schoolhub-scan-history", Context.MODE_PRIVATE)
+    private val writeMutex = Mutex()
 
     fun list(): List<ScanHistoryEntry> {
         val raw = prefs.getString(KEY, null) ?: return emptyList()
         return fromStorageJson(raw)
     }
 
-    fun add(entry: ScanHistoryEntry) {
-        val current = list().toMutableList()
-        current.add(0, entry)
-        while (current.size > MAX_ENTRIES) current.removeAt(current.lastIndex)
-        save(current)
+    /**
+     * Persists masked history before callers delete their source queue row.
+     * [commit] makes successful return a durable-write acknowledgement.
+     */
+    suspend fun add(entry: ScanHistoryEntry) = writeMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val current = list().toMutableList()
+            current.add(0, entry)
+            while (current.size > MAX_ENTRIES) current.removeAt(current.lastIndex)
+            check(save(current)) { "Riwayat scan tidak tersimpan." }
+        }
     }
 
     fun clear() {
         prefs.edit().remove(KEY).apply()
     }
 
-    private fun save(entries: List<ScanHistoryEntry>) {
-        prefs.edit().putString(KEY, toStorageJson(entries)).apply()
-    }
+    private fun save(entries: List<ScanHistoryEntry>): Boolean =
+        prefs.edit().putString(KEY, toStorageJson(entries)).commit()
 
     companion object {
         private const val KEY = "history_v1"

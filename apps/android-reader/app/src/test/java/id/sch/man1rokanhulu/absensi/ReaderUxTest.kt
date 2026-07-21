@@ -1,45 +1,55 @@
 package id.sch.man1rokanhulu.absensi
 
 import id.sch.man1rokanhulu.absensi.ui.ReaderDeviceKind
+import id.sch.man1rokanhulu.absensi.ui.currentPrayerLabel
 import id.sch.man1rokanhulu.absensi.ui.effectiveScanMode
 import id.sch.man1rokanhulu.absensi.ui.friendlyActivationMessage
 import id.sch.man1rokanhulu.absensi.ui.friendlyScanMessage
+import id.sch.man1rokanhulu.absensi.ui.hasSelectableScanMode
 import id.sch.man1rokanhulu.absensi.ui.friendlyScanTitle
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceKind
 import id.sch.man1rokanhulu.absensi.ui.readerDeviceTitle
+import id.sch.man1rokanhulu.absensi.ui.prayerScanTimingHint
 import id.sch.man1rokanhulu.absensi.ui.readerModeSummary
 import id.sch.man1rokanhulu.absensi.ui.selectableScanModes
 import id.sch.man1rokanhulu.absensi.ui.safeScanHistoryMessage
+import id.sch.man1rokanhulu.absensi.ui.scanModeHelper
+import id.sch.man1rokanhulu.absensi.ui.scanModeTitle
 import id.sch.man1rokanhulu.absensi.ui.shouldResetProvisioning
 import id.sch.man1rokanhulu.absensi.ui.showManualModePicker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalTime
 
 class ReaderUxTest {
     @Test
-    fun flexibleReaderUsesTwoSelectableModes() {
+    fun legacyGateModeIsNotSelectable() {
         val modes = listOf("GERBANG", "MUSHOLA", "CHECK_ONLY")
 
-        assertEquals(ReaderDeviceKind.MIXED, readerDeviceKind(modes))
+        assertEquals(ReaderDeviceKind.MUSHOLA, readerDeviceKind(modes))
         assertEquals("HP Scanner", readerDeviceTitle(modes))
-        assertEquals("Pilih Mode Gerbang, Mode Mushola, atau Cek Identitas", readerModeSummary(modes))
-        assertEquals(listOf("GERBANG", "MUSHOLA", "CHECK_ONLY"), selectableScanModes(modes))
-        assertEquals("GERBANG", effectiveScanMode(modes, "GATE_OUT"))
+        assertEquals("Mode Mushola tersedia", readerModeSummary(modes))
+        assertEquals(listOf("MUSHOLA", "CHECK_ONLY"), selectableScanModes(modes))
+        assertEquals("MUSHOLA", effectiveScanMode(modes, "GATE_OUT"))
         assertEquals("MUSHOLA", effectiveScanMode(modes, "MUSHOLA"))
         assertTrue(showManualModePicker(modes))
     }
 
     @Test
-    fun legacyGateReaderModesNormalizeToGerbang() {
+    fun splitGateReaderModesStayDatangPulang() {
         val modes = listOf("GATE_IN", "GATE_OUT")
 
         assertEquals(ReaderDeviceKind.GATE, readerDeviceKind(modes))
         assertEquals("HP Scanner", readerDeviceTitle(modes))
         assertEquals("Mode Gerbang tersedia", readerModeSummary(modes))
-        assertEquals("GERBANG", effectiveScanMode(modes, "GATE_OUT"))
-        assertFalse(showManualModePicker(modes))
+        assertEquals(listOf("GATE_IN", "GATE_OUT"), selectableScanModes(modes))
+        assertEquals("GATE_IN", effectiveScanMode(modes, "GATE_IN"))
+        assertEquals("GATE_OUT", effectiveScanMode(modes, "GATE_OUT"))
+        assertEquals("Scan Gerbang Datang", scanModeTitle("GATE_IN"))
+        assertEquals("Scan Gerbang Pulang", scanModeTitle("GATE_OUT"))
+        assertTrue(showManualModePicker(modes))
     }
 
     @Test
@@ -55,6 +65,14 @@ class ReaderUxTest {
 
 
     @Test
+    fun musholaHelperMentionsAllPrayersAndServerAsSourceOfTruth() {
+        assertEquals("Dhuha, Dzuhur, atau Ashar sesuai waktu server.", scanModeHelper("MUSHOLA"))
+        assertEquals("Ashar", currentPrayerLabel(LocalTime.of(15, 0)))
+        assertEquals("Di luar jadwal", currentPrayerLabel(LocalTime.of(14, 0)))
+        assertEquals("Ashar menurut waktu HP. Jenis sholat ditentukan server.", prayerScanTimingHint(LocalTime.of(15, 0)))
+    }
+
+    @Test
     fun checkOnlyLabelAndModeStaySelectable() {
         val modes = listOf("CHECK_ONLY")
 
@@ -66,6 +84,21 @@ class ReaderUxTest {
     }
 
     @Test
+    fun emptyOrInvalidServerModesFailClosed() {
+        val invalidModes = listOf("UNKNOWN", " ", "GATE_SOUTH")
+
+        assertEquals(emptyList<String>(), selectableScanModes(emptyList()))
+        assertEquals(emptyList<String>(), selectableScanModes(invalidModes))
+        assertFalse(hasSelectableScanMode(emptyList()))
+        assertFalse(hasSelectableScanMode(invalidModes))
+        assertEquals(ReaderDeviceKind.UNAVAILABLE, readerDeviceKind(emptyList()))
+        assertEquals("Mode scan belum tersedia. Minta admin aktivasi ulang.", readerModeSummary(invalidModes))
+        assertEquals("", effectiveScanMode(emptyList(), "GERBANG"))
+        assertEquals("", effectiveScanMode(invalidModes, "MUSHOLA"))
+        assertFalse(showManualModePicker(emptyList()))
+    }
+
+    @Test
     fun friendlyMessagesHideTechnicalErrors() {
         assertEquals("HP scanner belum aktif atau dicabut. Minta admin aktivasi ulang.", friendlyScanMessage("Reader tidak aktif, dicabut, atau tidak ditemukan."))
         assertEquals("QR tidak cocok untuk mode scan ini", friendlyScanMessage("Mode Gerbang hanya untuk scan datang/pulang."))
@@ -74,6 +107,7 @@ class ReaderUxTest {
         assertEquals("Datang tercatat", friendlyScanMessage("Datang tercatat."))
         assertEquals("Pulang tercatat", friendlyScanMessage("Pulang tercatat."))
         assertEquals("Sudah tercatat", friendlyScanTitle(true, "Sudah tercatat."))
+        assertEquals("Uji scan berhasil", friendlyScanTitle(true, "Uji Gerbang berhasil. Tidak ada presensi yang dicatat."))
         assertTrue(shouldResetProvisioning("Reader sudah dicabut."))
         assertTrue(shouldResetProvisioning("Signature reader tidak valid.", 401))
         assertFalse(shouldResetProvisioning("Mode scan tidak diizinkan untuk reader ini.", 403))

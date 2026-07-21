@@ -39,6 +39,7 @@ fun SettingsScreen(
     queueCount: Int,
     onClearQueue: () -> Unit,
     onRetryQueue: suspend () -> String,
+    retryQueueBusy: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     updateStatus: String? = null,
     onBack: () -> Unit,
@@ -144,7 +145,8 @@ fun SettingsScreen(
                 )
                 if (queueCount > 0) {
                     SecondaryActionButton(
-                        text = "Kirim Ulang Sekarang",
+                        text = if (retryQueueBusy) "Mengirim Antrean…" else "Kirim Ulang Sekarang",
+                        loading = retryQueueBusy,
                         onClick = {
                             scope.launch {
                                 status = "Mengirim ulang antrean…"

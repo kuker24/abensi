@@ -113,7 +113,7 @@ fun SetupScreen(config: LocalConfig, api: SchoolHubApiClient, onDone: () -> Unit
                             config.deviceId = data.deviceId
                             config.readerSecret = data.readerSecret
                             config.allowedModesCsv = data.allowedModes.joinToString(",")
-                            config.lastScanMode = data.allowedModes.firstOrNull() ?: "GERBANG"
+                            config.lastScanMode = data.allowedModes.firstOrNull().orEmpty()
                             val title = readerDeviceTitle(data.allowedModes)
                             status = "$title berhasil diaktifkan. ${readerModeSummary(data.allowedModes)}. Siap dipakai scan."
                             onDone()
@@ -288,4 +288,3 @@ private fun activationTextFieldColors() = OutlinedTextFieldDefaults.colors(
     cursorColor = MaterialTheme.colorScheme.primary,
     errorCursorColor = MaterialTheme.colorScheme.error
 )
-
