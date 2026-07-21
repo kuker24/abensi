@@ -1,11 +1,18 @@
 const DEFAULT_API_BASE = '/api/v1';
 
+import { cleanName } from './identityCard.js';
+
 const cleanString = (value) => String(value ?? '').trim();
 const FORBIDDEN_CARD_FIELDS = /(?:password|passwordHash|token|secret|cookie|session|accessToken|refreshToken|resetToken)/i;
 
 const isStudentRole = (role = '') => {
   const normalized = cleanString(role).toUpperCase();
   return ['SISWA', 'STUDENT', 'ROLE.SISWA'].includes(normalized);
+};
+
+const isTeacherRole = (role = '') => {
+  const normalized = cleanString(role).toUpperCase();
+  return ['GURU', 'TEACHER', 'GURU_MAPEL', 'GURU_PIKET', 'PENGAJAR'].includes(normalized);
 };
 
 export const getSiab2ApiBase = () => {
@@ -28,17 +35,21 @@ export const mapSiab2CardToGeneratorUser = (card = {}, index = 0) => {
 
   const role = cleanString(card.role || card.roleLabel || card.displayRole);
   const isStudent = isStudentRole(role) || isStudentRole(card.roleLabel) || cleanString(card.displayRole).toUpperCase() === 'SISWA';
-  const fullName = cleanString(card.nama || card.fullName || card.name);
+  const isTeacher = isTeacherRole(role) || isTeacherRole(card.roleLabel) || isTeacherRole(card.displayRole);
+  const fullName = cleanName(card.nama || card.fullName || card.name);
   const qrValue = cleanString(card.qr_value || card.qrCode || card.qr || card.code);
-  const identityNumber = isStudent
-    ? cleanString(card.nisn || card.nis || card.username || card.shortCode)
-    : cleanString(card.nip || card.nisn || card.nis || card.username || card.shortCode);
+  const nis = isStudent ? cleanString(card.nis) : '';
+  const nkd = isStudent ? cleanString(card.nkd) : '';
+  const nip = isStudent ? '' : cleanString(card.nip);
 
   return {
     id: cleanString(card.userId || card.id) || `siab2_card_${index + 1}`,
     nama: fullName,
-    nisn: identityNumber,
-    role: isStudent ? 'student' : 'teacher',
+    nisn: nis,
+    nis,
+    nkd,
+    nip,
+    role: isStudent ? 'student' : isTeacher ? 'teacher' : 'employee',
     kelas: cleanString(card.className || card.classCode || card.level),
     jurusan: cleanString(card.program),
     status: cleanString(card.status || card.cardStatus) || 'Aktif',

@@ -1,5 +1,5 @@
 import { DEFAULT_CARD_SETTINGS, getCardTemplate } from './cardTemplates.js';
-import { getCardRoleLabel, getCardSourceLabel, isDraftCard } from './identityCard.js';
+import { getCardIdentityLine, getCardRoleLabel, getCardSourceLabel, isDraftCard } from './identityCard.js';
 
 const XMLNS = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
@@ -7,20 +7,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink';
 const escapeXml = (value = '') => String(value)
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;')
-  .replaceAll('"', '&quot;')
-  .replaceAll("'", '&apos;');
-
-const sanitizeFilenameSegment = (value = 'kartu') => {
-  const normalized = String(value)
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  return normalized || 'kartu';
-};
+  .replaceAll('>', '&gt;');
 
 const getNameFontSize = (name) => {
   if (name.length > 30) return 12;
@@ -52,15 +39,12 @@ export const buildCardSVGMarkup = (user, { settings = DEFAULT_CARD_SETTINGS, qrM
   const template = getCardTemplate(settings.cardSkin);
   const { widthMm, heightMm, renderWidthPx, renderHeightPx } = template.dimensions;
   const name = user.nama || 'Nama belum diisi';
-  const nisn = user.nisn || '-';
+  const identityLine = getCardIdentityLine(user);
   const roleLabel = getCardRoleLabel(user);
   const draftCard = isDraftCard(user);
   const draftSourceLabel = draftCard ? getCardSourceLabel(user) : '';
-  const issuerLabelText = settings.issuerLabel?.toLowerCase().includes('tanda pengenal')
-    ? 'Kartu Digital Madrasah'
-    : settings.issuerLabel || 'Kartu Digital Madrasah';
   const nameFontSize = getNameFontSize(name);
-  const logoClipId = `logoClip-${sanitizeFilenameSegment(nisn)}-${Date.now()}`;
+  const logoClipId = `logoClip-${Date.now()}`;
   const draftBadgeMarkup = draftCard ? `<g id="draft-source-badge">
     <rect x="184" y="16" width="124" height="22" rx="11" fill="#fff1f2" stroke="#fda4af" stroke-width="1" />
     <text x="246" y="30" fill="#be123c" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7" font-weight="900" letter-spacing="0.7">${escapeXml(draftSourceLabel)}</text>
@@ -68,7 +52,7 @@ export const buildCardSVGMarkup = (user, { settings = DEFAULT_CARD_SETTINGS, qrM
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="${XMLNS}" xmlns:xlink="${XLINK_NS}" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${renderWidthPx} ${renderHeightPx}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Kartu tanda pengenal ${escapeXml(name)}" data-card-asset="siab2-card-only" style="background: transparent;">
-  <title>Kartu Digital Madrasah SIAB2 - ${escapeXml(name)}</title>
+  <title>SIAB2 - ${escapeXml(name)}</title>
   <desc>SVG card-only ukuran CR80 ${widthMm}mm x ${heightMm}mm, tanpa wrapper preview, kanvas A4, atau background halaman.</desc>
   <defs>
     <clipPath id="${logoClipId}">
@@ -83,7 +67,6 @@ export const buildCardSVGMarkup = (user, { settings = DEFAULT_CARD_SETTINGS, qrM
     <image href="${logoDataUrl}" xlink:href="${logoDataUrl}" x="82" y="22" width="48" height="48" preserveAspectRatio="xMidYMid meet" clip-path="url(#${logoClipId})" />
     <text x="150" y="44" fill="#071018" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900" letter-spacing="4">SIAB2</text>
     <text x="150" y="61" fill="#557088" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing="2.2">MAN 1 ROKAN HULU</text>
-    <text x="162" y="94" fill="#0d3047" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="900" letter-spacing="1.2">${escapeXml(issuerLabelText).toUpperCase()}</text>
   </g>
 
   <g id="qr-panel">
@@ -99,13 +82,13 @@ export const buildCardSVGMarkup = (user, { settings = DEFAULT_CARD_SETTINGS, qrM
   <g id="identity-band">
     <rect x="0" y="318" width="324" height="96" fill="#0d3047" />
     <text x="162" y="353" fill="#ffffff" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${nameFontSize}" font-weight="900" letter-spacing="1.2">${escapeXml(name).toUpperCase()}</text>
-    <text x="162" y="379" fill="#ffffff" text-anchor="middle" font-family="Courier New, monospace" font-size="13" font-weight="900" letter-spacing="2.1">${escapeXml(nisn)}</text>
+    <text x="162" y="379" fill="#ffffff" text-anchor="middle" font-family="Courier New, monospace" font-size="13" font-weight="900" letter-spacing="2.1">${escapeXml(identityLine.label)}: ${escapeXml(identityLine.value)}</text>
     <text x="162" y="401" fill="#ffffff" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="900" letter-spacing="1.5">${escapeXml(roleLabel).toUpperCase()}</text>
   </g>
 
   <g id="footer">
     <rect x="0" y="414" width="324" height="100" fill="#ffffff" />
-    <text x="162" y="461" fill="#557088" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing="2.1">KARTU DIGITAL MADRASAH</text>
+    <text x="162" y="461" fill="#557088" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing="2.1">KARTU TANDA PENGENAL SIAB2</text>
     <text x="162" y="487" fill="#071018" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="900" letter-spacing="0.7">MAN 1 ROKAN HULU</text>
   </g>
 
@@ -117,14 +100,12 @@ export const buildCardSVGMarkup = (user, { settings = DEFAULT_CARD_SETTINGS, qrM
 </svg>`;
 };
 
-export const buildCardSvgFilename = (user, index = 0) => {
+export const buildCardSvgFilename = (_user, index = 0) => {
   const order = String(index + 1).padStart(2, '0');
-  const identity = user?.nisn || user?.nama || order;
-  return `kartu-siab2-${order}-${sanitizeFilenameSegment(identity)}.svg`;
+  return `kartu-siab2-${order}.svg`;
 };
 
-export const buildCardPngFilename = (user, index = 0) => {
+export const buildCardPngFilename = (_user, index = 0) => {
   const order = String(index + 1).padStart(2, '0');
-  const identity = user?.nisn || user?.nama || order;
-  return `kartu-siab2-${order}-${sanitizeFilenameSegment(identity)}.png`;
+  return `kartu-siab2-${order}.png`;
 };

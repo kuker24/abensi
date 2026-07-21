@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Layout } from '../components/layout';
 import { useStore } from '../store/useStore';
+import { getCardIdentityLine, getCardRoleLabel } from '../utils/identityCard';
 import { getUniqueClasses } from '../utils/csvParser';
 
 const ITEMS_PER_PAGE = 15;
@@ -57,7 +58,8 @@ const Users = () => {
       result = result.filter(
         (u) =>
           u.nama?.toLowerCase().includes(search) ||
-          u.nisn?.toLowerCase().includes(search)
+          u.nis?.toLowerCase().includes(search) ||
+          u.nip?.toLowerCase().includes(search)
       );
     }
     
@@ -166,7 +168,7 @@ const Users = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Cari nama atau NISN..."
+                placeholder="Cari nama, NIS, atau NIP..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -186,6 +188,7 @@ const Users = () => {
                 <option value="">Semua Role</option>
                 <option value="student">Siswa</option>
                 <option value="teacher">Guru</option>
+                <option value="employee">Pegawai</option>
               </select>
             </div>
             
@@ -294,7 +297,7 @@ const Users = () => {
                         Nama
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        NISN
+                        NIS / NIP
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Role
@@ -304,9 +307,6 @@ const Users = () => {
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Sumber
                       </th>
                     </tr>
                   </thead>
@@ -334,7 +334,7 @@ const Users = () => {
                           <p className="font-medium text-gray-900">{user.nama}</p>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="font-mono text-gray-600">{user.nisn || '-'}</p>
+                          <p className="font-mono text-gray-600">{getCardIdentityLine(user).label}: {getCardIdentityLine(user).value}</p>
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -344,7 +344,7 @@ const Users = () => {
                                 : 'bg-blue-100 text-blue-700'
                             }`}
                           >
-                            {user.role === 'teacher' ? 'Guru' : 'Siswa'}
+                            {getCardRoleLabel(user)}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -354,17 +354,6 @@ const Users = () => {
                           <span className="inline-flex items-center gap-1 text-green-600 text-sm">
                             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                             {user.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs font-bold rounded-full ${
-                              user.card_source === 'database' && user.is_official === 'true'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {user.card_source === 'database' && user.is_official === 'true' ? 'RESMI / DATABASE' : 'DRAFT / TIDAK TERVERIFIKASI'}
                           </span>
                         </td>
                       </tr>

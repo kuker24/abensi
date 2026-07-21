@@ -52,7 +52,7 @@ const Export = () => {
   const draftCardCount = candidates.length - officialCardCount;
   const hasDraftCards = draftCardCount > 0;
   const hasOfficialCards = officialCardCount > 0;
-  const sourceBadge = hasDraftCards ? 'DRAFT / TIDAK TERVERIFIKASI' : hasOfficialCards ? 'RESMI / DATABASE' : 'BELUM ADA DATA';
+  const sourceBadge = hasDraftCards ? 'DRAFT / TIDAK TERVERIFIKASI' : hasOfficialCards ? 'SIAB2 API' : 'BELUM ADA DATA';
 
   const buildFilename = useCallback(() => {
     const date = new Date().toISOString().slice(0, 10);
@@ -84,7 +84,7 @@ const Export = () => {
 
   const handleGeneratePDF = useCallback(async () => {
     if (!readiness.validCount) {
-      setError('Tidak ada data valid untuk export. Lengkapi nama, NISN, dan QR.');
+      setError('Tidak ada data valid untuk export. Lengkapi nama dan QR. NIS/NIP boleh kosong.');
       return;
     }
 
@@ -93,7 +93,7 @@ const Export = () => {
 
   const handleGenerateSVG = async () => {
     if (!readiness.validCount) {
-      setError('Tidak ada data valid untuk export SVG. Lengkapi nama, NISN, dan QR.');
+      setError('Tidak ada data valid untuk export SVG. Lengkapi nama dan QR. NIS/NIP boleh kosong.');
       return;
     }
 
@@ -118,7 +118,7 @@ const Export = () => {
 
   const handleGeneratePNG = async () => {
     if (!readiness.validCount) {
-      setError('Tidak ada data valid untuk export PNG. Lengkapi nama, NISN, dan QR.');
+      setError('Tidak ada data valid untuk export PNG. Lengkapi nama dan QR. NIS/NIP boleh kosong.');
       return;
     }
 
@@ -284,8 +284,8 @@ const Export = () => {
           )}
 
           {(autoLoadEnabled || hasOfficialCards) && (
-            <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
-              {autoLoadStatus.loading ? 'Memuat data kartu resmi dari Data Sekolah...' : `RESMI / DATABASE · Sumber: ${autoLoadStatus.source || 'SIAB2 API'} · ${hasOfficialCards ? officialCardCount : autoLoadStatus.count} kartu dimuat.`}
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+              {autoLoadStatus.loading ? 'Memuat data kartu dari Data Sekolah...' : `Sumber: ${autoLoadStatus.source || 'SIAB2 API'} · ${hasOfficialCards ? officialCardCount : autoLoadStatus.count} kartu dimuat.`}
             </div>
           )}
 

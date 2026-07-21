@@ -32,16 +32,13 @@ export const DEFAULT_CARD_SETTINGS = {
   brandName: 'SIAB2',
   tagline: 'Sistem Informasi Akademik Berkarakter',
   academicYear: '2025/2026',
-  issuerLabel: 'Kartu Digital Madrasah',
-  statusLabel: 'AKTIF',
   showCutMarks: true,
 };
 
-export const REQUIRED_CARD_FIELDS = ['nama', 'nisn', 'qr'];
+export const REQUIRED_CARD_FIELDS = ['nama', 'qr'];
 
 export const REQUIRED_CARD_FIELD_LABELS = {
   nama: 'Nama',
-  nisn: 'NISN',
   qr: 'QR',
 };
 

@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {
   ALLOWED_USER_FIELDS,
   buildQrValue,
+  cleanName,
   formatBirthInfo,
   getCanonicalAllowedField,
+  getCardIdentityLine,
   getCardRoleLabel,
   getCardSourceLabel,
   isDraftCard,
@@ -50,6 +52,15 @@ const assertNoForbiddenValues = (value) => {
     assert.equal(serialized.includes(forbiddenValue), false, `forbidden value leaked: ${forbiddenValue}`);
   });
 };
+
+test('normalizes escaped punctuation in display names without leaving HTML entities', () => {
+  assert.equal(cleanName('&apos;Afifah &amp; Aisyah'), 'Afifah & Aisyah');
+  assert.equal(cleanName('&amp;apos;Afifah'), 'Afifah');
+  assert.equal(cleanName('&amp;amp;apos;Afifah'), 'Afifah');
+  assert.equal(cleanName('&#39;Afifah'), 'Afifah');
+  assert.equal(cleanName('&#x27;Afifah'), 'Afifah');
+  assert.equal(cleanName("Nurul 'Aini"), "Nurul 'Aini");
+});
 
 test('normalizes CSV row using allowed fields and opaque QR fallback', () => {
   const user = normalizeIdentityRow({
@@ -129,9 +140,13 @@ test('student card label ignores class so printed cards survive class promotion'
   assert.equal(getCardRoleLabel(user), 'SISWA');
 });
 
-test('non-student card label can still use stable role labels', () => {
+test('card identities use NIS for students and NIP for teachers and employees without fallbacks', () => {
+  assert.deepEqual(getCardIdentityLine({ role: 'SISWA', nis: '24001', nisn: 'ignored' }), { label: 'NIS', value: '24001' });
+  assert.deepEqual(getCardIdentityLine({ role: 'SISWA', nisn: 'no-fallback' }), { label: 'NIS', value: '' });
+  assert.deepEqual(getCardIdentityLine({ role: 'GURU_MAPEL', nip: '198001012006041001', nis: 'ignored' }), { label: 'NIP', value: '198001012006041001' });
+  assert.deepEqual(getCardIdentityLine({ role: 'ADMIN_TU', nis: 'ignored' }), { label: 'NIP', value: '' });
   assert.equal(getCardRoleLabel({ role: 'GURU_MAPEL', kelas: 'Guru Biologi' }), 'GURU');
-  assert.equal(getCardRoleLabel({ role: 'ADMIN_TU' }), 'ADMIN TU');
+  assert.equal(getCardRoleLabel({ role: 'ADMIN_TU' }), 'PEGAWAI');
 });
 
 test('strips sensitive fields and never keeps raw CSV rows', () => {
@@ -209,7 +224,7 @@ test('uses only official opaque qr_value and ignores unsafe or direct identity v
   assertNoForbiddenValues(sensitiveQrUser);
 });
 
-test('required field validation only requires stable card identity fields', () => {
+test('required field validation permits a blank printed NIS or NIP', () => {
   const missing = validateCardUser({
     nama: '',
     ttl: '',
@@ -219,7 +234,7 @@ test('required field validation only requires stable card identity fields', () =
 
   assert.equal(missing.isValid, false);
   assert.ok(missing.errors.some((error) => error.includes('Nama')));
-  assert.ok(missing.errors.some((error) => error.includes('NISN')));
+  assert.ok(!missing.errors.some((error) => error.includes('NISN')));
   assert.ok(!missing.errors.some((error) => error.includes('Tempat tanggal lahir')));
   assert.ok(!missing.errors.some((error) => error.includes('Alamat')));
 
@@ -240,6 +255,8 @@ test('documents allowed and sensitive field detection rules', () => {
   assert.equal(isSensitiveFieldName('access_token'), true);
   assert.equal(isSensitiveFieldName('session cookie'), true);
   assert.equal(isSensitiveFieldName('nisn'), false);
+  assert.equal(getCanonicalAllowedField('NIS'), 'nis');
+  assert.equal(getCanonicalAllowedField('NIP'), 'nip');
 });
 
 test('sanitizes legacy persisted state and keeps selected IDs valid', () => {

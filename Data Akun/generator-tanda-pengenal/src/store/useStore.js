@@ -157,7 +157,7 @@ export const useStore = create(
         const state = get();
         const users = state.users;
         const students = users.filter((u) => u.role === 'student');
-        const teachers = users.filter((u) => u.role === 'teacher');
+        const teachers = users.filter((u) => u.role === 'teacher' || u.role === 'employee');
         const classes = [...new Set(users.map((u) => u.kelas).filter(Boolean))];
         
         const readiness = validateCardUsers(users);
@@ -191,7 +191,8 @@ export const useStore = create(
           filtered = filtered.filter(
             (u) =>
               u.nama?.toLowerCase().includes(searchLower) ||
-              u.nisn?.toLowerCase().includes(searchLower)
+              u.nis?.toLowerCase().includes(searchLower) ||
+              u.nip?.toLowerCase().includes(searchLower)
           );
         }
         

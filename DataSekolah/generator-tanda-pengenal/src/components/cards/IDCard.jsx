@@ -7,11 +7,12 @@ import {
   getCardRoleLabel,
   getCardSubLabel,
   getQrPayload,
+  getStudentCardNumbers,
+  isStudentCard,
   safeText,
 } from './cardConfig';
 
 const schoolLogo = `${import.meta.env.BASE_URL || './'}logoman1.jpeg`;
-const OFFICIAL_QR_PREFIX = 'schoolhub:qr:v1:';
 
 const nameSizeClass = (name) => {
   if (name.length > 30) return 'text-[16px] leading-[1.05]';
@@ -27,9 +28,10 @@ const IDCard = ({
   if (!user) return null;
 
   const qrPayload = getQrPayload(user);
-  const isOfficialQr = qrPayload.startsWith(OFFICIAL_QR_PREFIX);
   const name = safeText(user.nama || user.fullName, 'Nama belum ada');
+  const isStudent = isStudentCard(user);
   const idValue = getCardIdentityNumber(user);
+  const studentNumbers = getStudentCardNumbers(user);
   const level = getCardLevel(user);
   const roleLabel = getCardRoleLabel(user);
   const subLabel = getCardSubLabel(user);
@@ -48,10 +50,6 @@ const IDCard = ({
       style={cardStyle}
       aria-label={`Kartu tanda pengenal ${user.nama || ''}`.trim()}
     >
-      <div className="absolute right-4 top-4 z-40 rounded-full border border-emerald-300 bg-emerald-50/95 px-2.5 py-1 text-[7px] font-black uppercase tracking-[0.14em] text-emerald-700">
-        {isOfficialQr ? 'RESMI' : 'DRAFT'}
-      </div>
-
       <header className="relative h-[108px] bg-white px-5 py-4 text-[#071018]">
         <div className="flex h-full flex-col items-center justify-center text-center">
           <div className="flex items-center justify-center gap-3">
@@ -103,9 +101,16 @@ const IDCard = ({
             <h2 className={`max-w-[280px] font-black uppercase leading-[1.05] tracking-[0.04em] ${nameSizeClass(name)}`}>
               {name}
             </h2>
-            <p className="mt-2 font-mono text-[13px] font-black leading-none tracking-[0.12em] text-white/95">
-              {idValue}
-            </p>
+            {isStudent ? (
+              <div className="mt-2 flex flex-col items-center gap-1 font-mono text-[9px] font-black leading-none tracking-[0.1em] text-white/95">
+                <p>NIS: {studentNumbers.nisn || '—'}</p>
+                <p>NID: {studentNumbers.nkd || '—'}</p>
+              </div>
+            ) : (
+              <p className="mt-2 font-mono text-[13px] font-black leading-none tracking-[0.12em] text-white/95">
+                NIP: {idValue || '—'}
+              </p>
+            )}
             <p className="mt-2 max-w-[260px] text-[10px] font-black uppercase leading-none tracking-[0.12em] text-white/88">
               {roleLabel}
             </p>

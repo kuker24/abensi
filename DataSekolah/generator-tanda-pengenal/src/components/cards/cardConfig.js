@@ -35,10 +35,18 @@ export const getCardSubLabel = (user = {}) => {
   return 'Anggota';
 };
 
+export const isStudentCard = (user = {}) => getCardRoleLabel(user) === 'SISWA';
+
+export const getStudentCardNumbers = (user = {}) => ({
+  nisn: safeText(user?.nisn || user?.nis || user?.raw?.nisn || user?.raw?.nis, '—'),
+  nkd: safeText(user?.nkd || user?.raw?.nkd || user?.nid || user?.raw?.nid, '—'),
+});
+
+export const getStaffCardNumber = (user = {}) => safeText(user?.nip || user?.raw?.nip, '—');
+
 export const getCardIdentityNumber = (user = {}) => {
-  const roleLabel = getCardRoleLabel(user);
-  if (roleLabel === 'SISWA') return safeText(user?.nisn || user?.nis || user?.idNumber || user?.username, 'ID belum ada');
-  return safeText(user?.nip || user?.idNumber || user?.username, 'ID belum ada');
+  if (isStudentCard(user)) return getStudentCardNumbers(user).nisn;
+  return getStaffCardNumber(user);
 };
 
 export const getCardLevel = (user = {}) => safeText(

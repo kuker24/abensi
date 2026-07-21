@@ -2,7 +2,7 @@ import { BadgeCheck } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import schoolLogo from '../../assets/logoman1.jpeg';
 import { DEFAULT_CARD_SETTINGS, getCardTemplate } from '../../utils/cardTemplates';
-import { buildQrValue, getCardRoleLabel, getCardSourceLabel, isDraftCard, validateCardUser } from '../../utils/identityCard';
+import { buildQrValue, getCardIdentityLine, getCardRoleLabel, getCardSourceLabel, isDraftCard, validateCardUser, isStudentCardUser } from '../../utils/identityCard';
 
 const IDCard = ({
   user,
@@ -10,10 +10,6 @@ const IDCard = ({
   cardSkin,
   schoolName,
   brandName,
-  tagline,
-  academicYear,
-  issuerLabel,
-  statusLabel,
   scale = 1,
 }) => {
   if (!user) return null;
@@ -24,21 +20,17 @@ const IDCard = ({
     ...(cardSkin ? { cardSkin } : {}),
     ...(schoolName ? { schoolName } : {}),
     ...(brandName ? { brandName } : {}),
-    ...(tagline ? { tagline } : {}),
-    ...(academicYear ? { academicYear } : {}),
-    ...(issuerLabel ? { issuerLabel } : {}),
-    ...(statusLabel ? { statusLabel } : {}),
+
   };
   const template = getCardTemplate(resolvedSettings.cardSkin);
   const { renderWidthPx, renderHeightPx } = template.dimensions;
   const qrValue = buildQrValue(user);
   const validation = validateCardUser(user);
   const roleLabel = getCardRoleLabel(user);
+  const identityLine = getCardIdentityLine(user);
   const draftCard = isDraftCard(user);
   const draftSourceLabel = draftCard ? getCardSourceLabel(user) : '';
-  const issuerLabelText = resolvedSettings.issuerLabel?.toLowerCase().includes('tanda pengenal')
-    ? 'Kartu Digital Madrasah'
-    : resolvedSettings.issuerLabel || 'Kartu Digital Madrasah';
+  const isStudent = isStudentCardUser(user);
 
   const cardStyle = {
     width: `${renderWidthPx}px`,
@@ -66,7 +58,7 @@ const IDCard = ({
         </div>
       )}
       <header className="relative h-[108px] bg-white px-5 py-4 text-[#071018]">
-        <div className="flex h-full flex-col items-center justify-center text-center">
+        <div className="flex h-full items-center justify-center text-center">
           <div className="flex items-center justify-center gap-3">
             <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-[18px] border border-[#071018]/10 bg-white shadow-[0_10px_26px_rgba(7,16,24,0.12)]">
               <img
@@ -85,9 +77,6 @@ const IDCard = ({
               </p>
             </div>
           </div>
-          <p className="mt-3 text-[13px] font-black uppercase tracking-[0.08em] text-[#0d3047]">
-            {issuerLabelText}
-          </p>
         </div>
       </header>
 
@@ -116,9 +105,16 @@ const IDCard = ({
             <h2 className="max-w-[280px] text-[18px] font-black uppercase leading-[1.05] tracking-[0.04em]">
               {user.nama || 'Nama belum diisi'}
             </h2>
-            <p className="mt-2 font-mono text-[13px] font-black leading-none tracking-[0.12em] text-white/95">
-              {user.nisn || '-'}
-            </p>
+            {isStudent ? (
+              <div className="mt-2 flex flex-col items-center gap-1 font-mono text-[9px] font-black leading-none tracking-[0.1em] text-white/95">
+                <p>NIS: {identityLine.value || '—'}</p>
+                <p>NID: {user.nkd || '—'}</p>
+              </div>
+            ) : (
+              <p className="mt-2 font-mono text-[13px] font-black leading-none tracking-[0.12em] text-white/95">
+                {identityLine.label}: {identityLine.value || '—'}
+              </p>
+            )}
             <p className="mt-2 max-w-[260px] text-[10px] font-black uppercase leading-none tracking-[0.12em] text-white/88">
               {roleLabel}
             </p>
@@ -127,7 +123,7 @@ const IDCard = ({
 
         <footer className="flex h-[100px] flex-col items-center justify-center gap-2 bg-white px-5 text-center text-[#071018]">
           <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#557088]">
-            Kartu Digital Madrasah
+            KARTU TANDA PENGENAL SIAB2
           </p>
           <p className="text-[12px] font-black uppercase tracking-[0.04em] text-[#071018]">
             MAN 1 Rokan Hulu

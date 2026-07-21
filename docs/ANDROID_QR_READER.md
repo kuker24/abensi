@@ -70,10 +70,10 @@ PR128 menetapkan maksimal 4 HP reader produksi aktif:
 
 | Reader | Fungsi | Mode APK |
 |---|---|---|
-| `READER_DEV_TEST_01` | Uji koneksi/developer | `CHECK_ONLY` |
-| `READER_IDENTITY_01` | Verifikasi identitas | `CHECK_ONLY` |
-| `READER_GATE_PRAYER_01` | Gerbang/mushola UAT | `GERBANG`, `MUSHOLA` |
-| `READER_GATE_PRAYER_02` | Gerbang/mushola backup | `GERBANG`, `MUSHOLA` |
+| `READER_DEV_TEST_01` | Dev Test Identitas | `CHECK_ONLY` |
+| `READER_IDENTITY_01` | Dev Test Gerbang & Mushola, tanpa presensi | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
+| `READER_GATE_PRAYER_01` | Gerbang/mushola UAT | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
+| `READER_GATE_PRAYER_02` | Gerbang/mushola backup | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
 
 SOP setup operator:
 
@@ -100,7 +100,7 @@ Catatan keamanan: activation code adalah one-time use dan short-lived. API key/s
 ## Cara scan untuk operator awam
 
 1. Buka aplikasi.
-2. Pilih **Scan Gerbang** untuk datang/pulang atau **Scan Mushola** untuk sholat siswa.
+2. Pilih **Scan Gerbang Datang**, **Scan Gerbang Pulang**, atau **Scan Mushola**.
 3. Arahkan QR siswa/guru ke kamera sesuai mode yang dipilih.
 4. Tunggu tanda besar di layar:
    - Hijau **Berhasil**: scan diterima server.

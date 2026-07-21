@@ -27,6 +27,7 @@ SIAB2 / SchoolHub e-Hadir serves MAN 1 Rokan Hulu attendance: authenticated web 
 - Shared package: dual ESM/CommonJS JavaScript API with TypeScript declarations.
 - Data layer: Prisma schema, migrations, fixtures, and TypeScript seed.
 - Operations: Docker Compose plus Caddy, Nginx, systemd, `ops/`, and `scripts/` assets.
+- Video composition: HyperFrames 0.7.54, HTML/CSS, paused deterministic GSAP timeline, local WOFF2 fonts, and screenshot-based visual QA.
 
 ## Entry Points
 - API bootstrap and module assembly: `apps/api/src/main.ts`, `apps/api/src/app.module.ts`.
@@ -45,18 +46,22 @@ SIAB2 / SchoolHub e-Hadir serves MAN 1 Rokan Hulu attendance: authenticated web 
 - `ops/`, `scripts/`: deployment, health, backup, security, UAT, and operational automation.
 - `DataSekolah/generator-tanda-pengenal/`: React/Vite source for deployed identity-card generator; build output is copied into `apps/web/public/id-card-generator/` and served through SIAB2 web runtime.
 - `Data Akun/generator-tanda-pengenal/`: separately maintained React/Vite account-card generator source. Current root evidence does not identify its build as deployed static bundle; do not assume it is independently served or is production bundle source without deployment evidence.
+- `videos/siab2-tutorial/`: isolated HyperFrames product-tutorial source and QA assets. It explains SIAB2 behavior but is not application runtime source; do not change `apps/web`, `apps/api`, or `prisma` while editing this composition unless separately requested.
 - `docs/`, `design/`, `tools/`, `backend/`, `web/`: supporting material or legacy/non-runtime areas. Inspect before treating as source of truth.
 
 ## Global Contracts
 - API global prefix: `/api/v1`. Health paths: `/api/v1/health/live`, `/api/v1/health/ready`; metrics also expose `/metrics` and `/api/v1/metrics`.
 - API applies Helmet, CSRF protection, CORS, request IDs, and `ValidationPipe` with `whitelist`, `transform`, and `forbidNonWhitelisted`.
 - Production QR reader scans use `POST /api/v1/attendance/qr-reader-scan`. Device activation, timestamp, nonce, body hash, and HMAC signed headers protect reader requests.
-- Android reader provisioning is capped at four server-pinned production targets: two `CHECK_ONLY` readers and two `GERBANG`/`MUSHOLA` readers. Administrators issue a short-lived, one-time activation code through `POST /api/v1/device-readers/:id/android/provision-code`; reader secret and stable target modes remain server-controlled.
+- Android reader provisioning is capped at four server-pinned targets: `READER_DEV_TEST_01` permits `CHECK_ONLY`; `READER_IDENTITY_01` permits test-only `GATE_IN`/`GATE_OUT`/`MUSHOLA` validation without attendance writes; two live readers use `GATE_IN`/`GATE_OUT`/`MUSHOLA`. Administrators issue a short-lived, one-time activation code through `POST /api/v1/device-readers/:id/android/provision-code`; reader secret and stable target modes remain server-controlled. Gate readers expose separate `GATE_IN` ("Scan Datang") and `GATE_OUT` ("Scan Pulang") menus so operators pick direction explicitly instead of the legacy first/second-scan auto-detect; `GATE_OUT` requires a same-day `GATE_IN` and the `MIN_GATE_STAY_MINUTES` guard first.
 - `POST /api/v1/attendance/qr-scan` remains authenticated legacy/manual flow; do not route Android reader traffic there.
 - Login-lockout status and recovery use `/api/v1/auth/admin/login-lockout`; only `ADMIN_TU` and `DEVELOPER` may clear a lockout, with an audit reason. Recovery resets limiter state only; it never bypasses or changes password verification.
 - Shared roles, capabilities, and API error codes originate in `packages/shared`; update runtime consumers and type declarations together when its public contract changes.
 - Prisma changes require migration review and generated client refresh. Never place credentials in schema, seeds, docs, or commits.
+- Student `nkd` is a dedicated four-digit SISWA-only identifier. It is unique, immutable after issuance, and non-reusable through `StudentNkdRegistry`; do not substitute username, NIS/NISN, QR short code, or smart-card UID.
+- Academic student import requires an exact active academic-year code with exactly one active finite semester. Source password columns are ignored; passwords are generated server-side, force first-login change, and enrollments end at semester bounds. Credential plaintext is one-time export only and must not persist in browser state.
 - Production identity-card bundle source is `DataSekolah/generator-tanda-pengenal/`. Its `npm run build` output must be synchronized to `apps/web/public/id-card-generator/` before web deployment; root scripts declare no separate generator sync command.
+- Student cards display NISN and NKD as separate values and preserve the opaque active QR payload. Private batch output belongs only in ignored `Data Akun/simpanakun/<class>/` with directory mode `700`, PNG mode `600`, opaque filenames, and count/pixel/QR verification before replacing prior output.
 - Nginx protects `/id-card-generator/` and `/admin/master-data/id-card-generator/` with `auth_request /api/v1/internal/access/id-card-generator`. That internal API endpoint uses `JwtAuthGuard` and allows only `ADMIN_TU`, `DEVELOPER`, and `OPERATOR_IT`; retain source-bundle, proxy, and access-control coupling together.
 
 ## Common Commands
@@ -85,6 +90,8 @@ Run from repository root unless command says otherwise.
 - `npm run security:android`
 - `npm run uat:smoke`
 - `npm run validate:final`
+- `npm run dev --prefix videos/siab2-tutorial`
+- `npm run check --prefix videos/siab2-tutorial`
 
 ## Verification
 - API change: run closest Jest test, then `npm run typecheck --prefix apps/api` and/or `npm run lint --prefix apps/api`.
@@ -94,6 +101,7 @@ Run from repository root unless command says otherwise.
 - Android change: follow `apps/android-reader/README.md`; JDK 17/21 and Android SDK required. Use `./test-jdk17.sh` or `./gradlew testDebugUnitTest` when environment permits.
 - Prisma change: review migration, run `npm run prisma:generate`, then targeted API checks. Apply migration only with environment approval.
 - Cross-service behavior: choose existing root contract, integration, full-stack, UAT, or security command matching scope. Do not run deploy commands without explicit approval.
+- HyperFrames video change: run `hyperframes lint --verbose` and `hyperframes check --strict` from `videos/siab2-tutorial/`; inspect fresh snapshots/contact sheets for every interaction beat. Preview is allowed; render, publish, or upload only with explicit user approval.
 
 ## Known Constraints
 - Production services require environment configuration and external PostgreSQL/Redis; do not inspect `.env` files.
@@ -111,3 +119,4 @@ Run from repository root unless command says otherwise.
 - `prisma/AGENTS.md` — data schema, migration, and seed guidance.
 - `Data Akun/generator-tanda-pengenal/AGENTS.md` — separate account-card generator source guidance; deployed-bundle source is not confirmed here.
 - `DataSekolah/generator-tanda-pengenal/AGENTS.md` — deployed school-card generator source, static-bundle synchronization, and access coupling.
+- `videos/siab2-tutorial/AGENTS.md` — isolated HyperFrames composition, deterministic timeline, local asset, screenshot, QA, and render-approval contracts.

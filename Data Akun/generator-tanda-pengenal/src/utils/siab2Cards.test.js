@@ -41,8 +41,9 @@ test('maps student cards with dynamic class from official export data', () => {
       {
         id: 'cred-1',
         userId: 'student-1',
-        nama: 'Aisyah Putri',
+        nama: '&apos;Aisyah Putri',
         nisn: '1234567890',
+        nis: '24001',
         role: 'SISWA',
         roleLabel: 'SISWA',
         className: 'X A · IPA',
@@ -64,6 +65,8 @@ test('maps student cards with dynamic class from official export data', () => {
   assert.equal(users.length, 2);
   assert.equal(users[0].nama, 'Aisyah Putri');
   assert.equal(users[0].role, 'student');
+  assert.equal(users[0].nis, '24001');
+  assert.equal(users[0].nip, '');
   assert.equal(users[0].kelas, 'X A · IPA');
   assert.equal(users[0].qr_value, 'schoolhub:qr:v1:QR_ABCDEFGHIJKL');
   assert.equal(users[0].card_source, 'database');
@@ -73,29 +76,58 @@ test('maps student cards with dynamic class from official export data', () => {
   assert.equal(users[1].kelas, 'Guru Piket');
 });
 
-test('maps official teacher card as teacher and prefers NIP over student-only identity fields', () => {
-  const [teacher] = mapSiab2CardsPayload({
+test('maps official cards with role-specific identity fields and no username or short-code fallback', () => {
+  const users = mapSiab2CardsPayload({
     generatedAt: '2026-07-02T00:00:00.000Z',
     cards: [
+      {
+        id: 'cred-student',
+        userId: 'student-1',
+        nama: 'Siswa Satu',
+        nis: '24001',
+        nip: 'must-not-print',
+        username: 'siswa.satu',
+        shortCode: 'STUDENT1',
+        role: 'SISWA',
+        qr_value: 'schoolhub:qr:v1:QR_STUDENTIDENTITY',
+      },
       {
         id: 'cred-teacher',
         userId: 'teacher-1',
         nama: 'Guru Satu',
-        username: 'guru.satu',
         nip: '198001012006041001',
-        nisn: null,
+        nis: 'must-not-print',
+        username: 'guru.satu',
+        shortCode: 'TEACHER1',
         role: 'GURU_MAPEL',
         roleLabel: 'Guru',
         displayRole: 'Guru',
         level: 'Guru / Pegawai MAN 1 Rokan Hulu',
-        qr_value: 'schoolhub:qr:v1:QR_ZYXWVUTSRQPO',
+        qr_value: 'schoolhub:qr:v1:QR_TEACHERIDENTITY',
+      },
+      {
+        id: 'cred-employee',
+        userId: 'employee-1',
+        nama: 'Pegawai Satu',
+        username: 'pegawai.satu',
+        shortCode: 'EMPLOYEE1',
+        role: 'ADMIN_TU',
+        roleLabel: 'Admin/TU',
+        displayRole: 'Admin/TU',
+        qr_value: 'schoolhub:qr:v1:QR_EMPLOYEEIDENTITY',
       },
     ],
   });
 
-  assert.equal(teacher.role, 'teacher');
-  assert.equal(teacher.nisn, '198001012006041001');
-  assert.equal(teacher.kelas, 'Guru / Pegawai MAN 1 Rokan Hulu');
+  assert.deepEqual(
+    users.map((user) => ({ role: user.role, nis: user.nis, nip: user.nip })),
+    [
+      { role: 'student', nis: '24001', nip: '' },
+      { role: 'teacher', nis: '', nip: '198001012006041001' },
+      { role: 'employee', nis: '', nip: '' },
+    ],
+  );
+  assert.equal(users[1].kelas, 'Guru / Pegawai MAN 1 Rokan Hulu');
 });
 
 test('rejects official card payloads that contain credential fields', () => {

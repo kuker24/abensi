@@ -94,15 +94,15 @@ test('ignores sensitive QR values and warns without printing QR contents', async
   assertNoForbiddenValues(result);
 });
 
-test('keeps stable-identity validation failures visible', async () => {
+test('permits missing printed NIS/NIP while retaining name validation', async () => {
   const csv = `nama,ttl,nisn,alamat\n,,,\nSiswa Tanpa NISN,"Rambah, 10 Januari 2011",,"Jl. Pendidikan"\nSiswa Tanpa Alamat,"Rambah, 10 Januari 2011",1234567890,\n`;
 
   const { users } = await parseCSV(csv);
   const report = validateUsers(users);
 
   assert.equal(users.length, 2);
-  assert.equal(report.validCount, 1);
-  assert.equal(report.invalidCount, 1);
-  assert.ok(report.invalidUsers[0].errors.some((error) => error.includes('NISN')));
-  assert.ok(!report.validUsers[0].alamat);
+  assert.equal(report.validCount, 2);
+  assert.equal(report.invalidCount, 0);
+  assert.equal(users[0].nis, undefined);
+  assert.ok(!users[1].alamat);
 });

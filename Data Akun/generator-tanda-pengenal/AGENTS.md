@@ -14,8 +14,11 @@ Separate React/Vite account-card generator source. Root DOX confirms `DataSekola
 - Hash routes are `/`, `/import`, `/users`, `/generate`, and `/export`; add pages through `src/pages/index.js` and `src/App.jsx` together.
 - `useStore` uses Zustand `persist` with storage key `id-card-generator-storage`, migration/sanitization, and restricted `partialize` output. Users, activity log, and card settings are sanitized before persistence; selection and UI loading/error state remain transient.
 - Card utilities have Node test coverage: `src/utils/identityCard.test.js`, `src/utils/csvParser.test.js`, `src/utils/siab2Cards.test.js`, and `src/utils/svgGenerator.test.js`.
-- Official SIAB2 card mapping identifies students by NIS/NISN and non-students by NIP before fallback fields; retain role-specific identity mapping and reject credential-like payload fields.
-- Imported account data may contain personal information. Avoid logging raw rows or committing export output; preserve `clearLocalData` and sanitization behavior when changing storage.
+- Official SIAB2 card mapping uses actual `nis` for students and actual `nip` for teachers/employees. Never fall back to username, short code, NISN, or a cross-role identity; render an empty labeled value when the role-specific number is missing.
+- Official card role labels are `SISWA`, `GURU`, and `PEGAWAI`. Card header has no `KARTU TANDA PENGENAL RESMI` title or `RESMI` badge; footer reads `KARTU TANDA PENGENAL SIAB2` and `MAN 1 ROKAN HULU`.
+- PNG/SVG export filenames are opaque sequence names such as `kartu-siab2-001.png`; never include names, NIS, NIP, QR values, or other personal identifiers in filenames.
+- Display-name normalization decodes nested HTML entities and removes accidental leading apostrophe-like characters while preserving punctuation inside names. Keep React preview and generated SVG/PNG behavior aligned.
+- Imported account data and generated cards may contain personal information and QR credentials. Avoid logging raw rows, committing export output, or placing output outside an ignored private directory; preserve `clearLocalData` and sanitization behavior when changing storage.
 
 ## Work Guidance
 - Keep functional components focused. Use PascalCase for page/component files, camelCase for utility modules/functions, and existing SCREAMING_SNAKE_CASE style for constants.
@@ -26,6 +29,7 @@ Separate React/Vite account-card generator source. Root DOX confirms `DataSekola
 - Add page: create `src/pages/PageName.jsx`, export it from `src/pages/index.js`, then add hash route in `src/App.jsx`.
 - Add component: place it in `src/components/cards/` or `src/components/layout/`, export it through corresponding `index.js`, then consume named export.
 - Do not assert or create production deployment, route, API, or proxy coupling for this source without verified integration decision.
+- Local sensitive card output belongs in ignored `Data Akun/simpanakun/`, with directory mode `700` and file mode `600`; do not archive, commit, push, or publish it without explicit approval.
 
 ## Verification
 From this directory:

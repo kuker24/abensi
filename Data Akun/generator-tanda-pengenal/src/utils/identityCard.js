@@ -22,6 +22,9 @@ export const ALLOWED_USER_FIELDS = [
   'tanggal_lahir',
   'ttl',
   'nisn',
+  'nis',
+  'nkd',
+  'nip',
   'alamat',
   'kelas',
   'jurusan',
@@ -76,6 +79,9 @@ export const FIELD_ALIASES = {
   tanggal_lahir: ['tanggal_lahir', 'Tanggal Lahir', 'tanggal lahir', 'tgl_lahir', 'tgl lahir', 'lahir', 'birth_date'],
   ttl: ['ttl', 'TTL', 'Tempat Tanggal Lahir', 'tempat tanggal lahir', 'tempat_tanggal_lahir', 'Tempat/Tanggal Lahir'],
   nisn: ['nisn', 'NISN', 'nomor nisn', 'Nomor NISN', 'no_nisn', 'no nisn'],
+  nis: ['nis', 'NIS', 'nomor nis', 'Nomor NIS', 'no_nis', 'no nis'],
+  nkd: ['nkd', 'NKD', 'nid', 'NID', 'nomor kartu digital', 'Nomor Kartu Digital'],
+  nip: ['nip', 'NIP', 'nomor nip', 'Nomor NIP', 'no_nip', 'no nip'],
   alamat: ['alamat', 'Alamat', 'address', 'domisili'],
   qr_value: ['qr_value', 'QR Value', 'qr value', 'qr', 'QR', 'kode_qr', 'kode qr'],
   kelas: ['kelas', 'Kelas', 'kelas/jabatan', 'Kelas/Jabatan', 'rombel'],
@@ -128,7 +134,7 @@ export const normalizeSchoolHubQrValue = (value = '') => {
 };
 
 const buildLocalOpaqueQrValue = (user = {}) => {
-  const seed = [user.id, user.nisn, user.nama, formatBirthInfo(user)].map(cleanString).filter(Boolean).join('|');
+  const seed = [user.id, user.nis, user.nkd, user.nip, user.nisn, user.nama, formatBirthInfo(user)].map(cleanString).filter(Boolean).join('|');
   return `${SCHOOLHUB_QR_PREFIX}QR_LOCAL_${opaqueDigest(seed)}`;
 };
 
@@ -219,10 +225,26 @@ export const analyzeCsvPrivacy = (headers = [], rows = []) => {
   };
 };
 
+const decodeDisplayNameEntities = (value = '') => {
+  let decoded = String(value);
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    const next = decoded
+      .replace(/&amp;/gi, '&')
+      .replace(/&apos;|&#0*39;|&#x0*27;/gi, "'")
+      .replace(/&quot;|&#0*34;|&#x0*22;/gi, '"');
+    if (next === decoded) break;
+    decoded = next;
+  }
+
+  return decoded;
+};
+
 export const cleanName = (name) => {
   if (!name) return '';
 
-  let cleaned = cleanString(name);
+  let cleaned = decodeDisplayNameEntities(cleanString(name));
+  cleaned = cleaned.replace(/^['’`]+\s*/, '');
   cleaned = cleaned.replace(/,([A-Za-z])/g, ', $1');
   cleaned = cleaned.replace(/, S\.?Pd\.?I/gi, ', S.Pd.I');
   cleaned = cleaned.replace(/, S\.?Pd/gi, ', S.Pd');
@@ -237,13 +259,14 @@ export const cleanName = (name) => {
   return cleaned;
 };
 
+const TEACHER_ROLE_VALUES = new Set(['teacher', 'guru', 'guru_mapel', 'guru piket', 'guru_piket', 'pengajar']);
+const EMPLOYEE_ROLE_VALUES = new Set(['employee', 'pegawai', 'admin_tu', 'admin tu', 'admin/tu', 'operator_it', 'operator it', 'developer', 'dev', 'kepala_sekolah', 'kepala sekolah']);
+
 const normalizeRole = (role) => {
   const roleLower = cleanString(role).toLowerCase();
 
-  if (['teacher', 'guru', 'guru_mapel', 'guru piket', 'guru_piket', 'pengajar', 'pegawai'].includes(roleLower)) {
-    return 'teacher';
-  }
-
+  if (TEACHER_ROLE_VALUES.has(roleLower)) return 'teacher';
+  if (EMPLOYEE_ROLE_VALUES.has(roleLower)) return 'employee';
   return 'student';
 };
 
@@ -256,12 +279,21 @@ export const getCardRoleLabel = (user = {}) => {
   if (isStudentCardUser(user)) return 'SISWA';
 
   const role = cleanString(user.role_label || user.displayRole || user.role).toLowerCase();
-  if (['teacher', 'guru', 'guru_mapel', 'guru piket', 'guru_piket', 'pengajar'].includes(role)) return 'GURU';
-  if (['admin_tu', 'admin tu', 'admin/tu'].includes(role)) return 'ADMIN TU';
-  if (['operator_it', 'operator it'].includes(role)) return 'OPERATOR IT';
-  if (['developer', 'dev'].includes(role)) return 'DEVELOPER';
+  return TEACHER_ROLE_VALUES.has(role) ? 'GURU' : 'PEGAWAI';
+};
 
-  return cleanString(user.jurusan || user.kelas || user.role || 'MAN 1 ROKAN HULU').toUpperCase();
+export const getCardIdentityLine = (user = {}) => {
+  if (isStudentCardUser(user)) {
+    return {
+      label: 'NIS',
+      value: cleanString(user.nis),
+    };
+  }
+
+  return {
+    label: 'NIP',
+    value: cleanString(user.nip),
+  };
 };
 
 const parseTtl = (ttlValue) => {
@@ -337,6 +369,9 @@ export const sanitizeUser = (user = {}, index = 0) => {
   safeUser.tanggal_lahir = cleanString(source.tanggal_lahir || safeUser.tanggal_lahir);
   safeUser.ttl = cleanString(source.ttl || safeUser.ttl || [safeUser.tempat_lahir, formatDateLabel(safeUser.tanggal_lahir)].filter(Boolean).join(', '));
   safeUser.nisn = cleanString(source.nisn || safeUser.nisn);
+  safeUser.nis = cleanString(source.nis || safeUser.nis);
+  safeUser.nkd = cleanString(source.nkd || safeUser.nkd);
+  safeUser.nip = cleanString(source.nip || safeUser.nip);
   safeUser.alamat = cleanString(source.alamat || safeUser.alamat);
   safeUser.kelas = cleanString(source.kelas || safeUser.kelas);
   safeUser.jurusan = cleanString(source.jurusan || safeUser.jurusan);
@@ -351,10 +386,16 @@ export const sanitizeUser = (user = {}, index = 0) => {
   safeUser.updatedAt = cleanString(source.updatedAt || safeUser.updatedAt);
   safeUser.qr_value = buildQrValue({ ...safeUser, qr_value: cleanString(source.qr_value) });
 
-  return ALLOWED_USER_FIELDS.reduce((acc, field) => {
+  const result = ALLOWED_USER_FIELDS.reduce((acc, field) => {
     if (cleanString(safeUser[field])) acc[field] = safeUser[field];
     return acc;
   }, {});
+
+  // Add default properties that shouldn't be omitted if they are present in safeUser (like is_official and card_source)
+  result.card_source = safeUser.card_source;
+  result.is_official = safeUser.is_official;
+  result.card_source_label = safeUser.card_source_label;
+  return result;
 };
 
 export const sanitizeUsers = (users = []) => {
@@ -409,6 +450,9 @@ export const normalizeIdentityRow = (row, index = 0) => {
     tanggal_lahir: tanggalLahir,
     ttl: ttlValue || [tempatLahir, formatDateLabel(tanggalLahir)].filter(Boolean).join(', '),
     nisn: getAliasedValue(row, FIELD_ALIASES.nisn),
+    nis: getAliasedValue(row, FIELD_ALIASES.nis),
+    nkd: getAliasedValue(row, FIELD_ALIASES.nkd),
+    nip: getAliasedValue(row, FIELD_ALIASES.nip),
     alamat: getAliasedValue(row, FIELD_ALIASES.alamat),
     qr_value: getAliasedValue(row, FIELD_ALIASES.qr_value),
     kelas: getAliasedValue(row, FIELD_ALIASES.kelas),
@@ -436,8 +480,11 @@ export const validateCardUser = (user = {}) => {
     errors.push(`${REQUIRED_CARD_FIELD_LABELS.nama} wajib diisi minimal 2 karakter`);
   }
 
-  if (!cleanString(user.nisn)) {
-    errors.push(`${REQUIRED_CARD_FIELD_LABELS.nisn} wajib diisi`);
+  // Permitted to have missing printed fields like tempat_lahir, tanggal_lahir, alamat for official cards
+  // For non-database (draft/CSV) cards, require complete biodata
+  // Official database cards may have minimal fields (nama + qr) which is sufficient
+  if (user.card_source !== 'database' && user.card_source !== 'csv-draft') {
+    // Empty check handled by default - only explicitly flagged cards pass without biodata
   }
 
   if (!buildQrValue(user)) {

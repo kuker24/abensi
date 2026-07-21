@@ -19,7 +19,7 @@ import { Layout } from '../components/layout';
 import IDCard from '../components/cards/IDCard';
 import { useStore } from '../store/useStore';
 import { getCardTemplate, getCardTemplateOptions } from '../utils/cardTemplates';
-import { getReadinessSummary, validateCardUser } from '../utils/identityCard';
+import { getCardIdentityLine, getCardRoleLabel, getReadinessSummary, validateCardUser } from '../utils/identityCard';
 
 const GenerateCards = () => {
   const {
@@ -40,6 +40,8 @@ const GenerateCards = () => {
   const currentUser = usersToGenerate[safeIndex];
   const readiness = getReadinessSummary(usersToGenerate);
   const currentValidation = currentUser ? validateCardUser(currentUser) : { isValid: false, errors: [] };
+  const currentIdentityLine = currentUser ? getCardIdentityLine(currentUser) : { label: 'NIS', value: '' };
+  const currentRoleLabel = currentUser ? getCardRoleLabel(currentUser) : 'SISWA';
   const validUserIds = new Set(readiness.validUsers.map((user) => user.id));
   const template = getCardTemplate(cardSettings.cardSkin);
   const templateOptions = getCardTemplateOptions();
@@ -241,7 +243,7 @@ const GenerateCards = () => {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-bold text-slate-950">{user.nama || 'Nama belum diisi'}</span>
-                          <span className="block truncate text-xs font-medium text-slate-500">NISN {user.nisn || 'belum diisi'}</span>
+                          <span className="block truncate text-xs font-medium text-slate-500">{getCardIdentityLine(user).label}: {getCardIdentityLine(user).value}</span>
                         </span>
                         {isActive && <Eye className="h-4 w-4 text-[#386f99]" />}
                       </button>
@@ -295,8 +297,12 @@ const GenerateCards = () => {
 
                       <dl className="mt-5 grid gap-3 text-sm">
                         <div className="rounded-2xl bg-white/[0.05] p-3">
-                          <dt className="text-xs font-bold uppercase tracking-widest text-slate-400">NISN</dt>
-                          <dd className="mt-1 font-mono font-black text-white">{currentUser.nisn || '-'}</dd>
+                          <dt className="text-xs font-bold uppercase tracking-widest text-slate-400">{currentIdentityLine.label}</dt>
+                          <dd className="mt-1 font-mono font-black text-white">{currentIdentityLine.value}</dd>
+                        </div>
+                        <div className="rounded-2xl bg-white/[0.05] p-3">
+                          <dt className="text-xs font-bold uppercase tracking-widest text-slate-400">Role</dt>
+                          <dd className="mt-1 font-mono font-black text-white">{currentRoleLabel}</dd>
                         </div>
                         <div className="rounded-2xl bg-white/[0.05] p-3">
                           <dt className="text-xs font-bold uppercase tracking-widest text-slate-400">Alamat</dt>

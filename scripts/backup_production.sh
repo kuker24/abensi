@@ -179,7 +179,7 @@ chmod 600 "$METADATA"
 BACKUP_PUBLISHED=true
 
 # Cleanup only after a successful new backup. Simple daily retention; weekly/monthly copies can be kept by external upload/retention policy.
-find "$BACKUP_DIR" -type f \( -name 'schoolhub-*.dump.enc' -o -name 'schoolhub-*.dump.enc.sha256' -o -name 'schoolhub-*.dump.enc.metadata.json' \) -mtime +"$RETENTION_DAYS" -delete
+find "$BACKUP_DIR" -maxdepth 1 -type f \( -name 'schoolhub-*.dump.enc' -o -name 'schoolhub-*.dump.enc.sha256' -o -name 'schoolhub-*.dump.enc.metadata.json' \) -mtime +"$RETENTION_DAYS" -delete
 
 if [[ -n "$UPLOAD_HOOK" ]]; then
   BACKUP_STATUS=success BACKUP_PATH="$OUT" BACKUP_METADATA="$METADATA" bash -lc "$UPLOAD_HOOK"
