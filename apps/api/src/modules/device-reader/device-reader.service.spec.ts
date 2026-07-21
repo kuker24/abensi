@@ -106,6 +106,16 @@ describe('DeviceReaderService credential security', () => {
     expect(data.allowedModes).toEqual([AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
   });
 
+  it('overrides a stale allowedModes DB value with the pinned target modes for READER_IDENTITY_01', async () => {
+    const prisma = makePrisma();
+    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-identity', deviceId: 'READER_IDENTITY_01', name: 'READER_IDENTITY_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.CHECK_ONLY] }]);
+    const service = new DeviceReaderService(prisma, makeSignatures());
+
+    const result = await service.listReaders({ page: 1, limit: 20, skip: 0 } as any);
+
+    expect(result.items[0].allowedModes).toEqual([AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]);
+  });
+
   it('creates a short-lived activation code for an approved PR128 target reader without storing plaintext', async () => {
     const prisma = makePrisma();
     prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-dev', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] }]);

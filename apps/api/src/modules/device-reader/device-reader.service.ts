@@ -172,8 +172,9 @@ export class DeviceReaderService {
     return { isOnline, monitoringStatus, monitorWarnings: [...warnings] };
   }
 
-  private readerResponse<T extends { type?: ReaderType | null; status?: DeviceReaderStatus | null; deviceId?: string | null; lastHeartbeatAt?: Date | string | null; pendingQueueCount?: number | null; batteryLevel?: number | null; networkStatus?: string | null; statusWarnings?: string[] | null; apiKeyHash?: string | null; keyPrefix?: string | null; keyLast4?: string | null; readerSecretCiphertext?: string | null; provisioningTokenHash?: string | null }>(reader: T, lastUsedMode?: AndroidReaderMode | null) {
-    return { ...this.redact(reader), lastUsedMode: lastUsedMode ?? null, ...this.androidMonitoring(reader) };
+  private readerResponse<T extends { type?: ReaderType | null; status?: DeviceReaderStatus | null; deviceId?: string | null; name?: string | null; allowedModes?: AndroidReaderMode[] | null; lastHeartbeatAt?: Date | string | null; pendingQueueCount?: number | null; batteryLevel?: number | null; networkStatus?: string | null; statusWarnings?: string[] | null; apiKeyHash?: string | null; keyPrefix?: string | null; keyLast4?: string | null; readerSecretCiphertext?: string | null; provisioningTokenHash?: string | null }>(reader: T, lastUsedMode?: AndroidReaderMode | null) {
+    const allowedModes = reader.type === ReaderType.QR_ANDROID && targetReaderKey(reader) ? targetAllowedModes(reader) : reader.allowedModes;
+    return { ...this.redact(reader), allowedModes, lastUsedMode: lastUsedMode ?? null, ...this.androidMonitoring(reader) };
   }
 
   async listReaders(pagination: PaginationQuery) {
