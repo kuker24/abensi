@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
-import { AttendanceConfirmationSource, AttendanceReviewState, Role, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
+import { AttendanceConfirmationSource, AttendanceReviewState, Role, RosterCaptureSource, SessionRosterState, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
 import { AttendanceClassService } from './attendance-class.service';
 
 function makeService(
@@ -16,13 +16,17 @@ function makeService(
     endsAt: new Date(now.getTime() + 30 * 60 * 1000),
     businessDate: new Date(Date.UTC(2026, 5, 14)),
     status: SessionStatus.OPEN,
+    rosterState: SessionRosterState.VERIFIED,
     ...sessionOverrides
   };
-  const updatedSession = { ...session, status: SessionStatus.CLOSED, closedAt: now };
+  const openedSession = { ...session, status: SessionStatus.OPEN, openedAt: now, rosterState: SessionRosterState.VERIFIED };
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     session: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUniqueOrThrow: jest.fn().mockResolvedValue(updatedSession)
+      update: jest.fn().mockResolvedValue(openedSession),
+      findUnique: jest.fn().mockResolvedValue(session),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(session)
     },
     classEnrollment: {
       findMany: jest.fn().mockResolvedValue([{ id: 'enrollment-1', studentId: 'siswa-1', active: true, academicYearId: null, semesterId: null, student: { id: 'siswa-1', fullName: 'Siswa Satu', username: 'siswa1' }, schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' } }])
@@ -72,9 +76,14 @@ function browserGeo(overrides: Partial<{ latitude: number; longitude: number; ac
   };
 }
 
+function rawQueryText(query: unknown) {
+  const strings = (query as { strings?: readonly string[] }).strings;
+  return strings?.join('?') ?? String(query);
+}
+
 describe('AttendanceClassService record attendance policy', () => {
   it('menolak presensi siswa di luar roster kelas', async () => {
-    const session = { id: 'session-1', teacherId: 'guru-1', classId: 'class-1', startsAt: new Date(), businessDate: new Date(Date.UTC(2026, 5, 14)), status: SessionStatus.OPEN };
+    const session = { id: 'session-1', teacherId: 'guru-1', classId: 'class-1', startsAt: new Date(), businessDate: new Date(Date.UTC(2026, 5, 14)), status: SessionStatus.OPEN, rosterState: SessionRosterState.VERIFIED };
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue(session) },
       sessionRoster: { findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]) },
@@ -97,7 +106,8 @@ describe('AttendanceClassService explicit attendance review', () => {
     startsAt: new Date('2026-06-14T01:00:00.000Z'),
     endsAt: new Date('2026-06-14T02:00:00.000Z'),
     businessDate: new Date(Date.UTC(2026, 5, 14)),
-    status: SessionStatus.OPEN
+    status: SessionStatus.OPEN,
+    rosterState: SessionRosterState.VERIFIED
   };
 
   function makeRecordService(existingUpdatedAt = new Date('2026-06-14T01:05:00.000Z'), policyOverrides: Record<string, unknown> = {}) {
@@ -304,25 +314,27 @@ describe('AttendanceClassService session roster integrity', () => {
     startsAt: new Date('2026-06-14T01:00:00.000Z'),
     endsAt: new Date('2026-06-14T02:00:00.000Z'),
     businessDate: new Date(Date.UTC(2026, 5, 14)),
-    status: SessionStatus.OPEN
+    status: SessionStatus.OPEN,
+    rosterState: SessionRosterState.VERIFIED
   };
 
-  it('record attendance rejects missing roster without recapturing', async () => {
+  it('record attendance permits an authoritative empty verified roster without recapturing', async () => {
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue(openSession) },
       sessionRoster: { findMany: jest.fn().mockResolvedValue([]) },
+      auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
       classEnrollment: { findMany: jest.fn() },
-      $transaction: jest.fn()
+      $transaction: jest.fn((callback) => callback({ auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) } }))
     } as any;
     const service = new AttendanceClassService(prisma);
 
-    await expect(service.recordAttendance('session-1', guru, { items: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, confirm: true }] })).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
-    });
+    const result = await service.recordAttendance('session-1', guru, { items: [] });
+
+    expect(result.updated).toBe(0);
     expect(prisma.classEnrollment.findMany).not.toHaveBeenCalled();
   });
 
-  it('bulk confirmation rejects missing roster without recapturing', async () => {
+  it('bulk confirmation reports an authoritative empty verified roster', async () => {
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue(openSession) },
       sessionRoster: { findMany: jest.fn().mockResolvedValue([]) },
@@ -332,42 +344,49 @@ describe('AttendanceClassService session roster integrity', () => {
     const service = new AttendanceClassService(prisma);
 
     await expect(service.bulkConfirmPresent('session-1', guru)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+      response: expect.objectContaining({ code: 'SESSION_ROSTER_EMPTY' })
     });
     expect(prisma.classEnrollment.findMany).not.toHaveBeenCalled();
   });
 
-  it('close rejects missing roster without recapturing', async () => {
+  it('close rejects legacy missing roster without recapturing', async () => {
+    const lockedSession = { ...openSession, endsAt: new Date(Date.now() - 60_000), rosterState: SessionRosterState.LEGACY_ROSTER_MISSING };
     const tx = {
-      sessionRoster: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: { findUniqueOrThrow: jest.fn().mockResolvedValue(lockedSession) },
+      sessionRoster: { findMany: jest.fn() },
       classEnrollment: { findMany: jest.fn() }
     };
     const prisma = {
-      session: { findUnique: jest.fn().mockResolvedValue({ ...openSession, endsAt: new Date(Date.now() - 60_000) }) },
+      session: { findUnique: jest.fn().mockResolvedValue(lockedSession) },
       $transaction: jest.fn((callback) => callback(tx))
     } as any;
     const service = new AttendanceClassService(prisma);
 
     await expect(service.closeSession('session-1', guru, {})).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+      response: expect.objectContaining({ code: 'LEGACY_ROSTER_MISSING' })
     });
+    expect(tx.sessionRoster.findMany).not.toHaveBeenCalled();
     expect(tx.classEnrollment.findMany).not.toHaveBeenCalled();
   });
 
-  it('correction rejects missing roster distinctly from out-of-roster student', async () => {
+  it('correction rejects legacy missing roster before student membership lookup', async () => {
+    const legacySession = { ...openSession, rosterState: SessionRosterState.LEGACY_ROSTER_MISSING };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: { findUnique: jest.fn().mockResolvedValue(legacySession) },
+      sessionRoster: { findUnique: jest.fn() }
+    };
     const prisma = {
-      session: { findUnique: jest.fn().mockResolvedValue(openSession) },
-      sessionRoster: {
-        count: jest.fn().mockResolvedValue(0),
-        findUnique: jest.fn()
-      }
+      session: { findUnique: jest.fn().mockResolvedValue(legacySession) },
+      $transaction: jest.fn((callback) => callback(tx))
     } as any;
     const service = new AttendanceClassService(prisma);
 
     await expect(service.correctAttendance('session-1', 'siswa-1', guru, { status: StudentAttendanceStatus.HADIR, reason: 'Koreksi manual dengan bukti tertulis' })).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+      response: expect.objectContaining({ code: 'LEGACY_ROSTER_MISSING' })
     });
-    expect(prisma.sessionRoster.findUnique).not.toHaveBeenCalled();
+    expect(tx.sessionRoster.findUnique).not.toHaveBeenCalled();
   });
 
   it('repair workflow is admin/developer only and requires a quality reason', async () => {
@@ -379,29 +398,64 @@ describe('AttendanceClassService session roster integrity', () => {
 
     await expect(service.repairSessionRoster('session-1', guru, 'Perbaikan roster dengan bukti operator')).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.repairSessionRoster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU }, 'singkat')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.repairSessionRoster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU }, 'buktivalid1234')).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('summary raises data-integrity error instead of falling back to current enrollment', async () => {
+  it('summary raises data-integrity error instead of falling back to current enrollment or writing an audit row', async () => {
+    const session = {
+      id: 'session-1',
+      teacherId: 'guru-1',
+      status: SessionStatus.OPEN,
+      rosterState: SessionRosterState.LEGACY_ROSTER_MISSING,
+      openedAt: new Date(),
+      closedAt: null,
+      attendances: [],
+      rosters: [],
+      teacherPresence: []
+    };
     const prisma = {
-      session: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'session-1',
-          teacherId: 'guru-1',
-          status: SessionStatus.OPEN,
-          openedAt: new Date(),
-          closedAt: null,
-          attendances: [],
-          rosters: [],
-          teacherPresence: []
-        })
-      }
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn()
     } as any;
     const service = new AttendanceClassService(prisma);
 
     await expect(service.summary('session-1', guru)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'LEGACY_ROSTER_MISSING' })
+    });
+    await expect(service.summary('session-1', guru)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'LEGACY_ROSTER_MISSING' })
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('roster rejects non-SCHEDULED PENDING state without writing repeated read audits', async () => {
+    const session = {
+      id: 'session-1',
+      teacherId: 'guru-1',
+      status: SessionStatus.OPEN,
+      rosterState: SessionRosterState.PENDING,
+      startsAt: new Date(),
+      endsAt: new Date(),
+      openedAt: new Date(),
+      closedAt: null,
+      rosters: [],
+      attendances: [],
+      teacherPresence: []
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn()
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.roster('session-1', guru)).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
     });
+    await expect(service.roster('session-1', guru)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('repair workflow creates explicit backfill roster rows and audits the repair', async () => {
@@ -411,9 +465,16 @@ describe('AttendanceClassService session roster integrity', () => {
       classId: 'class-1',
       startsAt: new Date('2026-06-14T01:00:00.000Z'),
       businessDate: new Date(Date.UTC(2026, 5, 14)),
+      status: SessionStatus.CLOSED,
+      rosterState: SessionRosterState.LEGACY_ROSTER_MISSING,
       schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' }
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: {
+        findUnique: jest.fn().mockResolvedValue(session),
+        update: jest.fn().mockResolvedValue({ ...session, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED })
+      },
       sessionRoster: {
         count: jest.fn()
           .mockResolvedValueOnce(0)
@@ -436,7 +497,7 @@ describe('AttendanceClassService session roster integrity', () => {
 
     const result = await service.repairSessionRoster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU }, 'Perbaikan roster karena data legacy tidak memiliki snapshot');
 
-    expect(result).toEqual({ sessionId: 'session-1', beforeCount: 0, afterCount: 1, fromAttendanceCount: 1, source: 'audited_repair' });
+    expect(result).toEqual({ sessionId: 'session-1', beforeCount: 0, afterCount: 1, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED, fromAttendanceCount: 1, source: 'audited_repair' });
     expect(tx.sessionRoster.createMany).toHaveBeenCalledWith(expect.objectContaining({
       data: [expect.objectContaining({
         studentId: 'siswa-1',
@@ -448,6 +509,342 @@ describe('AttendanceClassService session roster integrity', () => {
     expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: 'session_roster.repaired', reason: 'Perbaikan roster karena data legacy tidak memiliki snapshot' })
     }));
+    expect(tx.$queryRaw.mock.calls.map(([query]) => rawQueryText(query))).toEqual([
+      'SELECT "id" FROM "Session" WHERE "id" = ? FOR UPDATE'
+    ]);
+  });
+});
+
+describe('AttendanceClassService correction, repair, and MISSED recovery', () => {
+  const admin = { sub: 'admin-1', role: Role.ADMIN_TU };
+  const picket = { sub: 'piket-1', role: Role.GURU_PIKET };
+  const legacySession = {
+    id: 'session-1',
+    teacherId: 'guru-1',
+    classId: 'class-1',
+    startsAt: new Date(),
+    businessDate: new Date(),
+    status: SessionStatus.CLOSED,
+    rosterState: SessionRosterState.LEGACY_ROSTER_MISSING,
+    schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' }
+  };
+
+  it.each([SessionStatus.SCHEDULED, SessionStatus.MISSED])('rejects %s correction under a session lock', async (status) => {
+    const session = { ...legacySession, status, rosterState: SessionRosterState.VERIFIED };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      sessionRoster: { findUnique: jest.fn() }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+
+    await expect(new AttendanceClassService(prisma).correctAttendance('session-1', 'siswa-1', guru, {
+      status: StudentAttendanceStatus.HADIR,
+      reason: 'Koreksi dengan bukti tertulis lengkap'
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.sessionRoster.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('allows OPEN owner correction and CLOSED audited correction after lock and reread', async () => {
+    const run = async (status: SessionStatus) => {
+      const session = { ...legacySession, status, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED };
+      const attendance = { id: `attendance-${status}`, status: StudentAttendanceStatus.HADIR, note: null, correctionCount: 1 };
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        session: { findUnique: jest.fn().mockResolvedValue(session) },
+        sessionRoster: { findUnique: jest.fn().mockResolvedValue({ sessionId: 'session-1', studentId: 'siswa-1' }) },
+        studentAttendance: {
+          findUnique: jest.fn().mockResolvedValue({ ...attendance, status: StudentAttendanceStatus.ALPA, note: 'Sebelum koreksi' }),
+          upsert: jest.fn().mockResolvedValue(attendance)
+        },
+        attendanceCorrectionEvent: { create: jest.fn().mockResolvedValue({ id: 'event-1' }) },
+        auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) }
+      };
+      const prisma = {
+        session: { findUnique: jest.fn().mockResolvedValue(session) },
+        $transaction: jest.fn((callback) => callback(tx))
+      } as any;
+      const result = await new AttendanceClassService(prisma).correctAttendance('session-1', 'siswa-1', guru, {
+        status: StudentAttendanceStatus.HADIR,
+        reason: 'Koreksi dengan bukti tertulis lengkap'
+      });
+      expect(result).toEqual(attendance);
+      expect(tx.$queryRaw.mock.calls.map(([query]) => rawQueryText(query))).toEqual([
+        'SELECT "id" FROM "Session" WHERE "id" = ? FOR UPDATE',
+        'SELECT "id" FROM "StudentAttendance" WHERE "sessionId" = ? AND "studentId" = ? FOR UPDATE'
+      ]);
+      expect(tx.attendanceCorrectionEvent.create).toHaveBeenCalled();
+      expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ action: 'class.attendance.corrected' })
+      }));
+    };
+
+    await run(SessionStatus.OPEN);
+    await run(SessionStatus.CLOSED);
+  });
+
+  it('rechecks GURU_MAPEL ownership after session lock before attendance write', async () => {
+    const preliminarySession = { ...legacySession, status: SessionStatus.OPEN, rosterState: SessionRosterState.VERIFIED, teacherId: 'guru-1' };
+    const lockedSession = { ...preliminarySession, teacherId: 'guru-lain' };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: { findUnique: jest.fn().mockResolvedValue(lockedSession) },
+      sessionRoster: { findUnique: jest.fn() },
+      studentAttendance: { upsert: jest.fn() }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(preliminarySession) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+
+    await expect(new AttendanceClassService(prisma).correctAttendance('session-1', 'siswa-1', guru, {
+      status: StudentAttendanceStatus.HADIR,
+      reason: 'Koreksi dengan bukti tertulis lengkap'
+    })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.$queryRaw.mock.calls.map(([query]) => rawQueryText(query))).toEqual([
+      'SELECT "id" FROM "Session" WHERE "id" = ? FOR UPDATE'
+    ]);
+    expect(tx.sessionRoster.findUnique).not.toHaveBeenCalled();
+    expect(tx.studentAttendance.upsert).not.toHaveBeenCalled();
+  });
+
+  it('marks normal open roster as VERIFIED after effective-date capture', async () => {
+    const { service, tx } = makeService({ status: SessionStatus.SCHEDULED, rosterState: SessionRosterState.PENDING });
+
+    await service.openSession('session-1', guru, browserGeo());
+
+    expect(tx.session.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { rosterState: SessionRosterState.VERIFIED }
+    }));
+  });
+
+  it('retains BACKFILLED_UNVERIFIED when opening a SCHEDULED session with existing BACKFILL roster rows', async () => {
+    const { service, tx } = makeService({ status: SessionStatus.SCHEDULED, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED });
+    tx.sessionRoster.count.mockResolvedValue(1);
+    tx.sessionRoster.findMany.mockResolvedValue([{ studentId: 'siswa-1', captureSource: RosterCaptureSource.BACKFILL }]);
+
+    await service.openSession('session-1', guru, browserGeo());
+
+    expect(tx.session.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { rosterState: SessionRosterState.BACKFILLED_UNVERIFIED }
+    }));
+  });
+
+  it('rejects concurrent second repair after locked state reread', async () => {
+    const session = { ...legacySession, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      sessionRoster: { count: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn((callback) => callback(tx)) } as any;
+
+    await expect(new AttendanceClassService(prisma).repairSessionRoster('session-1', admin, 'Perbaikan roster dengan bukti tertulis')).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.sessionRoster.count).not.toHaveBeenCalled();
+  });
+
+  it('rejects repair for SCHEDULED or already VERIFIED state under session lock', async () => {
+    const cases = [
+      { session: { ...legacySession, status: SessionStatus.SCHEDULED, rosterState: SessionRosterState.PENDING }, error: BadRequestException },
+      { session: { ...legacySession, status: SessionStatus.CLOSED, rosterState: SessionRosterState.VERIFIED }, error: ConflictException }
+    ];
+    for (const { session, error } of cases) {
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        session: { findUnique: jest.fn().mockResolvedValue(session) },
+        sessionRoster: { count: jest.fn() }
+      };
+      const prisma = { $transaction: jest.fn((callback) => callback(tx)) } as any;
+      await expect(new AttendanceClassService(prisma).repairSessionRoster('session-1', admin, 'Perbaikan roster dengan bukti tertulis')).rejects.toBeInstanceOf(error);
+      expect(tx.$queryRaw).toHaveBeenCalled();
+      expect(tx.sessionRoster.count).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reconstructs historical BACKFILL eligibility from effective date and revocation chronology', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-14T05:00:00.000Z'));
+    try {
+      const session = { ...legacySession, status: SessionStatus.MISSED, businessDate: new Date('2026-06-14T00:00:00.000Z'), rosterState: SessionRosterState.LEGACY_ROSTER_MISSING };
+      const afterBusinessDay = new Date('2026-06-14T17:00:00.000Z');
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        session: {
+          findUnique: jest.fn().mockResolvedValue(session),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ ...session, status: SessionStatus.OPEN, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED })
+        },
+        sessionRoster: {
+          count: jest.fn().mockResolvedValue(0),
+          findMany: jest.fn().mockResolvedValue([]),
+          createMany: jest.fn().mockResolvedValue({ count: 2 })
+        },
+        classEnrollment: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'revoked-after', studentId: 'siswa-revoked-after', active: false, administrativeStatus: 'REVOKED', administrativeStatusChangedAt: afterBusinessDay,
+              academicYearId: null, semesterId: null, student: { id: 'siswa-revoked-after', fullName: 'Siswa Dicabut Setelah Sesi', username: 'revoked-after', active: false }, schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' }
+            },
+            {
+              id: 'inactive-student', studentId: 'siswa-inactive', active: true, administrativeStatus: 'ACTIVE', administrativeStatusChangedAt: null,
+              academicYearId: null, semesterId: null, student: { id: 'siswa-inactive', fullName: 'Siswa Kini Nonaktif', username: 'inactive', active: false }, schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' }
+            }
+          ])
+        },
+        studentAttendance: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+        auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+        outboxEvent: { create: jest.fn().mockResolvedValue({ id: 'outbox-1' }) }
+      };
+      const prisma = { $transaction: jest.fn((callback) => callback(tx)) } as any;
+
+      await new AttendanceClassService(prisma).recoverMissedSession('session-1', admin, 'bukti data');
+
+      const where = tx.classEnrollment.findMany.mock.calls[0][0].where;
+      const revoked = where.AND[0].OR.find((item: Record<string, unknown>) => item.administrativeStatus === 'REVOKED');
+      expect(where).toEqual(expect.objectContaining({
+        effectiveFrom: { lte: session.businessDate },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: session.businessDate } }],
+        student: { role: Role.SISWA }
+      }));
+      expect(where).not.toHaveProperty('active');
+      expect(where.student).not.toHaveProperty('active');
+      expect(revoked).toEqual(expect.objectContaining({
+        administrativeStatus: 'REVOKED',
+        administrativeStatusChangedAt: { gt: new Date('2026-06-14T16:59:59.999Z') }
+      }));
+      expect(where.AND[0].OR).not.toContainEqual(expect.objectContaining({ administrativeStatus: 'CANCELLED' }));
+      expect(tx.sessionRoster.createMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ studentId: 'siswa-revoked-after', activeAtCapture: true, metadata: expect.objectContaining({ administrativeStatus: 'REVOKED', administrativeStatusChangedAt: afterBusinessDay.toISOString() }) }),
+          expect.objectContaining({ studentId: 'siswa-inactive', activeAtCapture: true, metadata: expect.objectContaining({ administrativeStatus: 'ACTIVE' }) })
+        ])
+      }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('excludes REVOKED enrollments changed at or before business-day end and CANCELLED enrollments from BACKFILL query', async () => {
+    const session = { ...legacySession, status: SessionStatus.MISSED, businessDate: new Date('2026-06-14T00:00:00.000Z'), rosterState: SessionRosterState.LEGACY_ROSTER_MISSING };
+    const tx = {
+      sessionRoster: { count: jest.fn().mockResolvedValue(0), createMany: jest.fn() },
+      classEnrollment: { findMany: jest.fn().mockResolvedValue([]) }
+    } as any;
+    const service = new AttendanceClassService({} as any);
+
+    await (service as any).captureSessionRoster(tx, session, RosterCaptureSource.BACKFILL);
+
+    const where = tx.classEnrollment.findMany.mock.calls[0][0].where;
+    const revoked = where.AND[0].OR.find((item: Record<string, unknown>) => item.administrativeStatus === 'REVOKED');
+    expect(revoked.administrativeStatusChangedAt).toEqual({ gt: new Date('2026-06-14T16:59:59.999Z') });
+    expect(where.AND[0].OR).toEqual([
+      { administrativeStatus: 'ACTIVE' },
+      expect.objectContaining({ administrativeStatus: 'REVOKED' })
+    ]);
+    expect(where.AND[0].OR).not.toContainEqual(expect.objectContaining({ administrativeStatus: 'CANCELLED' }));
+  });
+
+  it('recovers MISSED session with effective-date backfill, audit, outbox, and no teacher presence', async () => {
+    const today = new Date();
+    const session = { ...legacySession, status: SessionStatus.MISSED, businessDate: today, rosterState: SessionRosterState.LEGACY_ROSTER_MISSING, reconciledAt: new Date() };
+    const updated = { ...session, status: SessionStatus.OPEN, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED, openedAt: new Date(), reconciledAt: null };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: {
+        findUnique: jest.fn().mockResolvedValue(session),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(updated)
+      },
+      sessionRoster: {
+        count: jest.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockResolvedValueOnce(1),
+        findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }]),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      classEnrollment: { findMany: jest.fn().mockResolvedValue([{ id: 'enrollment-1', studentId: 'siswa-1', active: true, administrativeStatus: 'ACTIVE', academicYearId: null, semesterId: null, student: { id: 'siswa-1', fullName: 'Siswa Satu', username: 'siswa1' }, schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' } }]) },
+      studentAttendance: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      teacherSessionPresence: { upsert: jest.fn() },
+      auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+      outboxEvent: { create: jest.fn().mockResolvedValue({ id: 'outbox-1' }) }
+    };
+    const prisma = { $transaction: jest.fn((callback) => callback(tx)) } as any;
+
+    const result = await new AttendanceClassService(prisma).recoverMissedSession('session-1', picket, 'Pemulihan karena guru berhalangan hadir');
+
+    expect(result).toEqual({ ...updated, rosterCount: 1 });
+    expect(tx.classEnrollment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        effectiveFrom: { lte: today },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }]
+      })
+    }));
+    expect(tx.sessionRoster.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ captureSource: 'BACKFILL', metadata: expect.objectContaining({ source: 'missed_recovery', unverifiable: true }) })]
+    }));
+    expect(tx.session.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'session-1', status: SessionStatus.MISSED },
+      data: expect.objectContaining({ status: SessionStatus.OPEN, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED, reconciledAt: null })
+    }));
+    expect(tx.teacherSessionPresence.upsert).not.toHaveBeenCalled();
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'class.session.missed_recovered', reason: 'Pemulihan karena guru berhalangan hadir' })
+    }));
+    expect(tx.outboxEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ eventType: 'session.missed_recovered' })
+    }));
+    expect(tx.$queryRaw.mock.calls.map(([query]) => rawQueryText(query))).toEqual([
+      'SELECT "id" FROM "Session" WHERE "id" = ? FOR UPDATE'
+    ]);
+  });
+
+  it('rejects a second concurrent recovery after locked status reread', async () => {
+    const session = { ...legacySession, status: SessionStatus.OPEN, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED };
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([]), session: { findUnique: jest.fn().mockResolvedValue(session) } };
+    const prisma = { $transaction: jest.fn((callback) => callback(tx)) } as any;
+
+    await expect(new AttendanceClassService(prisma).recoverMissedSession('session-1', admin, 'Pemulihan karena bukti tersedia')).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.$queryRaw).toHaveBeenCalled();
+  });
+
+  it('uses recovery-specific 10-character reason quality without weakening other workflows', async () => {
+    const session = { ...legacySession, status: SessionStatus.OPEN, businessDate: new Date(), rosterState: SessionRosterState.BACKFILLED_UNVERIFIED };
+    const makeRecoveryService = () => {
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        session: { findUnique: jest.fn().mockResolvedValue(session) }
+      };
+      return { service: new AttendanceClassService({ $transaction: jest.fn((callback) => callback(tx)) } as any), tx };
+    };
+
+    const nine = makeRecoveryService();
+    await expect(nine.service.recoverMissedSession('session-1', admin, 'bukti1234')).rejects.toBeInstanceOf(BadRequestException);
+    expect(nine.tx.$queryRaw).not.toHaveBeenCalled();
+
+    for (const reason of ['bukti12345', 'buktivalid1234']) {
+      const accepted = makeRecoveryService();
+      await expect(accepted.service.recoverMissedSession('session-1', admin, reason)).rejects.toBeInstanceOf(ConflictException);
+      expect(accepted.tx.$queryRaw).toHaveBeenCalled();
+    }
+  });
+
+  it('rejects recovery for unauthorized, short reason, too old, future, and already recovered session', async () => {
+    const service = new AttendanceClassService({} as any);
+    await expect(service.recoverMissedSession('session-1', guru, 'Pemulihan karena bukti tersedia')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.recoverMissedSession('session-1', admin, 'singkat')).rejects.toBeInstanceOf(BadRequestException);
+
+    for (const businessDate of [new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), new Date(Date.now() + 24 * 60 * 60 * 1000)]) {
+      const session = { ...legacySession, status: SessionStatus.MISSED, businessDate };
+      const tx = { $queryRaw: jest.fn().mockResolvedValue([]), session: { findUnique: jest.fn().mockResolvedValue(session) } };
+      const prisma = { $transaction: jest.fn((callback) => callback(tx)) } as any;
+      await expect(new AttendanceClassService(prisma).recoverMissedSession('session-1', admin, 'Pemulihan karena bukti tersedia')).rejects.toBeInstanceOf(BadRequestException);
+    }
+
+    const session = { ...legacySession, status: SessionStatus.OPEN, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED };
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([]), session: { findUnique: jest.fn().mockResolvedValue(session) } };
+    const prisma = { $transaction: jest.fn((callback) => callback(tx)) } as any;
+    await expect(new AttendanceClassService(prisma).recoverMissedSession('session-1', admin, 'Pemulihan karena bukti tersedia')).rejects.toBeInstanceOf(ConflictException);
   });
 });
 

@@ -106,8 +106,8 @@ export class AndroidProvisionStartDto {
   @IsString()
   locationName?: string;
 
-  // Backward-compatible only: QR_ANDROID provisioning ignores client-requested
-  // modes and always uses backend flexible defaults.
+  // Backward-compatible only outside production: QR_ANDROID provisioning
+  // ignores client-requested modes and uses backend flexible defaults.
   @IsOptional()
   @IsArray()
   @ArrayUnique()

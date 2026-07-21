@@ -30,6 +30,10 @@ function generateProvisionToken() {
 export const MAX_ACTIVE_ANDROID_READERS = 4;
 export const ANDROID_READER_LIMIT_MESSAGE = 'Batas HP scanner aktif sudah penuh. Cabut salah satu dari 4 HP dulu untuk mengganti perangkat.';
 
+const PRODUCTION_ANDROID_TARGET_MESSAGE = 'Reader Android produksi harus memakai target server yang disetujui.';
+const PRODUCTION_ANDROID_TARGET_EXISTS_MESSAGE = 'Target reader Android produksi sudah terdaftar. Gunakan kode aktivasi untuk target tersebut.';
+const PRODUCTION_ANDROID_PROVISION_MESSAGE = 'Aktivasi HP Android produksi gunakan kode aktivasi target yang disetujui.';
+const PRODUCTION_ANDROID_TOKEN_MESSAGE = 'Token aktivasi tidak berlaku untuk reader Android produksi yang disetujui.';
 const MAX_PROVISION_TOKEN_LENGTH = 128;
 const ANDROID_READER_ONLINE_WINDOW_MS = Number(process.env.ANDROID_READER_ONLINE_WINDOW_MS ?? '120000');
 const PROVISION_TOKEN_PATTERN = /^shrp_[A-Za-z0-9_-]{16,}$/;
@@ -66,25 +70,34 @@ function defaultModes(type?: ReaderType) {
 
 const PR128_READER_TARGET_MODES = new Map<string, AndroidReaderMode[]>([
   ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
-  ['READER_IDENTITY_01', [AndroidReaderMode.CHECK_ONLY]],
-  ['READER_GATE_PRAYER_01', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]],
-  ['READER_GATE_PRAYER_02', [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA]]
+  ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
+  ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
+  ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]]
 ]);
 
 function effectiveAllowedModes(type: ReaderType, requested?: AndroidReaderMode[] | null) {
-  // QR_ANDROID legacy provisioning stays flexible. Targeted PR128 activation
-  // codes pin the four production readers to their approved modes separately.
+  // Legacy QR_ANDROID provisioning stays flexible outside production. Approved
+  // production targets always receive their server-pinned modes separately.
   if (type === ReaderType.QR_ANDROID) return defaultModes(ReaderType.QR_ANDROID);
   return requested ?? defaultModes(type);
 }
 
+function isProductionEnvironment() {
+  return process.env.NODE_ENV === 'production';
+}
+
 function targetReaderKey(reader: { deviceId?: string | null; name?: string | null }) {
-  return [reader.deviceId, reader.name].map((value) => String(value || '').trim()).find((value) => PR128_READER_TARGET_MODES.has(value)) ?? null;
+  const targetKeys = new Set(
+    [reader.deviceId, reader.name]
+      .map((value) => String(value ?? ''))
+      .filter((value) => PR128_READER_TARGET_MODES.has(value))
+  );
+  return targetKeys.size === 1 ? [...targetKeys][0] : null;
 }
 
 function targetAllowedModes(reader: { deviceId?: string | null; name?: string | null; allowedModes?: AndroidReaderMode[] | null; type?: ReaderType | null }) {
   const targetKey = targetReaderKey(reader);
-  if (targetKey) return PR128_READER_TARGET_MODES.get(targetKey)!;
+  if (targetKey) return [...PR128_READER_TARGET_MODES.get(targetKey)!];
   return effectiveAllowedModes(reader.type ?? ReaderType.QR_ANDROID, reader.allowedModes ?? undefined);
 }
 
@@ -206,6 +219,12 @@ export class DeviceReaderService {
       appVersionCode: payload.appVersionCode,
       headers: signed
     });
+    const allowedModes = targetReaderKey(verification.reader)
+      ? targetAllowedModes(verification.reader)
+      : verification.reader.allowedModes;
+    if (payload.currentMode && (!allowedModes?.length || !allowedModes.includes(payload.currentMode))) {
+      throw new ForbiddenException('Mode scanner tidak diizinkan untuk reader ini.');
+    }
     const lastQueueFlushAt = payload.lastQueueFlushAt ? new Date(payload.lastQueueFlushAt) : undefined;
     if (lastQueueFlushAt && Number.isNaN(lastQueueFlushAt.getTime())) throw new BadRequestException('Waktu flush antrean tidak valid.');
     const updated = await this.prisma.deviceReader.update({
@@ -221,7 +240,8 @@ export class DeviceReaderService {
         lastStatusMessage: clampText(payload.statusMessage, 180),
         statusWarnings: sanitizeWarnings(payload.warnings),
         appVersion: payload.appVersion,
-        appVersionCode: payload.appVersionCode
+        appVersionCode: payload.appVersionCode,
+        allowedModes
       }
     });
     return { ok: true, item: this.readerResponse(updated), serverTime: new Date().toISOString() };
@@ -239,11 +259,62 @@ export class DeviceReaderService {
   }
 
   async createReader(payload: CreateReaderDto, actor: Actor) {
+    const type = payload.type ?? ReaderType.GATE;
+    const targetKey = type === ReaderType.QR_ANDROID ? targetReaderKey(payload) : null;
+    const productionTarget = type === ReaderType.QR_ANDROID && isProductionEnvironment() && targetKey;
+    if (type === ReaderType.QR_ANDROID && isProductionEnvironment() && !targetKey) {
+      throw new BadRequestException(PRODUCTION_ANDROID_TARGET_MESSAGE);
+    }
+    const platform = type === ReaderType.QR_ANDROID ? DevicePlatform.ANDROID : payload.platform ?? DevicePlatform.HARDWARE;
+    const allowedModes = productionTarget
+      ? targetAllowedModes({ deviceId: targetKey, name: targetKey, type })
+      : effectiveAllowedModes(type, payload.allowedModes);
+
+    if (productionTarget && targetKey) {
+      const existing = await this.prisma.deviceReader.findUnique({ where: { deviceId: targetKey } });
+      if (existing) throw new ConflictException(PRODUCTION_ANDROID_TARGET_EXISTS_MESSAGE);
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const created = await tx.deviceReader.create({
+            data: {
+              name: targetKey,
+              deviceId: targetKey,
+              status: DeviceReaderStatus.INACTIVE,
+              type,
+              platform,
+              appVersion: payload.appVersion,
+              appVersionCode: payload.appVersionCode,
+              allowedModes,
+              locationLabel: payload.locationLabel ?? payload.locationName,
+              locationName: payload.locationName ?? payload.locationLabel,
+              locationLat: payload.locationLat,
+              locationLng: payload.locationLng,
+              createdById: actor.sub
+            }
+          });
+          const item = this.redact(created);
+          await writeAudit(tx, {
+            actorId: actor.sub,
+            actorRole: actor.role,
+            module: 'device',
+            action: 'reader.android.target.created',
+            resource: 'deviceReader',
+            resourceId: created.id,
+            after: { ...item, activationCodeRequired: true } as Prisma.InputJsonValue
+          });
+          return {
+            item,
+            message: 'Target reader Android produksi dibuat tidak aktif. Buat kode aktivasi untuk target ini sebelum mengaktifkan APK.'
+          };
+        });
+      } catch (error: unknown) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException(PRODUCTION_ANDROID_TARGET_EXISTS_MESSAGE);
+        throw error;
+      }
+    }
+
     const secret = this.signatures?.generateReaderSecret() ?? `shrsec_${randomBytes(32).toString('base64url')}`;
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
-    const type = payload.type ?? ReaderType.GATE;
-    const platform = type === ReaderType.QR_ANDROID ? DevicePlatform.ANDROID : payload.platform ?? DevicePlatform.HARDWARE;
-    const allowedModes = effectiveAllowedModes(type, payload.allowedModes);
     try {
       return await this.prisma.$transaction(async (tx) => {
         if (type === ReaderType.QR_ANDROID) await this.assertAndroidReaderActiveSlotAvailable(tx);
@@ -332,6 +403,7 @@ export class DeviceReaderService {
   }
 
   async startAndroidProvision(payload: AndroidProvisionStartDto, actor: Actor) {
+    if (isProductionEnvironment()) throw new BadRequestException(PRODUCTION_ANDROID_PROVISION_MESSAGE);
     const token = generateProvisionToken();
     const expiresAt = new Date(Date.now() + clampProvisionMinutes(payload.expiresInMinutes) * 60_000);
     const allowedModes = effectiveAllowedModes(ReaderType.QR_ANDROID);
@@ -386,8 +458,10 @@ export class DeviceReaderService {
     if (reader.provisioningExpiresAt && reader.provisioningExpiresAt <= now) throw new ForbiddenException('Token provisioning sudah kedaluwarsa.');
     if (reader.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
     if (reader.type !== ReaderType.QR_ANDROID) throw new BadRequestException('Token provisioning tidak cocok untuk HP Android reader.');
+    const targetKey = targetReaderKey(reader);
+    if (isProductionEnvironment() && !targetKey) throw new ForbiddenException(PRODUCTION_ANDROID_TOKEN_MESSAGE);
     const provisionedDeviceId = stableProvisionedDeviceId(reader, deviceId);
-    const provisionedName = targetReaderKey(reader) ? reader.name : payload.deviceName || reader.name;
+    const provisionedName = targetKey ?? (payload.deviceName || reader.name);
     const allowedModes = targetAllowedModes(reader);
     const secret = this.signatures?.generateReaderSecret() ?? `shrsec_${randomBytes(32).toString('base64url')}`;
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
@@ -445,10 +519,14 @@ export class DeviceReaderService {
   }
 
   async rotateApiKey(id: string, actor: Actor, payload: RotateReaderKeyDto = {}) {
-    if (process.env.STEP_UP_FOR_READER_ROTATE === 'true') await this.stepUp?.assertRecentPassword(actor.sub, payload.stepUpPassword);
     const before = await this.prisma.deviceReader.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Reader tidak ditemukan.');
     if (before.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
+    const productionTarget = before.type === ReaderType.QR_ANDROID && isProductionEnvironment() && targetReaderKey(before);
+    if (productionTarget && !before.provisionedAt) {
+      throw new BadRequestException(PRODUCTION_ANDROID_PROVISION_MESSAGE);
+    }
+    if (process.env.STEP_UP_FOR_READER_ROTATE === 'true') await this.stepUp?.assertRecentPassword(actor.sub, payload.stepUpPassword);
     const secret = this.signatures?.generateReaderSecret() ?? `shrsec_${randomBytes(32).toString('base64url')}`;
     const encrypted = this.signatures?.encryptSecret(secret) ?? secret;
 
@@ -476,6 +554,14 @@ export class DeviceReaderService {
   async updateStatus(id: string, payload: UpdateReaderStatusDto, actor: Actor) {
     const before = await this.prisma.deviceReader.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Reader tidak ditemukan.');
+    if (before.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
+    const targetKey = before.type === ReaderType.QR_ANDROID ? targetReaderKey(before) : null;
+    if (before.type === ReaderType.QR_ANDROID && isProductionEnvironment() && !targetKey) {
+      throw new BadRequestException(PRODUCTION_ANDROID_TARGET_MESSAGE);
+    }
+    if (targetKey && isProductionEnvironment() && payload.status === DeviceReaderStatus.ACTIVE && !before.readerSecretCiphertext) {
+      throw new BadRequestException(PRODUCTION_ANDROID_PROVISION_MESSAGE);
+    }
     if (before.status === payload.status) throw new BadRequestException('Status reader sudah sama.');
 
     return this.prisma.$transaction(async (tx) => {
@@ -486,7 +572,9 @@ export class DeviceReaderService {
         where: { id },
         data: {
           status: payload.status,
-          ...(before.type === ReaderType.QR_ANDROID && payload.status === DeviceReaderStatus.ACTIVE ? { platform: DevicePlatform.ANDROID, allowedModes: targetAllowedModes(before) } : {})
+          ...(before.type === ReaderType.QR_ANDROID && (payload.status === DeviceReaderStatus.ACTIVE || targetKey)
+            ? { platform: DevicePlatform.ANDROID, allowedModes: targetKey ? targetAllowedModes({ deviceId: targetKey, name: targetKey, type: before.type }) : targetAllowedModes(before) }
+            : {})
         }
       });
       await writeAudit(tx, {
@@ -506,16 +594,24 @@ export class DeviceReaderService {
   async updateReader(id: string, payload: UpdateReaderDto, actor: Actor) {
     const before = await this.prisma.deviceReader.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Reader tidak ditemukan.');
+    if (before.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
+    const targetKey = before.type === ReaderType.QR_ANDROID ? targetReaderKey(before) : null;
+    if (before.type === ReaderType.QR_ANDROID && isProductionEnvironment() && !targetKey) {
+      throw new BadRequestException(PRODUCTION_ANDROID_TARGET_MESSAGE);
+    }
     const updated = await this.prisma.$transaction(async (tx) => {
       const item = await tx.deviceReader.update({
         where: { id },
         data: {
-          name: payload.name,
+          name: targetKey ?? payload.name,
+          ...(targetKey ? { deviceId: targetKey } : {}),
           locationLabel: payload.locationLabel ?? payload.locationName,
           locationName: payload.locationName ?? payload.locationLabel,
           locationLat: payload.locationLat,
           locationLng: payload.locationLng,
-          allowedModes: before.type === ReaderType.QR_ANDROID ? defaultModes(ReaderType.QR_ANDROID) : payload.allowedModes,
+          allowedModes: before.type === ReaderType.QR_ANDROID
+            ? targetKey ? targetAllowedModes({ deviceId: targetKey, name: targetKey, type: before.type }) : defaultModes(ReaderType.QR_ANDROID)
+            : payload.allowedModes,
           appVersion: payload.appVersion,
           appVersionCode: payload.appVersionCode,
           updatedById: actor.sub

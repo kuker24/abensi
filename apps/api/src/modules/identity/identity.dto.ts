@@ -15,6 +15,11 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{4}$/)
+  nkd?: string;
+
+  @IsOptional()
+  @IsString()
   nip?: string;
 
   @IsOptional()
@@ -41,6 +46,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   nis?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}$/)
+  nkd?: string;
 
   @IsOptional()
   @IsString()
@@ -83,6 +93,11 @@ export class ImportUserRowDto {
   @IsOptional()
   @IsString()
   nis?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}$/)
+  nkd?: string;
 
   @IsOptional()
   @IsString()

@@ -46,6 +46,12 @@ function digits(value: string) {
   return clean(value).replace(/\D+/g, '');
 }
 
+function normalizeNkd(value: string) {
+  const nkd = clean(value);
+  if (!nkd) return null;
+  return /^\d{4}$/.test(nkd) ? nkd : null;
+}
+
 function usernameFrom(row: { fullName: string; nis?: string | null; nip?: string | null; subjectType: 'student' | 'staff' }) {
   if (row.subjectType === 'student' && row.nis) return `siswa.${digits(row.nis) || slugPart(row.fullName)}`.slice(0, 48);
   if (row.subjectType === 'staff' && row.nip) return `pegawai.${digits(row.nip).slice(-10) || slugPart(row.fullName)}`.slice(0, 48);
@@ -82,9 +88,10 @@ function baseErrors(row: NormalizedSchoolImportRow) {
   if (row.role === Role.DEVELOPER || row.role === Role.ADMIN_TU || row.role === Role.OPERATOR_IT) row.errors.push('role sensitif tidak boleh dari import sekolah');
   if (!isValidDate(row.birthDate)) row.errors.push('tanggal lahir tidak valid');
   if (row.subjectType === 'student') {
-    if (!row.nis) row.errors.push('NIS siswa wajib');
+    if (!row.nkd) row.errors.push('NKD siswa wajib');
     if (!row.classCode) row.errors.push('kelas siswa wajib');
   }
+  if (row.subjectType === 'staff' && row.nkd) row.errors.push('NKD hanya boleh dipakai siswa');
   if (row.subjectType === 'staff' && !row.nip) row.errors.push('NIP pegawai/guru wajib');
   if (row.subjectType === 'staff' && !ALLOWED_STAFF_ROLES.has(row.role)) row.errors.push('role pegawai/guru tidak valid');
 }
@@ -97,10 +104,12 @@ export function normalizeSchoolImportRows(rows: RawImportRow[], source: SchoolIm
     const errors: string[] = [];
     const legacyRole = get(raw, ['Role', 'role']);
     const typeUser = get(raw, ['TIPE USER', 'tipe_user', 'type', 'jenis']);
-    const classOrJob = get(raw, ['Kelas/Jabatan', 'kelas_jabatan', 'kelas', 'jabatan']);
+    const classOrJob = get(raw, ['classCode', 'Kode Kelas', 'Kelas/Jabatan', 'kelas_jabatan', 'kelas', 'jabatan']);
     const sheetName = get(raw, ['__sheetName', 'sheetName']);
     const fullName = get(raw, ['Nama Lengkap', 'NAMA LENGKAP', 'nama_lengkap', 'fullName', 'nama']);
     const nis = get(raw, ['NIS', 'nis', 'NISN', 'nisn']) || null;
+    const nkdInput = get(raw, ['NKD', 'nkd', 'Nomor Kartu Digital']);
+    const nkd = normalizeNkd(nkdInput);
     const nip = get(raw, ['NIP', 'nip']) || null;
     const birthDate = normalizeDate(get(raw, ['TANGGAL LAHIR', 'tanggal_lahir', 'birthDate', 'tanggal lahir']));
     const ignoredLegacyPassword = Boolean(get(raw, ['Password', 'password']));
@@ -124,7 +133,7 @@ export function normalizeSchoolImportRows(rows: RawImportRow[], source: SchoolIm
       sourceType = legacyRole || null;
     } else if (source === 'student-class') {
       role = Role.SISWA;
-      classCode = normalizeClassCode(sheetName || classOrJob);
+      classCode = normalizeClassCode(classOrJob || sheetName);
       className = classCode;
       sourceType = 'siswa';
     } else {
@@ -147,6 +156,7 @@ export function normalizeSchoolImportRows(rows: RawImportRow[], source: SchoolIm
       fullName,
       role,
       nis,
+      nkd,
       nip,
       birthDate,
       classCode,
@@ -155,10 +165,11 @@ export function normalizeSchoolImportRows(rows: RawImportRow[], source: SchoolIm
       jobTitle,
       sourceType,
       ignoredLegacyPassword,
-      fingerprint: fingerprint({ source, username, fullName, nis, nip, classCode, role }),
+      fingerprint: fingerprint({ source, username, fullName, nis, nkd, nip, classCode, role }),
       errors,
       warnings
     };
+    if (nkdInput && !nkd) errors.push('NKD harus tepat empat digit angka');
     baseErrors(row);
     return row;
   });
@@ -167,29 +178,35 @@ export function normalizeSchoolImportRows(rows: RawImportRow[], source: SchoolIm
 export function summarizeNormalizedRows(rows: NormalizedSchoolImportRow[]) {
   const duplicateUsernames = new Set<string>();
   const duplicateNis = new Set<string>();
+  const duplicateNkds = new Set<string>();
   const duplicateNip = new Set<string>();
   const seenUsernames = new Map<string, number>();
   const seenNis = new Map<string, number>();
+  const seenNkds = new Map<string, number>();
   const seenNip = new Map<string, number>();
 
   for (const row of rows) {
     if (row.username) seenUsernames.set(row.username, (seenUsernames.get(row.username) || 0) + 1);
     if (row.nis) seenNis.set(row.nis, (seenNis.get(row.nis) || 0) + 1);
+    if (row.nkd) seenNkds.set(row.nkd, (seenNkds.get(row.nkd) || 0) + 1);
     if (row.nip) seenNip.set(row.nip, (seenNip.get(row.nip) || 0) + 1);
   }
   for (const [value, count] of seenUsernames) if (count > 1) duplicateUsernames.add(value);
   for (const [value, count] of seenNis) if (count > 1) duplicateNis.add(value);
+  for (const [value, count] of seenNkds) if (count > 1) duplicateNkds.add(value);
   for (const [value, count] of seenNip) if (count > 1) duplicateNip.add(value);
 
   for (const row of rows) {
     if (duplicateUsernames.has(row.username)) row.errors.push('username duplikat di file import');
     if (row.nis && duplicateNis.has(row.nis)) row.errors.push('NIS duplikat di file import');
+    if (row.nkd && duplicateNkds.has(row.nkd)) row.errors.push('NKD duplikat di file import');
     if (row.nip && duplicateNip.has(row.nip)) row.errors.push('NIP duplikat di file import');
   }
 
   return {
     duplicateUsernames: duplicateUsernames.size,
     duplicateNis: duplicateNis.size,
+    duplicateNkds: duplicateNkds.size,
     duplicateNip: duplicateNip.size
   };
 }

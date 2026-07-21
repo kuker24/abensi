@@ -17,10 +17,10 @@ export function normalizeReason(reason?: string | null) {
   return String(reason || '').trim().replace(/\s+/g, ' ');
 }
 
-export function assertReasonQuality(reason: string | undefined | null, label = 'Alasan') {
+export function assertReasonQuality(reason: string | undefined | null, label = 'Alasan', minimumLength = 15) {
   const normalized = normalizeReason(reason);
-  if (normalized.length < 15) {
-    throw new BadRequestException(`${label} minimal 15 karakter dan harus jelas.`);
+  if (normalized.length < minimumLength) {
+    throw new BadRequestException(`${label} minimal ${minimumLength} karakter dan harus jelas.`);
   }
   if (WEAK_REASON_PATTERNS.some((pattern) => pattern.test(normalized))) {
     throw new BadRequestException(`${label} terlalu umum. Tulis alasan yang bisa diverifikasi.`);

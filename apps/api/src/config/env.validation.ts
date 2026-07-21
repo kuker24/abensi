@@ -42,6 +42,15 @@ function validateUrl(value: string, name: string, allowedProtocols: string[]) {
   }
 }
 
+function validateAndroidApkSigner(env: Env) {
+  const configured = env.ANDROID_APK_ALLOWED_SIGNER_SHA256?.trim();
+  if (!configured) return;
+  const entries = configured.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (!entries.length || entries.some((item) => !/^[a-f0-9]{64}$/.test(item))) {
+    throw new Error('ANDROID_APK_ALLOWED_SIGNER_SHA256 harus berupa fingerprint SHA-256 hex 64 karakter.');
+  }
+}
+
 function validatePort(env: Env) {
   const raw = env.PORT?.trim() || env.API_PORT?.trim() || '3000';
   const port = Number(raw);
@@ -52,6 +61,7 @@ function validatePort(env: Env) {
 
 export function validateEnvironment(config: Env) {
   validatePort(config);
+  validateAndroidApkSigner(config);
 
   if (config.DATABASE_URL) validateUrl(config.DATABASE_URL, 'DATABASE_URL', ['postgresql:', 'postgres:']);
   if (config.REDIS_URL) validateUrl(config.REDIS_URL, 'REDIS_URL', ['redis:', 'rediss:']);

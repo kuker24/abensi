@@ -187,7 +187,9 @@ describe('QrCredentialsService stable student identity cards', () => {
           user: {
             id: 'student-1',
             fullName: 'Siswa Satu',
-            username: '1234567890',
+            username: 'siswa.satu',
+            nis: null,
+            nkd: '0001',
             role: Role.SISWA,
             active: true,
             cardStatus: 'ACTIVE',
@@ -204,9 +206,10 @@ describe('QrCredentialsService stable student identity cards', () => {
     expect(result.cards[0]).toMatchObject({
       fullName: 'Siswa Satu',
       nama: 'Siswa Satu',
-      username: '1234567890',
-      nis: undefined,
-      nisn: '1234567890',
+      username: 'siswa.satu',
+      nis: null,
+      nisn: null,
+      nkd: '0001',
       role: Role.SISWA,
       roleLabel: 'SISWA',
       className: 'X-A · Kelas X A',
@@ -240,6 +243,7 @@ describe('QrCredentialsService stable student identity cards', () => {
             fullName: 'Guru Satu',
             username: 'guru.satu',
             nis: null,
+            nkd: null,
             nip: '198001012006041001',
             role: Role.GURU_MAPEL,
             active: true,
@@ -262,6 +266,7 @@ describe('QrCredentialsService stable student identity cards', () => {
       displayRole: 'Guru',
       nis: null,
       nisn: null,
+      nkd: null,
       nip: '198001012006041001',
       className: null,
       classCode: null,
@@ -276,6 +281,7 @@ describe('QrCredentialsService stable student identity cards', () => {
 
     await service.exportCards({ classId: 'class-current' });
 
+    const expectedBusinessDate = new Date(`${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())}T00:00:00.000Z`);
     expect(prisma.qrCredential.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         user: expect.objectContaining({
@@ -284,7 +290,8 @@ describe('QrCredentialsService stable student identity cards', () => {
               classId: 'class-current',
               active: true,
               administrativeStatus: 'ACTIVE',
-              effectiveFrom: { lte: expect.any(Date) }
+              effectiveFrom: { lte: expectedBusinessDate },
+              OR: [{ effectiveTo: null }, { effectiveTo: { gte: expectedBusinessDate } }]
             })
           }
         })

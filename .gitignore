@@ -67,6 +67,7 @@ __pycache__/
 # Android/local build outputs
 apps/android-reader/.gradle/
 apps/android-reader/local.properties
+apps/android-reader/keystore.properties
 apps/android-reader/**/build/
 apps/android-reader/**/*.apk
 apps/android-reader/**/*.aab
@@ -79,6 +80,7 @@ tools/apk-builder/.pytest_cache/
 postgres_data/
 redis_data/
 backups/
+Data Akun/simpanakun/
 *.dump
 *.dump.enc
 *.sql.gz
@@ -87,3 +89,14 @@ backups/
 # Local/CI generated artifacts
 artifacts/
 apps/api/.prisma-generate/
+
+# SIAB2 video voice + HyperFrames outputs
+Voice/env
+Voice/output/
+Video/HyperFrames/output/
+Video/HyperFrames/evidence/
+*.local.env
+
+# Generated video media
+Video/HyperFrames/assets/audio/
+Video/HyperFrames/snapshots/

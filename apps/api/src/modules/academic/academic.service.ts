@@ -6,6 +6,8 @@ import { writeAudit } from '../../common/audit-log';
 import { addCalendarDays, businessDateKey } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
+import { lockAcademicYear, lockSemester } from '../../common/schedule-mutation-lock';
+import { parseDateOnlyAtUtcMidnight } from '../scheduling/scheduling.validation';
 import { CreateAcademicYearDto, CreateClassDto, CreateRoomDto, CreateSemesterDto, CreateStudentDto, CreateSubjectDto, ImportAcademicRowDto, ImportStudentRowDto, UpdateAcademicYearDto, UpdateClassDto, UpdateRoomDto, UpdateSemesterDto, UpdateSubjectDto } from './academic.dto';
 
 type NormalizedStudentImportRow = {
@@ -17,6 +19,7 @@ type NormalizedStudentImportRow = {
   yearLabel: string;
   password: string;
   nis: string | null;
+  nkd: string | null;
   birthDate: Date | null;
   birthDateInput: string;
   generatedUsername: boolean;
@@ -30,8 +33,8 @@ const STUDENT_IMPORT_NAME_KEYS = ['fullName', 'Nama Lengkap', 'Nama', 'nama', 'n
 const STUDENT_IMPORT_USERNAME_KEYS = ['username', 'Username', 'Nama akun', 'Nama Akun', 'ID', 'id'];
 const STUDENT_IMPORT_CLASS_KEYS = ['classCode', 'Kelas/Jabatan', 'Kelas', 'kelas', 'Class', 'Level', 'level'];
 const STUDENT_IMPORT_CLASS_NAME_KEYS = ['className', 'Nama Kelas', 'Class Name'];
-const STUDENT_IMPORT_PASSWORD_KEYS = ['password', 'Password', 'Kata Sandi', 'Kata sandi'];
 const STUDENT_IMPORT_NIS_KEYS = ['nis', 'NIS', 'nisn', 'NISN'];
+const STUDENT_IMPORT_NKD_KEYS = ['nkd', 'NKD', 'Nomor Kartu Digital'];
 const STUDENT_IMPORT_BIRTH_DATE_KEYS = ['birthDate', 'Tanggal Lahir', 'tanggal_lahir', 'Tanggal lahir'];
 const STUDENT_IMPORT_YEAR_KEYS = ['yearLabel', 'Tahun Ajaran', 'Tahun ajaran'];
 const STUDENT_IMPORT_ROLE_KEYS = ['role', 'Role', 'Peran'];
@@ -48,6 +51,13 @@ function cleanImportText(value: string) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+
+function normalizeNkd(value: string) {
+  const nkd = cleanImportText(value);
+  if (!nkd) return { value: null as string | null, error: null as string | null };
+  if (!/^\d{4}$/.test(nkd)) return { value: null, error: 'NKD harus tepat empat digit angka' };
+  return { value: nkd, error: null };
+}
 
 function parseOptionalBirthDate(value: string) {
   const text = cleanImportText(value);
@@ -195,11 +205,9 @@ export class AcademicService {
     throw new BadRequestException({ code: 'SEMESTER_REQUIRED', message: 'Semester aktif wajib tersedia sebelum mendaftarkan siswa.' });
   }
 
-  private async assertEnrollmentWithinAcademicPeriod(
+  private async enrollmentPeriodBounds(
     tx: Prisma.TransactionClient,
-    period: { academicYearId: string; semesterId: string },
-    effectiveFrom: Date,
-    effectiveTo: Date | null
+    period: { academicYearId: string; semesterId: string }
   ) {
     const semester = await tx.semester.findUnique({
       where: { id: period.semesterId },
@@ -210,14 +218,15 @@ export class AcademicService {
       throw new BadRequestException({ code: 'SEMESTER_YEAR_MISMATCH', message: 'Semester tidak berada pada tahun ajaran yang dipilih.' });
     }
 
-    const startsAt = semester.startsAt ?? semester.academicYear?.startsAt ?? null;
-    const endsAt = semester.endsAt ?? semester.academicYear?.endsAt ?? null;
-    if (startsAt && effectiveFrom < schoolBusinessDate(startsAt)) {
-      throw new BadRequestException({ code: 'ENROLLMENT_OUTSIDE_ACADEMIC_PERIOD', message: 'Tanggal mulai pendaftaran berada di luar semester/tahun ajaran.' });
+    const startsAt = semester.startsAt ? schoolBusinessDate(semester.startsAt) : null;
+    const endsAt = semester.endsAt ? schoolBusinessDate(semester.endsAt) : null;
+    if (!startsAt || !endsAt) {
+      throw new BadRequestException({ code: 'SEMESTER_BOUNDS_REQUIRED', message: 'Semester aktif wajib memiliki tanggal mulai dan selesai lengkap sebelum pendaftaran siswa.' });
     }
-    if (effectiveTo && endsAt && effectiveTo > schoolBusinessDate(endsAt)) {
-      throw new BadRequestException({ code: 'ENROLLMENT_OUTSIDE_ACADEMIC_PERIOD', message: 'Tanggal selesai pendaftaran berada di luar semester/tahun ajaran.' });
+    if (endsAt < startsAt) {
+      throw new BadRequestException({ code: 'SEMESTER_BOUNDS_REQUIRED', message: 'Tanggal selesai semester tidak boleh sebelum tanggal mulai.' });
     }
+    return { startsAt, endsAt };
   }
 
   private async createEnrollmentTransfer(
@@ -234,12 +243,15 @@ export class AcademicService {
     if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan.');
 
     const period = await this.resolveAcademicPeriod(tx, payload);
+    const bounds = await this.enrollmentPeriodBounds(tx, period);
     const effectiveFrom = payload.effectiveFrom ? schoolBusinessDate(payload.effectiveFrom) : schoolBusinessDate();
-    const effectiveTo = payload.effectiveTo ? schoolBusinessDate(payload.effectiveTo) : null;
-    if (effectiveTo && effectiveTo < effectiveFrom) {
+    const effectiveTo = payload.effectiveTo ? schoolBusinessDate(payload.effectiveTo) : bounds.endsAt;
+    if (effectiveTo < effectiveFrom) {
       throw new BadRequestException({ code: 'ENROLLMENT_INVALID_PERIOD', message: 'Tanggal selesai pendaftaran tidak boleh sebelum tanggal mulai.' });
     }
-    await this.assertEnrollmentWithinAcademicPeriod(tx, period, effectiveFrom, effectiveTo);
+    if (effectiveFrom < bounds.startsAt || effectiveFrom > bounds.endsAt || effectiveTo > bounds.endsAt) {
+      throw new BadRequestException({ code: 'ENROLLMENT_OUTSIDE_ACADEMIC_PERIOD', message: 'Periode pendaftaran harus berada seluruhnya dalam semester.' });
+    }
 
     const existingActive = await tx.classEnrollment.findFirst({
       where: {
@@ -250,6 +262,12 @@ export class AcademicService {
     });
 
     if (existingActive && existingActive.classId === payload.classId && existingActive.academicYearId === period.academicYearId && existingActive.semesterId === period.semesterId) {
+      if (!existingActive.effectiveTo) {
+        throw new ConflictException({
+          code: 'ENROLLMENT_LEGACY_OPEN_ENDED',
+          message: 'Pendaftaran lama tanpa tanggal selesai harus diperbaiki sebelum dapat digunakan kembali.'
+        });
+      }
       return { enrollment: existingActive, closedEnrollment: null, reused: true };
     }
 
@@ -413,6 +431,8 @@ export class AcademicService {
           id: true,
           username: true,
           fullName: true,
+          nis: true,
+          nkd: true,
           cardStatus: true,
           enrollments: {
             where: currentEnrollmentWhere,
@@ -444,15 +464,39 @@ export class AcademicService {
     };
   }
 
-  private async normalizeStudentsImport(rows: ImportStudentRowDto[], includePasswords = false) {
-    const [existingUsers, existingClasses] = await Promise.all([
-      this.prisma.user.findMany({ select: { username: true, role: true, id: true } }),
-      this.prisma.schoolClass.findMany({ select: { code: true, id: true } })
+  private async resolveStudentImportPeriod(academicYearCode: string, client: Pick<Prisma.TransactionClient, 'academicYear' | 'semester'> = this.prisma) {
+    const code = cleanImportText(academicYearCode);
+    if (!code) throw new BadRequestException({ code: 'ACADEMIC_YEAR_REQUIRED', message: 'Tahun ajaran wajib dipilih untuk import siswa.' });
+    const academicYear = await client.academicYear.findUnique({ where: { code } });
+    if (!academicYear || !academicYear.active) {
+      throw new BadRequestException({ code: 'ACADEMIC_YEAR_NOT_ACTIVE', message: 'Tahun ajaran import tidak ditemukan atau tidak aktif.' });
+    }
+    const semesters = await client.semester.findMany({ where: { academicYearId: academicYear.id, active: true }, orderBy: [{ startsAt: 'asc' }, { createdAt: 'asc' }] });
+    if (semesters.length !== 1) {
+      throw new BadRequestException({ code: 'IMPORT_SEMESTER_AMBIGUOUS', message: 'Import siswa memerlukan tepat satu semester aktif pada tahun ajaran yang dipilih.' });
+    }
+    const semester = semesters[0];
+    if (!semester.startsAt || !semester.endsAt || semester.endsAt < semester.startsAt) {
+      throw new BadRequestException({ code: 'SEMESTER_BOUNDS_REQUIRED', message: 'Semester import wajib memiliki tanggal mulai dan selesai lengkap.' });
+    }
+    return { academicYearId: academicYear.id, semesterId: semester.id, academicYearCode: academicYear.code };
+  }
+
+  private async normalizeStudentsImport(rows: ImportStudentRowDto[], includePasswords = false, expectedAcademicYear?: string) {
+    const [existingUsers, existingClasses, reservedNkds] = await Promise.all([
+      this.prisma.user.findMany({ select: { username: true, role: true, id: true, nis: true, nkd: true } }),
+      this.prisma.schoolClass.findMany({ select: { code: true, id: true } }),
+      this.prisma.studentNkdRegistry.findMany({ select: { nkd: true, userId: true } })
     ]);
     const userMap = new Map(existingUsers.map((item) => [item.username.toLowerCase(), item]));
+    const nisMap = new Map(existingUsers.filter((item) => item.nis).map((item) => [item.nis as string, item]));
+    const nkdMap = new Map(existingUsers.filter((item) => item.nkd).map((item) => [item.nkd as string, item]));
+    const reservedNkdMap = new Map(reservedNkds.map((item) => [item.nkd, item.userId]));
     const classSet = new Set(existingClasses.map((item) => item.code.toLowerCase()));
     const usedUsernames = new Set(existingUsers.map((item) => item.username.toLowerCase()));
     const explicitUsernames = new Set<string>();
+    const explicitNis = new Set<string>();
+    const explicitNkds = new Set<string>();
 
     const normalized: NormalizedStudentImportRow[] = rows.map((rawRow, index) => {
       const row = rawRow as Record<string, unknown>;
@@ -461,22 +505,26 @@ export class AcademicService {
       const classCode = cleanImportText(pickValue(row, STUDENT_IMPORT_CLASS_KEYS));
       const className = cleanImportText(pickValue(row, STUDENT_IMPORT_CLASS_NAME_KEYS)) || classCode;
       const nis = cleanImportText(pickValue(row, STUDENT_IMPORT_NIS_KEYS)) || null;
+      const nkd = normalizeNkd(pickValue(row, STUDENT_IMPORT_NKD_KEYS));
       const birthDate = parseOptionalBirthDate(pickValue(row, STUDENT_IMPORT_BIRTH_DATE_KEYS));
       const yearLabel = cleanImportText(pickValue(row, STUDENT_IMPORT_YEAR_KEYS)) || currentYearLabel();
       const role = cleanImportText(pickValue(row, STUDENT_IMPORT_ROLE_KEYS) || 'SISWA').toUpperCase();
-      const passwordInput = cleanImportText(pickValue(row, STUDENT_IMPORT_PASSWORD_KEYS));
       const generatedUsername = !rawUsername;
       const errors: string[] = [];
 
       if (!fullName) errors.push('Nama lengkap wajib diisi');
       if (!classCode) errors.push('Kelas wajib diisi');
+      if (nkd.error) errors.push(nkd.error);
       if (birthDate.error) errors.push(birthDate.error);
+      if (expectedAcademicYear && yearLabel !== expectedAcademicYear) errors.push('Tahun ajaran baris tidak sesuai tahun ajaran yang dipilih');
       if (role && role !== 'SISWA' && role !== 'STUDENT') errors.push('Import ini khusus siswa. Role harus SISWA.');
 
       let username = rawUsername || uniqueUsername(`siswa.${slugUsername(fullName)}`, usedUsernames);
       username = normalizeUsernameCandidate(username, 64);
       const usernameKey = username.toLowerCase();
       const existing = userMap.get(usernameKey);
+      const nisOwner = nis ? nisMap.get(nis) : null;
+      const nkdOwner = nkd.value ? nkdMap.get(nkd.value) : null;
 
       if (rawUsername) {
         if (explicitUsernames.has(usernameKey)) errors.push('Username duplikat di file');
@@ -484,11 +532,19 @@ export class AcademicService {
       }
       if (!username || username.length < 3) errors.push('Username minimal 3 karakter');
       if (existing && existing.role !== Role.SISWA) errors.push('Username sudah dipakai akun non-siswa');
+      if (nis && explicitNis.has(nis)) errors.push('NIS/NISN duplikat di file');
+      if (nis) explicitNis.add(nis);
+      if (nisOwner && nisOwner.id !== existing?.id) errors.push('NIS/NISN sudah dipakai akun lain');
+      if (!existing && !nkd.value) errors.push('NKD wajib diisi untuk siswa baru');
+      if (nkd.value && explicitNkds.has(nkd.value)) errors.push('NKD duplikat di file');
+      if (nkd.value) explicitNkds.add(nkd.value);
+      if (nkdOwner && nkdOwner.id !== existing?.id) errors.push('NKD sudah dipakai akun lain');
+      const reservedForUserId = nkd.value ? reservedNkdMap.get(nkd.value) : null;
+      if (nkd.value && reservedNkdMap.has(nkd.value) && reservedForUserId !== existing?.id) errors.push('NKD sudah pernah diterbitkan dan tidak boleh dipakai ulang');
+      if (existing?.nkd && nkd.value && existing.nkd !== nkd.value) errors.push('NKD tidak dapat diubah setelah diterbitkan');
       if (!existing && rawUsername && !usedUsernames.has(usernameKey)) usedUsernames.add(usernameKey);
-      if (!existing && passwordInput && passwordInput.length < 8) errors.push('Password minimal 8 karakter');
-
-      const generatedPassword = !existing && !passwordInput;
-      const password = existing ? '' : passwordInput || (includePasswords ? temporaryPassword() : 'AUTO_GENERATED');
+      const generatedPassword = !existing;
+      const password = existing ? '' : (includePasswords ? temporaryPassword() : 'AUTO_GENERATED');
 
       return {
         index: index + 1,
@@ -499,6 +555,7 @@ export class AcademicService {
         yearLabel,
         password,
         nis,
+        nkd: nkd.value,
         birthDate: birthDate.value,
         birthDateInput: birthDate.input,
         generatedUsername,
@@ -524,24 +581,47 @@ export class AcademicService {
     };
   }
 
-  async previewStudentsImport(rows: ImportStudentRowDto[]) {
-    const preview = await this.normalizeStudentsImport(rows, false);
+  async previewStudentsImport(rows: ImportStudentRowDto[], academicYearCode: string) {
+    const period = await this.resolveStudentImportPeriod(academicYearCode);
+    const preview = await this.normalizeStudentsImport(rows, false, period.academicYearCode);
     return {
       ...preview,
+      period,
       rows: preview.rows.map(({ password: _password, ...row }) => row)
     };
   }
 
-  async commitStudentsImport(rows: ImportStudentRowDto[], actor: { sub: string; role: string }) {
-    const preview = await this.normalizeStudentsImport(rows, true);
+  async commitStudentsImport(rows: ImportStudentRowDto[], actor: { sub: string; role: string }, academicYearCode: string) {
+    const initialPeriod = await this.resolveStudentImportPeriod(academicYearCode);
+    const preview = await this.normalizeStudentsImport(rows, true, initialPeriod.academicYearCode);
     if (preview.summary.invalid > 0) {
       return { committed: false, ...preview, rows: preview.rows.map(({ password: _password, ...row }) => row) };
     }
 
     const credentialRows: Array<{ fullName: string; username: string; temporaryPassword: string; classCode: string; note: string }> = [];
     const result = { createdUsers: 0, existingUsers: 0, createdClasses: 0, enrollments: 0 };
+    const preparedPasswordHashes = new Map<number, string>();
+    const newRows = preview.rows.filter((row) => !row.existingUser);
+    const passwordHashConcurrency = 4;
+    for (let offset = 0; offset < newRows.length; offset += passwordHashConcurrency) {
+      const chunk = newRows.slice(offset, offset + passwordHashConcurrency);
+      const hashes = await Promise.all(chunk.map((row) => bcrypt.hash(row.password, 10)));
+      chunk.forEach((row, index) => preparedPasswordHashes.set(row.index, hashes[index]));
+    }
 
     await this.prisma.$transaction(async (tx) => {
+      const discoveredPeriod = await this.resolveStudentImportPeriod(academicYearCode, tx);
+      await lockAcademicYear(tx, discoveredPeriod.academicYearId);
+      await lockSemester(tx, discoveredPeriod.semesterId);
+      const period = await this.resolveStudentImportPeriod(academicYearCode, tx);
+      if (
+        period.academicYearId !== initialPeriod.academicYearId
+        || period.semesterId !== initialPeriod.semesterId
+        || period.academicYearId !== discoveredPeriod.academicYearId
+        || period.semesterId !== discoveredPeriod.semesterId
+      ) {
+        throw new ConflictException('Periode akademik berubah sejak preview. Ulangi preview sebelum commit import.');
+      }
       const classCache = new Map<string, { id: string; code: string }>();
       for (const row of preview.rows) {
         let schoolClass = classCache.get(row.classCode.toLowerCase());
@@ -558,28 +638,43 @@ export class AcademicService {
 
         let student = await tx.user.findUnique({ where: { username: row.username } });
         if (!student) {
+          const passwordHash = preparedPasswordHashes.get(row.index);
+          if (!passwordHash) throw new ConflictException('Data siswa berubah sejak preview. Ulangi preview sebelum commit import.');
           student = await tx.user.create({
             data: {
               username: row.username,
               fullName: row.fullName,
               nis: row.nis,
+              nkd: row.nkd,
               birthDate: row.birthDate,
               role: Role.SISWA,
-              passwordHash: await bcrypt.hash(row.password, 10),
+              passwordHash,
+              mustChangePassword: true,
+              passwordChangedAt: null,
               cardStatus: CardStatus.ACTIVE
             }
           });
           result.createdUsers += 1;
           credentialRows.push({ fullName: row.fullName, username: row.username, temporaryPassword: row.password, classCode: row.classCode, note: row.generatedPassword ? 'Password dibuat otomatis' : 'Password dari file' });
         } else {
-          if (row.nis || row.birthDate) {
-            student = await tx.user.update({ where: { id: student.id }, data: { ...(row.nis ? { nis: row.nis } : {}), ...(row.birthDate ? { birthDate: row.birthDate } : {}) } });
+          if (row.nis || row.nkd || row.birthDate) {
+            if (student.nkd && row.nkd && student.nkd !== row.nkd) {
+              throw new BadRequestException('NKD tidak dapat diubah setelah diterbitkan.');
+            }
+            student = await tx.user.update({
+              where: { id: student.id },
+              data: {
+                ...(row.nis ? { nis: row.nis } : {}),
+                ...(!student.nkd && row.nkd ? { nkd: row.nkd } : {}),
+                ...(row.birthDate ? { birthDate: row.birthDate } : {})
+              }
+            });
           }
           result.existingUsers += 1;
           credentialRows.push({ fullName: student.fullName, username: student.username, temporaryPassword: '', classCode: row.classCode, note: 'Akun sudah ada; password tidak diubah' });
         }
 
-        await this.createEnrollmentTransfer(tx, { userId: student.id, classId: schoolClass.id }, actor, 'Import siswa massal');
+        await this.createEnrollmentTransfer(tx, { userId: student.id, classId: schoolClass.id, academicYearId: period.academicYearId, semesterId: period.semesterId }, actor, 'Import siswa massal');
         result.enrollments += 1;
       }
 
@@ -592,7 +687,7 @@ export class AcademicService {
         resourceId: 'bulk-simple-import',
         after: result as Prisma.InputJsonValue
       });
-    });
+    }, { maxWait: 10_000, timeout: 120_000 });
 
     return { committed: true, summary: preview.summary, result, credentialRows };
   }
@@ -684,14 +779,46 @@ export class AcademicService {
     return { items, meta: buildPaginationMeta(total, pagination) };
   }
 
+  private academicDate(value: string | Date | null | undefined, code: string) {
+    if (!value) return null;
+    try {
+      return typeof value === 'string' ? parseDateOnlyAtUtcMidnight(value) : schoolBusinessDate(value);
+    } catch {
+      throw new BadRequestException({ code, message: 'Tanggal harus format YYYY-MM-DD yang valid.' });
+    }
+  }
+
+  private requireCompleteAcademicBounds(
+    startsAt: Date | null,
+    endsAt: Date | null,
+    code: 'ACADEMIC_YEAR_BOUNDS_REQUIRED' | 'SEMESTER_BOUNDS_REQUIRED'
+  ) {
+    if (!startsAt || !endsAt) {
+      throw new BadRequestException({
+        code,
+        message: code === 'ACADEMIC_YEAR_BOUNDS_REQUIRED'
+          ? 'Tahun ajaran wajib memiliki tanggal mulai dan selesai lengkap.'
+          : 'Semester wajib memiliki tanggal mulai dan selesai lengkap.'
+      });
+    }
+    if (endsAt < startsAt) {
+      throw new BadRequestException({ code, message: 'Tanggal selesai tidak boleh sebelum tanggal mulai.' });
+    }
+    return { startsAt, endsAt };
+  }
+
   createAcademicYear(payload: CreateAcademicYearDto, actor: { sub: string; role: string }) {
     return this.prisma.$transaction(async (tx) => {
+      const bounds = this.requireCompleteAcademicBounds(
+        this.academicDate(payload.startsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED'),
+        this.academicDate(payload.endsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED'),
+        'ACADEMIC_YEAR_BOUNDS_REQUIRED'
+      );
       const created = await tx.academicYear.create({
         data: {
           code: payload.code,
           name: payload.name,
-          startsAt: payload.startsAt ? new Date(payload.startsAt) : undefined,
-          endsAt: payload.endsAt ? new Date(payload.endsAt) : undefined,
+          ...bounds,
           active: payload.active ?? true
         }
       });
@@ -702,15 +829,46 @@ export class AcademicService {
 
   async updateAcademicYear(id: string, payload: UpdateAcademicYearDto, actor: { sub: string; role: string }) {
     return this.prisma.$transaction(async (tx) => {
+      await lockAcademicYear(tx, id);
       const before = await tx.academicYear.findUnique({ where: { id } });
       if (!before) throw new NotFoundException('Tahun ajaran tidak ditemukan.');
+      const proposedStartsAt = payload.startsAt !== undefined
+        ? this.academicDate(payload.startsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED')
+        : this.academicDate(before.startsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+      const proposedEndsAt = payload.endsAt !== undefined
+        ? this.academicDate(payload.endsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED')
+        : this.academicDate(before.endsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+      const semesters = await tx.semester.findMany({
+        where: { academicYearId: id },
+        select: { id: true, startsAt: true, endsAt: true },
+        orderBy: { id: 'asc' }
+      });
+      if (!proposedStartsAt || !proposedEndsAt || proposedEndsAt < proposedStartsAt) {
+        if (semesters.length > 0) {
+          throw new ConflictException({
+            code: 'ACADEMIC_YEAR_SEMESTER_PERIOD_CONFLICT',
+            message: 'Tahun ajaran dengan semester terkait harus mempertahankan rentang lengkap yang mencakup semuanya.'
+          });
+        }
+      }
+      const bounds = this.requireCompleteAcademicBounds(proposedStartsAt, proposedEndsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+      const incompatibleSemester = semesters.find((semester) => {
+        const startsAt = this.academicDate(semester.startsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+        const endsAt = this.academicDate(semester.endsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+        return !startsAt || !endsAt || startsAt < bounds.startsAt || endsAt > bounds.endsAt;
+      });
+      if (incompatibleSemester) {
+        throw new ConflictException({
+          code: 'ACADEMIC_YEAR_SEMESTER_PERIOD_CONFLICT',
+          message: 'Rentang tahun ajaran harus mencakup seluruh semester terkait.'
+        });
+      }
       const updated = await tx.academicYear.update({
         where: { id },
         data: {
           ...(payload.code !== undefined ? { code: payload.code } : {}),
           ...(payload.name !== undefined ? { name: payload.name } : {}),
-          ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
-          ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
+          ...bounds,
           ...(payload.active !== undefined ? { active: payload.active } : {})
         }
       });
@@ -727,15 +885,35 @@ export class AcademicService {
     return { items, meta: buildPaginationMeta(total, pagination) };
   }
 
+  private assertSemesterWithinAcademicYear(
+    semester: { startsAt: Date; endsAt: Date },
+    academicYear: { startsAt: Date | null; endsAt: Date | null } | null
+  ) {
+    const yearStartsAt = this.academicDate(academicYear?.startsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+    const yearEndsAt = this.academicDate(academicYear?.endsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+    const bounds = this.requireCompleteAcademicBounds(yearStartsAt, yearEndsAt, 'ACADEMIC_YEAR_BOUNDS_REQUIRED');
+    if (semester.startsAt < bounds.startsAt || semester.endsAt > bounds.endsAt) {
+      throw new BadRequestException({ code: 'SEMESTER_OUTSIDE_ACADEMIC_YEAR', message: 'Rentang semester harus berada seluruhnya dalam tahun ajaran.' });
+    }
+  }
+
   createSemester(payload: CreateSemesterDto, actor: { sub: string; role: string }) {
     return this.prisma.$transaction(async (tx) => {
+      await lockAcademicYear(tx, payload.academicYearId);
+      const academicYear = await tx.academicYear.findUnique({ where: { id: payload.academicYearId } });
+      if (!academicYear) throw new NotFoundException('Tahun ajaran tidak ditemukan.');
+      const bounds = this.requireCompleteAcademicBounds(
+        this.academicDate(payload.startsAt, 'SEMESTER_BOUNDS_REQUIRED'),
+        this.academicDate(payload.endsAt, 'SEMESTER_BOUNDS_REQUIRED'),
+        'SEMESTER_BOUNDS_REQUIRED'
+      );
+      this.assertSemesterWithinAcademicYear(bounds, academicYear);
       const created = await tx.semester.create({
         data: {
           academicYearId: payload.academicYearId,
           code: payload.code,
           name: payload.name,
-          startsAt: payload.startsAt ? new Date(payload.startsAt) : undefined,
-          endsAt: payload.endsAt ? new Date(payload.endsAt) : undefined,
+          ...bounds,
           active: payload.active ?? true
         }
       });
@@ -746,15 +924,41 @@ export class AcademicService {
 
   async updateSemester(id: string, payload: UpdateSemesterDto, actor: { sub: string; role: string }) {
     return this.prisma.$transaction(async (tx) => {
-      const before = await tx.semester.findUnique({ where: { id } });
+      const preRead = await tx.semester.findUnique({ where: { id }, select: { id: true, academicYearId: true } });
+      if (!preRead) throw new NotFoundException('Semester tidak ditemukan.');
+      await lockAcademicYear(tx, preRead.academicYearId);
+      await lockSemester(tx, id);
+      const before = await tx.semester.findUnique({ where: { id }, include: { academicYear: true } });
       if (!before) throw new NotFoundException('Semester tidak ditemukan.');
+      if (before.academicYearId !== preRead.academicYearId) {
+        throw new ConflictException({ code: 'SEMESTER_STATE_CHANGED', message: 'Semester berubah saat diperbarui. Muat ulang lalu coba lagi.' });
+      }
+      const bounds = this.requireCompleteAcademicBounds(
+        payload.startsAt !== undefined ? this.academicDate(payload.startsAt, 'SEMESTER_BOUNDS_REQUIRED') : this.academicDate(before.startsAt, 'SEMESTER_BOUNDS_REQUIRED'),
+        payload.endsAt !== undefined ? this.academicDate(payload.endsAt, 'SEMESTER_BOUNDS_REQUIRED') : this.academicDate(before.endsAt, 'SEMESTER_BOUNDS_REQUIRED'),
+        'SEMESTER_BOUNDS_REQUIRED'
+      );
+      this.assertSemesterWithinAcademicYear(bounds, before.academicYear);
+      const assignmentBounds = await tx.teachingAssignment.aggregate({
+        where: { semesterId: id },
+        _min: { effectiveFrom: true },
+        _max: { effectiveTo: true }
+      });
+      if (assignmentBounds._min.effectiveFrom || assignmentBounds._max.effectiveTo) {
+        if (bounds.startsAt > schoolBusinessDate(assignmentBounds._min.effectiveFrom!)
+          || bounds.endsAt < schoolBusinessDate(assignmentBounds._max.effectiveTo!)) {
+          throw new ConflictException({
+            code: 'SEMESTER_ASSIGNMENT_PERIOD_CONFLICT',
+            message: 'Rentang semester harus tetap mencakup seluruh periode penugasan mengajar terkait.'
+          });
+        }
+      }
       const updated = await tx.semester.update({
         where: { id },
         data: {
           ...(payload.code !== undefined ? { code: payload.code } : {}),
           ...(payload.name !== undefined ? { name: payload.name } : {}),
-          ...(payload.startsAt !== undefined ? { startsAt: payload.startsAt ? new Date(payload.startsAt) : null } : {}),
-          ...(payload.endsAt !== undefined ? { endsAt: payload.endsAt ? new Date(payload.endsAt) : null } : {}),
+          ...bounds,
           ...(payload.active !== undefined ? { active: payload.active } : {})
         }
       });

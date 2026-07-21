@@ -21,6 +21,10 @@ function makePrisma() {
       delete: jest.fn()
     },
     session: { count: jest.fn().mockResolvedValue(0) },
+    studentNkdRegistry: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([])
+    },
     schoolClass: { upsert: jest.fn() },
     classEnrollment: { count: jest.fn().mockResolvedValue(0), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     gateLog: { count: jest.fn().mockResolvedValue(0) },
@@ -88,6 +92,31 @@ describe('IdentityService', () => {
     expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ module: 'identity', action: 'user.updated' }) });
   });
 
+  it('assigns a four-digit NKD only to students and keeps it immutable', async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique
+      .mockResolvedValueOnce({ id: 'student-1', username: 'siswa.nkd', fullName: 'Siswa NKD', role: Role.SISWA, nkd: null, cardStatus: CardStatus.ACTIVE, active: true })
+      .mockResolvedValueOnce(null);
+    prisma.user.update.mockResolvedValue({ id: 'student-1', username: 'siswa.nkd', fullName: 'Siswa NKD', role: Role.SISWA, nkd: '0001', cardStatus: CardStatus.ACTIVE, active: true });
+    const service = new IdentityService(prisma);
+
+    await service.updateUser('student-1', { nkd: '0001' }, actor);
+
+    expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ nkd: '0001' }) }));
+
+    prisma.user.findUnique.mockReset();
+    prisma.user.findUnique.mockResolvedValue({ id: 'student-1', username: 'siswa.nkd', fullName: 'Siswa NKD', role: Role.SISWA, nkd: '0001', cardStatus: CardStatus.ACTIVE, active: true });
+    await expect(service.updateUser('student-1', { nkd: '0002' }, actor)).rejects.toThrow('NKD tidak dapat diubah');
+  });
+
+  it('rejects NKD for non-student users', async () => {
+    const prisma = makePrisma();
+    const service = new IdentityService(prisma);
+
+    await expect(service.createUser({ username: 'guru.nkd', fullName: 'Guru', password: 'Password#123', role: Role.GURU_MAPEL, nkd: '0001', cardStatus: CardStatus.ACTIVE }, 'admin-1', Role.ADMIN_TU)).rejects.toThrow('NKD hanya boleh dipakai akun SISWA');
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
   it('deactivates user as safe delete', async () => {
     const prisma = makePrisma();
     prisma.user.findUnique.mockResolvedValue({ id: 'u1', username: 'siswa', fullName: 'Siswa', role: Role.SISWA, cardStatus: 'ACTIVE', active: true });
@@ -111,7 +140,7 @@ describe('IdentityService', () => {
     prisma.user.findMany.mockResolvedValue([]);
     const service = new IdentityService(prisma);
 
-    const preview = await service.previewUsersImport([{ username: 'baru', fullName: 'Siswa Baru', role: Role.SISWA, password: 'Import#12345' }]);
+    const preview = await service.previewUsersImport([{ username: 'baru', fullName: 'Siswa Baru', role: Role.SISWA, nkd: '0001', password: 'Import#12345' }]);
 
     expect(preview.summary).toEqual({ total: 1, valid: 1, invalid: 0 });
   });
@@ -132,7 +161,7 @@ describe('IdentityService', () => {
     prisma.user.findMany.mockResolvedValue([]);
     const service = new IdentityService(prisma);
 
-    const preview = await service.previewUsersImport([{ username: 'tanpa.password', fullName: 'Tanpa Password', role: Role.SISWA }]);
+    const preview = await service.previewUsersImport([{ username: 'tanpa.password', fullName: 'Tanpa Password', role: Role.SISWA, nkd: '0001' }]);
 
     expect(preview.summary).toEqual({ total: 1, valid: 0, invalid: 1 });
     expect(preview.rows[0].errors).toContain('password wajib diisi');
@@ -140,10 +169,10 @@ describe('IdentityService', () => {
 
   it('does not commit invalid import rows', async () => {
     const prisma = makePrisma();
-    prisma.user.findMany.mockResolvedValue([{ username: 'duplikat' }]);
+    prisma.user.findMany.mockResolvedValue([{ username: 'duplikat', nkd: null }]);
     const service = new IdentityService(prisma);
 
-    const result = await service.commitUsersImport([{ username: 'duplikat', fullName: 'Duplikat', role: Role.SISWA, password: 'Import#12345' }], actor);
+    const result = await service.commitUsersImport([{ username: 'duplikat', fullName: 'Duplikat', role: Role.SISWA, nkd: '0001', password: 'Import#12345' }], actor);
 
     expect(result.committed).toBe(false);
     expect(prisma.user.create).not.toHaveBeenCalled();
@@ -232,7 +261,7 @@ describe('IdentityService', () => {
     const service = new IdentityService(prisma);
 
     const preview = await service.previewSchoolImport([
-      { __sheetName: 'Kelas 10 - KELAS X A', nis: '1001', nama_lengkap: 'Siswa Satu', Password: 'legacy123' }
+      { __sheetName: 'Kelas 10 - KELAS X A', nis: '1001', NKD: '0001', nama_lengkap: 'Siswa Satu', Password: 'legacy123' }
     ], 'student-class', { academicYear: '2026/2027' });
 
     expect(preview.summary).toEqual(expect.objectContaining({ total: 1, valid: 1, invalid: 0, generatedPasswordCount: 1 }));
@@ -249,7 +278,7 @@ describe('IdentityService', () => {
     const service = new IdentityService(prisma);
 
     const result = await service.commitSchoolImport([
-      { __sheetName: 'Kelas 10 - KELAS X A', nis: '1001', nama_lengkap: 'Siswa Satu' }
+      { __sheetName: 'Kelas 10 - KELAS X A', nis: '1001', NKD: '0001', nama_lengkap: 'Siswa Satu' }
     ], 'student-class', { source: 'student-class', academicYear: '2026/2027', reason: 'Import data sekolah awal.', confirmText: 'IMPORT DATA SEKOLAH' }, actor) as any;
 
     expect(result.committed).toBe(true);

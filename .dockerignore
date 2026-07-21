@@ -9,6 +9,7 @@ coverage
 !.env.production.example
 .git
 .gitignore
+artifacts
 output
 apps/android-reader
 tools/apk-builder

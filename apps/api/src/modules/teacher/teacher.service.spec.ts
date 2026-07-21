@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { AttendanceReviewState, Role, SessionStatus, StudentAttendanceStatus } from '@prisma/client';
+import { AttendanceReviewState, Role, SessionRosterState, SessionStatus, StudentAttendanceStatus } from '@prisma/client';
 import { TeacherService } from './teacher.service';
 
 function makeSession(overrides: Record<string, unknown> = {}) {
@@ -11,6 +11,7 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     startsAt: new Date('2026-06-20T00:30:00.000Z'),
     endsAt: new Date('2026-06-20T02:00:00.000Z'),
     status: SessionStatus.OPEN,
+    rosterState: SessionRosterState.VERIFIED,
     schoolClass: { id: 'class-1', code: 'X IPA 1', name: 'X IPA 1' },
     subject: { id: 'subject-1', code: 'MTK', name: 'Matematika' },
     rosters: [{ studentId: 'siswa-1' }, { studentId: 'siswa-2' }, { studentId: 'siswa-3' }],
@@ -76,7 +77,9 @@ describe('TeacherService today workspace', () => {
       closed: 0,
       missed: 0,
       unclosed: 0,
-      studentsPendingAttendance: 0
+      studentsPendingAttendance: 0,
+      unknownRosterSessions: 0,
+      backfilledRosterSessions: 0
     });
   });
 
@@ -109,7 +112,12 @@ describe('TeacherService today workspace', () => {
   });
 
   it('scheduled session uses active class enrollment count before roster exists', async () => {
-    const { service, prisma } = makeService([makeSession({ status: SessionStatus.SCHEDULED, rosters: [], attendances: [] })]);
+    const { service, prisma } = makeService([makeSession({
+      status: SessionStatus.SCHEDULED,
+      rosterState: SessionRosterState.PENDING,
+      rosters: [],
+      attendances: []
+    })]);
 
     const result = await service.today(guru, '2026-06-20');
 
@@ -122,6 +130,66 @@ describe('TeacherService today workspace', () => {
       })
     }));
     expect(result.items[0]).toMatchObject({ studentTotal: 32, pendingCount: 32, actions: { canStart: true, canContinue: false, canClose: false, canViewRecap: false } });
+  });
+
+  it('non-scheduled missing roster stays unknown without enrollment query', async () => {
+    const { service, prisma } = makeService([
+      makeSession({
+        status: SessionStatus.OPEN,
+        rosterState: SessionRosterState.LEGACY_ROSTER_MISSING,
+        rosters: [],
+        attendances: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, reviewState: AttendanceReviewState.CONFIRMED }]
+      })
+    ]);
+
+    const result = await service.today(guru, '2026-06-20');
+
+    expect(prisma.classEnrollment.groupBy).not.toHaveBeenCalled();
+    expect(result.items[0]).toMatchObject({
+      rosterState: SessionRosterState.LEGACY_ROSTER_MISSING,
+      rosterVerified: false,
+      rosterUnverified: true,
+      studentTotal: null,
+      pendingCount: null
+    });
+    expect(result.summary).toMatchObject({ unknownRosterSessions: 1, studentsPendingAttendance: 0 });
+  });
+
+  it('backfilled roster stays usable but is marked unverified', async () => {
+    const { service, prisma } = makeService([
+      makeSession({
+        rosterState: SessionRosterState.BACKFILLED_UNVERIFIED,
+        rosters: [{ studentId: 'siswa-1' }, { studentId: 'siswa-2' }],
+        attendances: [{ studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, reviewState: AttendanceReviewState.CONFIRMED }]
+      })
+    ]);
+
+    const result = await service.today(guru, '2026-06-20');
+
+    expect(prisma.classEnrollment.groupBy).not.toHaveBeenCalled();
+    expect(result.items[0]).toMatchObject({
+      rosterState: SessionRosterState.BACKFILLED_UNVERIFIED,
+      rosterVerified: false,
+      rosterUnverified: true,
+      studentTotal: 2,
+      pendingCount: 1
+    });
+    expect(result.summary).toMatchObject({ backfilledRosterSessions: 1, unknownRosterSessions: 0 });
+  });
+
+  it('empty verified roster is authoritative zero', async () => {
+    const { service, prisma } = makeService([
+      makeSession({
+        rosterState: SessionRosterState.VERIFIED,
+        rosters: [],
+        attendances: []
+      })
+    ]);
+
+    const result = await service.today(guru, '2026-06-20');
+
+    expect(prisma.classEnrollment.groupBy).not.toHaveBeenCalled();
+    expect(result.items[0]).toMatchObject({ studentTotal: 0, pendingCount: 0, rosterVerified: true, rosterUnverified: false });
   });
 
   it('another role cannot use the teacher-only workspace', async () => {

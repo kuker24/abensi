@@ -5,6 +5,7 @@ import {
   Prisma,
   Role,
   RosterCaptureSource,
+  SessionRosterState,
   SessionStatus,
   StudentAttendanceStatus,
   TeacherSessionStatus,
@@ -20,7 +21,7 @@ import { AccessPolicyService } from '../security/access-policy.service';
 import { writeAudit } from '../../common/audit-log';
 import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { assertReasonQuality } from '../security/reason-policy';
-import { businessDateKey, jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
+import { addCalendarDays, businessDateKey, jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
 
 function teacherStatusForCheckIn(startsAt: Date, policyGraceMinutes?: number) {
   const graceMinutes = policyGraceMinutes ?? 15;
@@ -142,11 +143,45 @@ function sessionAtOrAfter(sessionTime: Date, time: string | null | undefined, fa
   return localMinutesOfDay(sessionTime) >= minutesOf(time, fallback);
 }
 
-function sessionRosterMissingException() {
+function sessionRosterMissingException(rosterState?: SessionRosterState | null) {
+  if (rosterState === SessionRosterState.LEGACY_ROSTER_MISSING) {
+    return new ConflictException({
+      code: 'LEGACY_ROSTER_MISSING',
+      message: 'Roster sesi legacy tidak terverifikasi dan tidak dapat direkonstruksi otomatis.'
+    });
+  }
   return new ConflictException({
     code: 'SESSION_ROSTER_MISSING',
     message: 'Roster snapshot sesi tidak ditemukan. Jalankan perbaikan roster ter-audit.'
   });
+}
+
+function assertUsableRosterState(session: { status: SessionStatus; rosterState?: SessionRosterState | null }) {
+  if (session.rosterState === SessionRosterState.LEGACY_ROSTER_MISSING) {
+    throw sessionRosterMissingException(session.rosterState);
+  }
+  if (
+    session.rosterState !== SessionRosterState.VERIFIED &&
+    session.rosterState !== SessionRosterState.BACKFILLED_UNVERIFIED
+  ) {
+    throw sessionRosterMissingException(session.rosterState);
+  }
+}
+
+async function lockSessionForUpdate(tx: Prisma.TransactionClient, sessionId: string) {
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Session" WHERE "id" = ${sessionId} FOR UPDATE`);
+}
+
+async function lockAttendanceForUpdate(tx: Prisma.TransactionClient, sessionId: string, studentId: string) {
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "StudentAttendance" WHERE "sessionId" = ${sessionId} AND "studentId" = ${studentId} FOR UPDATE`);
+}
+
+function actorCanRecoverMissedSession(actor: AuthenticatedUser) {
+  return actor.role === Role.ADMIN_TU || actor.role === Role.DEVELOPER || actor.role === Role.GURU_PIKET;
+}
+
+function assertRecoveryReasonQuality(reason: string | undefined | null) {
+  return assertReasonQuality(reason, 'Alasan pemulihan sesi MISSED', 10);
 }
 
 @Injectable()
@@ -172,15 +207,34 @@ export class AttendanceClassService {
     if (existing > 0) return existing;
 
     const effectiveDate = session.businessDate ?? dateOnly(session.startsAt);
-    const enrollments = await tx.classEnrollment.findMany({
-      where: {
+    const isHistoricalBackfill = source === RosterCaptureSource.BACKFILL;
+    const businessDayEnd = isHistoricalBackfill ? dayBounds(effectiveDate).end : null;
+    const enrollmentWhere: Prisma.ClassEnrollmentWhereInput = isHistoricalBackfill
+      ? {
+        classId: session.classId,
+        effectiveFrom: { lte: effectiveDate },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveDate } }],
+        AND: [{
+          OR: [
+            { administrativeStatus: 'ACTIVE' },
+            {
+              administrativeStatus: 'REVOKED',
+              administrativeStatusChangedAt: { gt: businessDayEnd! }
+            }
+          ]
+        }],
+        student: { role: Role.SISWA }
+      }
+      : {
         classId: session.classId,
         active: true,
         administrativeStatus: 'ACTIVE',
         effectiveFrom: { lte: effectiveDate },
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveDate } }],
         student: { active: true, role: Role.SISWA }
-      },
+      };
+    const enrollments = await tx.classEnrollment.findMany({
+      where: enrollmentWhere,
       include: {
         student: { select: { id: true, fullName: true, username: true } },
         schoolClass: { select: { id: true, code: true, name: true } },
@@ -207,10 +261,17 @@ export class AttendanceClassService {
         semesterIdSnapshot: enrollment.semesterId,
         semesterNameSnapshot: enrollment.semester?.name ?? null,
         captureSource: source,
-        activeAtCapture: enrollment.active && (enrollment.administrativeStatus ?? 'ACTIVE') === 'ACTIVE',
+        activeAtCapture: isHistoricalBackfill || (enrollment.active && (enrollment.administrativeStatus ?? 'ACTIVE') === 'ACTIVE'),
         metadata: {
           businessDate: businessDateKey(effectiveDate),
           administrativeStatus: enrollment.administrativeStatus ?? 'ACTIVE',
+          administrativeStatusChangedAt: enrollment.administrativeStatusChangedAt?.toISOString() ?? null,
+          historicalEligibility: isHistoricalBackfill ? {
+            basis: 'effective_enrollment_and_administrative_chronology',
+            sessionBusinessDayEndsAt: businessDayEnd!.toISOString(),
+            currentEnrollmentActiveIgnored: true,
+            currentStudentActiveIgnored: true
+          } : null,
           ...metadata
         }
       })),
@@ -411,11 +472,22 @@ export class AttendanceClassService {
         }
       });
       if (opened.count !== 1) throw new ConflictException('Sesi hanya dapat dibuka dari status SCHEDULED.');
-      const updated = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
+      const openedSession = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
 
-      await this.captureSessionRoster(tx, session, RosterCaptureSource.OPENED);
+      const existingRosterSources = await tx.sessionRoster.findMany({
+        where: { sessionId },
+        select: { captureSource: true }
+      });
+      await this.captureSessionRoster(tx, openedSession, RosterCaptureSource.OPENED);
       const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
       await this.ensureDefaultAttendances(tx, sessionId, roster);
+      const rosterState = existingRosterSources.some((row) => row.captureSource === RosterCaptureSource.BACKFILL)
+        ? SessionRosterState.BACKFILLED_UNVERIFIED
+        : SessionRosterState.VERIFIED;
+      const updated = await tx.session.update({
+        where: { id: sessionId },
+        data: { rosterState }
+      });
 
       const teacherPresence = await tx.teacherSessionPresence.upsert({
         where: {
@@ -507,12 +579,12 @@ export class AttendanceClassService {
     return parsed;
   }
 
-  private async ensureRosterRowsForSession(session: { id: string }) {
+  private async ensureRosterRowsForSession(session: { id: string; status: SessionStatus; rosterState?: SessionRosterState | null }) {
+    assertUsableRosterState(session);
     const rosterRows = await this.prisma.sessionRoster.findMany({
       where: { sessionId: session.id },
       select: { studentId: true }
     });
-    if (!rosterRows.length) throw sessionRosterMissingException();
     return rosterRows;
   }
 
@@ -824,8 +896,13 @@ export class AttendanceClassService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockSessionForUpdate(tx, sessionId);
+      const lockedSession = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
+      if (lockedSession.status !== SessionStatus.OPEN) {
+        throw new ConflictException('Sesi sudah tidak OPEN.');
+      }
+      assertUsableRosterState(lockedSession);
       const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
-      if (!roster.length) throw sessionRosterMissingException();
       await this.ensureDefaultAttendances(tx, sessionId, roster);
 
       const unreviewedCount = await tx.studentAttendance.count({ where: { sessionId, reviewState: AttendanceReviewState.DEFAULTED } });
@@ -987,8 +1064,8 @@ export class AttendanceClassService {
       counters[item.status] += 1;
     }
 
-    if (!session.rosters.length && session.status !== SessionStatus.SCHEDULED) {
-      throw sessionRosterMissingException();
+    if (session.status !== SessionStatus.SCHEDULED) {
+      assertUsableRosterState(session);
     }
 
     const teacherPresence = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
@@ -999,6 +1076,7 @@ export class AttendanceClassService {
     return {
       sessionId,
       status: session.status,
+      rosterState: session.rosterState,
       openedAt: session.openedAt,
       closedAt: session.closedAt,
       teacherPresence,
@@ -1034,33 +1112,24 @@ export class AttendanceClassService {
       throw new ForbiddenException('Bukan sesi Anda.');
     }
 
-    if (!session.rosters.length) {
-      if (session.status === SessionStatus.SCHEDULED) {
-        return {
-          session: {
-            id: session.id,
-            status: session.status,
-            startsAt: session.startsAt,
-            endsAt: session.endsAt,
-            openedAt: session.openedAt,
-            closedAt: session.closedAt,
-            teacherPresence: session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null
-          },
-          roster: []
-        };
-      }
-      await this.prisma.$transaction(async (tx) => {
-        await writeAudit(tx, {
-          actorId: actor.sub,
-          actorRole: actor.role as Role,
-          module: 'attendance',
-          action: 'session_roster.missing_detected',
-          resource: 'session',
-          resourceId: sessionId,
-          after: { status: session.status }
-        });
-      });
-      throw sessionRosterMissingException();
+    if (session.status !== SessionStatus.SCHEDULED) {
+      assertUsableRosterState(session);
+    }
+
+    if (!session.rosters.length && session.status === SessionStatus.SCHEDULED) {
+      return {
+        session: {
+          id: session.id,
+          status: session.status,
+          rosterState: session.rosterState,
+          startsAt: session.startsAt,
+          endsAt: session.endsAt,
+          openedAt: session.openedAt,
+          closedAt: session.closedAt,
+          teacherPresence: session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null
+        },
+        roster: []
+      };
     }
 
     const attendanceMap = new Map(session.attendances.map((item) => [item.studentId, item]));
@@ -1106,6 +1175,7 @@ export class AttendanceClassService {
       session: {
         id: session.id,
         status: session.status,
+        rosterState: session.rosterState,
         startsAt: session.startsAt,
         endsAt: session.endsAt,
         openedAt: session.openedAt,
@@ -1118,24 +1188,31 @@ export class AttendanceClassService {
 
   async repairSessionRoster(sessionId: string, actor: AuthenticatedUser, reasonInput: string) {
     const reason = assertReasonQuality(reasonInput, 'Alasan perbaikan roster');
-    const session = await this.prisma.session.findUnique({
-      where: { id: sessionId },
-      include: { schoolClass: { select: { id: true, code: true, name: true } } }
-    });
-    if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
-
     if (!(actor.role === Role.ADMIN_TU || actor.role === Role.DEVELOPER)) {
       throw new ForbiddenException('Perbaikan roster hanya boleh dilakukan admin/developer.');
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockSessionForUpdate(tx, sessionId);
+      const session = await tx.session.findUnique({
+        where: { id: sessionId },
+        include: { schoolClass: { select: { id: true, code: true, name: true } } }
+      });
+      if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+      if (session.status === SessionStatus.SCHEDULED) {
+        throw new BadRequestException('Sesi SCHEDULED belum memiliki fakta historis untuk diperbaiki.');
+      }
+      if (session.rosterState === SessionRosterState.VERIFIED || session.rosterState === SessionRosterState.BACKFILLED_UNVERIFIED) {
+        throw new ConflictException('Roster sesi sudah tercatat dan tidak dapat diperbaiki ulang.');
+      }
+
       const beforeCount = await tx.sessionRoster.count({ where: { sessionId } });
       await this.captureSessionRoster(tx, session, RosterCaptureSource.BACKFILL, {
         source: 'audited_repair',
         repairReason: reason,
         repairedBy: actor.sub,
         evidence: 'effective_dated_enrollment_range',
-        unverifiable: false
+        unverifiable: true
       });
       const existing = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
       const existingIds = new Set(existing.map((item) => item.studentId));
@@ -1173,6 +1250,10 @@ export class AttendanceClassService {
         });
       }
       const afterCount = await tx.sessionRoster.count({ where: { sessionId } });
+      const updated = await tx.session.update({
+        where: { id: sessionId },
+        data: { rosterState: SessionRosterState.BACKFILLED_UNVERIFIED }
+      });
 
       await writeAudit(tx, {
         actorId: actor.sub,
@@ -1182,18 +1263,92 @@ export class AttendanceClassService {
         resource: 'session',
         resourceId: sessionId,
         reason,
-        before: { rosterCount: beforeCount },
-        after: { rosterCount: afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
+        before: { rosterState: session.rosterState, rosterCount: beforeCount },
+        after: { rosterState: updated.rosterState, rosterCount: afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair', unverifiable: true }
       });
       await writeLiveMonitorOutboxEvent(tx, {
         eventType: 'session.roster_repaired',
         aggregateType: 'session',
         aggregateId: sessionId,
         logicalKey: `session:${sessionId}:roster-repaired:${Date.now()}:${actor.sub}`,
-        payload: { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
+        payload: { sessionId, beforeCount, afterCount, rosterState: updated.rosterState, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' }
       });
 
-      return { sessionId, beforeCount, afterCount, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' };
+      return { sessionId, beforeCount, afterCount, rosterState: updated.rosterState, fromAttendanceCount: missingAttendances.length, source: 'audited_repair' };
+    });
+  }
+
+  async recoverMissedSession(sessionId: string, actor: AuthenticatedUser, reasonInput: string) {
+    const reason = assertRecoveryReasonQuality(reasonInput);
+    if (!actorCanRecoverMissedSession(actor)) {
+      throw new ForbiddenException('Pemulihan sesi MISSED hanya boleh dilakukan ADMIN_TU, DEVELOPER, atau GURU_PIKET.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await lockSessionForUpdate(tx, sessionId);
+      const session = await tx.session.findUnique({ where: { id: sessionId } });
+      if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+      if (session.status !== SessionStatus.MISSED) {
+        throw new ConflictException('Hanya sesi MISSED yang dapat dipulihkan.');
+      }
+
+      const sessionDateKey = businessDateKey(session.businessDate);
+      const todayKey = businessDateKey(new Date());
+      if (sessionDateKey > todayKey) {
+        throw new BadRequestException('Sesi dengan tanggal masa depan tidak dapat dipulihkan.');
+      }
+      if (todayKey > addCalendarDays(sessionDateKey, 7)) {
+        throw new BadRequestException('Sesi MISSED hanya dapat dipulihkan maksimal 7 hari kalender setelah tanggal sesi.');
+      }
+
+      const beforeCount = await tx.sessionRoster.count({ where: { sessionId } });
+      if (beforeCount > 0 || session.rosterState === SessionRosterState.VERIFIED || session.rosterState === SessionRosterState.BACKFILLED_UNVERIFIED) {
+        throw new ConflictException('Sesi MISSED sudah memiliki roster dan tidak dapat dipulihkan ulang.');
+      }
+
+      await this.captureSessionRoster(tx, session, RosterCaptureSource.BACKFILL, {
+        source: 'missed_recovery',
+        recoveryReason: reason,
+        recoveredBy: actor.sub,
+        evidence: 'effective_dated_enrollment_range',
+        unverifiable: true
+      });
+      const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });
+      await this.ensureDefaultAttendances(tx, sessionId, roster);
+      const now = new Date();
+      const recovered = await tx.session.updateMany({
+        where: { id: sessionId, status: SessionStatus.MISSED },
+        data: {
+          status: SessionStatus.OPEN,
+          rosterState: SessionRosterState.BACKFILLED_UNVERIFIED,
+          openedAt: now,
+          reconciledAt: null
+        }
+      });
+      if (recovered.count !== 1) throw new ConflictException('Sesi MISSED sudah berubah. Muat ulang data sesi.');
+      const updated = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
+      const afterCount = await tx.sessionRoster.count({ where: { sessionId } });
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: 'class.session.missed_recovered',
+        resource: 'session',
+        resourceId: sessionId,
+        reason,
+        before: { status: session.status, rosterState: session.rosterState, rosterCount: beforeCount },
+        after: { status: updated.status, rosterState: updated.rosterState, rosterCount: afterCount, openedAt: updated.openedAt?.toISOString() ?? now.toISOString(), reconciledAt: updated.reconciledAt }
+      });
+      await writeLiveMonitorOutboxEvent(tx, {
+        eventType: 'session.missed_recovered',
+        aggregateType: 'session',
+        aggregateId: sessionId,
+        logicalKey: `session:${sessionId}:missed-recovered:${now.toISOString()}`,
+        payload: { sessionId, status: updated.status, rosterState: updated.rosterState, rosterCount: afterCount, openedAt: updated.openedAt?.toISOString() ?? now.toISOString() }
+      });
+
+      return { ...updated, rosterCount: afterCount };
     });
   }
 
@@ -1215,18 +1370,28 @@ export class AttendanceClassService {
       throw new ForbiddenException('Bukan sesi Anda.');
     }
 
-    if (session.status === SessionStatus.SCHEDULED) {
-      throw new BadRequestException('Koreksi hanya bisa dilakukan setelah sesi berjalan.');
-    }
-
     const reason = assertReasonQuality(payload.reason, 'Alasan koreksi');
-    const rosterCount = await this.prisma.sessionRoster.count({ where: { sessionId } });
-    if (!rosterCount) throw sessionRosterMissingException();
-    const rosterEntry = await this.prisma.sessionRoster.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
-    if (!rosterEntry) throw new BadRequestException('Siswa bukan roster kelas sesi ini.');
 
     return this.prisma.$transaction(async (tx) => {
+      await lockSessionForUpdate(tx, sessionId);
+      const lockedSession = await tx.session.findUnique({ where: { id: sessionId } });
+      if (!lockedSession) throw new NotFoundException('Sesi tidak ditemukan.');
+      if (lockedSession.status === SessionStatus.SCHEDULED) {
+        throw new BadRequestException('Koreksi hanya bisa dilakukan setelah sesi berjalan.');
+      }
+      if (lockedSession.status === SessionStatus.MISSED) {
+        throw new BadRequestException('Sesi MISSED harus dipulihkan melalui workflow recovery ter-audit.');
+      }
+      if (actor.role === Role.GURU_MAPEL && lockedSession.teacherId !== actor.sub) {
+        throw new ForbiddenException('Bukan sesi Anda.');
+      }
+      assertUsableRosterState(lockedSession);
+
+      await lockAttendanceForUpdate(tx, sessionId, studentId);
+      const rosterEntry = await tx.sessionRoster.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
+      if (!rosterEntry) throw new BadRequestException('Siswa bukan roster kelas sesi ini.');
       const before = await tx.studentAttendance.findUnique({ where: { sessionId_studentId: { sessionId, studentId } } });
+      const now = new Date();
       const attendance = await tx.studentAttendance.upsert({
         where: { sessionId_studentId: { sessionId, studentId } },
         create: {
@@ -1236,10 +1401,10 @@ export class AttendanceClassService {
           note: payload.note,
           evidenceLabel: 'corrected',
           correctionCount: 1,
-          correctedAt: new Date(),
+          correctedAt: now,
           correctedById: actor.sub,
           reviewState: AttendanceReviewState.CORRECTED,
-          confirmedAt: new Date(),
+          confirmedAt: now,
           confirmedById: actor.sub,
           confirmationSource: AttendanceConfirmationSource.CORRECTION
         },
@@ -1248,10 +1413,10 @@ export class AttendanceClassService {
           note: payload.note,
           evidenceLabel: 'corrected',
           correctionCount: { increment: 1 },
-          correctedAt: new Date(),
+          correctedAt: now,
           correctedById: actor.sub,
           reviewState: AttendanceReviewState.CORRECTED,
-          confirmedAt: new Date(),
+          confirmedAt: now,
           confirmedById: actor.sub,
           confirmationSource: AttendanceConfirmationSource.CORRECTION
         }
@@ -1269,7 +1434,7 @@ export class AttendanceClassService {
           afterNote: attendance.note ?? null,
           reason,
           before: before ? { status: before.status, note: before.note } : Prisma.JsonNull,
-          after: { status: attendance.status, note: attendance.note }
+          after: { status: attendance.status, note: attendance.note, rosterState: lockedSession.rosterState }
         }
       });
 
@@ -1282,14 +1447,14 @@ export class AttendanceClassService {
         resourceId: attendance.id,
         reason,
         before: before ? { status: before.status, note: before.note } : null,
-        after: { status: attendance.status, note: attendance.note, correctionCount: attendance.correctionCount }
+        after: { status: attendance.status, note: attendance.note, correctionCount: attendance.correctionCount, rosterState: lockedSession.rosterState }
       });
       await writeLiveMonitorOutboxEvent(tx, {
         eventType: 'attendance.corrected',
         aggregateType: 'studentAttendance',
         aggregateId: attendance.id,
         logicalKey: `attendance:${sessionId}:${studentId}:corrected:${attendance.correctionCount}:${Date.now()}`,
-        payload: { sessionId, studentId, status: attendance.status, correctionCount: attendance.correctionCount }
+        payload: { sessionId, studentId, status: attendance.status, correctionCount: attendance.correctionCount, rosterState: lockedSession.rosterState }
       });
 
       return attendance;

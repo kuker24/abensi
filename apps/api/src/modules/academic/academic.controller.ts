@@ -177,21 +177,21 @@ export class AcademicController {
   @Post('students/import/preview')
   @Capabilities('academic.manage')
   previewStudentsImport(@Body() body: ImportStudentsDto) {
-    return this.academicService.previewStudentsImport(body.rows);
+    return this.academicService.previewStudentsImport(body.rows, body.academicYear);
   }
 
   @Post('students/import/commit')
   @Capabilities('academic.manage')
   commitStudentsImport(@Body() body: ImportStudentsDto, @CurrentUser() user: { sub: string; role: string }) {
-    return this.academicService.commitStudentsImport(body.rows, user);
+    return this.academicService.commitStudentsImport(body.rows, user, body.academicYear);
   }
 
   @Post('students/import/file/preview')
   @UseInterceptors(FileInterceptor('file', IMPORT_FILE_INTERCEPTOR_OPTIONS))
   @Capabilities('academic.manage')
-  async previewStudentsImportFile(@UploadedFile() file: ImportUploadFile) {
+  async previewStudentsImportFile(@UploadedFile() file: ImportUploadFile, @Body('academicYear') academicYear: string) {
     const rows = await parseImportFile(file);
-    return this.academicService.previewStudentsImport(rows as unknown as ImportStudentRowDto[]);
+    return this.academicService.previewStudentsImport(rows as unknown as ImportStudentRowDto[], academicYear);
   }
 
   @Post('students/import/file/commit')
@@ -199,10 +199,11 @@ export class AcademicController {
   @Capabilities('academic.manage')
   async commitStudentsImportFile(
     @UploadedFile() file: ImportUploadFile,
+    @Body('academicYear') academicYear: string,
     @CurrentUser() user: { sub: string; role: string }
   ) {
     const rows = await parseImportFile(file);
-    return this.academicService.commitStudentsImport(rows as unknown as ImportStudentRowDto[], user);
+    return this.academicService.commitStudentsImport(rows as unknown as ImportStudentRowDto[], user, academicYear);
   }
 
   @Post('import/preview')

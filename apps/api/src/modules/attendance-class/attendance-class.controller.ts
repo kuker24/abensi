@@ -8,7 +8,7 @@ import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AttendanceClassService } from './attendance-class.service';
-import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, RepairSessionRosterDto, SessionGeoDto } from './attendance-class.dto';
+import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, RecoverMissedSessionDto, RepairSessionRosterDto, SessionGeoDto } from './attendance-class.dto';
 
 @Controller('attendance/class-sessions')
 @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
@@ -99,6 +99,17 @@ export class AttendanceClassController {
   @Capabilities('classAttendance.read')
   roster(@Param('id') sessionId: string, @CurrentUser() user: { sub: string; role: string }) {
     return this.attendanceClassService.roster(sessionId, user);
+  }
+
+  @Post(':id/recover')
+  @Roles(Role.ADMIN_TU, Role.DEVELOPER, Role.GURU_PIKET)
+  @Capabilities('session.open')
+  recoverMissedSession(
+    @Param('id') sessionId: string,
+    @Body() body: RecoverMissedSessionDto,
+    @CurrentUser() user: { sub: string; role: string }
+  ) {
+    return this.attendanceClassService.recoverMissedSession(sessionId, user, body.reason);
   }
 
   @Post(':id/roster/repair')

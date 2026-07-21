@@ -86,6 +86,12 @@ export class RepairSessionRosterDto {
   reason!: string;
 }
 
+export class RecoverMissedSessionDto {
+  @IsString()
+  @MinLength(10)
+  reason!: string;
+}
+
 export class CorrectAttendanceDto {
   @IsEnum(StudentAttendanceStatus)
   status!: StudentAttendanceStatus;

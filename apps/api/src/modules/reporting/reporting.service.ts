@@ -5,6 +5,7 @@ import {
   PrayerType,
   ReaderType,
   Role,
+  SessionRosterState,
   SessionStatus,
   StudentAttendanceStatus,
   TeacherSessionStatus,
@@ -105,6 +106,48 @@ function createAttendanceCounters(): Record<StudentAttendanceStatus, number> {
     SAKIT: 0,
     ALPA: 0
   };
+}
+
+interface RosterProvenanceCounters {
+  verifiedSessionCount: number;
+  backfilledUnverifiedSessionCount: number;
+  legacyRosterMissingSessionCount: number;
+  pendingRosterSessionCount: number;
+}
+
+function createRosterProvenanceCounters(): RosterProvenanceCounters {
+  return {
+    verifiedSessionCount: 0,
+    backfilledUnverifiedSessionCount: 0,
+    legacyRosterMissingSessionCount: 0,
+    pendingRosterSessionCount: 0
+  };
+}
+
+function addRosterProvenance(counters: RosterProvenanceCounters, rosterState: SessionRosterState) {
+  if (rosterState === SessionRosterState.VERIFIED) counters.verifiedSessionCount += 1;
+  if (rosterState === SessionRosterState.BACKFILLED_UNVERIFIED) counters.backfilledUnverifiedSessionCount += 1;
+  if (rosterState === SessionRosterState.LEGACY_ROSTER_MISSING) counters.legacyRosterMissingSessionCount += 1;
+  if (rosterState === SessionRosterState.PENDING) counters.pendingRosterSessionCount += 1;
+}
+
+function rosterTrustFlags(rosterState: SessionRosterState) {
+  return {
+    rosterState,
+    rosterVerified: rosterState === SessionRosterState.VERIFIED,
+    rosterUnverified:
+      rosterState === SessionRosterState.BACKFILLED_UNVERIFIED ||
+      rosterState === SessionRosterState.LEGACY_ROSTER_MISSING
+  };
+}
+
+function summarizeRosterProvenance(rows: RosterProvenanceCounters[]): RosterProvenanceCounters {
+  return rows.reduce((summary, row) => ({
+    verifiedSessionCount: summary.verifiedSessionCount + row.verifiedSessionCount,
+    backfilledUnverifiedSessionCount: summary.backfilledUnverifiedSessionCount + row.backfilledUnverifiedSessionCount,
+    legacyRosterMissingSessionCount: summary.legacyRosterMissingSessionCount + row.legacyRosterMissingSessionCount,
+    pendingRosterSessionCount: summary.pendingRosterSessionCount + row.pendingRosterSessionCount
+  }), createRosterProvenanceCounters());
 }
 
 const STUDENT_DAILY_STATUS_LABELS = {
@@ -760,7 +803,10 @@ export class ReportingService {
       return {
         role: user.role,
         gateLogs,
-        classAttendances: attendances
+        classAttendances: attendances.map((attendance) => ({
+          ...attendance,
+          ...rosterTrustFlags(attendance.session.rosterState)
+        }))
       };
     }
 
@@ -793,7 +839,10 @@ export class ReportingService {
     return {
       role: user.role,
       gateLogs,
-      teacherPresence
+      teacherPresence: teacherPresence.map((presence) => ({
+        ...presence,
+        ...rosterTrustFlags(presence.session.rosterState)
+      }))
     };
   }
 
@@ -823,6 +872,7 @@ export class ReportingService {
         teacherIds: Set<string>;
         subjectIds: Set<string>;
         counters: Record<StudentAttendanceStatus, number>;
+        rosterProvenance: RosterProvenanceCounters;
       }
     >();
 
@@ -837,7 +887,8 @@ export class ReportingService {
           closedSessions: 0,
           teacherIds: new Set<string>(),
           subjectIds: new Set<string>(),
-          counters: createAttendanceCounters()
+          counters: createAttendanceCounters(),
+          rosterProvenance: createRosterProvenanceCounters()
         };
 
       current.sessionCount += 1;
@@ -846,6 +897,7 @@ export class ReportingService {
       }
       current.teacherIds.add(session.teacher.id);
       current.subjectIds.add(session.subject.id);
+      addRosterProvenance(current.rosterProvenance, session.rosterState);
       for (const attendance of session.attendances) {
         current.counters[attendance.status] += 1;
       }
@@ -863,7 +915,8 @@ export class ReportingService {
         attendanceCoveragePercent: asPercent(item.closedSessions, item.sessionCount),
         uniqueTeacherCount: item.teacherIds.size,
         uniqueSubjectCount: item.subjectIds.size,
-        counters: item.counters
+        counters: item.counters,
+        ...item.rosterProvenance
       }))
       .sort((left, right) => left.classCode.localeCompare(right.classCode));
 
@@ -875,7 +928,8 @@ export class ReportingService {
         (total, row) =>
           total + ATTENDANCE_STATUSES.reduce((statusTotal, status) => statusTotal + row.counters[status], 0),
         0
-      )
+      ),
+      ...summarizeRosterProvenance(rows)
     };
 
     return {
@@ -907,7 +961,9 @@ export class ReportingService {
         },
         session: {
           select: {
+            id: true,
             startsAt: true,
+            rosterState: true,
             schoolClass: { select: { code: true } },
             subject: { select: { code: true } }
           }
@@ -931,8 +987,10 @@ export class ReportingService {
         subjectCodes: Set<string>;
         attendanceCount: number;
         latestAt: Date | null;
+        rosterStateBySession: Map<string, SessionRosterState>;
       }
     >();
+    const rosterStateBySession = new Map<string, SessionRosterState>();
 
     for (const record of records) {
       const current =
@@ -945,13 +1003,16 @@ export class ReportingService {
           classCodes: new Set<string>(),
           subjectCodes: new Set<string>(),
           attendanceCount: 0,
-          latestAt: null
+          latestAt: null,
+          rosterStateBySession: new Map<string, SessionRosterState>()
         };
 
       current.attendanceCount += 1;
       current.counters[record.status] += 1;
       current.classCodes.add(record.session.schoolClass.code);
       current.subjectCodes.add(record.session.subject.code);
+      current.rosterStateBySession.set(record.session.id, record.session.rosterState);
+      rosterStateBySession.set(record.session.id, record.session.rosterState);
       if (!current.latestAt || record.session.startsAt.getTime() > current.latestAt.getTime()) {
         current.latestAt = record.session.startsAt;
       }
@@ -962,6 +1023,10 @@ export class ReportingService {
     const rows = Array.from(grouped.values())
       .map((item) => {
         const presentCount = item.counters.HADIR + item.counters.TELAT;
+        const rosterProvenance = createRosterProvenanceCounters();
+        for (const rosterState of item.rosterStateBySession.values()) {
+          addRosterProvenance(rosterProvenance, rosterState);
+        }
         return {
           studentId: item.studentId,
           fullName: item.fullName,
@@ -971,14 +1036,21 @@ export class ReportingService {
           classCodes: Array.from(item.classCodes).sort(),
           subjectCodes: Array.from(item.subjectCodes).sort(),
           latestAt: item.latestAt?.toISOString() ?? null,
-          counters: item.counters
+          counters: item.counters,
+          ...rosterProvenance
         };
       })
       .sort((left, right) => left.fullName.localeCompare(right.fullName));
 
+    const summaryRosterProvenance = createRosterProvenanceCounters();
+    for (const rosterState of rosterStateBySession.values()) {
+      addRosterProvenance(summaryRosterProvenance, rosterState);
+    }
+
     const summary = {
       studentCount: rows.length,
-      attendanceRecords: rows.reduce((total, row) => total + row.attendanceCount, 0)
+      attendanceRecords: rows.reduce((total, row) => total + row.attendanceCount, 0),
+      ...summaryRosterProvenance
     };
 
     return {
@@ -1017,6 +1089,7 @@ export class ReportingService {
         classCodes: Set<string>;
         teacherIds: Set<string>;
         counters: Record<StudentAttendanceStatus, number>;
+        rosterProvenance: RosterProvenanceCounters;
       }
     >();
 
@@ -1031,7 +1104,8 @@ export class ReportingService {
           closedSessions: 0,
           classCodes: new Set<string>(),
           teacherIds: new Set<string>(),
-          counters: createAttendanceCounters()
+          counters: createAttendanceCounters(),
+          rosterProvenance: createRosterProvenanceCounters()
         };
 
       current.sessionCount += 1;
@@ -1040,6 +1114,7 @@ export class ReportingService {
       }
       current.classCodes.add(session.schoolClass.code);
       current.teacherIds.add(session.teacher.id);
+      addRosterProvenance(current.rosterProvenance, session.rosterState);
 
       for (const attendance of session.attendances) {
         current.counters[attendance.status] += 1;
@@ -1063,14 +1138,16 @@ export class ReportingService {
           presencePercent: asPercent(presentRecords, attendanceRecords),
           classCount: item.classCodes.size,
           teacherCount: item.teacherIds.size,
-          counters: item.counters
+          counters: item.counters,
+          ...item.rosterProvenance
         };
       })
       .sort((left, right) => left.subjectCode.localeCompare(right.subjectCode));
 
     const summary = {
       subjectCount: rows.length,
-      sessionCount: rows.reduce((total, row) => total + row.sessionCount, 0)
+      sessionCount: rows.reduce((total, row) => total + row.sessionCount, 0),
+      ...summarizeRosterProvenance(rows)
     };
 
     return {
@@ -1140,6 +1217,7 @@ export class ReportingService {
         totalTeachingMinutes: number;
         lastCheckInAt: Date | null;
         lastCheckOutAt: Date | null;
+        rosterProvenance: RosterProvenanceCounters;
       }
     >();
 
@@ -1163,7 +1241,8 @@ export class ReportingService {
           earlyCheckoutCount: 0,
           totalTeachingMinutes: 0,
           lastCheckInAt: null,
-          lastCheckOutAt: null
+          lastCheckOutAt: null,
+          rosterProvenance: createRosterProvenanceCounters()
         };
 
       current.sessionCount += 1;
@@ -1173,6 +1252,7 @@ export class ReportingService {
 
       current.classCodes.add(session.schoolClass.code);
       current.subjectCodes.add(session.subject.code);
+      addRosterProvenance(current.rosterProvenance, session.rosterState);
 
       const presenceRow = session.teacherPresence.find((item) => item.teacherId === session.teacherId) ?? null;
       const presence = presenceRow?.status ??
@@ -1220,14 +1300,16 @@ export class ReportingService {
           TELAT: item.telat,
           EXCUSED_ABSENCE: item.excusedAbsence,
           ALPA_MENGAJAR: item.alpaMengajar
-        }
+        },
+        ...item.rosterProvenance
       }))
       .sort((left, right) => left.fullName.localeCompare(right.fullName));
 
     const summary = {
       teacherCount: rows.length,
       sessionCount: rows.reduce((total, row) => total + row.sessionCount, 0),
-      closedSessionCount: rows.reduce((total, row) => total + row.closedSessionCount, 0)
+      closedSessionCount: rows.reduce((total, row) => total + row.closedSessionCount, 0),
+      ...summarizeRosterProvenance(rows)
     };
 
     return {

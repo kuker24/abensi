@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { AttendanceReviewState, Prisma, Role, SessionStatus } from '@prisma/client';
+import { AttendanceReviewState, Prisma, Role, SessionRosterState, SessionStatus } from '@prisma/client';
 import { businessDateKey, jakartaBusinessDayBounds } from '../../common/business-time';
 import type { AuthenticatedUser } from '../../common/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,6 +13,7 @@ type TeacherSessionRow = Prisma.SessionGetPayload<{
     startsAt: true;
     endsAt: true;
     status: true;
+    rosterState: true;
     schoolClass: { select: { id: true; code: true; name: true } };
     subject: { select: { id: true; code: true; name: true } };
     rosters: { select: { studentId: true } };
@@ -37,7 +38,9 @@ function createSummary() {
     closed: 0,
     missed: 0,
     unclosed: 0,
-    studentsPendingAttendance: 0
+    studentsPendingAttendance: 0,
+    unknownRosterSessions: 0,
+    backfilledRosterSessions: 0
   };
 }
 
@@ -64,6 +67,7 @@ export class TeacherService {
         startsAt: true,
         endsAt: true,
         status: true,
+        rosterState: true,
         schoolClass: { select: { id: true, code: true, name: true } },
         subject: { select: { id: true, code: true, name: true } },
         rosters: { select: { studentId: true } },
@@ -73,7 +77,7 @@ export class TeacherService {
     });
 
     const enrollmentCountByClass = await this.activeEnrollmentCounts(sessions, bounds.date);
-    const items = sessions.map((session) => this.toTodayItem(session, enrollmentCountByClass.get(session.classId) ?? 0));
+    const items = sessions.map((session) => this.toTodayItem(session, enrollmentCountByClass.get(session.classId)));
     const summary = items.reduce((acc, item) => {
       acc.sessionsToday += 1;
       if (item.status === SessionStatus.SCHEDULED) acc.scheduled += 1;
@@ -81,7 +85,14 @@ export class TeacherService {
       if (item.status === SessionStatus.CLOSED) acc.closed += 1;
       if (item.status === SessionStatus.MISSED) acc.missed += 1;
       if (item.status === SessionStatus.OPEN || item.status === SessionStatus.MISSED) acc.unclosed += 1;
-      acc.studentsPendingAttendance += item.pendingCount;
+      if (item.pendingCount !== null) acc.studentsPendingAttendance += item.pendingCount;
+      if (item.rosterState === SessionRosterState.BACKFILLED_UNVERIFIED) acc.backfilledRosterSessions += 1;
+      if (
+        item.rosterState === SessionRosterState.LEGACY_ROSTER_MISSING ||
+        (item.rosterState === SessionRosterState.PENDING && item.status !== SessionStatus.SCHEDULED)
+      ) {
+        acc.unknownRosterSessions += 1;
+      }
       return acc;
     }, createSummary());
 
@@ -93,7 +104,18 @@ export class TeacherService {
   }
 
   private async activeEnrollmentCounts(sessions: TeacherSessionRow[], businessDate: Date) {
-    const classIds = Array.from(new Set(sessions.filter((session) => session.rosters.length === 0).map((session) => session.classId)));
+    const classIds = Array.from(
+      new Set(
+        sessions
+          .filter(
+            (session) =>
+              session.status === SessionStatus.SCHEDULED &&
+              session.rosterState === SessionRosterState.PENDING &&
+              session.rosters.length === 0
+          )
+          .map((session) => session.classId)
+      )
+    );
     if (!classIds.length) return new Map<string, number>();
 
     const rows = await this.prisma.classEnrollment.groupBy({
@@ -112,10 +134,17 @@ export class TeacherService {
     return new Map(rows.map((row) => [row.classId, row._count._all]));
   }
 
-  private toTodayItem(session: TeacherSessionRow, fallbackStudentTotal: number) {
+  private toTodayItem(session: TeacherSessionRow, prospectiveStudentTotal?: number) {
     const attendanceFilledCount = session.attendances.filter((item) => item.reviewState !== AttendanceReviewState.DEFAULTED).length;
-    const studentTotal = session.rosters.length || fallbackStudentTotal || session.attendances.length;
-    const pendingCount = Math.max(0, studentTotal - attendanceFilledCount);
+    const usableRoster =
+      session.rosterState === SessionRosterState.VERIFIED ||
+      session.rosterState === SessionRosterState.BACKFILLED_UNVERIFIED;
+    const studentTotal = usableRoster
+      ? session.rosters.length
+      : session.status === SessionStatus.SCHEDULED && session.rosterState === SessionRosterState.PENDING
+        ? prospectiveStudentTotal ?? null
+        : null;
+    const pendingCount = studentTotal === null ? null : Math.max(0, studentTotal - attendanceFilledCount);
 
     return {
       sessionId: session.id,
@@ -130,6 +159,11 @@ export class TeacherService {
       startTime: localTime(session.startsAt),
       endTime: localTime(session.endsAt),
       status: session.status,
+      rosterState: session.rosterState,
+      rosterVerified: session.rosterState === SessionRosterState.VERIFIED,
+      rosterUnverified:
+        session.rosterState === SessionRosterState.BACKFILLED_UNVERIFIED ||
+        session.rosterState === SessionRosterState.LEGACY_ROSTER_MISSING,
       attendanceFilledCount,
       studentTotal,
       pendingCount,

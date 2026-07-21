@@ -1,5 +1,7 @@
 import { IsBoolean, IsDateString, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 export class CreateSessionDto {
   @IsString()
   classId!: string;
@@ -9,6 +11,15 @@ export class CreateSessionDto {
 
   @IsString()
   teacherId!: string;
+
+  @IsString()
+  teachingAssignmentId!: string;
+
+  @IsString()
+  academicYearId!: string;
+
+  @IsString()
+  semesterId!: string;
 
   @IsDateString()
   startsAt!: string;
@@ -25,6 +36,38 @@ export class UpdateSessionScheduleDto {
   endsAt!: string;
 }
 
+export class CreateTeachingAssignmentDto {
+  @IsString()
+  teacherId!: string;
+
+  @IsString()
+  subjectId!: string;
+
+  @IsString()
+  classId!: string;
+
+  @IsString()
+  academicYearId!: string;
+
+  @IsString()
+  semesterId!: string;
+
+  @IsDateString()
+  @Matches(DATE_ONLY_PATTERN)
+  effectiveFrom!: string;
+
+  @IsOptional()
+  @IsDateString()
+  @Matches(DATE_ONLY_PATTERN)
+  effectiveTo?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
+export class UpdateTeachingAssignmentDto extends CreateTeachingAssignmentDto {}
+
 export class CreateWeeklyScheduleDto {
   @IsString()
   classId!: string;
@@ -39,13 +82,14 @@ export class CreateWeeklyScheduleDto {
   @IsString()
   roomId?: string;
 
-  @IsOptional()
   @IsString()
-  academicYearId?: string;
+  academicYearId!: string;
 
-  @IsOptional()
   @IsString()
-  semesterId?: string;
+  semesterId!: string;
+
+  @IsString()
+  teachingAssignmentId!: string;
 
   @IsInt()
   @Min(0)
@@ -59,10 +103,12 @@ export class CreateWeeklyScheduleDto {
   endTime!: string;
 
   @IsDateString()
+  @Matches(DATE_ONLY_PATTERN)
   effectiveFrom!: string;
 
   @IsOptional()
   @IsDateString()
+  @Matches(DATE_ONLY_PATTERN)
   effectiveTo?: string;
 
   @IsOptional()
@@ -74,8 +120,10 @@ export class UpdateWeeklyScheduleDto extends CreateWeeklyScheduleDto {}
 
 export class GenerateSessionsDto {
   @IsDateString()
+  @Matches(DATE_ONLY_PATTERN)
   from!: string;
 
   @IsDateString()
+  @Matches(DATE_ONLY_PATTERN)
   to!: string;
 }

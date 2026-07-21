@@ -62,7 +62,7 @@ function parseCsv(buffer: Buffer): ImportRow[] {
 }
 
 
-const XLSX_HEADER_HINTS = ['username', 'fullname', 'full name', 'nama', 'nis', 'nisn', 'nip', 'role', 'kelas', 'jabatan', 'tipe user', 'code', 'name', 'yearlabel'];
+const XLSX_HEADER_HINTS = ['username', 'fullname', 'full name', 'nama', 'nis', 'nisn', 'nkd', 'nomor kartu digital', 'nip', 'role', 'kelas', 'jabatan', 'tipe user', 'code', 'name', 'yearlabel'];
 
 function headerScore(values: string[]) {
   const text = values.join(' ').toLowerCase();

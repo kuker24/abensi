@@ -32,6 +32,21 @@ function cleanOptionalText(value?: string | null) {
   return text || null;
 }
 
+function normalizeNkd(value?: string | null) {
+  const nkd = cleanOptionalText(value);
+  if (!nkd) return null;
+  if (!/^\d{4}$/.test(nkd)) {
+    throw new BadRequestException('NKD harus tepat empat digit angka.');
+  }
+  return nkd;
+}
+
+function assertNkdStudentOnly(nkd: string | null, role: Role) {
+  if (nkd && role !== Role.SISWA) {
+    throw new BadRequestException('NKD hanya boleh dipakai akun SISWA.');
+  }
+}
+
 function schoolImportFlag(value: unknown) {
   return value === true || value === 'true' || value === '1';
 }
@@ -83,6 +98,7 @@ export class IdentityService {
           username: true,
           fullName: true,
           nis: true,
+          nkd: true,
           nip: true,
           birthDate: true,
           role: true,
@@ -331,9 +347,19 @@ export class IdentityService {
 
   async createUser(payload: CreateUserDto, actorId: string, actorRole?: string) {
     this.assertDeveloperMutationAllowed(payload.role, actorRole);
+    const nkd = normalizeNkd(payload.nkd);
+    assertNkdStudentOnly(nkd, payload.role);
     const exists = await this.prisma.user.findUnique({ where: { username: payload.username } });
     if (exists) {
       throw new ConflictException('Username sudah terpakai.');
+    }
+    if (nkd) {
+      const [nkdOwner, reservation] = await Promise.all([
+        this.prisma.user.findUnique({ where: { nkd }, select: { id: true } }),
+        this.prisma.studentNkdRegistry.findUnique({ where: { nkd }, select: { userId: true } })
+      ]);
+      if (nkdOwner) throw new ConflictException('NKD sudah terpakai.');
+      if (reservation) throw new ConflictException('NKD sudah pernah diterbitkan dan tidak boleh dipakai ulang.');
     }
 
     const passwordHash = await bcrypt.hash(payload.password, 10);
@@ -344,6 +370,7 @@ export class IdentityService {
           username: payload.username,
           fullName: payload.fullName,
           nis: cleanOptionalText(payload.nis),
+          nkd,
           nip: cleanOptionalText(payload.nip),
           birthDate: parseOptionalDate(payload.birthDate),
           passwordHash,
@@ -356,6 +383,7 @@ export class IdentityService {
           username: true,
           fullName: true,
           nis: true,
+          nkd: true,
           nip: true,
           birthDate: true,
           role: true,
@@ -390,6 +418,26 @@ export class IdentityService {
       if (activeDevelopers <= 1) throw new ForbiddenException('Minimal satu akun developer aktif harus tetap tersedia.');
     }
 
+    const requestedNkd = payload.nkd !== undefined ? normalizeNkd(payload.nkd) : undefined;
+    const effectiveRole = payload.role ?? before.role;
+    if (before.nkd && effectiveRole !== Role.SISWA) {
+      throw new BadRequestException('Akun dengan NKD harus tetap berperan sebagai SISWA.');
+    }
+    if (requestedNkd !== undefined) {
+      assertNkdStudentOnly(requestedNkd, effectiveRole);
+      if (before.nkd && requestedNkd !== before.nkd) {
+        throw new BadRequestException('NKD tidak dapat diubah setelah diterbitkan.');
+      }
+      if (!before.nkd && requestedNkd) {
+        const [nkdOwner, reservation] = await Promise.all([
+          this.prisma.user.findUnique({ where: { nkd: requestedNkd }, select: { id: true } }),
+          this.prisma.studentNkdRegistry.findUnique({ where: { nkd: requestedNkd }, select: { userId: true } })
+        ]);
+        if (nkdOwner && nkdOwner.id !== userId) throw new ConflictException('NKD sudah terpakai.');
+        if (reservation && reservation.userId !== userId) throw new ConflictException('NKD sudah pernah diterbitkan dan tidak boleh dipakai ulang.');
+      }
+    }
+
     const passwordHash = payload.password ? await bcrypt.hash(payload.password, 10) : undefined;
     const birthDate = payload.birthDate !== undefined ? parseOptionalDate(payload.birthDate) : undefined;
     const shouldRevokeSessions = Boolean(passwordHash || payload.role !== undefined || payload.active !== undefined);
@@ -401,6 +449,7 @@ export class IdentityService {
         data: {
           ...(payload.fullName !== undefined ? { fullName: payload.fullName } : {}),
           ...(payload.nis !== undefined ? { nis: cleanOptionalText(payload.nis) } : {}),
+          ...(!before.nkd && requestedNkd ? { nkd: requestedNkd } : {}),
           ...(payload.nip !== undefined ? { nip: cleanOptionalText(payload.nip) } : {}),
           ...(payload.birthDate !== undefined ? { birthDate } : {}),
           ...(passwordHash ? { passwordHash, passwordChangedAt: null, mustChangePassword: true } : {}),
@@ -415,6 +464,7 @@ export class IdentityService {
           username: true,
           fullName: true,
           nis: true,
+          nkd: true,
           nip: true,
           birthDate: true,
           role: true,
@@ -455,6 +505,7 @@ export class IdentityService {
           username: before.username,
           fullName: before.fullName,
           nis: before.nis,
+          nkd: before.nkd,
           nip: before.nip,
           birthDate: before.birthDate,
           role: before.role,
@@ -808,6 +859,8 @@ export class IdentityService {
       username: row.username?.trim(),
       fullName: row.fullName?.trim(),
       nis: cleanOptionalText(row.nis),
+      nkdInput: row.nkd,
+      nkd: null as string | null,
       nip: cleanOptionalText(row.nip),
       birthDate: row.birthDate?.trim() || '',
       parsedBirthDate: null as Date | null,
@@ -817,11 +870,25 @@ export class IdentityService {
     }));
 
     const usernames = normalized.map((row) => row.username).filter(Boolean);
-    const existing = await this.prisma.user.findMany({
-      where: { username: { in: usernames } },
-      select: { username: true }
-    });
-    const existingSet = new Set(existing.map((item) => item.username));
+    const nkds = normalized.map((row) => cleanOptionalText(row.nkdInput)).filter(Boolean) as string[];
+    const [existing, reservations] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          OR: [
+            usernames.length ? { username: { in: usernames } } : undefined,
+            nkds.length ? { nkd: { in: nkds } } : undefined
+          ].filter(Boolean) as Prisma.UserWhereInput[]
+        },
+        select: { username: true, nkd: true }
+      }),
+      nkds.length
+        ? this.prisma.studentNkdRegistry.findMany({ where: { nkd: { in: nkds } }, select: { nkd: true } })
+        : Promise.resolve([])
+    ]);
+    const existingUsernames = new Set(existing.map((item) => item.username));
+    const existingNkds = new Set(existing.map((item) => item.nkd).filter(Boolean));
+    const reservedNkds = new Set(reservations.map((item) => item.nkd));
+    const seenNkds = new Set<string>();
 
     for (const row of normalized) {
       if (!row.username) row.errors.push('username wajib');
@@ -831,13 +898,24 @@ export class IdentityService {
       }
       if (!Object.values(Role).includes(row.role)) row.errors.push('role tidak valid');
       if (row.role === Role.DEVELOPER) row.errors.push('role DEVELOPER hanya dibuat dari seed/env atau akun developer.');
-      if (existingSet.has(row.username)) row.errors.push('username sudah ada');
+      try {
+        row.nkd = normalizeNkd(row.nkdInput);
+      } catch (error) {
+        row.errors.push(error instanceof Error ? error.message : 'NKD tidak valid');
+      }
+      if (row.nkd && row.role !== Role.SISWA) row.errors.push('NKD hanya boleh dipakai akun SISWA.');
+      if (row.role === Role.SISWA && !row.nkd) row.errors.push('NKD wajib diisi untuk siswa baru');
+      if (row.nkd && seenNkds.has(row.nkd)) row.errors.push('NKD duplikat di file import');
+      if (row.nkd) seenNkds.add(row.nkd);
+      if (row.nkd && existingNkds.has(row.nkd)) row.errors.push('NKD sudah terpakai');
+      if (row.nkd && reservedNkds.has(row.nkd)) row.errors.push('NKD sudah pernah diterbitkan dan tidak boleh dipakai ulang');
+      if (existingUsernames.has(row.username)) row.errors.push('username sudah ada');
       if (!row.password) row.errors.push('password wajib diisi');
       else if (row.password.length < 8) row.errors.push('password minimal 8 karakter');
     }
 
     return {
-      rows: normalized.map(({ password: _password, ...row }) => row),
+      rows: normalized.map(({ password: _password, nkdInput: _nkdInput, ...row }) => row),
       summary: {
         total: normalized.length,
         valid: normalized.filter((row) => row.errors.length === 0).length,
@@ -852,16 +930,26 @@ export class IdentityService {
       return { committed: false, ...preview };
     }
 
-    const prepared = await Promise.all(rows.map(async (row) => ({ row, passwordHash: await bcrypt.hash(row.password!.trim(), 10), birthDate: parseOptionalDate(row.birthDate) })));
+    const prepared = await Promise.all(rows.map(async (row) => {
+      const nkd = normalizeNkd(row.nkd);
+      assertNkdStudentOnly(nkd, row.role);
+      return {
+        row,
+        nkd,
+        passwordHash: await bcrypt.hash(row.password!.trim(), 10),
+        birthDate: parseOptionalDate(row.birthDate)
+      };
+    }));
 
     return this.prisma.$transaction(async (tx) => {
       const created = [];
-      for (const { row, passwordHash, birthDate } of prepared) {
+      for (const { row, nkd, passwordHash, birthDate } of prepared) {
         created.push(await tx.user.create({
           data: {
             username: row.username.trim(),
             fullName: row.fullName.trim(),
             nis: cleanOptionalText(row.nis),
+            nkd,
             nip: cleanOptionalText(row.nip),
             birthDate,
             role: row.role,
@@ -869,7 +957,7 @@ export class IdentityService {
             mustChangePassword: true,
             cardStatus: CardStatus.ACTIVE
           },
-          select: { id: true, username: true, fullName: true, nis: true, nip: true, birthDate: true, role: true, active: true }
+          select: { id: true, username: true, fullName: true, nis: true, nkd: true, nip: true, birthDate: true, role: true, active: true }
         }));
       }
 
@@ -904,32 +992,43 @@ export class IdentityService {
     const normalized = this.normalizeSchoolImport(rows, source, options);
     const usernames = [...new Set(normalized.map((row) => row.username).filter(Boolean))];
     const nisValues = [...new Set(normalized.map((row) => row.nis).filter(Boolean) as string[])];
+    const nkdValues = [...new Set(normalized.map((row) => row.nkd).filter(Boolean) as string[])];
     const nipValues = [...new Set(normalized.map((row) => row.nip).filter(Boolean) as string[])];
     const orFilters = [
       usernames.length ? { username: { in: usernames } } : undefined,
       nisValues.length ? { nis: { in: nisValues } } : undefined,
+      nkdValues.length ? { nkd: { in: nkdValues } } : undefined,
       nipValues.length ? { nip: { in: nipValues } } : undefined
     ].filter(Boolean) as Prisma.UserWhereInput[];
-    const existingUsers = orFilters.length > 0
-      ? await this.prisma.user.findMany({
-        where: { OR: orFilters },
-        select: { id: true, username: true, nis: true, nip: true, role: true, active: true, archivedAt: true }
-      })
-      : [];
+    const [existingUsers, nkdReservations] = await Promise.all([
+      orFilters.length > 0
+        ? this.prisma.user.findMany({
+          where: { OR: orFilters },
+          select: { id: true, username: true, nis: true, nkd: true, nip: true, role: true, active: true, archivedAt: true }
+        })
+        : Promise.resolve([]),
+      nkdValues.length
+        ? this.prisma.studentNkdRegistry.findMany({ where: { nkd: { in: nkdValues } }, select: { nkd: true, userId: true } })
+        : Promise.resolve([])
+    ]);
     const byUsername = new Map(existingUsers.map((user) => [user.username, user]));
     const byNis = new Map(existingUsers.filter((user) => user.nis).map((user) => [user.nis as string, user]));
+    const byNkd = new Map(existingUsers.filter((user) => user.nkd).map((user) => [user.nkd as string, user]));
+    const reservedNkdByValue = new Map(nkdReservations.map((reservation) => [reservation.nkd, reservation.userId]));
     const byNip = new Map(existingUsers.filter((user) => user.nip).map((user) => [user.nip as string, user]));
     const updateExisting = schoolImportFlag(options.updateExisting);
     const resetExisting = schoolImportFlag(options.resetPasswordForExisting);
 
     const previewRows: SchoolImportPreviewRow[] = normalized.map(({ fingerprint: _fingerprint, ...row }) => {
-      const existingByIdentifier = row.nis ? byNis.get(row.nis) : row.nip ? byNip.get(row.nip) : null;
+      const existingByIdentifier = row.nkd ? byNkd.get(row.nkd) : row.nis ? byNis.get(row.nis) : row.nip ? byNip.get(row.nip) : null;
       const existingByUsername = byUsername.get(row.username);
       const existing = existingByIdentifier || existingByUsername;
       const errors = [...row.errors];
       if (existingByIdentifier && existingByUsername && existingByIdentifier.id !== existingByUsername.id) errors.push('username sudah dipakai akun lain');
-      if (!existingByIdentifier && existingByUsername && (row.nis || row.nip)) errors.push('username sudah ada untuk NIS/NIP berbeda');
+      if (!existingByIdentifier && existingByUsername && (row.nis || row.nkd || row.nip)) errors.push('username sudah ada untuk NIS/NKD/NIP berbeda');
       if (existing?.archivedAt) errors.push('akun existing sudah archived');
+      const reservedForUserId = row.nkd ? reservedNkdByValue.get(row.nkd) : null;
+      if (row.nkd && reservedNkdByValue.has(row.nkd) && reservedForUserId !== existing?.id) errors.push('NKD sudah pernah diterbitkan dan tidak boleh dipakai ulang');
       const invalid = errors.length > 0;
       const action = invalid ? 'invalid' : existing ? (updateExisting ? 'update' : 'skip') : 'create';
       return {
@@ -1003,6 +1102,15 @@ export class IdentityService {
         classes.set(code, schoolClass);
       }
 
+      const existingNkdById = new Map(
+        (updatable.length > 0
+          ? await tx.user.findMany({
+            where: { id: { in: updatable.map((row) => row.existingUserId!).filter(Boolean) } },
+            select: { id: true, nkd: true }
+          })
+          : [])
+          .map((item: { id: string; nkd: string | null }) => [item.id, item.nkd])
+      );
       const created: Array<{ id: string; username: string; fullName: string; role: Role; initialPassword: string }> = [];
       const updated: Array<{ id: string; username: string; fullName: string; role: Role; initialPassword?: string }> = [];
       let enrollmentsCreated = 0;
@@ -1016,6 +1124,7 @@ export class IdentityService {
             username: row.username,
             fullName: row.fullName,
             nis: cleanOptionalText(row.nis),
+            nkd: row.role === Role.SISWA ? row.nkd : null,
             nip: cleanOptionalText(row.nip),
             birthDate: parseOptionalDate(row.birthDate),
             passwordHash: password.hash,
@@ -1043,6 +1152,7 @@ export class IdentityService {
         const data: Prisma.UserUpdateInput = {
           fullName: row.fullName,
           nis: cleanOptionalText(row.nis),
+          ...(row.role === Role.SISWA && !existingNkdById.get(row.existingUserId!) && row.nkd ? { nkd: row.nkd } : {}),
           nip: cleanOptionalText(row.nip),
           birthDate: parseOptionalDate(row.birthDate),
           role: row.role,

@@ -1,5 +1,7 @@
-import { IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsIn, IsISO8601, IsOptional, IsString, Matches, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export class CreateClassDto {
   @IsString()
@@ -125,6 +127,11 @@ export class ImportStudentRowDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{4}$/)
+  nkd?: string;
+
+  @IsOptional()
+  @IsString()
   birthDate?: string;
 
   @IsOptional()
@@ -153,6 +160,9 @@ export class ImportStudentsDto {
   @ValidateNested({ each: true })
   @Type(() => ImportStudentRowDto)
   rows!: ImportStudentRowDto[];
+
+  @IsString()
+  academicYear!: string;
 }
 
 export class CreateAcademicYearDto {
@@ -163,11 +173,13 @@ export class CreateAcademicYearDto {
   name!: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
   startsAt?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
   endsAt?: string;
 
   @IsOptional()
@@ -175,7 +187,29 @@ export class CreateAcademicYearDto {
   active?: boolean;
 }
 
-export class UpdateAcademicYearDto extends CreateAcademicYearDto {}
+export class UpdateAcademicYearDto {
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
+  startsAt?: string;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
+  endsAt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
 
 export class CreateSemesterDto {
   @IsString()
@@ -188,11 +222,13 @@ export class CreateSemesterDto {
   name!: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
   startsAt?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
   endsAt?: string;
 
   @IsOptional()
@@ -210,11 +246,13 @@ export class UpdateSemesterDto {
   name?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
   startsAt?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateString({ strict: true })
+  @Matches(DATE_ONLY_PATTERN)
   endsAt?: string;
 
   @IsOptional()

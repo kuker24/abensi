@@ -1,4 +1,4 @@
-import { AttendanceReviewState, GateDirection, PrayerType, Role, StudentAttendanceStatus } from '@prisma/client';
+import { AttendanceReviewState, GateDirection, PrayerType, Role, SessionRosterState, SessionStatus, StudentAttendanceStatus } from '@prisma/client';
 import { ReportingService } from './reporting.service';
 
 const dateKey = '2026-06-19';
@@ -157,5 +157,138 @@ describe('ReportingService student daily completeness', () => {
     expect(text).toContain('Siswa Satu');
     expect(text).toContain('Belum diabsen guru');
     expect(text).not.toMatch(/DEFAULTED|BELUM_ABSEN_KELAS/);
+  });
+});
+
+function makeReportSession(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'session-1',
+    classId: 'class-1',
+    subjectId: 'subject-1',
+    teacherId: 'guru-1',
+    startsAt: new Date('2026-06-19T01:00:00.000Z'),
+    status: SessionStatus.CLOSED,
+    rosterState: SessionRosterState.VERIFIED,
+    schoolClass: { id: 'class-1', code: 'X-A', name: 'Kelas X A' },
+    subject: { id: 'subject-1', code: 'MTK', name: 'Matematika' },
+    teacher: { id: 'guru-1', fullName: 'Guru Satu', username: 'guru1' },
+    attendances: [{ status: StudentAttendanceStatus.HADIR }],
+    teacherPresence: [],
+    ...overrides
+  };
+}
+
+function makeProvenanceService(options: {
+  sessions?: Array<Record<string, unknown>>;
+  attendanceRecords?: Array<Record<string, unknown>>;
+  studentAttendances?: Array<Record<string, unknown>>;
+  teacherPresence?: Array<Record<string, unknown>>;
+} = {}) {
+  const sessions = options.sessions ?? [makeReportSession()];
+  const prisma = {
+    session: { findMany: jest.fn().mockResolvedValue(sessions) },
+    studentAttendance: {
+      findMany: jest.fn().mockResolvedValue(options.attendanceRecords ?? options.studentAttendances ?? [])
+    },
+    gateLog: { findMany: jest.fn().mockResolvedValue([]) },
+    teacherSessionPresence: { findMany: jest.fn().mockResolvedValue(options.teacherPresence ?? []) }
+  } as any;
+  const redis = { getJson: jest.fn().mockResolvedValue(null), setJson: jest.fn() } as any;
+  return { service: new ReportingService(prisma, redis), prisma };
+}
+
+const recapPagination = { page: 1, limit: 20, skip: 0 };
+const recapFilters = { from: '2026-06-19', to: '2026-06-19' };
+
+describe('ReportingService roster provenance', () => {
+  const rosterSessions = [
+    makeReportSession({ id: 'verified', rosterState: SessionRosterState.VERIFIED }),
+    makeReportSession({ id: 'backfilled', rosterState: SessionRosterState.BACKFILLED_UNVERIFIED }),
+    makeReportSession({ id: 'legacy', rosterState: SessionRosterState.LEGACY_ROSTER_MISSING }),
+    makeReportSession({ id: 'pending', rosterState: SessionRosterState.PENDING })
+  ];
+
+  it('adds roster provenance to class, subject, and teacher recaps', async () => {
+    const { service } = makeProvenanceService({ sessions: rosterSessions });
+
+    const [classes, subjects, teachers] = await Promise.all([
+      service.recapClasses(recapPagination, recapFilters),
+      service.recapSubjects(recapPagination, recapFilters),
+      service.recapTeachers(recapPagination, recapFilters)
+    ]);
+
+    for (const result of [classes, subjects, teachers]) {
+      expect(result.items[0]).toMatchObject({
+        verifiedSessionCount: 1,
+        backfilledUnverifiedSessionCount: 1,
+        legacyRosterMissingSessionCount: 1,
+        pendingRosterSessionCount: 1
+      });
+      expect(result.summary).toMatchObject({
+        verifiedSessionCount: 1,
+        backfilledUnverifiedSessionCount: 1,
+        legacyRosterMissingSessionCount: 1,
+        pendingRosterSessionCount: 1
+      });
+    }
+  });
+
+  it('counts student roster provenance by distinct session', async () => {
+    const session = makeReportSession({ id: 'backfilled', rosterState: SessionRosterState.BACKFILLED_UNVERIFIED });
+    const records = [
+      { studentId: 'siswa-1', status: StudentAttendanceStatus.HADIR, student, session },
+      { studentId: 'siswa-1', status: StudentAttendanceStatus.TELAT, student, session }
+    ];
+    const { service } = makeProvenanceService({ attendanceRecords: records });
+
+    const result = await service.recapStudents(recapPagination, recapFilters);
+
+    expect(result.items[0]).toMatchObject({ attendanceCount: 2, backfilledUnverifiedSessionCount: 1, verifiedSessionCount: 0 });
+    expect(result.summary).toMatchObject({ backfilledUnverifiedSessionCount: 1 });
+  });
+
+  it('counts summary roster provenance once for each session across students', async () => {
+    const verifiedSession = makeReportSession({ id: 'verified', rosterState: SessionRosterState.VERIFIED });
+    const backfilledSession = makeReportSession({ id: 'backfilled', rosterState: SessionRosterState.BACKFILLED_UNVERIFIED });
+    const secondStudent = { id: 'siswa-2', fullName: 'Siswa Dua', username: 'siswa2' };
+    const records = [
+      { studentId: student.id, status: StudentAttendanceStatus.HADIR, student, session: verifiedSession },
+      { studentId: secondStudent.id, status: StudentAttendanceStatus.HADIR, student: secondStudent, session: verifiedSession },
+      { studentId: student.id, status: StudentAttendanceStatus.TELAT, student, session: backfilledSession }
+    ];
+    const { service } = makeProvenanceService({ attendanceRecords: records });
+
+    const result = await service.recapStudents(recapPagination, recapFilters);
+
+    expect(result.summary).toMatchObject({
+      verifiedSessionCount: 1,
+      backfilledUnverifiedSessionCount: 1,
+      legacyRosterMissingSessionCount: 0,
+      pendingRosterSessionCount: 0
+    });
+    expect(result.summary.verifiedSessionCount + result.summary.backfilledUnverifiedSessionCount).toBe(2);
+  });
+
+  it('makes student and teacher attendance roster trust explicit', async () => {
+    const session = makeReportSession({ rosterState: SessionRosterState.BACKFILLED_UNVERIFIED });
+    const { service, prisma } = makeProvenanceService({
+      studentAttendances: [{ id: 'attendance-1', studentId: student.id, session }],
+      teacherPresence: [{ id: 'presence-1', teacherId: 'guru-1', session: makeReportSession({ rosterState: SessionRosterState.LEGACY_ROSTER_MISSING }) }]
+    });
+
+    const siswa = await service.myAttendance({ sub: student.id, role: Role.SISWA }, 1);
+    const guru = await service.myAttendance({ sub: 'guru-1', role: Role.GURU_MAPEL }, 1);
+
+    expect(siswa.classAttendances?.[0]).toMatchObject({
+      rosterState: SessionRosterState.BACKFILLED_UNVERIFIED,
+      rosterVerified: false,
+      rosterUnverified: true
+    });
+    expect(guru.teacherPresence?.[0]).toMatchObject({
+      rosterState: SessionRosterState.LEGACY_ROSTER_MISSING,
+      rosterVerified: false,
+      rosterUnverified: true
+    });
+    expect(prisma.gateLog.findMany).toHaveBeenCalledTimes(2);
   });
 });

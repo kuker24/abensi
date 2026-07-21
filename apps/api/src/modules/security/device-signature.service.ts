@@ -1,6 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { AndroidReaderMode, DeviceReaderStatus, Prisma, ReaderType } from '@prisma/client';
+import { DeviceReaderStatus, Prisma, ReaderType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -168,7 +168,6 @@ export class DeviceSignatureService {
     path: string;
     rawBody: string;
     expectedType?: ReaderType;
-    expectedMode?: AndroidReaderMode;
     minSupportedVersionCode?: number;
     appVersionCode?: number;
     headers: ReaderSignatureHeaders;
@@ -213,9 +212,6 @@ export class DeviceSignatureService {
     if (args.expectedType && reader.type !== args.expectedType) {
       throw new ForbiddenException('Tipe reader tidak sesuai.');
     }
-    if (args.expectedMode && reader.allowedModes?.length && !reader.allowedModes.includes(args.expectedMode)) {
-      throw new ForbiddenException('Mode scan tidak diizinkan untuk reader ini.');
-    }
     if (args.minSupportedVersionCode && args.appVersionCode && args.appVersionCode < args.minSupportedVersionCode) {
       throw new ForbiddenException('Versi aplikasi reader sudah tidak didukung.');
     }
@@ -225,16 +221,17 @@ export class DeviceSignatureService {
       throw new ForbiddenException('Reader belum memiliki secret signed request.');
     }
 
-    const nonceKey = `schoolhub:reader-nonce:${reader.id}:${sha256Hex(nonce)}`;
-    const stored = await this.redis.get(nonceKey);
-    if (stored) throw new UnauthorizedException('Nonce reader sudah pernah dipakai.');
-
     const expectedSignature = hmacHex(secret, this.canonicalSignaturePayload(args.method, args.path, timestamp, nonce, bodyHash));
     if (!safeEqualHex(expectedSignature, signature)) {
       throw new UnauthorizedException('Signature reader tidak valid.');
     }
 
-    await this.redis.setPx(nonceKey, '1', DEFAULT_NONCE_TTL_MS);
-    return { reader, timestamp: parsedTimestamp, nonceHash: sha256Hex(nonce), bodyHash };
+    const nonceHash = sha256Hex(nonce);
+    const nonceKey = `schoolhub:reader-nonce:${reader.id}:${nonceHash}`;
+    const claimed = await this.redis.setNxPx(nonceKey, '1', DEFAULT_NONCE_TTL_MS);
+    if (claimed === false) throw new UnauthorizedException('Nonce reader sudah pernah dipakai.');
+    if (claimed === null) throw new ServiceUnavailableException('Penyimpanan nonce reader tidak tersedia.');
+
+    return { reader, timestamp: parsedTimestamp, nonceHash, bodyHash };
   }
 }

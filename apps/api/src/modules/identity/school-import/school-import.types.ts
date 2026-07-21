@@ -22,6 +22,7 @@ export interface NormalizedSchoolImportRow {
   fullName: string;
   role: Role;
   nis?: string | null;
+  nkd?: string | null;
   nip?: string | null;
   birthDate?: string | null;
   classCode?: string | null;

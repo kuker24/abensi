@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, QrCredentialStatus, Role } from '@prisma/client';
-import { businessDayBounds } from '../../common/business-time';
+import { businessDateKey } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { writeAudit } from '../../common/audit-log';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -41,6 +41,10 @@ function printableLevel(role: Role, className?: string | null) {
   if (role === Role.GURU_MAPEL || role === Role.GURU_PIKET) return 'Guru / Pegawai MAN 1 Rokan Hulu';
   if (role === Role.ADMIN_TU || role === Role.OPERATOR_IT) return 'Pegawai MAN 1 Rokan Hulu';
   return 'MAN 1 Rokan Hulu';
+}
+
+function currentDbBusinessDate() {
+  return new Date(`${businessDateKey()}T00:00:00.000Z`);
 }
 
 function activeEnrollmentValidityWhere(asOf: Date): Prisma.ClassEnrollmentWhereInput {
@@ -167,7 +171,7 @@ export class QrCredentialsService {
   }
 
   async bulkGenerate(payload: BulkGenerateQrCredentialDto, actor: Actor) {
-    const asOf = businessDayBounds().date;
+    const asOf = currentDbBusinessDate();
     const currentEnrollmentWhere: Prisma.ClassEnrollmentWhereInput = {
       active: true,
       administrativeStatus: 'ACTIVE',
@@ -204,7 +208,7 @@ export class QrCredentialsService {
   }
 
   async readiness(params: { classId?: string }) {
-    const asOf = businessDayBounds().date;
+    const asOf = currentDbBusinessDate();
     const currentEnrollmentWhere: Prisma.ClassEnrollmentWhereInput = {
       active: true,
       administrativeStatus: 'ACTIVE',
@@ -282,7 +286,7 @@ export class QrCredentialsService {
   }
 
   async exportCards(params: { classId?: string; userId?: string }) {
-    const asOf = businessDayBounds().date;
+    const asOf = currentDbBusinessDate();
     const activeEnrollmentWhere = activeEnrollmentValidityWhere(asOf);
     const userWhere: Prisma.UserWhereInput = { active: true };
     if (params.classId) userWhere.enrollments = { some: { classId: params.classId, ...activeEnrollmentWhere } };
@@ -298,6 +302,7 @@ export class QrCredentialsService {
             fullName: true,
             username: true,
             nis: true,
+            nkd: true,
             nip: true,
             birthDate: true,
             role: true,
@@ -326,10 +331,11 @@ export class QrCredentialsService {
         fullName: item.user.fullName,
         nama: item.user.fullName,
         username: item.user.username,
-        nis: item.user.nis,
-        nip: item.user.nip,
+        nis: item.user.nis ?? null,
+        nip: item.user.nip ?? null,
         birthDate: item.user.birthDate ? item.user.birthDate.toISOString().slice(0, 10) : null,
-        nisn: isStudent ? item.user.nis ?? item.user.username : null,
+        nisn: isStudent ? item.user.nis ?? null : null,
+        nkd: isStudent ? item.user.nkd ?? null : null,
         role: item.user.role,
         roleLabel: isStudent ? 'SISWA' : displayRole,
         displayRole,
@@ -371,7 +377,7 @@ export class QrCredentialsService {
     const codeHash = qrCodeHash(qrCode);
     const credential = await this.prisma.qrCredential.findUnique({
       where: { codeHash },
-      include: { user: { select: { id: true, username: true, fullName: true, nis: true, nip: true, birthDate: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } }
+      include: { user: { select: { id: true, username: true, fullName: true, nis: true, nkd: true, nip: true, birthDate: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } }
     }) as any;
     if (!credential) throw new NotFoundException('QR credential tidak ditemukan.');
     if (credential.status !== QrCredentialStatus.ACTIVE) throw new ForbiddenException('QR credential tidak aktif.');

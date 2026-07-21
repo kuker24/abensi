@@ -109,16 +109,19 @@ export class QrReaderScanDto {
 
   // Legacy Android builds sent `mode`; current builds send `scanMode` so
   // physical reader identity and runtime scan mode stay explicitly separated.
+  // Service authenticates signed requests before validating mode values so every
+  // official reader rejection can be attributed and audited consistently.
   @IsOptional()
-  @IsEnum(AndroidReaderMode)
-  mode?: AndroidReaderMode;
+  @IsString()
+  mode?: string;
 
   @IsOptional()
-  @IsEnum(AndroidReaderMode)
-  scanMode?: AndroidReaderMode;
+  @IsString()
+  scanMode?: string;
 
+  // Service validates and audits malformed timestamps before any QR lookup.
   @IsOptional()
-  @IsDateString()
+  @IsString()
   clientScannedAt?: string;
 
   @IsOptional()
