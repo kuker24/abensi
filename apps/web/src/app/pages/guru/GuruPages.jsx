@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
 import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, today } from '../../api';
 import { riskConfirm } from '../../confirm';
 import { BrowserGeoError, captureBrowserGeolocation } from '../../geolocation';
@@ -115,22 +115,25 @@ function sessionClassSubjectTitle(session) {
 }
 
 function TeacherTodaySessionCard({ item }) {
-  const progressTotal = Math.max(0, Number(item.studentTotal || 0));
+  const rosterCountsKnown = Number.isFinite(item.studentTotal) && Number.isFinite(item.pendingCount);
+  const progressTotal = rosterCountsKnown ? Math.max(0, Number(item.studentTotal)) : null;
   const filled = Math.max(0, Number(item.attendanceFilledCount || 0));
-  const pending = Math.max(0, Number(item.pendingCount || 0));
+  const pending = rosterCountsKnown ? Math.max(0, Number(item.pendingCount)) : null;
+  const rosterState = item.rosterState || item.rosterProvenance;
   const warnings = [];
   if (item.status === 'OPEN') warnings.push('Sesi ini belum ditutup.');
   if (item.status === 'SCHEDULED') warnings.push('Presensi belum dimulai.');
   if (item.status === 'MISSED') warnings.push('Sesi ini belum ditutup.');
-  if (pending > 0) warnings.push('Masih ada siswa yang belum diabsen.');
+  if (pending !== null && pending > 0) warnings.push('Masih ada siswa yang belum diabsen.');
+  if (rosterState === 'BACKFILLED_UNVERIFIED') warnings.push('Roster hasil pemulihan/perbaikan; data historis tidak sepenuhnya terverifikasi.');
 
   return <article className={`teacher-session-card ${teacherSessionTone(item.status)}`}>
     <div className="teacher-session-main">
       <div className="teacher-session-copy">
         <div className="teacher-session-kicker"><Clock size={14} /> {item.startTime || '—'}–{item.endTime || '—'} <StatusPill status={item.status} /></div>
         <h3>{item.className || 'Kelas'} · {item.subjectName || 'Mata pelajaran'}</h3>
-        <div className="teacher-session-meta"><span>{teacherSessionStatusLabel(item.status)}</span><span>{filled}/{progressTotal} siswa</span><span>{pending} belum diabsen</span></div>
-        <div className="teacher-session-progress"><RosterProgress current={filled} total={progressTotal} /></div>
+        <div className="teacher-session-meta"><span>{teacherSessionStatusLabel(item.status)}</span>{rosterCountsKnown ? <><span>{filled}/{progressTotal} siswa</span><span>{pending} belum diabsen</span></> : <span>Jumlah roster belum terverifikasi</span>}</div>
+        {rosterCountsKnown && <div className="teacher-session-progress"><RosterProgress current={filled} total={progressTotal} /></div>}
         {warnings.length > 0 && <div className="teacher-session-warnings">{warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
       </div>
       <div className="teacher-session-actions" aria-label={`Aksi ${item.className || 'kelas'}`}>
@@ -154,6 +157,8 @@ export function TeacherDashboard() {
     <RoleTaskPanel title="Aksi cepat guru" tasks={[{ title: 'Isi presensi', desc: 'Buka sesi hari ini dan selesaikan presensi siswa.', icon: <CheckSquare size={18} />, tone: 'ok', onClick: () => go('/guru/presensi') }, { title: 'Perbaiki presensi', desc: 'Koreksi data jika ada kesalahan dengan alasan.', icon: <Save size={18} />, onClick: () => go('/guru/koreksi') }, { title: 'Laporan kelas', desc: 'Lihat rekap kelas yang Anda ajar.', icon: <BarChart3 size={18} />, onClick: () => go('/guru/rekap') }]} />
     {todayState.loading ? <LoadingState /> : todayState.error ? <ErrorState error={todayState.error} onRetry={todayState.refresh} /> : <>
       {hasUnclosed && <div className="inline-note warn"><Clock size={14} /> Ada {summary.unclosed} sesi yang belum ditutup. Selesaikan dari tombol Lanjutkan Presensi atau Tutup Sesi.</div>}
+      {Number(summary.unknownRosterSessions || 0) > 0 && <div className="inline-note warn"><AlertTriangle size={14} /> Jumlah roster belum terverifikasi pada {summary.unknownRosterSessions} sesi.</div>}
+      {Number(summary.backfilledRosterSessions || 0) > 0 && <div className="inline-note warn"><AlertTriangle size={14} /> Roster hasil pemulihan/perbaikan; data historis tidak sepenuhnya terverifikasi.</div>}
       <div className="grid g-4 teacher-today-kpis"><StatCardPremium icon={<Clock size={18} />} label="Sesi hari ini" value={summary.sessionsToday || 0} sub="Total jadwal mengajar" /><StatCardPremium icon={<Activity size={18} />} label="Sedang berjalan" value={summary.open || 0} sub="Sesi OPEN" tone={summary.open ? 'ok' : ''} /><StatCardPremium icon={<Users size={18} />} label="Belum ditutup" value={summary.unclosed || 0} sub={`${summary.studentsPendingAttendance || 0} siswa belum diabsen`} tone={summary.unclosed ? 'warn' : 'ok'} /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Selesai" value={summary.closed || 0} sub="Sesi sudah ditutup" tone="info" /></div>
       <Card title="Daftar jadwal/sesi hari ini" sub="Pilih aksi sesuai status sesi.">{rows.length ? <div className="teacher-session-list">{rows.map((item) => <TeacherTodaySessionCard key={item.sessionId} item={item} />)}</div> : <EmptyState title="Tidak ada jadwal mengajar hari ini." sub="Jadwal akan tampil otomatis sesuai data yang diatur admin." action={<Btn onClick={() => go('/guru/kehadiran-saya')}>Lihat Kehadiran Saya</Btn>} />}</Card>
       <Card title="Status sesi" sub="Ringkasan sesi hari ini."><StackedBar segments={[{ label: 'Belum mulai', value: summary.scheduled || 0, tone: 'warn' }, { label: 'Sedang berjalan', value: summary.open || 0, tone: 'ok' }, { label: 'Sudah ditutup', value: summary.closed || 0, tone: 'info' }, { label: 'Terlewat', value: summary.missed || 0, tone: 'bad' }]} total={summary.sessionsToday || 0} /></Card>

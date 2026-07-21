@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, Building2, Calendar, Check, CheckSquare, Clock, Copy, CreditCard, DoorOpen, Download, Eye, FileText, Flag, HelpCircle, KeyRound, ListChecks, Plus, QrCode, Radar, RefreshCw, Save, ShieldCheck, Smartphone, Users, Wifi, Zap, Activity, TrendingUp, AlertOctagon, ScanLine } from 'lucide-react';
 import { apiDownload, apiFetch, formatDateTime, go, itemsOf, metaOf, qs, readStoredUser, today } from '../../api';
 import { BRAND } from '../../branding';
@@ -18,8 +18,13 @@ function downloadJsonFile(data, filename) {
   URL.revokeObjectURL(url);
 }
 
+export function sanitizeSpreadsheetCell(value) {
+  const text = String(value ?? '');
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+}
+
 function downloadCsvFile(rows, filename) {
-  const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const escape = (value) => `"${sanitizeSpreadsheetCell(value).replace(/"/g, '""')}"`;
   const headers = Object.keys(rows[0] || {});
   const csv = [headers.join(','), ...rows.map((row) => headers.map((key) => escape(row[key])).join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -34,6 +39,47 @@ function downloadCsvFile(rows, filename) {
 }
 
 const ID_CARD_GENERATOR_INTERNAL_BASE = '/admin/master-data/id-card-generator/';
+const SCHEDULE_PAGE_LIMIT = 200;
+const SCHEDULE_MAX_PAGES = 50;
+const SCHEDULE_PAGE_LIMIT_ERROR = 'Data jadwal terlalu banyak untuk dimuat sekaligus. Gunakan filter atau hubungi Operator IT.';
+
+function pagedPath(path, page, limit) {
+  const [pathname, search = ''] = path.split('?');
+  const params = new URLSearchParams(search);
+  params.set('page', String(page));
+  params.set('limit', String(limit));
+  return `${pathname}?${params.toString()}`;
+}
+
+function uniqueRowsById(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    if (row?.id === undefined || row?.id === null) return true;
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+}
+
+async function fetchAllPages(path, limit = SCHEDULE_PAGE_LIMIT) {
+  const first = await apiFetch(pagedPath(path, 1, limit));
+  const firstMeta = metaOf(first);
+  const requestedPages = Number(firstMeta?.totalPages);
+  const reportedPages = Number.isFinite(requestedPages) && requestedPages > 0 ? Math.ceil(requestedPages) : 1;
+  const reportedTotal = Number(firstMeta?.total);
+  const pagesForTotal = Number.isFinite(reportedTotal) && reportedTotal >= 0 ? Math.max(1, Math.ceil(reportedTotal / limit)) : 1;
+  const totalPages = Math.max(reportedPages, pagesForTotal);
+
+  if (totalPages > SCHEDULE_MAX_PAGES) throw new Error(SCHEDULE_PAGE_LIMIT_ERROR);
+
+  const pages = totalPages === 1
+    ? [first]
+    : [first, ...(await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => apiFetch(pagedPath(path, index + 2, limit)))) )];
+  const items = uniqueRowsById(pages.flatMap((page) => itemsOf(page)));
+  const total = Number.isFinite(reportedTotal) && reportedTotal >= items.length ? reportedTotal : items.length;
+
+  return { items, meta: { page: 1, limit, total, totalPages } };
+}
 
 function idCardGeneratorUrl(hashPath = '/', params = {}) {
   const search = new URLSearchParams(params);
@@ -243,13 +289,70 @@ export function PrincipalDashboard() {
   </div>;
 }
 
-export function SessionsPage({ admin = true }) {
+function rosterProvenanceLabel(value) {
+  return ({
+    VERIFIED: 'Roster terverifikasi',
+    BACKFILLED_UNVERIFIED: 'Roster pemulihan · perlu verifikasi',
+    LEGACY_ROSTER_MISSING: 'Roster legacy tidak tersedia',
+    PENDING: 'Roster belum dibentuk'
+  })[value] || 'Roster belum dibentuk';
+}
+
+function sessionRosterProvenance(session) {
+  return session?.rosterState || session?.rosterProvenance || session?.roster?.state || 'PENDING';
+}
+
+function SessionRecoveryPanel({ available, reason, onReasonChange, pending, onRecover }) {
+  if (!available) return null;
+  return <div className="form-grid" style={{ marginTop: 16 }}><Field label="Alasan pemulihan"><TextInput type="textarea" value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Jelaskan alasan pemulihan sesi." /></Field><Btn variant="primary" loading={pending} disabled={reason.trim().length < 10} onClick={onRecover}><RefreshCw size={14} /> Pulihkan sesi</Btn></div>;
+}
+
+export function SessionsPage({ admin = true, notify }) {
   const [date, setDate] = useState(today());
   const [page, setPage] = useState(1);
-  const state = useRemote(() => apiFetch(`${admin ? '/schedules/sessions' : '/attendance/class-sessions'}${qs({ date, page, limit: 100 })}`), [date, page, admin]);
   const [selected, setSelected] = useState(null);
+  const [recoveryReason, setRecoveryReason] = useState('');
+  const [recoveryPending, setRecoveryPending] = useState(false);
+  const mountedRef = useRef(true);
+  const recoveryPendingRef = useRef(false);
+  const currentRole = readStoredUser()?.role;
+  const canRecoverMissed = ['ADMIN_TU', 'DEVELOPER', 'GURU_PIKET'].includes(currentRole);
+  const state = useRemote(() => apiFetch(`${admin ? '/schedules/sessions' : '/attendance/class-sessions'}${qs({ date, page, limit: 100 })}`), [date, page, admin]);
   const detail = useRemote(() => selected ? apiFetch(`/attendance/class-sessions/${selected.id}/summary`) : Promise.resolve(null), [selected?.id]);
-  return <div className="content"><PageHead eyebrow="CEK SESI KELAS" title={admin ? 'Cek Sesi Kelas' : 'Sesi saya'} sub="Lihat kelas yang terjadwal, sedang berjalan, selesai, atau terlewat." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal sesi" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>{admin && <Btn variant="primary" onClick={() => go('/admin/schedule')}><Plus size={14} /> Tambah jadwal</Btn>}</>} /><Card><AsyncTable state={state} columns={[{ header: 'Waktu', render: (r) => `${formatDateTime(r.startsAt)} — ${new Date(r.endsAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}` }, { header: 'Kelas', render: (r) => r.schoolClass?.code || r.classCode || r.classId }, { header: 'Mapel', render: (r) => r.subject?.name || r.subjectName || r.subjectId }, { header: 'Guru', render: (r) => r.teacher?.fullName || r.teacherName || r.teacherId }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} /> <Pagination meta={metaOf(state.data)} onPage={setPage} /></Card>{itemsOf(state.data).length > 0 && <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>{itemsOf(state.data).slice(0, 8).map((s) => <Btn size="sm" key={s.id} onClick={() => setSelected(s)}><Eye size={13} /> Detail {s.schoolClass?.code}</Btn>)}</div>}{selected && <Card title={`Detail ${selected.schoolClass?.code || ''}`} sub="Ringkasan kelengkapan presensi sesi" actions={<Btn size="sm" variant="ghost" onClick={() => setSelected(null)}>Tutup</Btn>}>{detail.loading ? <LoadingState /> : detail.error ? <ErrorState error={detail.error} /> : <div className="grid g-4"><StatCardPremium icon={<Users size={18} />} label="Terdaftar" value={detail.data?.enrolledCount ?? '—'} sub="Siswa" /><StatCardPremium icon={<Check size={18} />} label="Tercatat" value={detail.data?.recordedCount ?? '—'} sub="Presensi masuk" /><StatCardPremium icon={<Clock size={18} />} label="Status" value={detail.data?.status ?? selected.status} sub="Tahap sesi" /><StatCardPremium icon={<Activity size={18} />} label="Hadir" value={detail.data?.counters?.HADIR ?? 0} sub="Jumlah" tone="ok" /></div>}</Card>}</div>;
+  const selectedStatus = detail.loading || detail.error ? selected?.status : detail.data?.status || selected?.status;
+  const selectedRosterProvenance = sessionRosterProvenance(detail.loading || detail.error ? selected : detail.data || selected);
+  const recoveryAvailable = selected?.status === 'MISSED' && canRecoverMissed;
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => { setRecoveryReason(''); }, [selected?.id]);
+
+  async function recoverSelectedSession() {
+    const reason = recoveryReason.trim();
+    if (!selected?.id || !recoveryAvailable || recoveryPendingRef.current) return;
+    if (reason.length < 10) {
+      notify?.('Alasan pemulihan minimal 10 karakter.', 'warn');
+      return;
+    }
+    recoveryPendingRef.current = true;
+    setRecoveryPending(true);
+    try {
+      const confirmed = await riskConfirm('Sesi MISSED akan dipulihkan menjadi OPEN. Roster akan dibentuk dari enrollment efektif dan ditandai perlu verifikasi.', 'Pulihkan sesi');
+      if (!confirmed || !mountedRef.current) return;
+      const result = await apiFetch(`/attendance/class-sessions/${selected.id}/recover`, { method: 'POST', body: JSON.stringify({ reason }) });
+      if (!mountedRef.current) return;
+      setSelected(null);
+      setRecoveryReason('');
+      state.refresh();
+      notify?.(result?.message || 'Sesi berhasil dipulihkan.', 'ok');
+    } catch (error) {
+      if (mountedRef.current) notify?.(error.message || 'Gagal memulihkan sesi.', 'bad');
+    } finally {
+      recoveryPendingRef.current = false;
+      if (mountedRef.current) setRecoveryPending(false);
+    }
+  }
+
+  return <div className="content"><PageHead eyebrow="CEK SESI KELAS" title={admin ? 'Cek Sesi Kelas' : 'Sesi saya'} sub="Lihat kelas yang terjadwal, sedang berjalan, selesai, atau terlewat." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal sesi" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>{admin && <Btn variant="primary" onClick={() => go('/admin/schedule')}><Plus size={14} /> Tambah jadwal</Btn>}</>} /><Card><AsyncTable state={state} columns={[{ header: 'Waktu', render: (r) => `${formatDateTime(r.startsAt)} — ${new Date(r.endsAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}` }, { header: 'Kelas', render: (r) => r.schoolClass?.code || r.classCode || r.classId }, { header: 'Mapel', render: (r) => r.subject?.name || r.subjectName || r.subjectId }, { header: 'Guru', render: (r) => r.teacher?.fullName || r.teacherName || r.teacherId }, { header: 'Roster', render: (r) => rosterProvenanceLabel(sessionRosterProvenance(r)) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} /> <Pagination meta={metaOf(state.data)} onPage={setPage} /></Card>{itemsOf(state.data).length > 0 && <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>{itemsOf(state.data).slice(0, 8).map((s) => <Btn size="sm" key={s.id} onClick={() => setSelected(s)}><Eye size={13} /> Detail {s.schoolClass?.code}</Btn>)}</div>}{selected && <Card title={`Detail ${selected.schoolClass?.code || ''}`} sub="Ringkasan kelengkapan presensi sesi" actions={<Btn size="sm" variant="ghost" onClick={() => setSelected(null)}>Tutup</Btn>}>{detail.loading ? <LoadingState /> : detail.error ? <><div className="inline-note warn"><AlertTriangle size={14} /> {rosterProvenanceLabel(selectedRosterProvenance)}</div><ErrorState error={detail.error} /><SessionRecoveryPanel available={recoveryAvailable} reason={recoveryReason} onReasonChange={setRecoveryReason} pending={recoveryPending} onRecover={recoverSelectedSession} /></> : <><div className="grid g-4"><StatCardPremium icon={<Users size={18} />} label="Terdaftar" value={detail.data?.enrolledCount ?? '—'} sub={selectedRosterProvenance === 'LEGACY_ROSTER_MISSING' ? 'Roster tidak tersedia' : 'Siswa'} /><StatCardPremium icon={<Check size={18} />} label="Tercatat" value={detail.data?.recordedCount ?? '—'} sub="Presensi masuk" /><StatCardPremium icon={<Clock size={18} />} label="Status" value={selectedStatus} sub="Tahap sesi" /><StatCardPremium icon={<Activity size={18} />} label="Hadir" value={detail.data?.counters?.HADIR ?? 0} sub="Jumlah" tone="ok" /></div><div className="inline-note warn"><AlertTriangle size={14} /> {rosterProvenanceLabel(selectedRosterProvenance)}</div><SessionRecoveryPanel available={recoveryAvailable} reason={recoveryReason} onReasonChange={setRecoveryReason} pending={recoveryPending} onRecover={recoverSelectedSession} /></>}</Card>}</div>;
 }
 
 export function HistoryPage() {
@@ -409,7 +512,7 @@ export function MasterDataPage({ notify }) {
       {tab === 'student-import' && <StudentImportPanel notify={notify} />}
       {tab === 'users' && <UsersPanel notify={notify} />}
       {tab === 'account-slips' && <AccountLoginSlipPanel notify={notify} />}
-      {tab === 'years' && <SimpleCreatePanel title="Tahun Ajaran" path="/academic/years" fields={[{ key: 'code', label: 'Kode', placeholder: 'contoh: 2026/2027', hint: 'Kode ringkas untuk laporan.' }, { key: 'name', label: 'Nama', placeholder: 'contoh: Tahun Ajaran 2026/2027' }]} notify={notify} empty={{ title: 'Belum ada tahun ajaran.', sub: 'Buat tahun ajaran sebelum membuat semester.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}
+      {tab === 'years' && <SimpleCreatePanel title="Tahun Ajaran" path="/academic/years" fields={[{ key: 'code', label: 'Kode', placeholder: 'contoh: 2026/2027', hint: 'Kode ringkas untuk laporan.' }, { key: 'name', label: 'Nama', placeholder: 'contoh: Tahun Ajaran 2026/2027' }, { key: 'startsAt', label: 'Mulai Tahun Ajaran', type: 'date' }, { key: 'endsAt', label: 'Selesai Tahun Ajaran', type: 'date' }]} notify={notify} empty={{ title: 'Belum ada tahun ajaran.', sub: 'Buat tahun ajaran sebelum membuat semester.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Periode', render: (r) => `${dateInputValue(r.startsAt) || '—'} s.d. ${dateInputValue(r.endsAt) || '—'}` }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}
       {tab === 'semesters' && <SemesterPanel notify={notify} />}
       {tab === 'rooms' && <SimpleCreatePanel title="Ruang" path="/academic/rooms" fields={[{ key: 'code', label: 'Kode Ruang', placeholder: 'contoh: R-A1 atau LAB-1' }, { key: 'name', label: 'Nama Ruang', placeholder: 'contoh: Ruang Kelas X A' }]} notify={notify} empty={{ title: 'Belum ada ruang kelas.', sub: 'Tambahkan ruang agar jadwal bisa memakai lokasi yang jelas.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Aktif', render: (r) => <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }]} />}
       {tab === 'classes' && <SimpleCreatePanel title="Kelas" path="/academic/classes" fields={[{ key: 'code', label: 'Kode Kelas', placeholder: 'contoh: X-A' }, { key: 'name', label: 'Nama Kelas', placeholder: 'contoh: Kelas X A' }, { key: 'yearLabel', label: 'Label Tahun Ajaran', placeholder: 'contoh: 2026/2027', hint: 'API kelas saat ini memakai label tahun ajaran, bukan relasi ID.' }]} notify={notify} empty={{ title: 'Belum ada kelas.', sub: 'Isi formulir di sebelah kiri untuk menambahkan kelas.' }} columns={[{ header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Tahun', key: 'yearLabel' }]} />}
@@ -464,7 +567,9 @@ function UsersPanel({ notify }) {
   const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
   const statusQuery = statusFilter === 'ALL' ? 'all' : statusFilter === 'ARCHIVED' ? 'archived' : statusFilter === 'INACTIVE' ? 'inactive' : 'active';
-  const state = useRemote(() => apiFetch(`/identity/users${qs({ page: 1, limit: 200, status: statusQuery })}`), [statusQuery]);
+  const [page, setPage] = useState(1);
+  const state = useRemote(() => apiFetch(`/identity/users${qs({ page, limit: 200, status: statusQuery })}`), [statusQuery, page]);
+  useEffect(() => { setPage(1); }, [statusQuery]);
   const deletePinStatus = useRemote(() => apiFetch('/identity/accounts/delete-pin/status'), []);
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [search, setSearch] = useState('');
@@ -504,7 +609,7 @@ function UsersPanel({ notify }) {
   const selectableRows = filteredRows.filter((user) => !user.archivedAt && ['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH'].includes(user.role));
   const selectedSet = new Set(selectedIds);
   const selectedRows = filteredRows.filter((user) => selectedSet.has(user.id));
-  const filteredState = { ...state, data: { ...(state.data || {}), items: filteredRows, meta: { ...(state.data?.meta || {}), total: filteredRows.length } } };
+  const filteredState = { ...state, data: { ...(state.data || {}), items: filteredRows } };
   async function submit(e) {
     e.preventDefault();
     const password = String(form.password || '').trim();
@@ -679,6 +784,8 @@ function UsersPanel({ notify }) {
               { header: 'Status', render: (r) => r.archivedAt ? <Pill tone="warn">Diarsipkan</Pill> : <StatusPill status={r.active ? 'ACTIVE' : 'INACTIVE'} /> }
             ]} onRow={(r) => <div className="row master-data-action-row"><Btn size="sm" disabled={r.role === 'DEVELOPER' && !isDeveloper} onClick={() => setForm({ id: r.id, username: r.username, fullName: r.fullName, password: '', role: r.role, cardStatus: r.cardStatus })}>Edit</Btn><Btn size="sm" disabled={!r.active || Boolean(r.archivedAt)} onClick={() => downloadUserCard(r)}><CreditCard size={12} /> Kartu</Btn>{r.active ? <Btn size="sm" variant="danger" disabled={Boolean(r.archivedAt) || r.role === 'DEVELOPER' && !isDeveloper} onClick={() => deactivate(r)}>Nonaktifkan</Btn> : !r.archivedAt && <Btn size="sm" onClick={() => activate(r)}>Aktifkan Lagi</Btn>}<Btn size="sm" variant="danger" disabled={Boolean(r.archivedAt) || !['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH'].includes(r.role)} onClick={() => openDeletePreview([r.id])}>Hapus Akun</Btn>{isDeveloper && <Btn size="sm" variant="danger" onClick={() => permanentDelete(r)}>Hapus Permanen</Btn>}</div>} />
           </div>
+          <Pagination meta={metaOf(state.data)} onPage={setPage} />
+          {(state.data?.meta?.totalPages || 1) > 1 && (search || roleFilter !== 'ALL') && <p className="muted">Pencarian dan filter peran hanya berlaku pada halaman ini. Pindah halaman jika akun yang dicari belum terlihat.</p>}
         </Card>
         {deleteResult && <Card title="Ringkasan hapus akun" sub="PIN tidak ditampilkan atau disimpan di layar ini."><div className="row"><Pill tone="ok">Hard delete: {deleteResult.hardDeletedCount}</Pill><Pill tone="warn">Diarsipkan: {deleteResult.archivedCount}</Pill><Pill>Ditolak: {deleteResult.rejectedCount}</Pill></div></Card>}
       </div>
@@ -788,9 +895,10 @@ function SimpleCreatePanel({ title, path, fields, columns, notify, empty }) {
   const state = useRemote(() => apiFetch(`${path}?page=1&limit=200`), [path]);
   async function submit(e) {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
     setFormError('');
-    const payload = Object.fromEntries(fieldSpecs.map(({ key }) => [key, form[key]]));
+    const payload = Object.fromEntries(fieldSpecs.filter((field) => !(form.id && field.omitOnEdit)).map(({ key }) => [key, form[key]]));
     try {
       if (form.id) await apiFetch(`${path}/${form.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       else await apiFetch(path, { method: 'POST', body: JSON.stringify(payload) });
@@ -806,16 +914,16 @@ function SimpleCreatePanel({ title, path, fields, columns, notify, empty }) {
     }
   }
   function editRow(row) {
-    setForm({ ...initial, ...Object.fromEntries(fieldSpecs.map(({ key }) => [key, row[key] || ''])), id: row.id });
+    setForm({ ...initial, ...Object.fromEntries(fieldSpecs.map(({ key, type }) => [key, type === 'date' ? dateInputValue(row[key]) : row[key] || ''])), id: row.id });
     setFormError('');
   }
-  return <div className="master-data-layout"><div className="master-data-form-panel"><Card title={`${form.id ? 'Edit' : 'Tambah'} ${title}`}><form onSubmit={submit} className="form-grid">{fieldSpecs.map((field) => <Field key={field.key} label={field.label} hint={field.hint || (field.required ? 'wajib' : undefined)}>{field.type === 'select' ? <SelectInput value={form[field.key]} onChange={(e) => set(field.key, e.target.value)} required={field.required !== false} disabled={submitting || field.disabled}><option value="">{field.placeholder || `Pilih ${String(field.label).toLowerCase()}`}</option>{(field.options || []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput> : <TextInput type={field.type} value={form[field.key]} placeholder={field.placeholder || `Isi ${String(field.label).toLowerCase()}`} onChange={(e) => set(field.key, e.target.value)} required={field.required !== false} disabled={submitting || field.disabled} />}</Field>)}{formError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {formError}</div>}<Btn variant="primary" loading={submitting}><Save size={14} /> Simpan</Btn>{form.id && <Btn type="button" variant="ghost" disabled={submitting} onClick={() => { reset(initial); setFormError(''); }}>Batal edit</Btn>}</form></Card></div><div className="master-data-list-panel"><Card title={`Daftar ${title}`}><div className="master-data-table-region"><AsyncTable state={state} empty={empty} columns={columns} onRow={(r) => <Btn size="sm" onClick={() => editRow(r)}>Edit</Btn>} /></div></Card></div></div>;
+  return <div className="master-data-layout"><div className="master-data-form-panel"><Card title={`${form.id ? 'Edit' : 'Tambah'} ${title}`}><form onSubmit={submit} className="form-grid">{fieldSpecs.map((field) => <Field key={field.key} label={field.label} hint={field.hint || (field.required ? 'wajib' : undefined)}>{field.type === 'select' ? <SelectInput value={form[field.key]} onChange={(e) => set(field.key, e.target.value)} required={field.required !== false} disabled={submitting || field.disabled || (Boolean(form.id) && field.disableOnEdit)}><option value="">{field.placeholder || `Pilih ${String(field.label).toLowerCase()}`}</option>{(field.options || []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput> : <TextInput type={field.type} value={form[field.key]} placeholder={field.placeholder || `Isi ${String(field.label).toLowerCase()}`} onChange={(e) => set(field.key, e.target.value)} required={field.required !== false} disabled={submitting || field.disabled || (Boolean(form.id) && field.disableOnEdit)} />}</Field>)}{formError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {formError}</div>}<Btn type="submit" variant="primary" loading={submitting} disabled={submitting}><Save size={14} /> Simpan</Btn>{form.id && <Btn type="button" variant="ghost" disabled={submitting} onClick={() => { reset(initial); setFormError(''); }}>Batal edit</Btn>}</form></Card></div><div className="master-data-list-panel"><Card title={`Daftar ${title}`}><div className="master-data-table-region"><AsyncTable state={state} empty={empty} columns={columns} onRow={(r) => <Btn type="button" size="sm" onClick={() => editRow(r)}>Edit</Btn>} /></div></Card></div></div>;
 }
 
 function SemesterPanel({ notify }) {
   const years = useRemote(() => apiFetch('/academic/years?page=1&limit=100'), []);
-  const yearOptions = itemsOf(years.data).map((year) => ({ value: year.id, label: `${year.name || year.code}${year.code ? ` · ${year.code}` : ''}${year.active ? ' · aktif' : ''}` }));
-  return <SimpleCreatePanel title="Semester" path="/academic/semesters" fields={[{ key: 'academicYearId', label: 'Tahun Ajaran', type: 'select', placeholder: years.loading ? 'Memuat tahun ajaran…' : 'Pilih tahun ajaran', options: yearOptions, disabled: years.loading, hint: 'pilih dari daftar' }, { key: 'code', label: 'Kode Semester', placeholder: 'contoh: GANJIL' }, { key: 'name', label: 'Nama Semester', placeholder: 'contoh: Semester Ganjil' }]} notify={notify} empty={{ title: 'Belum ada semester untuk tahun ajaran yang dipilih.', sub: 'Pilih tahun ajaran lalu tambahkan semester.' }} columns={[{ header: 'Tahun', render: (r) => r.academicYear?.name || r.academicYear?.code || '—' }, { header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }]} />;
+  const yearOptions = itemsOf(years.data).map((year) => ({ value: year.id, label: `${year.name || year.code}${year.code ? ` · ${year.code}` : ''} · ${year.active ? 'aktif' : 'nonaktif'}` }));
+  return <SimpleCreatePanel title="Semester" path="/academic/semesters" fields={[{ key: 'academicYearId', label: 'Tahun Ajaran', type: 'select', placeholder: years.loading ? 'Memuat tahun ajaran…' : 'Pilih tahun ajaran', options: yearOptions, disabled: years.loading, disableOnEdit: true, omitOnEdit: true, hint: 'pilih dari daftar' }, { key: 'code', label: 'Kode Semester', placeholder: 'contoh: GANJIL' }, { key: 'name', label: 'Nama Semester', placeholder: 'contoh: Semester Ganjil' }, { key: 'startsAt', label: 'Mulai Semester', type: 'date', hint: 'wajib; harus berada dalam tahun ajaran' }, { key: 'endsAt', label: 'Selesai Semester', type: 'date', hint: 'wajib; server memvalidasi batas periode' }]} notify={notify} empty={{ title: 'Belum ada semester untuk tahun ajaran yang dipilih.', sub: 'Pilih tahun ajaran lalu tambahkan semester.' }} columns={[{ header: 'Tahun', render: (r) => r.academicYear?.name || r.academicYear?.code || '—' }, { header: 'Kode', key: 'code' }, { header: 'Nama', key: 'name' }, { header: 'Periode', render: (r) => `${dateInputValue(r.startsAt) || '—'} s.d. ${dateInputValue(r.endsAt) || '—'}` }]} />;
 }
 
 function StudentsPanel() {
@@ -850,8 +958,10 @@ function StudentImportPanel({ notify }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ source: 'student-class', academicYear: '2026/2027', updateExisting: true, resetPasswordForExisting: false, reason: 'Import data sekolah awal SIAB2.', confirmText: '' });
+  const isStudentImport = form.source === 'student-class';
   const summary = preview?.summary || result?.summary || {};
   const rows = preview?.rows || result?.rows || [];
+  const resultCounts = result?.result || result || {};
   function set(key, value) { setForm((current) => ({ ...current, [key]: value })); }
   function formData() {
     const data = new FormData();
@@ -865,20 +975,21 @@ function StudentImportPanel({ notify }) {
     return data;
   }
   function downloadTemplate() {
-    downloadCsvFile([
-      { nis: '1001', nama_lengkap: 'NAMA SISWA CONTOH', tanggal_lahir: '2010-02-01', __sheetName: 'Kelas 10 - KELAS X A' },
-      { NIP: '198001012006041001', 'NAMA LENGKAP': 'NAMA GURU CONTOH', 'TIPE USER': 'guru', 'TANGGAL LAHIR': '1980-01-01' }
-    ], `template-import-data-sekolah-${today()}.csv`);
+    const template = isStudentImport
+      ? [{ username: 'siswa.0001', fullName: 'NAMA SISWA CONTOH', nis: '1234567890', nkd: '0001', classCode: 'XII A', className: 'XII A', yearLabel: '2026/2027', role: 'SISWA' }]
+      : [{ NIP: '198001012006041001', 'NAMA LENGKAP': 'NAMA GURU CONTOH', 'TIPE USER': 'guru', 'TANGGAL LAHIR': '1980-01-01' }];
+    downloadCsvFile(template, `template-import-data-sekolah-${today()}.csv`);
   }
   function downloadSlips(slips) {
-    const safeRows = (slips || []).map((row) => ({ Nama: row.fullName, Username: row.username, PasswordAwal: row.initialPassword, Role: row.role }));
+    const safeRows = (slips || []).map((row) => ({ Nama: row.fullName, Username: row.username, PasswordAwal: row.initialPassword || row.temporaryPassword, Role: row.role || 'SISWA', Kelas: row.classCode || '' }));
     if (safeRows.length) downloadCsvFile(safeRows, `lembar-akun-import-${today()}.csv`);
   }
   async function previewImport() {
     setLoading(true);
     setResult(null);
     try {
-      const data = await apiFetch('/identity/school-import/file/preview', { method: 'POST', body: formData() });
+      const endpoint = isStudentImport ? '/academic/students/import/file/preview' : '/identity/school-import/file/preview';
+      const data = await apiFetch(endpoint, { method: 'POST', body: formData() });
       setPreview(data);
       notify(`${data.summary?.valid || 0} baris valid, ${data.summary?.invalid || 0} perlu diperbaiki.`, data.summary?.invalid ? 'warn' : 'ok');
     } finally { setLoading(false); }
@@ -890,17 +1001,22 @@ function StudentImportPanel({ notify }) {
     if (!await riskConfirm('Commit import data sekolah? Password awal akan tampil sekali dan QR tetap dibuat manual setelah review.', 'Commit Import')) return;
     setLoading(true);
     try {
-      const data = await apiFetch('/identity/school-import/file/commit', { method: 'POST', body: formData() });
-      setResult(data);
+      const endpoint = isStudentImport ? '/academic/students/import/file/commit' : '/identity/school-import/file/commit';
+      const data = await apiFetch(endpoint, { method: 'POST', body: formData() });
+      const credentials = data.credentialRows || data.slips || [];
       if (data.committed) {
-        downloadSlips(data.slips);
-        notify(`Import selesai: ${data.createdCount || 0} akun baru, ${data.updatedCount || 0} update, QR belum dibuat.`, 'ok');
+        downloadSlips(credentials);
+        const { credentialRows: _credentialRows, slips: _slips, ...sanitizedData } = data;
+        setResult(sanitizedData);
+        const counts = data.result || data;
+        notify(`Import selesai: ${counts.createdUsers ?? counts.createdCount ?? 0} akun baru, ${counts.existingUsers ?? counts.updatedCount ?? 0} existing, QR belum dibuat.`, 'ok');
       } else {
+        setResult(data);
         notify('Import belum disimpan karena masih ada kesalahan.', 'warn');
       }
     } finally { setLoading(false); }
   }
-  return <Card title="Import Data Sekolah SIAB2" sub="Upload CSV/XLSX siswa, guru, dan tenaga kependidikan. Password sumber diabaikan; SIAB2 membuat password awal 14 karakter dan QR dibuat manual setelah review."><div className="import-upload-grid"><Field label="Jenis sumber"><SelectInput value={form.source} onChange={(e) => { set('source', e.target.value); setPreview(null); setResult(null); }}><option value="student-class">File kelas siswa XLSX/CSV</option><option value="staff">File guru & tenaga kependidikan</option><option value="legacy-siab1">CSV SIAB1 lama untuk referensi</option></SelectInput></Field><Field label="Tahun ajaran"><TextInput value={form.academicYear} onChange={(e) => set('academicYear', e.target.value)} placeholder="2026/2027" /></Field><Field label="File CSV/XLSX"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }} /></Field><div className="import-action-row"><Btn type="button" variant="ghost" onClick={downloadTemplate}><Download size={14} /> Template</Btn><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Preview</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Commit Import</Btn></div></div><div className="form-grid" style={{ marginTop: 12 }}><label className="checkline"><input type="checkbox" checked={Boolean(form.updateExisting)} onChange={(e) => set('updateExisting', e.target.checked)} /> Update data akun existing tanpa reset password</label><label className="checkline"><input type="checkbox" checked={Boolean(form.resetPasswordForExisting)} onChange={(e) => set('resetPasswordForExisting', e.target.checked)} /> Reset password existing juga</label><Field label="Alasan commit" hint="minimal 10 karakter"><TextInput value={form.reason} onChange={(e) => set('reason', e.target.value)} /></Field><Field label="Ketik IMPORT DATA SEKOLAH"><TextInput value={form.confirmText} onChange={(e) => set('confirmText', e.target.value)} /></Field></div><SimpleHelpBox title="Aturan aman import" items={["Kolom Password dari SIAB1/file lama diabaikan total.", "Password awal dibuat server-side format mudah diingat 14 karakter dan hanya tampil sekali.", "Akun existing tidak direset kecuali checkbox reset diaktifkan.", "QR tidak dibuat otomatis; generate QR manual setelah data direview."]} />{(preview || result) && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {summary.valid ?? 0}</Pill><Pill tone={summary.invalid ? 'bad' : 'ok'}>Invalid {summary.invalid ?? 0}</Pill><Pill>Total {summary.total ?? 0}</Pill><Pill>Buat {summary.actions?.create ?? result?.createdCount ?? 0}</Pill><Pill>Update {summary.actions?.update ?? result?.updatedCount ?? 0}</Pill><Pill>Skip {summary.actions?.skip ?? result?.skippedCount ?? 0}</Pill><Pill>Password baru {summary.generatedPasswordCount ?? result?.slips?.length ?? 0}</Pill><Pill>QR manual</Pill></div><DataTable rows={rows.slice(0, 200)} columns={[{ header: 'Baris', key: 'index' }, { header: 'Nama', key: 'fullName' }, { header: 'Username', key: 'username' }, { header: 'Role', render: (r) => <StatusPill status={r.role} /> }, { header: 'Kelas/NIP', render: (r) => r.classCode || r.nip || '—' }, { header: 'Aksi', render: (r) => <Pill tone={r.action === 'invalid' ? 'bad' : r.action === 'create' ? 'ok' : r.action === 'update' ? 'warn' : ''}>{r.action || '—'}</Pill> }, { header: 'Catatan', render: (r) => [...(r.errors || []), ...(r.warnings || [])].slice(0, 2).join(' · ') || 'Aman' }]} />{rows.length > 200 && <p className="muted">Menampilkan 200 baris pertama dari {rows.length} baris.</p>}</div>}{result?.committed && <div style={{ marginTop: 16 }}><SimpleHelpBox title="Import selesai" items={[`${result.createdCount || 0} akun baru dibuat.`, `${result.updatedCount || 0} akun existing diupdate.`, `${result.enrollmentsCreated || 0} enrollment dibuat, ${result.enrollmentsUpdated || 0} dipindah kelas.`, 'Lanjut generate QR manual setelah review data.']} /><Btn type="button" onClick={() => downloadSlips(result.slips)}><Download size={14} /> Download ulang lembar akun</Btn></div>}</Card>;
+  return <Card title="Import Data Sekolah SIAB2" sub="Upload CSV/XLSX siswa, guru, dan tenaga kependidikan. Password sumber diabaikan; SIAB2 membuat password awal 14 karakter dan QR dibuat manual setelah review."><div className="import-upload-grid"><Field label="Jenis sumber"><SelectInput value={form.source} onChange={(e) => { set('source', e.target.value); setPreview(null); setResult(null); }}><option value="student-class">File kelas siswa XLSX/CSV</option><option value="staff">File guru & tenaga kependidikan</option><option value="legacy-siab1">CSV SIAB1 lama untuk referensi</option></SelectInput></Field><Field label="Tahun ajaran"><TextInput value={form.academicYear} onChange={(e) => set('academicYear', e.target.value)} placeholder="2026/2027" /></Field><Field label="File CSV/XLSX"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }} /></Field><div className="import-action-row"><Btn type="button" variant="ghost" onClick={downloadTemplate}><Download size={14} /> Template</Btn><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Preview</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Commit Import</Btn></div></div><div className="form-grid" style={{ marginTop: 12 }}>{!isStudentImport && <><label className="checkline"><input type="checkbox" checked={Boolean(form.updateExisting)} onChange={(e) => set('updateExisting', e.target.checked)} /> Update data akun existing tanpa reset password</label><label className="checkline"><input type="checkbox" checked={Boolean(form.resetPasswordForExisting)} onChange={(e) => set('resetPasswordForExisting', e.target.checked)} /> Reset password existing juga</label></>}<Field label="Alasan commit" hint="minimal 10 karakter"><TextInput value={form.reason} onChange={(e) => set('reason', e.target.value)} /></Field><Field label="Ketik IMPORT DATA SEKOLAH"><TextInput value={form.confirmText} onChange={(e) => set('confirmText', e.target.value)} /></Field></div><SimpleHelpBox title="Aturan aman import" items={["Kolom Password dari SIAB1/file lama diabaikan total.", "Password awal dibuat server-side format mudah diingat 14 karakter dan hanya tampil sekali.", isStudentImport ? "Akun siswa existing tidak direset melalui jalur import ini." : "Akun existing direset hanya jika opsi reset dipilih.", "QR tidak dibuat otomatis; generate QR manual setelah data direview."]} />{(preview || result) && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {summary.valid ?? 0}</Pill><Pill tone={summary.invalid ? 'bad' : 'ok'}>Invalid {summary.invalid ?? 0}</Pill><Pill>Total {summary.total ?? 0}</Pill><Pill>Buat {summary.actions?.create ?? summary.newUsers ?? resultCounts.createdUsers ?? resultCounts.createdCount ?? 0}</Pill><Pill>Update {summary.actions?.update ?? summary.existingUsers ?? resultCounts.existingUsers ?? resultCounts.updatedCount ?? 0}</Pill><Pill>Skip {summary.actions?.skip ?? resultCounts.skippedCount ?? 0}</Pill><Pill>Password baru {summary.generatedPasswordCount ?? summary.generatedPasswords ?? result?.credentialRows?.length ?? result?.slips?.length ?? 0}</Pill><Pill>QR manual</Pill></div><DataTable rows={rows.slice(0, 200)} columns={[{ header: 'Baris', key: 'index' }, { header: 'Nama', key: 'fullName' }, { header: 'Username', key: 'username' }, { header: 'NKD', render: (r) => r.nkd || '—' }, { header: 'Role', render: (r) => <StatusPill status={r.role} /> }, { header: 'Kelas/NIP', render: (r) => r.classCode || r.nip || '—' }, { header: 'Aksi', render: (r) => <Pill tone={r.action === 'invalid' ? 'bad' : r.action === 'create' ? 'ok' : r.action === 'update' ? 'warn' : ''}>{r.action || '—'}</Pill> }, { header: 'Catatan', render: (r) => [...(r.errors || []), ...(r.warnings || [])].slice(0, 2).join(' · ') || 'Aman' }]} />{rows.length > 200 && <p className="muted">Menampilkan 200 baris pertama dari {rows.length} baris.</p>}</div>}{result?.committed && <div style={{ marginTop: 16 }}><SimpleHelpBox title="Import selesai" items={[`${resultCounts.createdUsers ?? resultCounts.createdCount ?? 0} akun baru dibuat.`, `${resultCounts.existingUsers ?? resultCounts.updatedCount ?? 0} akun existing diproses.`, `${resultCounts.enrollments ?? resultCounts.enrollmentsCreated ?? 0} enrollment dibuat, ${resultCounts.enrollmentsUpdated ?? 0} dipindah kelas.`, 'Lembar akun sudah diunduh sekali. Password awal tidak disimpan di halaman ini.', 'Lanjut generate QR manual setelah review data.']} /></div>}</Card>;
 }
 
 function ImportPanel({ notify }) {
@@ -927,20 +1043,310 @@ function ImportPanel({ notify }) {
   return <Card title="Impor CSV/XLSX" sub="Unggah file, periksa hasilnya, lalu simpan. Kolom file pengguna: username (nama akun), fullName (nama lengkap), role (peran), password (kata sandi). Kolom akademik: type, code, name, yearLabel, username, classCode."><div className="import-upload-grid import-upload-grid-advanced"><Field label="Target"><SelectInput value={target} onChange={(e) => { setTarget(e.target.value); setFile(null); setPreview(null); }}><option value="users">Pengguna</option><option value="academic">Kelas/Mapel/Pendaftaran</option></SelectInput></Field><Field label="File CSV/XLSX"><TextInput type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); }} /></Field><div className="import-action-row"><Btn type="button" disabled={!file || loading} loading={loading} onClick={previewImport}><Eye size={14} /> Periksa</Btn><Btn type="button" variant="primary" disabled={!file || !preview || preview.summary?.invalid > 0 || loading} loading={loading} onClick={commitImport}><Save size={14} /> Simpan impor</Btn></div></div>{preview && <div style={{ marginTop: 16 }}><div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}><Pill tone="ok">Valid {preview.summary?.valid ?? 0}</Pill><Pill tone="bad">Kesalahan {preview.summary?.invalid ?? 0}</Pill><Pill>Total {preview.summary?.total ?? 0}</Pill></div><DataTable rows={preview.rows || preview.items || []} columns={[{ header: 'Baris', key: 'index' }, { header: 'Data', render: (r) => r.username || r.code || r.classCode || '—' }, { header: 'Kesalahan', render: (r) => r.errors?.join(', ') || 'Aman' }]} /></div>}</Card>;
 }
 
+const DATE_INPUT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isValidDateInputLiteral(value) {
+  const match = String(value).match(DATE_INPUT_PATTERN);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime())
+    && parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() + 1 === month
+    && parsed.getUTCDate() === day;
+}
+
+function dateInputValue(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'string' && DATE_INPUT_PATTERN.test(value)) return isValidDateInputLiteral(value) ? value : '';
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(parsed);
+  const valueFor = (type) => parts.find((part) => part.type === type)?.value || '';
+  const year = valueFor('year');
+  const month = valueFor('month');
+  const day = valueFor('day');
+  return year && month && day ? `${year}-${month}-${day}` : '';
+}
+
+function localDateFromDateTime(value) {
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/);
+  return match && isValidDateInputLiteral(match[1]) ? match[1] : '';
+}
+
+function localTimeFromDateTime(value, fallback) {
+  const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)$/);
+  return match ? match[1] : fallback;
+}
+
+function sessionAssignmentDateError(assignment, startsAt, endsAt, pageDate) {
+  if (!assignment) return '';
+  const scheduleDate = dateInputValue(pageDate);
+  const startsOn = localDateFromDateTime(startsAt);
+  const endsOn = localDateFromDateTime(endsAt);
+  const effectiveFrom = dateInputValue(assignment.effectiveFrom);
+  const effectiveTo = dateInputValue(assignment.effectiveTo);
+  if (!scheduleDate || !startsOn || !endsOn) return 'Tanggal dan waktu sesi harus valid.';
+  if ((effectiveFrom && scheduleDate < effectiveFrom) || (effectiveTo && scheduleDate > effectiveTo)) return 'Tanggal jadwal di luar masa berlaku penugasan.';
+  if ((effectiveFrom && (startsOn < effectiveFrom || endsOn < effectiveFrom)) || (effectiveTo && (startsOn > effectiveTo || endsOn > effectiveTo))) return 'Waktu sesi di luar masa berlaku penugasan.';
+  if (startsOn !== endsOn) return 'Mulai dan selesai sesi harus pada tanggal yang sama.';
+  if (startsOn !== scheduleDate || endsOn !== scheduleDate) return 'Waktu sesi harus sesuai tanggal jadwal.';
+  return '';
+}
+
+function teachingAssignmentLabel(assignment) {
+  if (!assignment) return 'Pilih penugasan mengajar';
+  const teacher = assignment.teacher?.fullName || assignment.teacherId;
+  const subject = assignment.subject?.name || assignment.subjectId;
+  const schoolClass = assignment.schoolClass?.code || assignment.classId;
+  const academicYear = assignment.academicYear?.code || assignment.academicYear?.name || assignment.academicYearId;
+  const semester = assignment.semester?.name || assignment.semester?.code || assignment.semesterId;
+  return [teacher, subject, schoolClass, academicYear, semester].filter(Boolean).join(' · ');
+}
+
+function TeachingAssignmentSummary({ assignment, empty = 'Pilih penugasan aktif untuk mengisi data kelas, mapel, guru, dan periode secara otomatis.' }) {
+  if (!assignment) return <SimpleHelpBox title="Sumber jadwal" items={[empty]} />;
+  const period = `${dateInputValue(assignment.effectiveFrom) || '—'}${assignment.effectiveTo ? ` s.d. ${dateInputValue(assignment.effectiveTo)}` : ' s.d. akhir penugasan'}`;
+  return <SimpleHelpBox title="Data dari penugasan" items={[]}><div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Pill tone="info">{assignment.teacher?.fullName || assignment.teacherId}</Pill><Pill>{assignment.subject?.name || assignment.subjectId}</Pill><Pill>{assignment.schoolClass?.code || assignment.classId}</Pill><Pill>{assignment.academicYear?.code || assignment.academicYear?.name || assignment.academicYearId} · {assignment.semester?.name || assignment.semester?.code || assignment.semesterId}</Pill><Pill tone="ok">{period}</Pill></div></SimpleHelpBox>;
+}
+
+function weeklyGenerationBlocker(schedule) {
+  if (!schedule.academicYearId || !schedule.semesterId || !schedule.teachingAssignmentId || !schedule.effectiveTo) return 'Perlu dilengkapi';
+  if (schedule.active === false) return 'Jadwal nonaktif';
+  if (schedule.teachingAssignment?.active === false) return 'Penugasan nonaktif';
+  return '';
+}
+
+function WeeklyGenerateAction({ schedule, onGenerate, loading, pending }) {
+  const blocker = weeklyGenerationBlocker(schedule);
+  if (!blocker) return <Btn type="button" size="sm" loading={loading} disabled={pending} onClick={() => onGenerate(schedule)}>Buat sesi tanggal ini</Btn>;
+  const legacy = blocker === 'Perlu dilengkapi';
+  return <div><Btn type="button" size="sm" disabled aria-label={blocker}>{blocker}</Btn><small className="muted" style={{ display: 'block', marginTop: 4 }}>{legacy ? 'Periode atau penugasan belum lengkap.' : 'Lengkapi atau aktifkan data sebelum membuat sesi.'}</small></div>;
+}
+
 export function SchedulePage({ notify }) {
-  const classes = useRemote(() => apiFetch('/academic/classes?page=1&limit=200'), []);
-  const subjects = useRemote(() => apiFetch('/academic/subjects?page=1&limit=200'), []);
-  const users = useRemote(() => apiFetch('/identity/users?page=1&limit=300'), []);
-  const rooms = useRemote(() => apiFetch('/academic/rooms?page=1&limit=200'), []);
+  const classes = useRemote(() => fetchAllPages('/academic/classes'), []);
+  const subjects = useRemote(() => fetchAllPages('/academic/subjects'), []);
+  const users = useRemote(() => fetchAllPages('/identity/users'), []);
+  const rooms = useRemote(() => fetchAllPages('/academic/rooms'), []);
+  const academicYears = useRemote(() => fetchAllPages('/academic/years'), []);
+  const semesters = useRemote(() => fetchAllPages('/academic/semesters'), []);
+  const assignments = useRemote(() => fetchAllPages('/schedules/assignments'), []);
   const [date, setDate] = useState(today());
   const sessions = useRemote(() => apiFetch(`/schedules/sessions${qs({ date, page: 1, limit: 200 })}`), [date]);
-  const weekly = useRemote(() => apiFetch('/schedules/weekly?page=1&limit=200'), []);
-  const [form, set, reset] = useForm({ classId: '', subjectId: '', teacherId: '', startsAt: `${today()}T07:15`, endsAt: `${today()}T08:45` });
-  const [weeklyForm, setWeekly, resetWeekly] = useForm({ classId: '', subjectId: '', teacherId: '', roomId: '', dayOfWeek: '1', startTime: '07:15', endTime: '08:45', effectiveFrom: today(), effectiveTo: '' });
-  async function submit(e) { e.preventDefault(); await apiFetch('/schedules/sessions', { method: 'POST', body: JSON.stringify({ ...form }) }); reset({ ...form, startsAt: `${date}T07:15`, endsAt: `${date}T08:45` }); sessions.refresh(); notify('Sesi berhasil dibuat.'); }
-  async function submitWeekly(e) { e.preventDefault(); await apiFetch('/schedules/weekly', { method: 'POST', body: JSON.stringify({ ...weeklyForm, dayOfWeek: Number(weeklyForm.dayOfWeek), effectiveTo: weeklyForm.effectiveTo || undefined, roomId: weeklyForm.roomId || undefined }) }); resetWeekly({ classId: '', subjectId: '', teacherId: '', roomId: '', dayOfWeek: '1', startTime: '07:15', endTime: '08:45', effectiveFrom: today(), effectiveTo: '' }); weekly.refresh(); notify('Jadwal mingguan tersimpan.'); }
-  async function generate(row) { if (!await riskConfirm(`Buat sesi dari jadwal mingguan ini untuk tanggal ${date}?`, 'Buat Sesi')) return; const result = await apiFetch(`/schedules/weekly/${row.id}/generate`, { method: 'POST', body: JSON.stringify({ from: date, to: date }) }); sessions.refresh(); notify(`${result.generatedCount || 0} sesi dibuat, ${result.skippedCount || 0} dilewati.`); }
-  return <div className="content"><PageHead eyebrow="JADWAL KELAS" title="Jadwal Kelas" sub="Buat jadwal mingguan agar sesi kelas bisa dibuat dan dipantau." actions={<label className="input compact"><Calendar size={14} /><input aria-label="Tanggal jadwal" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>} /><StepGuide title="Cara paling mudah" steps={['Isi jadwal mingguan untuk kelas, mapel, guru, hari, dan jam.', 'Klik Simpan jadwal.', 'Jika perlu sesi hari ini, klik Buat sesi tanggal ini dari daftar jadwal.', 'Guru akan melihat sesi di menu Isi Presensi Kelas.']} /><div className="grid g-3"><Card title="Buat Sesi Hari Ini"><form className="form-grid" onSubmit={submit}><Field label="Kelas"><SelectInput value={form.classId} onChange={(e) => set('classId', e.target.value)} required><option value="">Pilih</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code}</option>)}</SelectInput></Field><Field label="Mapel"><SelectInput value={form.subjectId} onChange={(e) => set('subjectId', e.target.value)} required><option value="">Pilih</option>{itemsOf(subjects.data).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</SelectInput></Field><Field label="Guru"><SelectInput value={form.teacherId} onChange={(e) => set('teacherId', e.target.value)} required><option value="">Pilih</option>{itemsOf(users.data).filter((u) => u.role === 'GURU_MAPEL').map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}</SelectInput></Field><Field label="Mulai"><TextInput type="datetime-local" value={form.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field><Field label="Selesai"><TextInput type="datetime-local" value={form.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field><Btn variant="primary"><Plus size={14} /> Buat sesi</Btn></form></Card><Card title="Sesi Terjadwal"><AsyncTable state={sessions} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.startsAt) }, { header: 'Kelas', render: (r) => r.schoolClass?.code }, { header: 'Mapel', render: (r) => r.subject?.name }, { header: 'Guru', render: (r) => r.teacher?.fullName }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} /></Card></div><div className="grid g-3" style={{ marginTop: 18 }}><Card title="Jadwal Mingguan"><form className="form-grid" onSubmit={submitWeekly}><Field label="Kelas"><SelectInput value={weeklyForm.classId} onChange={(e) => setWeekly('classId', e.target.value)} required><option value="">Pilih</option>{itemsOf(classes.data).map((c) => <option key={c.id} value={c.id}>{c.code}</option>)}</SelectInput></Field><Field label="Mapel"><SelectInput value={weeklyForm.subjectId} onChange={(e) => setWeekly('subjectId', e.target.value)} required><option value="">Pilih</option>{itemsOf(subjects.data).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</SelectInput></Field><Field label="Guru"><SelectInput value={weeklyForm.teacherId} onChange={(e) => setWeekly('teacherId', e.target.value)} required><option value="">Pilih</option>{itemsOf(users.data).filter((u) => u.role === 'GURU_MAPEL').map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}</SelectInput></Field><Field label="Ruang"><SelectInput value={weeklyForm.roomId} onChange={(e) => setWeekly('roomId', e.target.value)}><option value="">Tanpa ruang</option>{itemsOf(rooms.data).map((r) => <option key={r.id} value={r.id}>{r.code}</option>)}</SelectInput></Field><Field label="Hari"><SelectInput value={weeklyForm.dayOfWeek} onChange={(e) => setWeekly('dayOfWeek', e.target.value)}>{['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].map((h, i) => <option key={i} value={i}>{h}</option>)}</SelectInput></Field><Field label="Jam Mulai"><TextInput type="time" value={weeklyForm.startTime} onChange={(e) => setWeekly('startTime', e.target.value)} /></Field><Field label="Jam Selesai"><TextInput type="time" value={weeklyForm.endTime} onChange={(e) => setWeekly('endTime', e.target.value)} /></Field><Field label="Mulai berlaku"><TextInput type="date" value={weeklyForm.effectiveFrom} onChange={(e) => setWeekly('effectiveFrom', e.target.value)} /></Field><Btn variant="primary">Simpan jadwal</Btn></form></Card><Card title="Daftar Jadwal Mingguan"><AsyncTable state={weekly} columns={[{ header: 'Hari', render: (r) => ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][r.dayOfWeek] }, { header: 'Jam', render: (r) => `${r.startTime}-${r.endTime}` }, { header: 'Kelas', render: (r) => r.schoolClass?.code }, { header: 'Mapel', render: (r) => r.subject?.name }, { header: 'Guru', render: (r) => r.teacher?.fullName }]} onRow={(r) => <Btn size="sm" onClick={() => generate(r)}>Buat sesi tanggal ini</Btn>} /></Card></div></div>;
+  const weekly = useRemote(() => fetchAllPages('/schedules/weekly'), []);
+  const assignmentInitial = { id: '', teacherId: '', subjectId: '', classId: '', academicYearId: '', semesterId: '', effectiveFrom: today(), effectiveTo: '', active: true };
+  const [assignmentForm, setAssignment, resetAssignment, replaceAssignment] = useForm(assignmentInitial);
+  const [sessionForm, setSession, resetSession, replaceSession] = useForm({ teachingAssignmentId: '', startsAt: `${today()}T07:15`, endsAt: `${today()}T08:45` });
+  const [weeklyForm, setWeekly, resetWeekly, replaceWeekly] = useForm({ teachingAssignmentId: '', roomId: '', dayOfWeek: '1', startTime: '07:15', endTime: '08:45', effectiveFrom: today(), effectiveTo: '' });
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [sessionSaving, setSessionSaving] = useState(false);
+  const [weeklySaving, setWeeklySaving] = useState(false);
+  const [generatingId, setGeneratingId] = useState('');
+  const generatingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const [assignmentError, setAssignmentError] = useState('');
+  const [sessionError, setSessionError] = useState('');
+  const [weeklyError, setWeeklyError] = useState('');
+  const activeAssignments = itemsOf(assignments.data).filter((assignment) => assignment.active === true && assignment.teacher?.active === true && assignment.teacher?.role === 'GURU_MAPEL');
+  const selectedSessionAssignment = activeAssignments.find((assignment) => assignment.id === sessionForm.teachingAssignmentId);
+  const selectedWeeklyAssignment = activeAssignments.find((assignment) => assignment.id === weeklyForm.teachingAssignmentId);
+  const selectedAssignmentSemesters = itemsOf(semesters.data).filter((semester) => semester.academicYearId === assignmentForm.academicYearId);
+  const assignmentLoaders = [classes, subjects, users, academicYears, semesters];
+  const assignmentLoaderError = assignmentLoaders.find((state) => state.error)?.error || '';
+  const assignmentLoaderPending = assignmentLoaders.some((state) => state.loading);
+  const assignmentFormUnavailable = Boolean(assignmentLoaderError || assignmentLoaderPending);
+  const sessionLoaderError = assignments.error || '';
+  const sessionFormUnavailable = Boolean(sessionLoaderError || assignments.loading);
+  const weeklyLoaders = [assignments, rooms];
+  const weeklyLoaderError = weeklyLoaders.find((state) => state.error)?.error || '';
+  const weeklyLoaderPending = weeklyLoaders.some((state) => state.loading);
+  const weeklyFormUnavailable = Boolean(weeklyLoaderError || weeklyLoaderPending);
+  const assignmentReferenced = Boolean(assignmentForm.id && ((Number(itemsOf(assignments.data).find((assignment) => assignment.id === assignmentForm.id)?._count?.weeklySchedules) || 0) > 0 || (Number(itemsOf(assignments.data).find((assignment) => assignment.id === assignmentForm.id)?._count?.sessions) || 0) > 0 || (Number(itemsOf(assignments.data).find((assignment) => assignment.id === assignmentForm.id)?._count?.substitutionSourceSessions) || 0) > 0));
+  const sessionDateError = sessionAssignmentDateError(selectedSessionAssignment, sessionForm.startsAt, sessionForm.endsAt, date);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generatingRef.current = false;
+    };
+  }, []);
+
+  function changeAssignmentAcademicYear(academicYearId) {
+    replaceAssignment((current) => ({ ...current, academicYearId, semesterId: '' }));
+  }
+
+  function changeScheduleDate(nextDate) {
+    setDate(nextDate);
+    setSessionError('');
+    if (!selectedSessionAssignment) return;
+    const eventDate = dateInputValue(nextDate);
+    if (!eventDate) return;
+    replaceSession((current) => ({
+      ...current,
+      startsAt: `${eventDate}T${localTimeFromDateTime(current.startsAt, '07:15')}`,
+      endsAt: `${eventDate}T${localTimeFromDateTime(current.endsAt, '08:45')}`
+    }));
+  }
+
+  function selectSessionAssignment(teachingAssignmentId) {
+    const eventDate = dateInputValue(date);
+    replaceSession((current) => ({
+      ...current,
+      teachingAssignmentId,
+      startsAt: `${eventDate}T${localTimeFromDateTime(current.startsAt, '07:15')}`,
+      endsAt: `${eventDate}T${localTimeFromDateTime(current.endsAt, '08:45')}`
+    }));
+    setSessionError('');
+  }
+
+  function selectWeeklyAssignment(teachingAssignmentId) {
+    const assignment = activeAssignments.find((item) => item.id === teachingAssignmentId);
+    replaceWeekly((current) => ({
+      ...current,
+      teachingAssignmentId,
+      effectiveFrom: dateInputValue(assignment?.effectiveFrom),
+      effectiveTo: dateInputValue(assignment?.effectiveTo)
+    }));
+    setWeeklyError('');
+  }
+
+  function editAssignment(assignment) {
+    resetAssignment({
+      id: assignment.id,
+      teacherId: assignment.teacherId,
+      subjectId: assignment.subjectId,
+      classId: assignment.classId,
+      academicYearId: assignment.academicYearId,
+      semesterId: assignment.semesterId,
+      effectiveFrom: dateInputValue(assignment.effectiveFrom),
+      effectiveTo: dateInputValue(assignment.effectiveTo),
+      active: Boolean(assignment.active)
+    });
+    setAssignmentError('');
+  }
+
+  async function submitAssignment(event) {
+    event.preventDefault();
+    if (assignmentSaving) return;
+    const payload = {
+      teacherId: assignmentForm.teacherId,
+      subjectId: assignmentForm.subjectId,
+      classId: assignmentForm.classId,
+      academicYearId: assignmentForm.academicYearId,
+      semesterId: assignmentForm.semesterId,
+      effectiveFrom: assignmentForm.effectiveFrom,
+      ...(assignmentForm.effectiveTo ? { effectiveTo: assignmentForm.effectiveTo } : {}),
+      active: Boolean(assignmentForm.active)
+    };
+    setAssignmentSaving(true);
+    setAssignmentError('');
+    try {
+      await apiFetch(assignmentForm.id ? `/schedules/assignments/${assignmentForm.id}` : '/schedules/assignments', { method: assignmentForm.id ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+      resetAssignment({ ...assignmentInitial, effectiveFrom: today() });
+      assignments.refresh();
+      notify?.(assignmentForm.id ? 'Penugasan mengajar diperbarui.' : 'Penugasan mengajar tersimpan.', 'ok');
+    } catch (error) {
+      const message = error.message || 'Penugasan mengajar belum bisa disimpan.';
+      setAssignmentError(message);
+      notify?.(message, 'bad');
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }
+
+  async function submitSession(event) {
+    event.preventDefault();
+    const validationError = sessionAssignmentDateError(selectedSessionAssignment, sessionForm.startsAt, sessionForm.endsAt, date);
+    if (sessionSaving || !selectedSessionAssignment || validationError) return;
+    const payload = {
+      teachingAssignmentId: selectedSessionAssignment.id,
+      classId: selectedSessionAssignment.classId,
+      subjectId: selectedSessionAssignment.subjectId,
+      teacherId: selectedSessionAssignment.teacherId,
+      academicYearId: selectedSessionAssignment.academicYearId,
+      semesterId: selectedSessionAssignment.semesterId,
+      startsAt: sessionForm.startsAt,
+      endsAt: sessionForm.endsAt
+    };
+    setSessionSaving(true);
+    setSessionError('');
+    try {
+      await apiFetch('/schedules/sessions', { method: 'POST', body: JSON.stringify(payload) });
+      resetSession({ teachingAssignmentId: '', startsAt: `${date}T07:15`, endsAt: `${date}T08:45` });
+      sessions.refresh();
+      notify?.('Sesi berhasil dibuat.', 'ok');
+    } catch (error) {
+      const message = error.message || 'Sesi belum bisa dibuat.';
+      setSessionError(message);
+      notify?.(message, 'bad');
+    } finally {
+      setSessionSaving(false);
+    }
+  }
+
+  async function submitWeekly(event) {
+    event.preventDefault();
+    if (weeklySaving || !selectedWeeklyAssignment) return;
+    const payload = {
+      teachingAssignmentId: selectedWeeklyAssignment.id,
+      classId: selectedWeeklyAssignment.classId,
+      subjectId: selectedWeeklyAssignment.subjectId,
+      teacherId: selectedWeeklyAssignment.teacherId,
+      academicYearId: selectedWeeklyAssignment.academicYearId,
+      semesterId: selectedWeeklyAssignment.semesterId,
+      ...(weeklyForm.roomId ? { roomId: weeklyForm.roomId } : {}),
+      dayOfWeek: Number(weeklyForm.dayOfWeek),
+      startTime: weeklyForm.startTime,
+      endTime: weeklyForm.endTime,
+      effectiveFrom: weeklyForm.effectiveFrom,
+      ...(weeklyForm.effectiveTo ? { effectiveTo: weeklyForm.effectiveTo } : {})
+    };
+    setWeeklySaving(true);
+    setWeeklyError('');
+    try {
+      await apiFetch('/schedules/weekly', { method: 'POST', body: JSON.stringify(payload) });
+      resetWeekly({ teachingAssignmentId: '', roomId: '', dayOfWeek: '1', startTime: '07:15', endTime: '08:45', effectiveFrom: today(), effectiveTo: '' });
+      weekly.refresh();
+      notify?.('Jadwal mingguan tersimpan.', 'ok');
+    } catch (error) {
+      const message = error.message || 'Jadwal mingguan belum bisa disimpan.';
+      setWeeklyError(message);
+      notify?.(message, 'bad');
+    } finally {
+      setWeeklySaving(false);
+    }
+  }
+
+  async function generate(schedule) {
+    if (generatingRef.current || weeklyGenerationBlocker(schedule)) return;
+    generatingRef.current = true;
+    setGeneratingId(schedule.id);
+    try {
+      const confirmed = await riskConfirm(`Buat sesi dari jadwal mingguan ini untuk tanggal ${date}?`, 'Buat Sesi');
+      if (!mountedRef.current || !confirmed) return;
+      const result = await apiFetch(`/schedules/weekly/${schedule.id}/generate`, { method: 'POST', body: JSON.stringify({ from: date, to: date }) });
+      if (!mountedRef.current) return;
+      sessions.refresh();
+      notify?.(`${result.generatedCount || 0} sesi dibuat, ${result.skippedCount || 0} dilewati.`, 'ok');
+    } catch (error) {
+      if (mountedRef.current) notify?.(error.message || 'Sesi dari jadwal belum bisa dibuat.', 'bad');
+    } finally {
+      generatingRef.current = false;
+      if (mountedRef.current) setGeneratingId('');
+    }
+  }
+
+  return <div className="content"><PageHead eyebrow="JADWAL KELAS" title="Jadwal Kelas" sub="Tetapkan penugasan guru terlebih dahulu, lalu buat sesi atau jadwal dari penugasan tersebut." actions={<label className="input compact"><Calendar size={14} /><input aria-label="Tanggal jadwal" type="date" value={date} onChange={(event) => changeScheduleDate(event.target.value)} /></label>} /><StepGuide title="Urutan aman" steps={['Buat penugasan guru, mapel, kelas, dan periode resmi.', 'Pilih penugasan aktif saat membuat sesi atau jadwal mingguan.', 'Gunakan Buat sesi hanya untuk jadwal mingguan yang sudah lengkap.', 'Guru melihat sesi yang sesuai dengan penugasan resminya.']} />
+    <section aria-label="Penugasan mengajar" className="grid g-3" style={{ marginTop: 18 }}><Card title={assignmentForm.id ? 'Edit Penugasan Mengajar' : 'Penugasan Mengajar'} sub="Tetapkan satu guru aktif untuk mapel, kelas, dan periode akademik. Jadwal hanya dapat dibuat dari data ini."><form className="form-grid" onSubmit={submitAssignment}>{assignmentLoaderError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> Data pilihan penugasan belum lengkap: {assignmentLoaderError}</div>}{assignmentLoaderPending && <p className="muted" role="status">Memuat seluruh data pilihan penugasan…</p>}<Field label="Guru Pengajar"><SelectInput value={assignmentForm.teacherId} onChange={(event) => setAssignment('teacherId', event.target.value)} required disabled={assignmentSaving || assignmentReferenced || assignmentFormUnavailable}><option value="">Pilih guru aktif</option>{itemsOf(users.data).filter((user) => user.role === 'GURU_MAPEL' && user.active === true).map((user) => <option key={user.id} value={user.id}>{user.fullName}</option>)}</SelectInput></Field><Field label="Bidang Studi"><SelectInput value={assignmentForm.subjectId} onChange={(event) => setAssignment('subjectId', event.target.value)} required disabled={assignmentSaving || assignmentReferenced || assignmentFormUnavailable}><option value="">Pilih bidang studi</option>{itemsOf(subjects.data).map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</SelectInput></Field><Field label="Kelas"><SelectInput value={assignmentForm.classId} onChange={(event) => setAssignment('classId', event.target.value)} required disabled={assignmentSaving || assignmentReferenced || assignmentFormUnavailable}><option value="">Pilih kelas</option>{itemsOf(classes.data).map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code} · {schoolClass.name}</option>)}</SelectInput></Field><Field label="Tahun Ajaran"><SelectInput value={assignmentForm.academicYearId} onChange={(event) => changeAssignmentAcademicYear(event.target.value)} required disabled={assignmentSaving || assignmentReferenced || assignmentFormUnavailable}><option value="">Pilih tahun ajaran</option>{itemsOf(academicYears.data).map((academicYear) => <option key={academicYear.id} value={academicYear.id}>{academicYear.code || academicYear.name}{academicYear.active === false ? ' · nonaktif' : ''}</option>)}</SelectInput></Field><Field label="Semester"><SelectInput value={assignmentForm.semesterId} onChange={(event) => setAssignment('semesterId', event.target.value)} required disabled={assignmentSaving || assignmentReferenced || assignmentFormUnavailable || !assignmentForm.academicYearId}><option value="">{assignmentForm.academicYearId ? 'Pilih semester' : 'Pilih tahun ajaran dulu'}</option>{selectedAssignmentSemesters.map((semester) => <option key={semester.id} value={semester.id}>{semester.name || semester.code}{semester.active === false ? ' · nonaktif' : ''}</option>)}</SelectInput></Field><Field label="Mulai Penugasan"><TextInput type="date" value={assignmentForm.effectiveFrom} onChange={(event) => setAssignment('effectiveFrom', event.target.value)} required disabled={assignmentSaving || assignmentReferenced || assignmentFormUnavailable} /></Field><Field label="Selesai Penugasan" hint="opsional"><TextInput type="date" value={assignmentForm.effectiveTo} onChange={(event) => setAssignment('effectiveTo', event.target.value)} disabled={assignmentSaving || assignmentReferenced || assignmentFormUnavailable} /></Field>{assignmentReferenced && <p className="muted" role="note">Buat assignment baru untuk perubahan tuple/periode, lalu nonaktifkan lama.</p>}<label className="checkline"><input aria-label="Penugasan aktif" type="checkbox" checked={Boolean(assignmentForm.active)} onChange={(event) => setAssignment('active', event.target.checked)} disabled={assignmentSaving} /> Aktifkan penugasan</label>{assignmentError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {assignmentError}</div>}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn type="submit" variant="primary" loading={assignmentSaving} disabled={assignmentSaving || assignmentFormUnavailable}><Save size={14} /> {assignmentForm.id ? 'Simpan perubahan' : 'Simpan penugasan'}</Btn>{assignmentForm.id && <Btn type="button" variant="ghost" disabled={assignmentSaving} onClick={() => { resetAssignment({ ...assignmentInitial, effectiveFrom: today() }); setAssignmentError(''); }}>Batal edit</Btn>}</div></form></Card><Card title="Daftar Penugasan" sub="Edit penugasan bila periode atau statusnya berubah."><AsyncTable state={assignments} empty={{ title: 'Belum ada penugasan mengajar.', sub: 'Buat penugasan resmi sebelum membuat jadwal kelas.' }} columns={[{ header: 'Guru', render: (assignment) => assignment.teacher?.fullName || assignment.teacherId }, { header: 'Mapel / Kelas', render: (assignment) => `${assignment.subject?.name || assignment.subjectId} · ${assignment.schoolClass?.code || assignment.classId}` }, { header: 'Periode', render: (assignment) => `${assignment.academicYear?.code || assignment.academicYear?.name || assignment.academicYearId} · ${assignment.semester?.name || assignment.semester?.code || assignment.semesterId}` }, { header: 'Berlaku', render: (assignment) => `${dateInputValue(assignment.effectiveFrom)}${assignment.effectiveTo ? ` s.d. ${dateInputValue(assignment.effectiveTo)}` : ''}` }, { header: 'Status', render: (assignment) => <StatusPill status={assignment.active ? 'ACTIVE' : 'INACTIVE'} /> }]} onRow={(assignment) => <Btn type="button" size="sm" onClick={() => editAssignment(assignment)}>Edit</Btn>} /></Card></section>
+    <div className="grid g-3" style={{ marginTop: 18 }}><Card title="Buat Sesi Langsung" sub="Gunakan penugasan aktif sebagai sumber data. Kelas, mapel, guru, dan periode tidak dapat dipilih terpisah."><form className="form-grid" onSubmit={submitSession}>{sessionLoaderError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> Data penugasan belum lengkap: {sessionLoaderError}</div>}{assignments.loading && <p className="muted" role="status">Memuat seluruh penugasan aktif…</p>}<Field label="Penugasan untuk sesi"><SelectInput value={sessionForm.teachingAssignmentId} onChange={(event) => selectSessionAssignment(event.target.value)} required disabled={sessionSaving || sessionFormUnavailable}><option value="">Pilih penugasan aktif</option>{activeAssignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{teachingAssignmentLabel(assignment)}</option>)}</SelectInput></Field><TeachingAssignmentSummary assignment={selectedSessionAssignment} /><Field label="Mulai sesi"><TextInput type="datetime-local" value={sessionForm.startsAt} onChange={(event) => { setSession('startsAt', event.target.value); setSessionError(''); }} required disabled={sessionSaving || sessionFormUnavailable || !selectedSessionAssignment} /></Field><Field label="Selesai sesi"><TextInput type="datetime-local" value={sessionForm.endsAt} onChange={(event) => { setSession('endsAt', event.target.value); setSessionError(''); }} required disabled={sessionSaving || sessionFormUnavailable || !selectedSessionAssignment} /></Field>{sessionDateError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {sessionDateError}</div>}{sessionError && sessionError !== sessionDateError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {sessionError}</div>}<Btn type="submit" variant="primary" loading={sessionSaving} disabled={sessionSaving || sessionFormUnavailable || !selectedSessionAssignment || Boolean(sessionDateError)}><Plus size={14} /> Buat sesi</Btn></form></Card><Card title="Sesi Terjadwal"><AsyncTable state={sessions} columns={[{ header: 'Waktu', render: (session) => formatDateTime(session.startsAt) }, { header: 'Kelas', render: (session) => session.schoolClass?.code }, { header: 'Mapel', render: (session) => session.subject?.name }, { header: 'Guru', render: (session) => session.teacher?.fullName }, { header: 'Status', render: (session) => <StatusPill status={session.status} /> }]} /></Card></div>
+    <div className="grid g-3" style={{ marginTop: 18 }}><Card title="Jadwal Mingguan" sub="Pilih penugasan aktif, lalu tentukan hari, jam, ruang, dan masa berlaku jadwal."><form className="form-grid" onSubmit={submitWeekly}>{weeklyLoaderError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> Data penugasan atau ruang belum lengkap: {weeklyLoaderError}</div>}{weeklyLoaderPending && <p className="muted" role="status">Memuat seluruh data jadwal…</p>}<Field label="Penugasan untuk jadwal"><SelectInput value={weeklyForm.teachingAssignmentId} onChange={(event) => selectWeeklyAssignment(event.target.value)} required disabled={weeklySaving || weeklyFormUnavailable}><option value="">Pilih penugasan aktif</option>{activeAssignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{teachingAssignmentLabel(assignment)}</option>)}</SelectInput></Field><TeachingAssignmentSummary assignment={selectedWeeklyAssignment} empty="Pilih penugasan aktif. Periode jadwal akan diisi dari masa berlaku penugasan." /><Field label="Ruang"><SelectInput value={weeklyForm.roomId} onChange={(event) => setWeekly('roomId', event.target.value)} disabled={weeklySaving || weeklyFormUnavailable || !selectedWeeklyAssignment}><option value="">Tanpa ruang</option>{itemsOf(rooms.data).map((room) => <option key={room.id} value={room.id}>{room.code}</option>)}</SelectInput></Field><Field label="Hari"><SelectInput value={weeklyForm.dayOfWeek} onChange={(event) => setWeekly('dayOfWeek', event.target.value)} required disabled={weeklySaving || weeklyFormUnavailable || !selectedWeeklyAssignment}>{['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map((day, index) => <option key={index} value={index}>{day}</option>)}</SelectInput></Field><Field label="Jam Mulai"><TextInput type="time" value={weeklyForm.startTime} onChange={(event) => setWeekly('startTime', event.target.value)} required disabled={weeklySaving || weeklyFormUnavailable || !selectedWeeklyAssignment} /></Field><Field label="Jam Selesai"><TextInput type="time" value={weeklyForm.endTime} onChange={(event) => setWeekly('endTime', event.target.value)} required disabled={weeklySaving || weeklyFormUnavailable || !selectedWeeklyAssignment} /></Field><Field label="Mulai berlaku"><TextInput type="date" value={weeklyForm.effectiveFrom} min={dateInputValue(selectedWeeklyAssignment?.effectiveFrom) || undefined} max={dateInputValue(selectedWeeklyAssignment?.effectiveTo) || undefined} onChange={(event) => setWeekly('effectiveFrom', event.target.value)} required disabled={weeklySaving || weeklyFormUnavailable || !selectedWeeklyAssignment} /></Field><Field label="Selesai berlaku" hint="opsional"><TextInput type="date" value={weeklyForm.effectiveTo} min={weeklyForm.effectiveFrom || dateInputValue(selectedWeeklyAssignment?.effectiveFrom) || undefined} max={dateInputValue(selectedWeeklyAssignment?.effectiveTo) || undefined} onChange={(event) => setWeekly('effectiveTo', event.target.value)} disabled={weeklySaving || weeklyFormUnavailable || !selectedWeeklyAssignment} /></Field>{weeklyError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {weeklyError}</div>}<Btn type="submit" variant="primary" loading={weeklySaving} disabled={weeklySaving || weeklyFormUnavailable || !selectedWeeklyAssignment}><Save size={14} /> Simpan jadwal</Btn></form></Card><Card title="Daftar Jadwal Mingguan" sub="Jadwal lama tanpa periode atau penugasan tidak dapat menghasilkan sesi sampai dilengkapi."><AsyncTable state={weekly} columns={[{ header: 'Hari', render: (schedule) => ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][schedule.dayOfWeek] }, { header: 'Jam', render: (schedule) => `${schedule.startTime}-${schedule.endTime}` }, { header: 'Kelas', render: (schedule) => schedule.schoolClass?.code || schedule.classId }, { header: 'Mapel', render: (schedule) => schedule.subject?.name || schedule.subjectId }, { header: 'Guru', render: (schedule) => schedule.teacher?.fullName || schedule.teacherId }, { header: 'Periode', render: (schedule) => schedule.academicYearId && schedule.semesterId ? `${schedule.academicYear?.code || schedule.academicYear?.name || schedule.academicYearId} · ${schedule.semester?.name || schedule.semester?.code || schedule.semesterId}` : 'Perlu dilengkapi' }, { header: 'Penugasan', render: (schedule) => { const blocker = weeklyGenerationBlocker(schedule); return blocker ? <Pill tone="warn">{blocker}</Pill> : <Pill tone="ok">Lengkap</Pill>; } }]} onRow={(schedule) => <WeeklyGenerateAction schedule={schedule} loading={generatingId === schedule.id} pending={Boolean(generatingId)} onGenerate={generate} />} /></Card></div></div>;
 }
 export function DevicesPage({ notify }) {
   const [tab, setTab] = useState('android');
@@ -1043,11 +1449,11 @@ const ANDROID_MODE_LABELS = {
 };
 
 const CHECK_ONLY_ANDROID_MODES = ['CHECK_ONLY'];
-const GATE_PRAYER_ANDROID_MODES = ['GERBANG', 'MUSHOLA'];
+const GATE_PRAYER_ANDROID_MODES = ['GATE_IN', 'GATE_OUT', 'MUSHOLA'];
 
 const ANDROID_READER_PRESETS = [
-  { key: 'dev-test', icon: <Smartphone size={26} />, title: 'READER_DEV_TEST_01', shortTitle: 'Dev Test', desc: 'Cek koneksi APK; tidak mencatat absensi.', name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: CHECK_ONLY_ANDROID_MODES, tone: 'safe' },
-  { key: 'identity', icon: <ShieldCheck size={26} />, title: 'READER_IDENTITY_01', shortTitle: 'Identitas', desc: 'Verifikasi kartu/identitas; tanpa absensi.', name: 'READER_IDENTITY_01', locationName: 'PR127 Identity Check', allowedModes: CHECK_ONLY_ANDROID_MODES, tone: 'safe' },
+  { key: 'dev-identity', icon: <ShieldCheck size={26} />, title: 'READER_DEV_TEST_01', shortTitle: 'Dev Test Identitas', desc: 'Cek kartu/identitas; tidak mencatat absensi.', name: 'READER_DEV_TEST_01', locationName: 'Dev Test Identitas', allowedModes: CHECK_ONLY_ANDROID_MODES, tone: 'safe' },
+  { key: 'dev-gate-prayer', icon: <Smartphone size={26} />, title: 'READER_IDENTITY_01', shortTitle: 'Dev Test Gerbang & Mushola', desc: 'Uji Scan Gerbang Datang, Pulang, dan Mushola tanpa mencatat absensi.', name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'safe' },
   { key: 'gate-prayer-1', icon: <DoorOpen size={26} />, title: 'READER_GATE_PRAYER_01', shortTitle: 'Gerbang/Mushola 01', desc: 'Reader live UAT utama setelah approval.', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' },
   { key: 'gate-prayer-2', icon: <Building2 size={26} />, title: 'READER_GATE_PRAYER_02', shortTitle: 'Gerbang/Mushola 02', desc: 'Reader live UAT kedua setelah approval.', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' }
 ];

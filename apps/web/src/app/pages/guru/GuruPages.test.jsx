@@ -35,6 +35,25 @@ describe('guru teacher today workspace', () => {
     expect(screen.getByText('Jadwal akan tampil otomatis sesuai data yang diatur admin.')).toBeInTheDocument();
   });
 
+  it('renders roster provenance without fabricating zero totals', async () => {
+    mockTeacherToday({
+      date: '2026-06-20',
+      summary: { sessionsToday: 2, scheduled: 0, open: 0, closed: 1, missed: 1, unclosed: 0, studentsPendingAttendance: 0, unknownRosterSessions: 1, backfilledRosterSessions: 1 },
+      items: [
+        { sessionId: 'session-unknown', className: 'X IPA 1', subjectName: 'Matematika', startTime: '07:30', endTime: '09:00', status: 'MISSED', attendanceFilledCount: 0, studentTotal: null, pendingCount: null, rosterState: 'LEGACY_ROSTER_MISSING', actions: {} },
+        { sessionId: 'session-backfilled', className: 'XI IPS 2', subjectName: 'Sejarah', startTime: '09:15', endTime: '10:45', status: 'CLOSED', attendanceFilledCount: 20, studentTotal: 32, pendingCount: 12, rosterState: 'BACKFILLED_UNVERIFIED', actions: {} }
+      ]
+    });
+
+    render(<TeacherDashboard />);
+
+    expect(await screen.findByText('Jumlah roster belum terverifikasi')).toBeInTheDocument();
+    expect(screen.getAllByText('Roster hasil pemulihan/perbaikan; data historis tidak sepenuhnya terverifikasi.')).not.toHaveLength(0);
+    expect(screen.queryByText('0/0 siswa')).not.toBeInTheDocument();
+    expect(screen.getByText('20/32 siswa')).toBeInTheDocument();
+    expect(screen.getByText('Jumlah roster belum terverifikasi pada 1 sesi.')).toBeInTheDocument();
+  });
+
   it('renders scheduled, open, and closed sessions with state-based quick actions', async () => {
     mockTeacherToday({
       date: '2026-06-20',

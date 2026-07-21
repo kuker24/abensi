@@ -14,6 +14,8 @@ React browser application for SIAB2 operational attendance workflows.
 - API behavior must match API `/api/v1` contracts and shared authorization constants.
 - `/admin/account-security` is only for `ADMIN_TU` and `DEVELOPER`; it may inspect or clear login-limiter state with an audit reason, never passwords.
 - Android reader UI presents only four server-pinned production targets. It requests one-time activation codes from `POST /api/v1/device-readers/:id/android/provision-code`; do not expose reader secrets, signing material, or legacy/free-form reader provisioning through this flow.
+- Student import UI uses `/academic/students/import/file/preview` and `/academic/students/import/file/commit`, sends the selected academic-year code, and must not fall back to identity/staff import. Download returned credentials once, then discard `credentialRows`/`slips` before React state; do not offer repeat plaintext download.
+- CSV exports that may contain user-controlled values must neutralize spreadsheet formula prefixes `=`, `+`, `-`, `@`, tab, and carriage return before CSV quoting.
 - Never place secrets in browser code, build-time variables, screenshots, fixtures, or test artifacts.
 - Preserve TypeScript strictness and existing Vite/Tailwind patterns.
 
