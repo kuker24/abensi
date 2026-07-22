@@ -80,6 +80,7 @@ function makePrisma() {
       const sql = rawSqlText(query);
       const value = rawSqlValue(query);
       if (sql.includes('pg_advisory_xact_lock')) {
+        expect(sql).toContain('::text');
         events.push('leave.advisory');
         locks.push({ kind: 'advisory', value });
         return [];

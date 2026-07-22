@@ -37,7 +37,7 @@ export async function lockTeacherLeaveBusinessDates(
 ) {
   const keys = [...new Set([...locks].map(({ teacherId, businessDate }) => teacherLeaveAdvisoryLockKey(teacherId, businessDate)))].sort();
   for (const key of keys) {
-    await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+    await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text`);
   }
   return keys;
 }

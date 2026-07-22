@@ -81,6 +81,8 @@ postgres_data/
 redis_data/
 backups/
 Data Akun/simpanakun/
+Data Akun/Akunlogin/
+Data Akun/Excel-data-mapel/
 *.dump
 *.dump.enc
 *.sql.gz
