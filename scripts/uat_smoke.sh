@@ -668,6 +668,17 @@ if [[ -n "$GURU_SESSION_ID" ]]; then
   fi
 
   if mutating_smoke_enabled; then
+    code="$(api_request GET "/attendance/class-sessions/${GURU_SESSION_ID}/journal" "$GURU_COOKIE_JAR" "" "" "$TMP_DIR/guru_journal")"
+    journal_updated_at="$(json_field "$TMP_DIR/guru_journal.body" '.journal.updatedAt')"
+    journal_body="$(jq -cn \
+      --arg learningObjective "Validasi tujuan pembelajaran UAT" \
+      --arg activity "Validasi kegiatan pembelajaran melalui UAT otomatis" \
+      --arg completionStatus "TUNTAS" \
+      --arg updatedAt "$journal_updated_at" \
+      '{learningObjective:$learningObjective,activity:$activity,lessonHours:2,completionStatus:$completionStatus} + (if $updatedAt == "" then {} else {updatedAt:$updatedAt} end)')"
+    code="$(api_request PUT "/attendance/class-sessions/${GURU_SESSION_ID}/journal" "$GURU_COOKIE_JAR" "$guru_csrf" "$journal_body" "$TMP_DIR/guru_save_journal")"
+    if expect_success "Guru save session journal" "$code"; then MUTATING_CSRF_SUCCESS=true; fi
+
     close_body="$(jq -cn --argjson geo "$(geo_payload)" '$geo + {earlyCheckoutReason:"UAT menutup sesi lebih awal untuk validasi otomatis."}')"
     code="$(api_request POST "/attendance/class-sessions/${GURU_SESSION_ID}/close" "$GURU_COOKIE_JAR" "$guru_csrf" "$close_body" "$TMP_DIR/guru_close_session")"
     if expect_success "Guru tutup sesi" "$code"; then

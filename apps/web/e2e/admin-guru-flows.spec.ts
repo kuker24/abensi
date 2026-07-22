@@ -556,6 +556,26 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ session, roster }) });
         return;
       }
+      if (method === 'GET' && url.endsWith('/journal')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            sessionId: session.id,
+            subject: session.subject,
+            scheduledDurationMinutes: 90,
+            journal: {
+              id: 'journal-1',
+              learningObjective: 'Memahami materi pembelajaran',
+              activity: 'Diskusi dan latihan kelas',
+              lessonHours: 2,
+              completionStatus: 'TUNTAS',
+              updatedAt: '2026-04-25T01:00:00.000Z'
+            }
+          })
+        });
+        return;
+      }
       if (method === 'GET') {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([session])) });
         return;
@@ -603,7 +623,8 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await page.getByRole('button', { name: /Semua Hadir/ }).click();
     await page.getByRole('button', { name: /^Simpan$/ }).first().click();
     await expect(page.getByText('Presensi siswa awal pembelajaran tersimpan.')).toBeVisible();
-    await page.getByRole('button', { name: /Tutup Sesi/ }).click();
+    await page.getByLabel('Alasan keluar sebelum jam selesai').fill('Kelas uji E2E selesai lebih awal.');
+    await page.getByRole('button', { name: /Simpan & Tutup Sesi/ }).click();
     await page.getByRole('button', { name: 'Lanjutkan' }).click();
     await expect(page.getByText('Absen keluar guru tercatat.')).toBeVisible();
   });

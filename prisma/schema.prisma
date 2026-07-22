@@ -423,40 +423,40 @@ model ClassEnrollment {
 }
 
 model Session {
-  id                   String        @id @default(cuid())
-  classId              String
-  subjectId            String
-  teacherId            String
-  startsAt             DateTime
-  endsAt               DateTime
-  businessDate         DateTime      @db.Date
-  status               SessionStatus     @default(SCHEDULED)
-  rosterState          SessionRosterState @default(PENDING)
-  openedAt             DateTime?
-  closedAt             DateTime?
-  reconciledAt         DateTime?
-  weeklyScheduleId     String?
+  id                             String             @id @default(cuid())
+  classId                        String
+  subjectId                      String
+  teacherId                      String
+  startsAt                       DateTime
+  endsAt                         DateTime
+  businessDate                   DateTime           @db.Date
+  status                         SessionStatus      @default(SCHEDULED)
+  rosterState                    SessionRosterState @default(PENDING)
+  openedAt                       DateTime?
+  closedAt                       DateTime?
+  reconciledAt                   DateTime?
+  weeklyScheduleId               String?
   teachingAssignmentId           String?
   substitutionSourceTeacherId    String?
   substitutionSourceAssignmentId String?
   roomId                         String?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  createdAt                      DateTime           @default(now())
+  updatedAt                      DateTime           @updatedAt
 
-  schoolClass        SchoolClass         @relation(fields: [classId], references: [id], onDelete: Restrict)
-  subject            Subject             @relation(fields: [subjectId], references: [id], onDelete: Restrict)
-  teacher            User                @relation("TeacherSessions", fields: [teacherId], references: [id], onDelete: Restrict)
-  weeklySchedule     WeeklySchedule?     @relation(fields: [weeklyScheduleId], references: [id], onDelete: SetNull)
-  teachingAssignment           TeachingAssignment? @relation("SessionActingTeachingAssignment", fields: [teachingAssignmentId], references: [id], onDelete: Restrict)
-  substitutionSourceTeacher    User?                @relation("SessionSubstitutionSourceTeacher", fields: [substitutionSourceTeacherId], references: [id], onDelete: Restrict)
-  substitutionSourceAssignment TeachingAssignment?  @relation("SessionSubstitutionSourceAssignment", fields: [substitutionSourceAssignmentId], references: [id], onDelete: Restrict)
-  room                         Room?                @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  attendances        StudentAttendance[]
-  teacherPresence    TeacherSessionPresence[]
-  flags              ReconciliationFlag[]
-  correctionEvents   AttendanceCorrectionEvent[]
-  rosters            SessionRoster[]
-  journal            SessionJournal?
+  schoolClass                  SchoolClass                 @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subject                      Subject                     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher                      User                        @relation("TeacherSessions", fields: [teacherId], references: [id], onDelete: Restrict)
+  weeklySchedule               WeeklySchedule?             @relation(fields: [weeklyScheduleId], references: [id], onDelete: SetNull)
+  teachingAssignment           TeachingAssignment?         @relation("SessionActingTeachingAssignment", fields: [teachingAssignmentId], references: [id], onDelete: Restrict)
+  substitutionSourceTeacher    User?                       @relation("SessionSubstitutionSourceTeacher", fields: [substitutionSourceTeacherId], references: [id], onDelete: Restrict)
+  substitutionSourceAssignment TeachingAssignment?         @relation("SessionSubstitutionSourceAssignment", fields: [substitutionSourceAssignmentId], references: [id], onDelete: Restrict)
+  room                         Room?                       @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  attendances                  StudentAttendance[]
+  teacherPresence              TeacherSessionPresence[]
+  flags                        ReconciliationFlag[]
+  correctionEvents             AttendanceCorrectionEvent[]
+  rosters                      SessionRoster[]
+  journal                      SessionJournal?
 
   @@index([startsAt])
   @@index([businessDate])
@@ -473,14 +473,14 @@ model Session {
 }
 
 model SessionJournal {
-  id               String                         @id @default(cuid())
-  sessionId        String                         @unique
+  id                String                         @id @default(cuid())
+  sessionId         String                         @unique
   learningObjective String
-  activity         String
-  lessonHours      Int
-  completionStatus SessionJournalCompletionStatus @default(BELUM_TUNTAS)
-  createdAt        DateTime                       @default(now())
-  updatedAt        DateTime                       @updatedAt
+  activity          String
+  lessonHours       Int
+  completionStatus  SessionJournalCompletionStatus @default(BELUM_TUNTAS)
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
@@ -960,7 +960,7 @@ model TeacherLeave {
 }
 
 model TeachingAssignment {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   teacherId      String
   subjectId      String
   classId        String
@@ -969,17 +969,17 @@ model TeachingAssignment {
   effectiveFrom  DateTime @db.Date
   effectiveTo    DateTime @db.Date
   active         Boolean  @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  teacher         User             @relation(fields: [teacherId], references: [id], onDelete: Restrict)
-  subject         Subject          @relation(fields: [subjectId], references: [id], onDelete: Restrict)
-  schoolClass     SchoolClass      @relation(fields: [classId], references: [id], onDelete: Restrict)
-  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
-  semester        Semester         @relation(fields: [semesterId], references: [id], onDelete: Restrict)
-  weeklySchedules             WeeklySchedule[]
-  sessions                    Session[]            @relation("SessionActingTeachingAssignment")
-  substitutionSourceSessions  Session[]            @relation("SessionSubstitutionSourceAssignment")
+  teacher                    User             @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  subject                    Subject          @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  schoolClass                SchoolClass      @relation(fields: [classId], references: [id], onDelete: Restrict)
+  academicYear               AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  semester                   Semester         @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  weeklySchedules            WeeklySchedule[]
+  sessions                   Session[]        @relation("SessionActingTeachingAssignment")
+  substitutionSourceSessions Session[]        @relation("SessionSubstitutionSourceAssignment")
 
   @@index([teacherId, subjectId, classId, academicYearId, semesterId, effectiveFrom, effectiveTo], map: "TeachingAssignment_teacher_subject_class_period_idx")
   @@index([academicYearId, semesterId, active, effectiveFrom, effectiveTo], map: "TeachingAssignment_period_active_idx")
@@ -1317,17 +1317,17 @@ model MobileAndroidReaderVersion {
 }
 
 model AndroidApkRelease {
-  id                      String    @id @default(cuid())
+  id                      String                       @id @default(cuid())
   versionName             String
-  versionCode             Int       @unique
-  minSupportedVersionCode Int       @default(1)
-  forceUpdate             Boolean   @default(false)
+  versionCode             Int                          @unique
+  minSupportedVersionCode Int                          @default(1)
+  forceUpdate             Boolean                      @default(false)
   releaseNotes            String?
   apkFileName             String
   apkPath                 String
   apkSha256               String
   apkSizeBytes            Int
-  contentType             String    @default("application/vnd.android.package-archive")
+  contentType             String                       @default("application/vnd.android.package-archive")
   packageName             String?
   apkVersionName          String?
   apkVersionCode          Int?
@@ -1338,12 +1338,12 @@ model AndroidApkRelease {
   signerSha256            String?
   verificationStatus      AndroidApkVerificationStatus @default(UNVERIFIED)
   verifiedAt              DateTime?
-  isPublished             Boolean   @default(false)
+  isPublished             Boolean                      @default(false)
   publishedAt             DateTime?
   createdById             String?
   updatedById             String?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
 
   createdBy User? @relation("AndroidApkReleaseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User? @relation("AndroidApkReleaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
