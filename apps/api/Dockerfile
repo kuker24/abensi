@@ -45,6 +45,7 @@ ENV NODE_ENV=production \
     ANDROID_APKSIGNER_PATH=/opt/android-sdk/build-tools/35.0.0/apksigner
 
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates openjdk-17-jre-headless \
   && rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /root/.npm

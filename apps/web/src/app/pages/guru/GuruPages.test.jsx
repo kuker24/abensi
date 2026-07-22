@@ -222,7 +222,7 @@ describe('guru session journal workspace', () => {
     render(<ClassInputPage notify={notify} />);
 
     expect(await screen.findByDisplayValue('MAT · Matematika')).toHaveAttribute('readonly');
-    expect(screen.getByLabelText('Tujuan pembelajaran')).toHaveValue(journal.learningObjective);
+    expect(await screen.findByDisplayValue(journal.learningObjective)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Tujuan pembelajaran'), { target: { value: 'Menyelesaikan persamaan linear' } });
     fireEvent.click(screen.getByRole('button', { name: /Simpan Jurnal/ }));
 
