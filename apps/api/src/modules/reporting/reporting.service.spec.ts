@@ -292,3 +292,30 @@ describe('ReportingService roster provenance', () => {
     expect(prisma.gateLog.findMany).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('ReportingService school personnel gate attendance', () => {
+  it('includes teachers and the principal while excluding students', async () => {
+    const prisma = { gateLog: { findMany: jest.fn().mockResolvedValue([]) } } as any;
+    const service = new ReportingService(prisma, {} as any);
+
+    await service.staffGateAttendance(recapPagination, recapFilters);
+
+    expect(prisma.gateLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        user: {
+          role: {
+            in: [
+              Role.ADMIN_TU,
+              Role.KEPALA_SEKOLAH,
+              Role.GURU_MAPEL,
+              Role.GURU_PIKET,
+              Role.OPERATOR_IT,
+              Role.DEVELOPER
+            ]
+          },
+          active: true
+        }
+      })
+    }));
+  });
+});

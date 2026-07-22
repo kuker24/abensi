@@ -39,6 +39,15 @@ const ATTENDANCE_STATUSES: StudentAttendanceStatus[] = [
   StudentAttendanceStatus.ALPA
 ];
 
+const SCHOOL_PERSONNEL_GATE_ROLES: Role[] = [
+  Role.ADMIN_TU,
+  Role.KEPALA_SEKOLAH,
+  Role.GURU_MAPEL,
+  Role.GURU_PIKET,
+  Role.OPERATOR_IT,
+  Role.DEVELOPER
+];
+
 interface DateRange {
   from: Date;
   to: Date;
@@ -363,7 +372,6 @@ export class ReportingService {
     const cached = await this.getCached<Record<string, unknown>>(cacheKey);
     if (cached) return cached;
 
-    const staffRoles = [Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER];
     const [sessionsToday, closedSessions, openSessions, openFlags, gateTapToday, staffPresentToday, teacherPresentToday, prayerDhuhaToday, prayerDzuhurToday, activeAndroidReaders, studentCompleteness] = await Promise.all([
       this.prisma.session.count({
         where: {
@@ -396,7 +404,7 @@ export class ReportingService {
         where: {
           direction: GateDirection.IN,
           tappedAt: { gte: dayStart, lte: dayEnd },
-          user: { role: { in: staffRoles }, active: true }
+          user: { role: { in: SCHOOL_PERSONNEL_GATE_ROLES }, active: true }
         }
       }),
       this.prisma.teacherSessionPresence.count({
@@ -1563,11 +1571,10 @@ export class ReportingService {
 
   async staffGateAttendance(pagination: PaginationQuery, filters: RecapFilters) {
     const range = this.resolveDateRange(filters);
-    const staffRoles = [Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER];
     const logs = await this.prisma.gateLog.findMany({
       where: {
         tappedAt: { gte: range.from, lte: range.to },
-        user: { role: { in: staffRoles }, active: true }
+        user: { role: { in: SCHOOL_PERSONNEL_GATE_ROLES }, active: true }
       },
       include: {
         user: { select: { id: true, fullName: true, username: true, role: true } }
