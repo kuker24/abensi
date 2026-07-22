@@ -2037,7 +2037,7 @@ export function LiveMonitorPage() {
     }, 12000);
     return () => clearInterval(timer);
   }, [auto]);
-  return <div className="content"><PageHead eyebrow="AKTIVITAS SEKARANG" title="Aktivitas Sekarang" sub="Aktivitas scan, sesi kelas, dan perubahan terbaru. Halaman ini otomatis memuat ulang." actions={<Btn onClick={() => setAuto((x) => !x)}><Zap size={14} /> {auto ? 'Jeda' : 'Lanjutkan'}</Btn>} /><Card title="Daftar aktivitas"><AsyncTable state={state} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.at || r.createdAt || r.tappedAt) }, { header: 'Tipe', render: (r) => <StatusPill status={r.event || r.type || r.direction || r.action} /> }, { header: 'Subjek', render: (r) => r.who || r.fullName || r.user?.fullName || r.actor?.fullName || '—' }, { header: 'Lokasi/Konteks', render: (r) => r.loc || r.deviceId || r.module || '—' }]} /></Card></div>;
+  return <div className="content"><PageHead eyebrow="AKTIVITAS SEKARANG" title="Aktivitas Sekarang" sub="Aktivitas scan, sesi kelas, dan perubahan terbaru. Halaman ini otomatis memuat ulang." actions={<Btn onClick={() => setAuto((x) => !x)}><Zap size={14} /> {auto ? 'Jeda' : 'Lanjutkan'}</Btn>} /><Card title="Daftar aktivitas"><AsyncTable state={state} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.timestamp) }, { header: 'Tipe', render: (r) => <StatusPill status={r.type} /> }, { header: 'Subjek', render: (r) => r.title || r.actorName || '—' }, { header: 'Lokasi/Konteks', render: (r) => [r.location, r.context].filter(Boolean).join(' · ') || '—' }]} /></Card></div>;
 }
 
 export function PicketDashboardPage() {

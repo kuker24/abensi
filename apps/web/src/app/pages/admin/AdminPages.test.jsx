@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setRiskConfirmHandler } from '../../confirm';
-import { AndroidApkUpdatePage, AuditPage, DevicesPage, MasterDataPage, ReportsPage, SchedulePage, SessionsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
+import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, ReportsPage, SchedulePage, SessionsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -330,6 +330,30 @@ describe('APK Update Center admin UI', () => {
     expect(screen.getByText(/Tes di 1 HP dulu sebelum rollout production/i)).toBeInTheDocument();
     expect(screen.getByText(/Android akan memverifikasi SHA256/i)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/apkPath|uploads\/android-apk-releases|readerSecret|shrsec_/i);
+  });
+});
+
+describe('live monitor UI', () => {
+  it('renders the live-monitor API contract instead of empty legacy fields', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      items: [{
+        id: 'gate-1',
+        type: 'GATE_TAP',
+        timestamp: '2026-07-22T00:37:45.475Z',
+        title: 'Guru Test tap gerbang',
+        actorName: 'Guru Test',
+        location: 'READER_GATE_PRAYER_01',
+        context: 'Akses gerbang'
+      }],
+      meta: { page: 1, limit: 40, total: 1, totalPages: 1 }
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+
+    render(<LiveMonitorPage />);
+
+    expect(await screen.findByText('Guru Test tap gerbang')).toBeInTheDocument();
+    expect(screen.getByText('READER_GATE_PRAYER_01 · Akses gerbang')).toBeInTheDocument();
+    expect(screen.getByText('Scan Gerbang')).toBeInTheDocument();
+    expect(screen.getByText(/22 Jul 2026/)).toBeInTheDocument();
   });
 });
 
