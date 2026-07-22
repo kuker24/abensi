@@ -16,6 +16,10 @@ export default function Navbar() {
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 80);
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) {
+        setActiveLink('kontak');
+        return;
+      }
       const scrollPosition = window.scrollY + 250;
       for (const link of navLinks) {
         const el = document.getElementById(link.id);
