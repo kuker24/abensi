@@ -72,10 +72,10 @@ function TimelinePreview() {
       </div>
       <div className="siab2p-timeline-entry siab2p-timeline-entry-blue">
         <div>
-          <strong>Jurnal KBM Terisi</strong>
-          <span>Catatan Guru</span>
+          <strong>Jurnal Sesi</strong>
+          <span>Tujuan, kegiatan, JP, ketuntasan</span>
         </div>
-        <em>Arsip Akademik</em>
+        <em>Sebelum sesi ditutup</em>
       </div>
     </div>
   );
@@ -94,8 +94,8 @@ function SignaturePreview() {
           <strong>Tersedia</strong>
         </div>
         <div className="siab2p-signature-row">
-          <span>Jurnal Mengajar:</span>
-          <strong className="siab2p-text-accent">Tertata</strong>
+          <span>Jurnal Sesi:</span>
+          <strong className="siab2p-text-accent">Per Sesi</strong>
         </div>
         <div className="siab2p-signature-footer">
           <div>
@@ -137,7 +137,7 @@ export default function AcademicModules() {
             </h2>
           </div>
           <p>
-            SIAB2 dirancang untuk membantu menyusun data siswa, guru, kehadiran, jadwal, jurnal mengajar, dan laporan madrasah dalam tampilan yang rapi dan mudah digunakan.
+            SIAB2 dirancang untuk membantu menyusun data siswa, guru, kehadiran, jadwal, jurnal per sesi mengajar, dan laporan madrasah dalam tampilan yang rapi dan mudah digunakan.
           </p>
         </div>
 

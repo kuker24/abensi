@@ -65,7 +65,7 @@ export default function Hero() {
               Untuk <strong>{roleDetails[roleIndex].role}</strong>: {roleDetails[roleIndex].text}
             </p>
             <p className="siab2p-hero-description">
-              Portal akademik untuk membantu tata kelola data siswa, kehadiran, jadwal pelajaran, jurnal mengajar, dan laporan madrasah dalam satu ruang kerja digital yang rapi dan mudah dipahami.
+              Portal akademik untuk membantu tata kelola data siswa, kehadiran, jadwal pelajaran, jurnal per sesi mengajar, dan laporan madrasah dalam satu ruang kerja digital yang rapi dan mudah dipahami.
             </p>
 
             <div className="siab2p-hero-actions">

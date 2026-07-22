@@ -162,9 +162,10 @@ export class ReportingController {
 
   @Get('recap/classes')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
-  @Capabilities('reports.school.read')
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.DEVELOPER)
+  @Capabilities('reports.self.read')
   recapClasses(
+    @CurrentUser() user: { sub: string; role: string },
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('classId') classId?: string,
@@ -180,7 +181,13 @@ export class ReportingController {
       maxLimit: 500
     });
 
-    return this.reportingService.recapClasses(pagination, { from, to, classId, subjectId, teacherId });
+    return this.reportingService.recapClasses(pagination, {
+      from,
+      to,
+      classId,
+      subjectId,
+      teacherId: user.role === Role.GURU_MAPEL ? user.sub : teacherId
+    });
   }
 
   @Get('recap/students')

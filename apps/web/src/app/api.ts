@@ -6,6 +6,11 @@ export const AUTH_EXPIRED_EVENT = 'schoolhub_auth_expired';
 
 let refreshPromise: Promise<boolean> | null = null;
 let csrfPromise: Promise<string | null> | null = null;
+let navigationGuard: ((path: string) => boolean) | null = null;
+
+export function setNavigationGuard(guard: typeof navigationGuard): void {
+  navigationGuard = guard;
+}
 
 export function readStoredUser(): User | null {
   try {
@@ -42,6 +47,7 @@ export function pathArea(path: string): RouteArea {
 }
 
 export function go(path: string): void {
+  if (navigationGuard && !navigationGuard(path)) return;
   window.history.pushState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
@@ -136,7 +142,12 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
   const contentType = response.headers.get('content-type') || '';
   const text = contentType.includes('application/json') ? await response.text() : '';
   const data = text ? JSON.parse(text) : null;
-  if (!response.ok) throw new Error(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || `HTTP ${response.status}`) as Error & { code?: string; status?: number };
+    error.code = data?.code;
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 

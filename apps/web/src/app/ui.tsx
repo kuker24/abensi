@@ -172,10 +172,10 @@ export function StatusDonut({ counts, title = 'Komposisi status' }: { counts: Re
   return <div className="donut-panel"><div className="donut" style={{ background: `conic-gradient(${gradient})` }}><span>{total}</span></div><div><div className="chart-title">{title}</div><div className="donut-legend">{entries.map((entry) => <span key={entry.key}><i style={{ background: `var(--chart-${entry.key.toLowerCase()}, var(--accent))` }} />{statusLabel(entry.key)}<b>{entry.value}</b></span>)}</div></div></div>;
 }
 
-export function HorizontalBarList({ data, labelKeys = ['label', 'name', 'fullName', 'classCode', 'subjectName'], valueKeys = ['coveragePercent', 'percent', 'value', 'total', 'count', 'hadir', 'sessions'] }: { data: unknown; labelKeys?: string[]; valueKeys?: string[] }) {
+export function HorizontalBarList({ data, labelKeys = ['label', 'name', 'fullName', 'classCode', 'subjectName'], valueKeys = ['coveragePercent', 'percent', 'value', 'total', 'count', 'hadir', 'sessions'], maxValue }: { data: unknown; labelKeys?: string[]; valueKeys?: string[]; maxValue?: number }) {
   const rows = (Array.isArray(data) ? data : (data as any)?.items || []).map((row: Record<string, any>, index: number) => ({ label: pickLabel(row, labelKeys, `Data ${index + 1}`), value: pickValue(row, valueKeys, NaN) })).filter((row: { value: number }) => Number.isFinite(row.value)).slice(0, 8);
   if (!rows.length) return <div className="chart-empty small">Belum ada angka yang bisa dibuat grafik.</div>;
-  const max = Math.max(1, ...rows.map((row: { value: number }) => row.value));
+  const max = Math.max(1, maxValue ?? Math.max(...rows.map((row: { value: number }) => row.value)));
   return <div className="hbar-list">{rows.map((row: { label: string; value: number }, index: number) => <div className="hbar-row" key={`${row.label}-${index}`}><div className="hbar-label">{row.label}</div><div className="hbar-track"><span style={{ width: `${Math.max(3, (row.value / max) * 100)}%` }} /></div><div className="hbar-value">{Math.round(row.value)}</div></div>)}</div>;
 }
 

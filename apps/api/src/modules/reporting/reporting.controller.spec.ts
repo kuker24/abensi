@@ -67,6 +67,7 @@ describe('ReportingController role/capability contract', () => {
     [Role.OPERATOR_IT, 'recapClasses', 403],
     [Role.GURU_MAPEL, 'myAttendance', 200],
     [Role.GURU_MAPEL, 'teacherMonthly', 403],
+    [Role.GURU_MAPEL, 'recapClasses', 200],
     [Role.GURU_PIKET, 'liveMonitor', 200],
     [Role.GURU_PIKET, 'recapClasses', 403],
     [Role.ADMIN_TU, 'classMonthly', 200],
@@ -83,6 +84,32 @@ describe('ReportingController role/capability contract', () => {
     }));
     expect(hasCapability(Role.SISWA, 'reports.self.read')).toBe(true);
     expect(hasCapability(Role.SISWA, 'reports.school.read')).toBe(false);
+  });
+
+  it('forces Guru Mapel class recap to the authenticated teacher', async () => {
+    const recapClasses = jest.fn().mockResolvedValue({ items: [] });
+    const controller = new ReportingController(
+      { recapClasses } as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await controller.recapClasses(
+      { sub: 'guru-1', role: Role.GURU_MAPEL },
+      '2026-07-01',
+      '2026-07-31',
+      undefined,
+      undefined,
+      'guru-lain',
+      '1',
+      '50'
+    );
+
+    expect(recapClasses).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, limit: 50 }),
+      expect.objectContaining({ teacherId: 'guru-1' })
+    );
   });
 
   it('returns a stable 403 code when a listed role lacks a required capability', () => {

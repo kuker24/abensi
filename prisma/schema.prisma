@@ -26,6 +26,11 @@ enum SessionStatus {
   MISSED
 }
 
+enum SessionJournalCompletionStatus {
+  TUNTAS
+  BELUM_TUNTAS
+}
+
 enum AndroidApkVerificationStatus {
   UNVERIFIED
   VERIFIED
@@ -451,6 +456,7 @@ model Session {
   flags              ReconciliationFlag[]
   correctionEvents   AttendanceCorrectionEvent[]
   rosters            SessionRoster[]
+  journal            SessionJournal?
 
   @@index([startsAt])
   @@index([businessDate])
@@ -464,6 +470,19 @@ model Session {
   @@index([teachingAssignmentId, startsAt], map: "Session_teachingAssignmentId_startsAt_idx")
   @@index([substitutionSourceTeacherId, businessDate], map: "Session_substitutionSourceTeacherId_businessDate_idx")
   @@index([substitutionSourceAssignmentId, startsAt], map: "Session_substitutionSourceAssignmentId_startsAt_idx")
+}
+
+model SessionJournal {
+  id               String                         @id @default(cuid())
+  sessionId        String                         @unique
+  learningObjective String
+  activity         String
+  lessonHours      Int
+  completionStatus SessionJournalCompletionStatus @default(BELUM_TUNTAS)
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model StudentAttendance {

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
-import { AttendanceConfirmationSource, AttendanceReviewState, Role, RosterCaptureSource, SessionRosterState, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
+import { AttendanceConfirmationSource, AttendanceReviewState, Role, RosterCaptureSource, SessionJournalCompletionStatus, SessionRosterState, SessionStatus, StudentAttendanceStatus, TeacherSessionStatus } from '@prisma/client';
 import { AttendanceClassService } from './attendance-class.service';
 
 function makeService(
@@ -35,6 +35,9 @@ function makeService(
       count: jest.fn().mockResolvedValue(0),
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
       findMany: jest.fn().mockResolvedValue([{ studentId: 'siswa-1' }])
+    },
+    sessionJournal: {
+      findUnique: jest.fn().mockResolvedValue({ id: 'journal-1', sessionId: 'session-1' })
     },
     studentAttendance: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -354,6 +357,7 @@ describe('AttendanceClassService session roster integrity', () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       session: { findUniqueOrThrow: jest.fn().mockResolvedValue(lockedSession) },
+      sessionJournal: { findUnique: jest.fn().mockResolvedValue({ id: 'journal-1' }) },
       sessionRoster: { findMany: jest.fn() },
       classEnrollment: { findMany: jest.fn() }
     };
@@ -848,6 +852,151 @@ describe('AttendanceClassService correction, repair, and MISSED recovery', () =>
   });
 });
 
+describe('AttendanceClassService session journal', () => {
+  const subject = { id: 'subject-1', code: 'MAT', name: 'Matematika' };
+  const startsAt = new Date('2026-06-14T01:00:00.000Z');
+  const endsAt = new Date('2026-06-14T02:30:00.000Z');
+  const session = {
+    id: 'session-1',
+    teacherId: 'guru-1',
+    startsAt,
+    endsAt,
+    status: SessionStatus.OPEN,
+    subject
+  };
+  const payload = {
+    learningObjective: '  Memahami persamaan linear  ',
+    activity: '  Diskusi dan latihan kelompok  ',
+    lessonHours: 2,
+    completionStatus: SessionJournalCompletionStatus.BELUM_TUNTAS
+  };
+
+  function makeJournalService(existing: Record<string, unknown> | null = null, sessionOverride: Record<string, unknown> = {}) {
+    const lockedSession = { ...session, ...sessionOverride };
+    const saved = {
+      id: 'journal-1',
+      sessionId: 'session-1',
+      learningObjective: 'Memahami persamaan linear',
+      activity: 'Diskusi dan latihan kelompok',
+      lessonHours: 2,
+      completionStatus: SessionJournalCompletionStatus.BELUM_TUNTAS,
+      createdAt: new Date('2026-06-14T01:10:00.000Z'),
+      updatedAt: new Date('2026-06-14T01:10:00.000Z')
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      session: { findUnique: jest.fn().mockResolvedValue(lockedSession) },
+      sessionJournal: {
+        findUnique: jest.fn().mockResolvedValue(existing),
+        create: jest.fn().mockResolvedValue(saved),
+        update: jest.fn().mockResolvedValue(saved)
+      },
+      auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) }
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue({ ...lockedSession, journal: existing }) },
+      $transaction: jest.fn((callback) => callback(tx))
+    } as any;
+    return { service: new AttendanceClassService(prisma), prisma, tx, saved };
+  }
+
+  it('returns authoritative subject, scheduled duration, and journal to the owning teacher', async () => {
+    const existing = { id: 'journal-1', sessionId: 'session-1' };
+    const { service } = makeJournalService(existing);
+
+    await expect(service.getJournal('session-1', guru)).resolves.toEqual({
+      sessionId: 'session-1',
+      subject,
+      scheduledDurationMinutes: 90,
+      journal: existing
+    });
+  });
+
+  it('rejects non-owner teachers and every non-GURU_MAPEL actor', async () => {
+    const { service, tx } = makeJournalService();
+
+    await expect(service.getJournal('session-1', { sub: 'guru-lain', role: Role.GURU_MAPEL })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.getJournal('session-1', { sub: 'developer-1', role: Role.DEVELOPER })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.upsertJournal('session-1', { sub: 'developer-1', role: Role.DEVELOPER }, payload)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.upsertJournal('session-1', { sub: 'guru-lain', role: Role.GURU_MAPEL }, payload)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.sessionJournal.create).not.toHaveBeenCalled();
+    expect(tx.sessionJournal.update).not.toHaveBeenCalled();
+  });
+
+  it('creates a trimmed journal and audits before/after inside the transaction', async () => {
+    const { service, tx, saved } = makeJournalService();
+
+    await expect(service.upsertJournal('session-1', guru, payload)).resolves.toEqual(saved);
+    expect(tx.sessionJournal.create).toHaveBeenCalledWith({
+      data: {
+        sessionId: 'session-1',
+        learningObjective: 'Memahami persamaan linear',
+        activity: 'Diskusi dan latihan kelompok',
+        lessonHours: 2,
+        completionStatus: SessionJournalCompletionStatus.BELUM_TUNTAS
+      }
+    });
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'class.session.journal.created',
+        resource: 'sessionJournal',
+        resourceId: 'journal-1',
+        before: expect.any(Object),
+        after: saved,
+        canonicalPayload: expect.objectContaining({ before: null })
+      })
+    }));
+    expect(tx.$queryRaw.mock.calls.map(([query]) => rawQueryText(query))).toEqual([
+      'SELECT "id" FROM "Session" WHERE "id" = ? FOR UPDATE'
+    ]);
+  });
+
+  it('updates only with the exact current version and audits the prior value', async () => {
+    const existing = {
+      id: 'journal-1',
+      sessionId: 'session-1',
+      learningObjective: 'Tujuan lama',
+      activity: 'Kegiatan lama',
+      lessonHours: 1,
+      completionStatus: SessionJournalCompletionStatus.BELUM_TUNTAS,
+      updatedAt: new Date('2026-06-14T01:05:00.000Z')
+    };
+    const { service, tx } = makeJournalService(existing);
+
+    await service.upsertJournal('session-1', guru, { ...payload, updatedAt: existing.updatedAt.toISOString() });
+
+    expect(tx.sessionJournal.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'journal-1' } }));
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'class.session.journal.updated', before: existing })
+    }));
+  });
+
+  it('returns typed conflicts for missing, stale, and unexpected versions', async () => {
+    const existing = { id: 'journal-1', updatedAt: new Date('2026-06-14T01:05:00.000Z') };
+    const missing = makeJournalService(existing);
+    await expect(missing.service.upsertJournal('session-1', guru, payload)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_JOURNAL_VERSION_REQUIRED' })
+    });
+
+    const stale = makeJournalService(existing);
+    await expect(stale.service.upsertJournal('session-1', guru, { ...payload, updatedAt: '2026-06-14T01:04:00.000Z' })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_JOURNAL_STALE_VERSION' })
+    });
+
+    const unexpected = makeJournalService();
+    await expect(unexpected.service.upsertJournal('session-1', guru, { ...payload, updatedAt: '2026-06-14T01:04:00.000Z' })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_JOURNAL_STALE_VERSION' })
+    });
+  });
+
+  it('rejects writes unless the locked session remains OPEN', async () => {
+    const { service, tx } = makeJournalService(null, { status: SessionStatus.CLOSED });
+
+    await expect(service.upsertJournal('session-1', guru, payload)).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.sessionJournal.findUnique).not.toHaveBeenCalled();
+  });
+});
+
 describe('AttendanceClassService teacher check-in/out', () => {
   it('mencatat checkInAt saat guru membuka sesi', async () => {
     const { service, tx } = makeService({ status: SessionStatus.SCHEDULED });
@@ -885,6 +1034,7 @@ describe('AttendanceClassService teacher check-in/out', () => {
 
     await service.closeSession('session-1', guru, browserGeo());
 
+    expect(tx.sessionJournal.findUnique).toHaveBeenCalledWith({ where: { sessionId: 'session-1' }, select: { id: true } });
     expect(tx.teacherSessionPresence.upsert).toHaveBeenCalledWith(expect.objectContaining({
       update: expect.objectContaining({
         checkOutAt: expect.any(Date),
@@ -931,6 +1081,24 @@ describe('AttendanceClassService teacher check-in/out', () => {
     tx.studentAttendance.count.mockResolvedValueOnce(1);
 
     await expect(service.closeSession('session-1', guru, browserGeo())).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.session.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: SessionStatus.CLOSED }) }));
+  });
+
+  it('menolak penutupan sebelum finalisasi jika jurnal belum tersimpan', async () => {
+    const { service, tx } = makeService(
+      { endsAt: new Date(Date.now() - 5 * 60 * 1000), status: SessionStatus.OPEN },
+      { id: 'presence-1', status: TeacherSessionStatus.HADIR, checkInAt: new Date(Date.now() - 60 * 60 * 1000) }
+    );
+    tx.sessionJournal.findUnique.mockResolvedValue(null);
+
+    await expect(service.closeSession('session-1', guru, browserGeo())).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'SESSION_JOURNAL_REQUIRED',
+        message: 'Jurnal pembelajaran wajib disimpan sebelum sesi ditutup.'
+      })
+    });
+    expect(tx.sessionRoster.findMany).not.toHaveBeenCalled();
+    expect(tx.studentAttendance.createMany).not.toHaveBeenCalled();
     expect(tx.session.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: SessionStatus.CLOSED }) }));
   });
 

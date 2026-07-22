@@ -55,30 +55,28 @@ function JadwalPreview() {
 
 function JurnalPreview() {
   const rows = [
-    { label: 'Materi disampaikan', done: true },
-    { label: 'Absensi diisi', done: true },
-    { label: 'Jurnal KBM terisi', done: false },
-    { label: 'Evaluasi dicatat', done: false }
+    { label: 'Tujuan pembelajaran', done: false },
+    { label: 'Kegiatan', done: false },
+    { label: 'Jumlah JP', done: false },
+    { label: 'Status ketuntasan', done: false }
   ];
   return (
     <div className="siab2p-parallax-checks">
       {rows.map((row) => (
         <p key={row.label} className={row.done ? 'siab2p-check-done' : ''}><span>{row.done ? '✓' : '○'}</span>{row.label}</p>
       ))}
-      <small>Catatan guru</small>
+      <small>Jurnal wajib sebelum sesi ditutup</small>
     </div>
   );
 }
 
 function RekapPreview() {
   return (
-    <div className="siab2p-parallax-bars">
-      <div>
-        {[32, 42, 38, 48, 44, 52].map((value, index) => (
-          <p key={value + index}><i style={{ height: `${value}px` }} /><span>{['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'][index]}</span></p>
-        ))}
-      </div>
-      <small>Kehadiran Bulanan (%)</small>
+    <div className="siab2p-parallax-report">
+      <strong>Rekap Kelas</strong>
+      <span>Periode pilihan</span>
+      <p><em>Sesi kelas</em><b>Tersedia</b></p>
+      <p><em>Status kehadiran</em><b>Terhitung</b></p>
     </div>
   );
 }
@@ -89,7 +87,7 @@ function LaporanPreview() {
       <strong>MAN 1 Rokan Hulu</strong>
       <span>Laporan Rekap Lintas Kelas</span>
       <p><em>Rekap Kehadiran</em><b>Tersedia</b></p>
-      <p><em>Jurnal Mengajar</em><b>Tertata</b></p>
+      <p><em>Jurnal Sesi</em><b>Per Sesi</b></p>
       <i>Siap ditinjau</i>
     </div>
   );
@@ -119,15 +117,15 @@ const cards: ParallaxCard[] = [
   },
   {
     id: 4,
-    title: 'Jurnal Mengajar Guru',
-    detail: 'Pencatatan materi pelajaran dan kendala kelas secara langsung.',
+    title: 'Jurnal Sesi Mengajar',
+    detail: 'Pencatatan tujuan, kegiatan, jumlah JP, dan ketuntasan sebelum sesi ditutup.',
     preview: <JurnalPreview />,
     benefit: 'Mendukung monitoring KBM per hari'
   },
   {
     id: 5,
     title: 'Rekap Bulanan',
-    detail: 'Statistik visual kehadiran dan jurnal bulanan untuk bahan tinjauan.',
+    detail: 'Rekap kelas sesuai periode pilihan untuk bahan tinjauan.',
     preview: <RekapPreview />,
     benefit: 'Merapikan bahan rekapitulasi data'
   },

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
-import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, today } from '../../api';
+import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, setNavigationGuard, today } from '../../api';
 import { riskConfirm } from '../../confirm';
 import { BrowserGeoError, captureBrowserGeolocation } from '../../geolocation';
 import { useRemote } from '../../hooks';
@@ -8,6 +8,7 @@ import { Avatar, Btn, Card, DataTable, EmptyState, ErrorState, Field, Horizontal
 import { MyAttendancePage } from '../siswa/MyAttendancePage.jsx';
 
 const STATUS = ['HADIR', 'TELAT', 'IZIN', 'SAKIT', 'ALPA'];
+const EMPTY_JOURNAL = { id: '', learningObjective: '', activity: '', lessonHours: '', completionStatus: 'BELUM_TUNTAS', updatedAt: '' };
 
 function countByStatus(rows) {
   return itemsOf(rows).reduce((acc, row) => {
@@ -168,8 +169,8 @@ export function TeacherDashboard() {
 
 export function ClassInputPage({ notify }) {
   const sessions = useRemote(() => apiFetch(`/attendance/class-sessions${qs({ date: today(), page: 1, limit: 50 })}`), []);
-  const [sessionId, setSessionId] = useState(() => new URLSearchParams(window.location.search).get('sessionId') || '');
-  const [earlyReason, setEarlyReason] = useState('Kelas diakhiri lebih awal atas kondisi yang sudah dicatat.');
+  const [sessionId, setSessionId] = useState('');
+  const [earlyReason, setEarlyReason] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
   const [actionLoading, setActionLoading] = useState('');
   const [geoStatus, setGeoStatus] = useState({ tone: 'info', message: 'Lokasi browser akan diminta saat absen masuk dan keluar.' });
@@ -178,35 +179,63 @@ export function ClassInputPage({ notify }) {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
+    if (!sessions.data) return;
     const rows = itemsOf(sessions.data);
-    const requestedSessionId = new URLSearchParams(window.location.search).get('sessionId') || '';
-    if (requestedSessionId && rows.some((s) => s.id === requestedSessionId)) {
-      if (sessionId !== requestedSessionId) setSessionId(requestedSessionId);
-      return;
-    }
+    const requested = new URLSearchParams(window.location.search).get('sessionId') || '';
     const first = rows.find((s) => s.status === 'OPEN') || rows.find((s) => s.status === 'SCHEDULED') || rows[0];
-    if (first && !sessionId) setSessionId(first.id);
-  }, [sessions.data, sessionId]);
+    setSessionId((selected) => rows.some((s) => s.id === selected) ? selected : rows.some((s) => s.id === requested) ? requested : (first?.id || ''));
+  }, [sessions.data]);
   const rosterState = useRemote(() => sessionId ? apiFetch(`/attendance/class-sessions/${sessionId}/roster`) : Promise.resolve({ roster: [] }), [sessionId]);
+  const journalState = useRemote(() => sessionId ? apiFetch(`/attendance/class-sessions/${sessionId}/journal`) : Promise.resolve(null), [sessionId]);
   const [roster, setRoster] = useState([]);
+  const [journalForm, setJournalForm] = useState(EMPTY_JOURNAL);
+  const [journalDirty, setJournalDirty] = useState(false);
+  const [journalConflict, setJournalConflict] = useState(false);
   useEffect(() => {
-    if (rosterState.data?.roster) {
+    if (rosterState.data?.session?.id === sessionId && rosterState.data?.roster) {
       setRoster(rosterState.data.roster.map((row) => ({ ...row, dirty: false, explicitlyConfirmed: false })));
     }
-  }, [rosterState.data]);
+  }, [rosterState.data, sessionId]);
+  useEffect(() => {
+    if (!journalState.data || journalState.data.sessionId !== sessionId) return;
+    const journal = journalState.data.journal;
+    setJournalForm({ id: journal?.id || '', learningObjective: journal?.learningObjective || '', activity: journal?.activity || '', lessonHours: journal?.lessonHours ?? '', completionStatus: journal?.completionStatus || 'BELUM_TUNTAS', updatedAt: journal?.updatedAt || '' });
+    setJournalDirty(false);
+  }, [journalState.data, sessionId]);
+  useEffect(() => {
+    setRoster([]);
+    setJournalForm(EMPTY_JOURNAL);
+    setJournalDirty(false);
+    setJournalConflict(false);
+  }, [sessionId]);
   const current = itemsOf(sessions.data).find((s) => s.id === sessionId);
-  const sessionDetail = rosterState.data?.session || current;
+  const sessionDetail = rosterState.data?.session?.id === sessionId ? rosterState.data.session : current;
   const teacherPresence = sessionDetail?.teacherPresence || current?.teacherPresence?.find?.((item) => item.teacherId === current?.teacher?.id) || null;
   const presensiTitle = sessionClassSubjectTitle(sessionDetail);
   const endsAt = sessionDetail?.endsAt ? new Date(sessionDetail.endsAt) : null;
   const startsAt = sessionDetail?.startsAt ? new Date(sessionDetail.startsAt) : null;
   const isEarlyCheckout = Boolean(endsAt && nowTick < endsAt.getTime());
-  const isOpen = current?.status === 'OPEN' || sessionDetail?.status === 'OPEN';
+  const isOpen = (sessionDetail?.status || current?.status) === 'OPEN';
   const counts = STATUS.reduce((acc, st) => ({ ...acc, [st]: roster.filter((r) => r.status === st).length }), {});
   const completedCount = roster.filter((r) => (r.reviewState && r.reviewState !== 'DEFAULTED') || r.explicitlyConfirmed).length;
   const defaultedCount = Math.max(0, roster.length - completedCount);
   const presentLikeCount = counts.HADIR + counts.TELAT + counts.IZIN + counts.SAKIT;
   const progressPercent = roster.length ? Math.round((completedCount / roster.length) * 100) : 0;
+  const hasDirtyAttendance = roster.some((row) => row.dirty || row.explicitlyConfirmed);
+  useEffect(() => {
+    const dirty = journalDirty || hasDirtyAttendance;
+    if (!dirty) { setNavigationGuard(null); return; }
+    const message = 'Perubahan presensi atau jurnal belum disimpan. Tinggalkan halaman?';
+    setNavigationGuard(() => window.confirm(message));
+    const beforeUnload = (event) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => {
+      setNavigationGuard(null);
+      window.removeEventListener('beforeunload', beforeUnload);
+    };
+  }, [journalDirty, hasDirtyAttendance]);
+  const journalValid = Boolean(journalForm.learningObjective.trim() && journalForm.activity.trim() && Number.isInteger(Number(journalForm.lessonHours)) && Number(journalForm.lessonHours) >= 1 && Number(journalForm.lessonHours) <= 24 && ['TUNTAS', 'BELUM_TUNTAS'].includes(journalForm.completionStatus));
+  const setJournalField = (key, value) => { setJournalForm((previous) => ({ ...previous, [key]: value })); setJournalDirty(true); };
   const setStatus = (studentId, status) => setRoster((prev) => prev.map((r) => {
     if (r.studentId !== studentId) return r;
     return { ...r, status, dirty: true, explicitlyConfirmed: true };
@@ -226,16 +255,20 @@ export function ClassInputPage({ notify }) {
       notify(message, 'bad');
     } finally { setActionLoading(''); }
   }
-  async function saveBatch() {
+  async function persistAttendance(showSuccess = true) {
     if (!sessionId || !roster.length) { notify('Pilih sesi dan pastikan daftar siswa sudah muncul.', 'warn'); return; }
+    const items = roster
+      .filter((r) => r.dirty || r.explicitlyConfirmed)
+      .map((r) => ({ studentId: r.studentId, status: r.status, note: r.note || undefined, updatedAt: r.updatedAt || undefined, confirm: true }));
+    const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance`, { method: 'PUT', body: JSON.stringify({ items }) });
+    rosterState.refresh();
+    if (showSuccess) notify(result.message || 'Presensi siswa awal pembelajaran tersimpan.');
+    return result;
+  }
+  async function saveBatch() {
     setActionLoading('save');
     try {
-      const items = roster
-        .filter((r) => r.dirty || r.explicitlyConfirmed)
-        .map((r) => ({ studentId: r.studentId, status: r.status, note: r.note || undefined, updatedAt: r.updatedAt || undefined, confirm: true }));
-      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/attendance`, { method: 'PUT', body: JSON.stringify({ items }) });
-      rosterState.refresh();
-      notify(result.message || 'Presensi siswa awal pembelajaran tersimpan.');
+      await persistAttendance();
     } catch (error) { notify(error.message || 'Gagal menyimpan presensi.', 'bad'); } finally { setActionLoading(''); }
   }
   async function bulkPresent() {
@@ -257,8 +290,34 @@ export function ClassInputPage({ notify }) {
       notify(result.message || 'ALPA default dikonfirmasi.');
     } catch (error) { notify(error.message || 'Gagal konfirmasi ALPA.', 'bad'); } finally { setActionLoading(''); }
   }
+  async function persistJournal(showSuccess = true) {
+    if (!sessionId || !isOpen || !journalValid) {
+      notify('Lengkapi tujuan pembelajaran, kegiatan, jumlah JP, dan status ketuntasan.', 'warn');
+      return null;
+    }
+    const payload = { learningObjective: journalForm.learningObjective.trim(), activity: journalForm.activity.trim(), lessonHours: Number(journalForm.lessonHours), completionStatus: journalForm.completionStatus, ...(journalForm.id ? { updatedAt: journalForm.updatedAt } : {}) };
+    let saved;
+    try {
+      saved = await apiFetch(`/attendance/class-sessions/${sessionId}/journal`, { method: 'PUT', body: JSON.stringify(payload) });
+    } catch (error) {
+      setJournalConflict(['SESSION_JOURNAL_VERSION_REQUIRED', 'SESSION_JOURNAL_STALE_VERSION'].includes(error.code));
+      throw error;
+    }
+    setJournalForm((previous) => ({ ...previous, ...saved, lessonHours: saved.lessonHours ?? previous.lessonHours }));
+    setJournalDirty(false);
+    setJournalConflict(false);
+    if (showSuccess) notify('Jurnal sesi tersimpan.');
+    return saved;
+  }
+  async function saveJournal() {
+    setActionLoading('journal');
+    try { await persistJournal(); }
+    catch (error) { notify(error.message || 'Gagal menyimpan jurnal.', 'bad'); }
+    finally { setActionLoading(''); }
+  }
   async function closeSession() {
     if (!sessionId || !roster.length) { notify('Pilih sesi dan isi presensi terlebih dahulu.', 'warn'); return; }
+    if (!journalValid) { notify('Lengkapi jurnal sesi sebelum menutup kelas.', 'warn'); return; }
     if (isEarlyCheckout && earlyReason.trim().length < 10) { notify('Isi alasan keluar lebih awal minimal 10 karakter.', 'warn'); return; }
     let finalizeDefaultAlpa = false;
     if (progressPercent < 100) {
@@ -268,6 +327,8 @@ export function ClassInputPage({ notify }) {
     setActionLoading('close');
     setGeoStatus({ tone: 'info', message: 'Mengambil lokasi keluar kelas dari browser...' });
     try {
+      if (hasDirtyAttendance) await persistAttendance(false);
+      if (journalDirty || !journalForm.id) await persistJournal(false);
       const location = await captureBrowserGeolocation();
       setGeoStatus({ tone: 'ok', message: `Lokasi keluar diterima (akurasi ±${Math.round(location.accuracyMeter)} m).` });
       await apiFetch(`/attendance/class-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ ...location, finalizeDefaultAlpa, ...(isEarlyCheckout ? { earlyCheckoutReason: earlyReason } : {}) }) });
@@ -278,8 +339,13 @@ export function ClassInputPage({ notify }) {
       notify(message, 'bad');
     } finally { setActionLoading(''); }
   }
-  return <div className="content teacher-attendance-flow"><PageHead eyebrow="PRESENSI KELAS" title={presensiTitle} sub="Alur sederhana: Masuk Kelas → Semua Hadir/ubah pengecualian → Simpan → Tutup Sesi." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{sessionClassSubjectTitle(s)} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
-    <StepGuide title="Urutan kerja guru" steps={['Pilih sesi yang benar.', 'Klik Masuk Kelas.', 'Klik Semua Hadir bila mayoritas hadir.', 'Ubah pengecualian: Telat, Izin, Sakit, atau Alpa.', 'Klik Simpan, lalu Tutup Sesi.']} />
+  async function selectSession(nextSessionId) {
+    if (nextSessionId === sessionId) return;
+    if ((journalDirty || hasDirtyAttendance) && !await riskConfirm('Perubahan presensi atau jurnal yang belum disimpan akan dibuang. Ganti sesi?')) return;
+    setSessionId(nextSessionId);
+  }
+  return <div className="content teacher-attendance-flow"><PageHead eyebrow="RUANG KERJA SESI" title={presensiTitle} sub="Masuk kelas, simpan presensi, lengkapi jurnal sesi, lalu tutup kelas." actions={<div className="session-picker-control"><Field label="Pilih sesi"><SelectInput wrapperClassName="session-picker-select" value={sessionId} onChange={(e) => { void selectSession(e.target.value); }} disabled={Boolean(actionLoading)}><option value="">Pilih sesi yang tersedia</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{sessionClassSubjectTitle(s)} · {statusLabel(s.status)}</option>)}</SelectInput></Field></div>} />
+    <StepGuide title="Urutan kerja guru" steps={['Pilih sesi yang benar.', 'Klik Masuk Kelas.', 'Isi dan simpan presensi siswa.', 'Lengkapi dan simpan jurnal sesi.', 'Tutup Sesi setelah semua data tersimpan.']} />
     <div className="attendance-checkpoint"><div><span className="eyebrow">CHECKPOINT PRESENSI</span><b>{progressPercent}% selesai</b><small>{completedCount}/{roster.length || 0} siswa sudah dikonfirmasi. {defaultedCount ? `${defaultedCount} masih ALPA default.` : ''} {isOpen ? 'Sesi sedang bisa diisi.' : 'Buka sesi terlebih dahulu untuk mengubah status.'}</small></div><RosterProgress current={completedCount} total={roster.length} /></div>
     <div className="grid g-4"><StatCardPremium icon={<Clock size={18} />} label="Jam Mulai" value={startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkInAt ? `Masuk ${formatDateTime(teacherPresence.checkInAt)}` : 'Guru belum absen masuk'} /><StatCardPremium icon={<DoorOpen size={18} />} label="Jam Selesai" value={endsAt ? endsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '—'} sub={teacherPresence?.checkOutAt ? `Keluar ${formatDateTime(teacherPresence.checkOutAt)}` : isEarlyCheckout ? 'Belum waktunya keluar' : 'Sudah boleh absen keluar'} tone={isEarlyCheckout ? 'warn' : 'ok'} /><StatCardPremium icon={<Activity size={18} />} label="Status Guru" value={teacherPresence?.status ? statusLabel(teacherPresence.status) : statusLabel(current?.status)} sub="Masuk/keluar kelas" /><StatCardPremium icon={<CheckCircle2 size={18} />} label="Siswa Tercatat" value={roster.length} sub={`${counts.HADIR || 0} hadir · ${counts.ALPA || 0} alpa`} /></div>
     <Card title="Aksi guru" sub="Aksi presensi siswa dipisah dari absen keluar guru agar data awal pembelajaran tidak berubah tanpa sengaja.">
@@ -294,7 +360,16 @@ export function ClassInputPage({ notify }) {
           </div>
           <RosterProgress current={presentLikeCount} total={roster.length} />
         </div>
-      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Masuk Kelas</Btn><Btn loading={actionLoading === 'bulk-present'} onClick={bulkPresent} disabled={!isOpen || Boolean(actionLoading)}><Users size={14} /> Semua Hadir</Btn><Btn variant="danger" loading={actionLoading === 'bulk-alpa'} onClick={bulkAlpa} disabled={!isOpen || Boolean(actionLoading)}><X size={14} /> Tandai Alpa</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !isOpen || Boolean(actionLoading)}>Tutup Sesi <ArrowRight size={14} /></Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
+      )}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Btn variant="primary" loading={actionLoading === 'open'} onClick={openSession} disabled={!sessionId || isOpen || Boolean(actionLoading)}><Check size={14} /> Masuk Kelas</Btn><Btn loading={actionLoading === 'bulk-present'} onClick={bulkPresent} disabled={!isOpen || hasDirtyAttendance || Boolean(actionLoading)}><Users size={14} /> Semua Hadir</Btn><Btn variant="danger" loading={actionLoading === 'bulk-alpa'} onClick={bulkAlpa} disabled={!isOpen || hasDirtyAttendance || Boolean(actionLoading)}><X size={14} /> Tandai Alpa</Btn><Btn loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || !isOpen || Boolean(actionLoading)}><Save size={14} /> Simpan Presensi</Btn></div>{isEarlyCheckout && isOpen && <Field label="Alasan keluar sebelum jam selesai" hint={`${earlyReason.trim().length}/10+`}><TextInput value={earlyReason} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Wajib diisi jika kelas diakhiri sebelum jam selesai" /></Field>}</Card>
+    <Card title="Jurnal sesi" sub={isOpen ? 'Jurnal wajib tersimpan sebelum sesi ditutup.' : 'Jurnal sesi ditampilkan dalam mode baca saja.'}>
+      {journalState.error ? <ErrorState error={journalState.error} onRetry={journalState.refresh} /> : journalState.loading || journalState.data?.sessionId !== sessionId ? <LoadingState label="Memuat jurnal sesi…" /> : <div className="teacher-journal-form">
+        <Field label="Mata pelajaran"><TextInput value={[journalState.data?.subject?.code, journalState.data?.subject?.name].filter(Boolean).join(' · ')} readOnly /></Field>
+        <Field label="Tujuan pembelajaran"><TextInput type="textarea" rows={3} value={journalForm.learningObjective} onChange={(e) => setJournalField('learningObjective', e.target.value)} readOnly={!isOpen || Boolean(actionLoading)} placeholder="Tuliskan tujuan pembelajaran sesi ini" /></Field>
+        <Field label="Kegiatan"><TextInput type="textarea" rows={4} value={journalForm.activity} onChange={(e) => setJournalField('activity', e.target.value)} readOnly={!isOpen || Boolean(actionLoading)} placeholder="Ringkas kegiatan pembelajaran yang dilakukan" /></Field>
+        <div className="teacher-journal-meta"><Field label="Jumlah JP" hint={journalState.data?.scheduledDurationMinutes ? `Durasi jadwal ${journalState.data.scheduledDurationMinutes} menit` : undefined}><TextInput type="number" min="1" max="24" step="1" value={journalForm.lessonHours} onChange={(e) => setJournalField('lessonHours', e.target.value)} readOnly={!isOpen || Boolean(actionLoading)} /></Field><Field label="Status ketuntasan"><SelectInput value={journalForm.completionStatus} onChange={(e) => setJournalField('completionStatus', e.target.value)} disabled={!isOpen || Boolean(actionLoading)}><option value="TUNTAS">Tuntas</option><option value="BELUM_TUNTAS">Belum tuntas</option></SelectInput></Field></div>
+        {isOpen && <div className="teacher-journal-actions"><span aria-live="polite">{journalConflict ? 'Jurnal berubah di perangkat lain. Muat ulang untuk melanjutkan.' : journalDirty ? 'Perubahan jurnal belum disimpan.' : journalForm.id ? 'Jurnal sudah tersimpan.' : 'Jurnal belum disimpan.'}</span>{journalConflict && <Btn onClick={() => { setJournalConflict(false); journalState.refresh(); }} disabled={Boolean(actionLoading)}>Muat ulang jurnal</Btn>}<Btn loading={actionLoading === 'journal'} onClick={saveJournal} disabled={!journalValid || !journalDirty || journalConflict || Boolean(actionLoading)}><Save size={14} /> Simpan Jurnal</Btn><Btn variant="primary" loading={actionLoading === 'close'} onClick={closeSession} disabled={!roster.length || !journalValid || journalConflict || Boolean(actionLoading)}>Simpan & Tutup Sesi <ArrowRight size={14} /></Btn></div>}
+      </div>}
+    </Card>
     <div className="grid g-2 chart-summary"><Card title="Presensi siswa" sub="Tandai semua Hadir, lalu ubah siswa yang Telat/Izin/Sakit/Alpa."><StatusDonut counts={counts} title="Status siswa" /></Card><Card title="Ringkasan sebelum Tutup Sesi" sub="Periksa ulang sebelum mengakhiri kelas."><StackedBar segments={STATUS.map((st) => ({ label: statusLabel(st), value: counts[st] || 0, tone: st === 'HADIR' ? 'ok' : st === 'ALPA' ? 'bad' : st === 'TELAT' ? 'warn' : 'info' }))} /></Card></div><div className="dock dock-sticky" aria-label="Ringkasan status presensi"><div className="dock-stats">{STATUS.map((st) => <span className="s" key={st}><span className="k">{statusLabel(st)}</span><span className="v">{counts[st] || 0}</span></span>)}</div>{isOpen && <Btn size="sm" variant="primary" loading={actionLoading === 'save'} onClick={saveBatch} disabled={!roster.length || Boolean(actionLoading)}><Save size={13} /> Simpan</Btn>}</div>{rosterState.loading ? <LoadingState /> : rosterState.error ? <ErrorState error={rosterState.error} /> : <div className="roster">{roster.map((s, i) => {
       const warningLabels = scanWarningLabels(s.eligibility);
       return <div key={s.studentId} className="roster-row"><div className="roster-idx">{String(i + 1).padStart(2, '0')}</div><Avatar name={s.fullName} /><div className="roster-student"><div className="roster-name">{s.fullName}</div><div className="roster-meta">{s.username} · kartu {statusLabel(s.cardStatus)} · {warningLabels.length ? 'Catatan scan perlu dipantau petugas' : 'Tidak ada catatan scan'}</div>{warningLabels.length > 0 && <div className="row-actions" aria-label="Catatan scan siswa">{warningLabels.map((label) => <Pill key={label} tone="warn">{label}</Pill>)}</div>}</div><div className="statuspick">{STATUS.map((st) => <button key={st} className={`${s.status === st ? 'on ' : ''}${st.toLowerCase()}`} disabled={!isOpen || Boolean(actionLoading)} onClick={() => setStatus(s.studentId, st)}>{statusLabel(st)}</button>)}</div></div>;
@@ -333,7 +408,15 @@ export function TeacherLeavePage({ notify }) {
 
 export function TeacherRecapPage() {
   const [month, setMonth] = useState(monthNow());
-  const unavailable = <EmptyState title="Rekap kelas belum tersedia" sub="Laporan bulanan per kelas membutuhkan akses Admin/TU. Gunakan menu Isi Presensi, Perbaiki Presensi, atau Kehadiran Saya untuk melihat data yang tersedia untuk guru." />;
-  return <div className="content"><PageHead eyebrow="LAPORAN GURU" title="Laporan Kelas Saya" sub="Ringkasan kelas yang Anda ajar pada bulan yang dipilih." actions={<label className="input compact"><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Pilih bulan" /></label>} /><div className="grid g-2"><Card title="Grafik rekap" sub="Perbandingan antar kelas ampuan.">{unavailable}</Card><Card title="Tabel rekap" sub="Data per kelas/sesi bulan yang dipilih">{unavailable}</Card></div></div>;
+  const [year, monthNumber] = month.split('-').map(Number);
+  const from = `${month}-01`;
+  const to = `${month}-${String(new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()).padStart(2, '0')}`;
+  const recap = useRemote(() => apiFetch(`/reports/recap/classes${qs({ from, to, page: 1, limit: 100 })}`), [from, to]);
+  const rows = itemsOf(recap.data);
+  let content;
+  if (recap.loading) content = <LoadingState label="Memuat laporan kelas…" />;
+  else if (recap.error) content = <ErrorState error={recap.error} onRetry={recap.refresh} />;
+  else if (!rows.length) content = <EmptyState title="Belum ada rekap kelas" sub="Belum ada sesi kelas Anda pada bulan yang dipilih." />;
+  else content = <div className="grid g-2"><Card title="Kelengkapan sesi" sub="Persentase sesi yang sudah ditutup per kelas."><HorizontalBarList data={rows} labelKeys={['classCode', 'className']} valueKeys={['attendanceCoveragePercent']} maxValue={100} /></Card><Card title="Rekap per kelas" sub="Data hanya untuk kelas yang Anda ampu."><DataTable rows={rows} columns={[{ header: 'Kelas', render: (row) => `${row.classCode || '—'}${row.className && row.className !== row.classCode ? ` · ${row.className}` : ''}` }, { header: 'Sesi', key: 'sessionCount' }, { header: 'Selesai', key: 'closedSessions' }, { header: 'Kelengkapan', render: (row) => `${Number(row.attendanceCoveragePercent || 0).toLocaleString('id-ID')}%` }, { header: 'Hadir', render: (row) => row.counters?.HADIR ?? 0 }, { header: 'Alpa', render: (row) => row.counters?.ALPA ?? 0 }]} /></Card></div>;
+  return <div className="content"><PageHead eyebrow="LAPORAN GURU" title="Laporan Kelas Saya" sub="Ringkasan kelas yang Anda ajar pada bulan yang dipilih." actions={<label className="input compact"><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Pilih bulan" /></label>} />{content}</div>;
 }
-

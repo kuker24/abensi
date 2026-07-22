@@ -87,7 +87,7 @@ export default function DashboardPreview() {
       return (
         <div className="siab2p-dashboard-content">
           <div className="siab2p-dashboard-list-block">
-            <p>Ringkasan Kehadiran Semester</p>
+            <p>Ringkasan Kehadiran Pribadi</p>
             <div className="siab2p-attendance-grid">
               {siab2Data.dashboardMock.siswa.attendance.map((item) => (
                 <div className={`siab2p-attendance-card siab2p-attendance-${item.status.toLowerCase()}`} key={item.label}>

@@ -16,7 +16,7 @@ import {
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedUser } from '../../common/current-user.decorator';
-import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDto } from './attendance-class.dto';
+import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, SessionGeoDto, UpsertSessionJournalDto } from './attendance-class.dto';
 import { AccessPolicyService } from '../security/access-policy.service';
 import { writeAudit } from '../../common/audit-log';
 import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
@@ -412,6 +412,85 @@ export class AttendanceClassService {
       items,
       meta: buildPaginationMeta(total, pagination)
     };
+  }
+
+  async getJournal(sessionId: string, actor: AuthenticatedUser) {
+    if (actor.role !== Role.GURU_MAPEL) throw new ForbiddenException('Jurnal sesi hanya dapat diakses guru mapel.');
+
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        teacherId: true,
+        startsAt: true,
+        endsAt: true,
+        subject: { select: { id: true, code: true, name: true } },
+        journal: true
+      }
+    });
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+    if (session.teacherId !== actor.sub) throw new ForbiddenException('Bukan sesi Anda.');
+
+    return {
+      sessionId: session.id,
+      subject: session.subject,
+      scheduledDurationMinutes: durationMinutes(session.startsAt, session.endsAt),
+      journal: session.journal
+    };
+  }
+
+  async upsertJournal(sessionId: string, actor: AuthenticatedUser, payload: UpsertSessionJournalDto) {
+    if (actor.role !== Role.GURU_MAPEL) throw new ForbiddenException('Jurnal sesi hanya dapat diisi guru mapel.');
+
+    return this.prisma.$transaction(async (tx) => {
+      await lockSessionForUpdate(tx, sessionId);
+      const session = await tx.session.findUnique({ where: { id: sessionId } });
+      if (!session) throw new NotFoundException('Sesi tidak ditemukan.');
+      if (session.teacherId !== actor.sub) throw new ForbiddenException('Bukan sesi Anda.');
+      if (session.status !== SessionStatus.OPEN) throw new ConflictException('Jurnal hanya dapat disimpan saat sesi OPEN.');
+
+      const before = await tx.sessionJournal.findUnique({ where: { sessionId } });
+      const expectedUpdatedAt = payload.updatedAt ? new Date(payload.updatedAt) : null;
+      if (expectedUpdatedAt && Number.isNaN(expectedUpdatedAt.getTime())) {
+        throw new BadRequestException('Versi jurnal tidak valid.');
+      }
+      if (before && !expectedUpdatedAt) {
+        throw new ConflictException({
+          code: 'SESSION_JOURNAL_VERSION_REQUIRED',
+          message: 'Versi jurnal wajib disertakan. Muat ulang jurnal sebelum menyimpan.'
+        });
+      }
+      if ((!before && expectedUpdatedAt) || (before && expectedUpdatedAt && before.updatedAt.getTime() !== expectedUpdatedAt.getTime())) {
+        throw new ConflictException({
+          code: 'SESSION_JOURNAL_STALE_VERSION',
+          message: 'Jurnal sudah berubah. Muat ulang jurnal sebelum menyimpan.',
+          currentUpdatedAt: before?.updatedAt.toISOString() ?? null
+        });
+      }
+
+      const data = {
+        learningObjective: payload.learningObjective.trim(),
+        activity: payload.activity.trim(),
+        lessonHours: payload.lessonHours,
+        completionStatus: payload.completionStatus
+      };
+      const journal = before
+        ? await tx.sessionJournal.update({ where: { id: before.id }, data })
+        : await tx.sessionJournal.create({ data: { sessionId, ...data } });
+
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: before ? 'class.session.journal.updated' : 'class.session.journal.created',
+        resource: 'sessionJournal',
+        resourceId: journal.id,
+        before: before ? before as unknown as Prisma.InputJsonValue : null,
+        after: journal as unknown as Prisma.InputJsonValue
+      });
+
+      return journal;
+    });
   }
 
   async openSession(sessionId: string, actor: AuthenticatedUser, geo?: SessionGeoDto) {
@@ -900,6 +979,13 @@ export class AttendanceClassService {
       const lockedSession = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
       if (lockedSession.status !== SessionStatus.OPEN) {
         throw new ConflictException('Sesi sudah tidak OPEN.');
+      }
+      const journal = await tx.sessionJournal.findUnique({ where: { sessionId }, select: { id: true } });
+      if (!journal) {
+        throw new ConflictException({
+          code: 'SESSION_JOURNAL_REQUIRED',
+          message: 'Jurnal pembelajaran wajib disimpan sebelum sesi ditutup.'
+        });
       }
       assertUsableRosterState(lockedSession);
       const roster = await tx.sessionRoster.findMany({ where: { sessionId }, select: { studentId: true } });

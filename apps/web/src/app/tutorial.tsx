@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, ChevronRight, PlayCircle, X } from 'lucide-react';
 import { apiFetch, go } from './api';
 import { Btn, IconBtn } from './ui';
 import { BRAND } from './branding';
 import type { User } from './types';
 
-const TUTORIAL_VERSION = '2026.05.03';
+const TUTORIAL_VERSION = '2026.04.26';
 
 type TutorialStep = {
   title: string;
@@ -55,8 +55,8 @@ function stepsForRole(role?: string): TutorialStep[] {
     return [
       COMMON_START,
       { title: 'Absen masuk saat mulai kelas', body: 'Buka Isi Presensi Kelas, pilih sesi Anda, lalu klik Absen Masuk / Mulai Kelas saat pelajaran dimulai.', action: { label: 'Isi Presensi', path: '/guru/presensi' } },
-      { title: 'Catat presensi siswa di awal', body: 'Tandai semua hadir bila sesuai, lalu ubah siswa yang izin, sakit, terlambat, atau alpa. Simpan presensi awal agar data kelas tercatat.' },
-      { title: 'Akhiri kelas dengan absen keluar', body: 'Saat pelajaran selesai, klik Absen Keluar / Akhiri Kelas. Jika ada kesalahan, gunakan Perbaiki Presensi dengan alasan yang jelas.', action: { label: 'Buka Perbaiki Presensi', path: '/guru/koreksi' } }
+      { title: 'Simpan presensi dan jurnal sesi', body: 'Catat presensi siswa, lalu isi tujuan pembelajaran, kegiatan, jumlah JP, dan status ketuntasan. Simpan jurnal sebelum menutup sesi.' },
+      { title: 'Akhiri kelas setelah jurnal tersimpan', body: 'Pastikan presensi dan jurnal sesi sudah benar, lalu klik Simpan & Tutup Sesi. Jika presensi salah, gunakan Perbaiki Presensi dengan alasan yang jelas.', action: { label: 'Buka Perbaiki Presensi', path: '/guru/koreksi' } }
     ];
   }
   if (role === 'SISWA') {
@@ -79,7 +79,10 @@ export function OnboardingTour({ user, manualOpenKey = 0 }: { user: User; manual
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [version, setVersion] = useState(TUTORIAL_VERSION);
+  const versionRef = useRef(version);
+  versionRef.current = version;
   const [loading, setLoading] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
   const steps = useMemo(() => stepsForRole(String(user?.role || 'ADMIN_TU')), [user?.role]);
   const current = steps[Math.min(step, steps.length - 1)];
 
@@ -120,7 +123,7 @@ export function OnboardingTour({ user, manualOpenKey = 0 }: { user: User; manual
   async function dismiss() {
     setLoading(true);
     try {
-      await apiFetch('/tutorials/me/dismiss', { method: 'POST', body: JSON.stringify({ version }) });
+      await apiFetch('/tutorials/me/dismiss', { method: 'POST', body: JSON.stringify({ version: versionRef.current }) });
     } catch {
       // Aman diabaikan; pengguna bisa membuka ulang dari tombol panduan.
     } finally {
@@ -129,14 +132,38 @@ export function OnboardingTour({ user, manualOpenKey = 0 }: { user: User; manual
     }
   }
 
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cardRef.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); void dismiss(); return; }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(cardRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], [tabindex]:not([tabindex="-1"])') || []);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => { window.removeEventListener('keydown', handler); opener?.focus(); };
+  }, [open]);
+
+  function openAction(path: string) {
+    setOpen(false);
+    void apiFetch('/tutorials/me/dismiss', { method: 'POST', body: JSON.stringify({ version }) }).catch(() => undefined);
+    go(path);
+  }
+
   if (!open) return null;
 
   return <div className="tour-backdrop" role="dialog" aria-modal="true" aria-label="Tutorial awal">
-    <div className="tour-card">
+    <div ref={cardRef} className="tour-card">
       <div className="tour-top"><div className="tour-icon"><BookOpen size={20} /></div><div><div className="eyebrow"><span className="dot" /> TUTORIAL AWAL</div><h2>{current.title}</h2></div><IconBtn label="Tutup tutorial" onClick={dismiss}><X size={16} /></IconBtn></div>
       <p>{current.body}</p>
       <div className="tour-progress" aria-label={`Langkah ${step + 1} dari ${steps.length}`}>{steps.map((item, index) => <span key={item.title} className={index <= step ? 'on' : ''} />)}</div>
-      {current.action && <button type="button" className="tour-action" onClick={() => go(current.action!.path)}><PlayCircle size={16} /> {current.action.label} <ChevronRight size={14} /></button>}
+      {current.action && <button type="button" className="tour-action" onClick={() => openAction(current.action!.path)}><PlayCircle size={16} /> {current.action.label} <ChevronRight size={14} /></button>}
       <div className="tour-foot"><Btn variant="ghost" disabled={loading} onClick={dismiss}>Lewati dulu</Btn><div className="row" style={{ gap: 8 }}><Btn variant="ghost" disabled={step === 0 || loading} onClick={() => setStep((v) => Math.max(0, v - 1))}>Kembali</Btn>{step < steps.length - 1 ? <Btn variant="primary" onClick={() => setStep((v) => Math.min(steps.length - 1, v + 1))}>Lanjut <ArrowRight size={14} /></Btn> : <Btn variant="primary" loading={loading} onClick={complete}><Check size={14} /> Selesai</Btn>}</div></div>
     </div>
   </div>;

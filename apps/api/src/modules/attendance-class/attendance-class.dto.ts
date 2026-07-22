@@ -1,20 +1,23 @@
-import { StudentAttendanceStatus } from '@prisma/client';
+import { SessionJournalCompletionStatus, StudentAttendanceStatus } from '@prisma/client';
 import {
   IsArray,
   IsEnum,
   IsBoolean,
   IsISO8601,
   IsIn,
+  IsInt,
   IsLatitude,
   IsLongitude,
   IsNumber,
   IsOptional,
   IsString,
+  Max,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class SessionGeoDto {
   @IsOptional()
@@ -51,6 +54,33 @@ export class CloseSessionDto extends SessionGeoDto {
   @IsOptional()
   @IsBoolean()
   finalizeDefaultAlpa?: boolean;
+}
+
+export class UpsertSessionJournalDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1000)
+  learningObjective!: string;
+
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
+  activity!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  lessonHours!: number;
+
+  @IsEnum(SessionJournalCompletionStatus)
+  completionStatus!: SessionJournalCompletionStatus;
+
+  @IsOptional()
+  @IsISO8601()
+  updatedAt?: string;
 }
 
 export class AttendanceItemDto {

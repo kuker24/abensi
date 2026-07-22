@@ -15,7 +15,7 @@ function StatLabel({ value, label }: { value: string; label: string }) {
 
 export default function StatsSection() {
   return (
-    <section className="siab2p-stats-section" aria-label="Statistik SIAB2">
+    <section className="siab2p-stats-section" aria-label="Informasi SIAB2">
       <div className="siab2p-container">
         <div className="siab2p-stats-grid">
           {siab2Data.stats.map((stat) => (

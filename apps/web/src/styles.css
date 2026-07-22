@@ -2357,6 +2357,14 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   }
 }
 
+/* Final touch-target floor: applies after component-specific sizing. */
+@media (pointer: coarse) {
+  button, a, input, select, [role="button"] { min-height: 44px; }
+  button, [role="button"] { min-width: 44px; }
+  input[type="checkbox"], input[type="radio"] { min-width: 44px; min-height: 44px; }
+  .btn.sm, .btn.icon, .statuspick button, .siab2-preview button, .siab2-preview a { min-height: 44px; }
+}
+
 @media (max-width: 900px) {
   .siab2-login-shell,
   .siab2-login-password-shell {
@@ -2689,7 +2697,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   --siab2p-stroke-strong: rgba(255, 255, 255, 0.16);
   --siab2p-text: #f7f7f7;
   --siab2p-muted: rgba(247, 247, 247, 0.72);
-  --siab2p-dim: rgba(247, 247, 247, 0.48);
+  --siab2p-dim: rgba(247, 247, 247, 0.70);
   --siab2p-accent-1: #89AACC;
   --siab2p-accent-2: #4E85BF;
   --siab2p-font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -3005,7 +3013,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   z-index: 55;
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(circle at 50% 24%, rgba(137,170,204,0.045), transparent 36%), rgba(5,5,5,0.08);
+  background: radial-gradient(circle at 50% 24%, rgba(137,170,204,0.08), transparent 36%), rgba(5,5,5,0.96);
   transition: opacity 240ms ease;
 }
 
@@ -3029,7 +3037,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   justify-content: space-between;
   gap: 18px;
   min-height: 30px;
-  color: rgba(247,247,247,0.18);
+  color: rgba(247,247,247,0.82);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -3043,10 +3051,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   justify-content: center;
   width: 32px;
   height: 32px;
-  border: 1px solid rgba(255,255,255,0.055);
+  border: 1px solid rgba(255,255,255,0.20);
   border-radius: 999px;
   background: rgba(0,0,0,0.10);
-  color: rgba(137,170,204,0.14);
+  color: #9fc2e1;
   font-style: normal;
 }
 
@@ -4147,7 +4155,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .siab2p-footer-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 999px; padding: 0 22px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .siab2p-footer-primary { color: #06111f !important; background: linear-gradient(90deg, var(--siab2p-accent-1), var(--siab2p-accent-2)); }
 .siab2p-footer-secondary { border: 1px solid var(--siab2p-stroke); color: var(--siab2p-text) !important; }
-.siab2p-footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 24px; border-top: 1px solid var(--siab2p-stroke); padding-top: 32px; color: rgba(247,247,247,0.50); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; }
+.siab2p-footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 24px; border-top: 1px solid var(--siab2p-stroke); padding-top: 32px; color: rgba(247,247,247,0.72); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; }
 .siab2p-footer-bottom strong { display: inline-flex; align-items: center; gap: 9px; font-weight: 500; }
 .siab2p-footer-bottom em { color: rgba(247,247,247,0.26); font-style: normal; margin-inline: 5px; }
 
@@ -5975,6 +5983,19 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+/* Guru session workspace */
+.teacher-journal-form { display: grid; gap: 16px; }
+.teacher-journal-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.teacher-journal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding-top: 4px; }
+.teacher-journal-actions > span { margin-right: auto; color: var(--fg-muted); font-size: var(--text-xs); }
+.teacher-journal-form input[readonly],
+.teacher-journal-form textarea[readonly],
+.teacher-journal-form select:disabled { color: var(--fg-secondary); cursor: default; }
+@media (max-width: 640px) {
+  .teacher-journal-meta { grid-template-columns: 1fr; }
+  .teacher-journal-actions .btn { width: 100%; }
 }
 
 .account-login-slip {

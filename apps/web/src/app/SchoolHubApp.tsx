@@ -408,15 +408,15 @@ function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: 
                   <em>Portal Resmi</em>
                 </div>
                 <div className="siab2-login-metric-grid">
-                  <div className="siab2-login-metric"><Calendar size={15} /><span>Tahun Ajaran</span><strong>2026/2027</strong></div>
-                  <div className="siab2-login-metric"><Clock size={15} /><span>Semester</span><strong>Genap</strong></div>
+                  <div className="siab2-login-metric"><Calendar size={15} /><span>Jadwal</span><strong>Per sesi</strong></div>
+                  <div className="siab2-login-metric"><Clock size={15} /><span>Presensi</span><strong>Harian</strong></div>
                   <div className="siab2-login-metric siab2-login-metric-wide">
-                    <div><CheckSquare size={16} /><span>Presensi Hari Ini</span></div>
-                    <strong>97.4% Hadir</strong>
-                    <i><b /> Rekap harian tersusun</i>
+                    <div><CheckSquare size={16} /><span>Ruang Kerja Guru</span></div>
+                    <strong>Presensi & Jurnal</strong>
+                    <i><b /> Tersimpan per sesi</i>
                   </div>
-                  <div className="siab2-login-metric"><BookOpen size={15} /><span>Kelas Aktif</span><strong>24 Rombel</strong></div>
-                  <div className="siab2-login-metric"><Users size={15} /><span>Siswa & Guru</span><strong>683 / 42 Orang</strong></div>
+                  <div className="siab2-login-metric"><BookOpen size={15} /><span>Kelas</span><strong>Terjadwal</strong></div>
+                  <div className="siab2-login-metric"><Users size={15} /><span>Akses</span><strong>Berbasis peran</strong></div>
                   <div className="siab2-login-metric"><Database size={15} /><span>Ledger Akademik</span><strong>Tersusun</strong></div>
                 </div>
                 <div className="siab2-login-progress-track"><span /></div>

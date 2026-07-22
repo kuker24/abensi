@@ -137,9 +137,9 @@ export const siab2Data: Siab2DataType = {
     },
     {
       id: 'jadwal-jurnal',
-      title: 'Jadwal & Jurnal Mengajar',
+      title: 'Jadwal & Jurnal Sesi',
       tag: 'Rencana KBM',
-      desc: 'Mendukung penyusunan jadwal pelajaran dan jurnal mengajar guru dalam alur kerja yang lebih rapi.',
+      desc: 'Mendukung penyusunan jadwal pelajaran dan jurnal per sesi mengajar dalam alur kerja yang lebih rapi.',
       previewType: 'timeline'
     },
     {
@@ -159,15 +159,15 @@ export const siab2Data: Siab2DataType = {
     },
     {
       name: 'Guru',
-      desc: 'Membantu pengisian agenda mengajar harian, pencatatan absensi siswa per jam pelajaran, serta catatan karakter.',
+      desc: 'Membantu pengisian jurnal sesi dan pencatatan presensi siswa sesuai jadwal pelajaran.',
       badge: 'Akademik & Karakter',
-      features: ['Jurnal Mengajar Elektronik', 'Presensi Kehadiran Terstruktur', 'Evaluasi Karakter Siswa']
+      features: ['Jurnal Sesi Mengajar', 'Presensi Kehadiran Terstruktur', 'Status Ketuntasan Pembelajaran']
     },
     {
       name: 'Siswa',
-      desc: 'Melihat jadwal pelajaran secara mandiri, memantau grafik persentase kehadiran sekolah, serta riwayat catatan kedisiplinan.',
+      desc: 'Melihat data kehadiran pribadi sesuai akses siswa.',
       badge: 'Portal Pelajar',
-      features: ['Akses Jadwal Kelas Harian', 'Monitor Kehadiran Pribadi', 'Transparansi Rapor Karakter']
+      features: ['Monitor Kehadiran Pribadi', 'Status Presensi Kelas', 'Riwayat Kehadiran']
     },
     {
       name: 'Operator Akademik',
@@ -186,30 +186,29 @@ export const siab2Data: Siab2DataType = {
     admin: {
       metrics: [
         { label: 'Data Induk', value: 'Terkelola', change: 'Sesuai Peran', status: 'Hadir' },
-        { label: 'Jurnal Mengajar', value: 'Tersusun', change: 'Perlu Tinjauan', status: 'Aktif' },
+        { label: 'Jurnal Sesi', value: 'Tersimpan', change: 'Perlu Tinjauan', status: 'Aktif' },
         { label: 'Laporan Akademik', value: 'Berkala', change: 'Untuk Pimpinan', status: 'Izin' }
       ],
       alerts: [
         { name: 'Validasi Presensi', detail: 'Pemeriksaan data kehadiran oleh petugas berwenang', status: 'Pending' },
-        { name: 'Rekap Jurnal', detail: 'Ringkasan jurnal mengajar untuk bahan tinjauan', status: 'Aktif' },
+        { name: 'Jurnal Sesi', detail: 'Catatan pembelajaran tersimpan bersama sesi kelas', status: 'Aktif' },
         { name: 'Kelengkapan Data', detail: 'Pembaruan data induk dilakukan sesuai kebutuhan madrasah', status: 'Hadir' }
       ]
     },
     guru: {
       schedule: [
         { time: 'Jam Pelajaran', subject: 'Jadwal Mengajar', class: 'Kelas Aktif', status: 'Aktif' },
-        { time: 'Setelah KBM', subject: 'Jurnal Mengajar', class: 'Catatan Kelas', status: 'Pending' }
+        { time: 'Sebelum Tutup Sesi', subject: 'Jurnal Sesi', class: 'Catatan Kelas', status: 'Pending' }
       ],
       alerts: [
         { name: 'Presensi Kelas', detail: 'Guru mengisi presensi sesuai jadwal mengajar', status: 'Pending' },
-        { name: 'Jurnal Mengajar', detail: 'Catatan KBM tersimpan untuk arsip madrasah', status: 'Aktif' }
+        { name: 'Jurnal Sesi', detail: 'Tujuan, kegiatan, jumlah JP, dan ketuntasan tersimpan sebelum sesi ditutup', status: 'Aktif' }
       ]
     },
     siswa: {
       schedule: [
         { time: 'Hari Aktif', subject: 'Jadwal Pelajaran', teacher: 'Guru Pengampu', status: 'Hadir' },
-        { time: 'Semester', subject: 'Riwayat Kehadiran', teacher: 'Wali Kelas', status: 'Hadir' },
-        { time: 'Berkala', subject: 'Catatan Karakter', teacher: 'Madrasah', status: 'Pending' }
+        { time: 'Riwayat', subject: 'Kehadiran Pribadi', teacher: 'Madrasah', status: 'Hadir' }
       ],
       attendance: [
         { label: 'Hadir', count: 'Tercatat', status: 'Hadir' },
@@ -221,11 +220,11 @@ export const siab2Data: Siab2DataType = {
     kepala: {
       metrics: [
         { label: 'Rekap Kehadiran', value: 'Tersedia', status: 'Hadir' },
-        { label: 'Jurnal Mengajar', value: 'Tertata', status: 'Aktif' }
+        { label: 'Jurnal Sesi', value: 'Tersimpan', status: 'Aktif' }
       ],
       approvals: [
         { name: 'Laporan Kehadiran Berkala', detail: 'Disiapkan untuk tinjauan pimpinan madrasah', status: 'Pending' },
-        { name: 'Jurnal Mengajar Semester', detail: 'Dirapikan sebagai arsip akademik madrasah', status: 'Aktif' }
+        { name: 'Jurnal Sesi Mengajar', detail: 'Catatan pembelajaran tersimpan per sesi kelas', status: 'Aktif' }
       ]
     }
   }

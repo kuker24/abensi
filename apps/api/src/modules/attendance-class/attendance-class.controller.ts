@@ -8,7 +8,7 @@ import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AttendanceClassService } from './attendance-class.service';
-import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, RecoverMissedSessionDto, RepairSessionRosterDto, SessionGeoDto } from './attendance-class.dto';
+import { BatchAttendanceDto, CloseSessionDto, CorrectAttendanceDto, RecoverMissedSessionDto, RepairSessionRosterDto, SessionGeoDto, UpsertSessionJournalDto } from './attendance-class.dto';
 
 @Controller('attendance/class-sessions')
 @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
@@ -32,6 +32,24 @@ export class AttendanceClassController {
     });
 
     return this.attendanceClassService.listSessions(user, pagination, date);
+  }
+
+  @Get(':id/journal')
+  @Roles(Role.GURU_MAPEL)
+  @Capabilities('classAttendance.read')
+  getJournal(@Param('id') sessionId: string, @CurrentUser() user: { sub: string; role: string }) {
+    return this.attendanceClassService.getJournal(sessionId, user);
+  }
+
+  @Put(':id/journal')
+  @Roles(Role.GURU_MAPEL)
+  @Capabilities('classAttendance.record')
+  upsertJournal(
+    @Param('id') sessionId: string,
+    @CurrentUser() user: { sub: string; role: string },
+    @Body() body: UpsertSessionJournalDto
+  ) {
+    return this.attendanceClassService.upsertJournal(sessionId, user, body);
   }
 
   @Post(':id/open')

@@ -1,5 +1,5 @@
 import { AlertTriangle, LogOut, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ConfirmDialogState } from './types';
 import { Btn, IconBtn } from './ui';
 
@@ -15,12 +15,26 @@ export function riskConfirm(message: string, title = 'Konfirmasi aksi'): Promise
 }
 
 export function ConfirmDialog({ dialog, onCancel, onConfirm }: { dialog: ConfirmDialogState | null; onCancel: () => void; onConfirm: () => void }) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
   useEffect(() => {
     if (!dialog) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modalRef.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); onCancelRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(modalRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])') || []);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [dialog, onCancel]);
+    return () => { window.removeEventListener('keydown', handler); opener?.focus(); };
+  }, [dialog]);
 
   if (!dialog) return null;
 
@@ -31,7 +45,7 @@ export function ConfirmDialog({ dialog, onCancel, onConfirm }: { dialog: Confirm
 
   return (
     <div className={`modal-backdrop siab2-confirm-backdrop${isLogoutDialog ? ' siab2-confirm-backdrop-logout' : ''}`} role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" onClick={onCancel}>
-      <div className="modal siab2-confirm-modal" onClick={(e) => e.stopPropagation()}>
+      <div ref={modalRef} className="modal siab2-confirm-modal" onClick={(e) => e.stopPropagation()}>
         <div className="siab2-confirm-top">
           <div className="siab2-confirm-icon" aria-hidden="true"><DialogIcon size={20} /></div>
           <div className="siab2-confirm-heading">
