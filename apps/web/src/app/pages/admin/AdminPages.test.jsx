@@ -53,6 +53,55 @@ describe('Attendance settings', () => {
     expect(requestBody).not.toHaveProperty('id');
     expect(requestBody).not.toHaveProperty('updatedAt');
   });
+
+  it('sends only writable attendance policy fields', async () => {
+    setRiskConfirmHandler(async () => true);
+    let requestBody = null;
+    const attendancePolicy = {
+      id: 1,
+      requireStudentGateInBeforeClass: true,
+      requireStudentDhuha: true,
+      requireStudentDzuhur: true,
+      requireStudentAsharForAfternoon: true,
+      requireStudentClassEligibility: true,
+      requireTeacherGateIn: true,
+      requireTeacherGateOut: true,
+      requireStaffGateIn: true,
+      requireStaffGateOut: true,
+      allowManualOverride: true,
+      allowStudentAsharCheckoutOverride: true,
+      dhuhaStartTime: '07:00',
+      dhuhaEndTime: '07:45',
+      dzuhurStartTime: '12:15',
+      dzuhurEndTime: '13:15',
+      asharStartTime: '15:30',
+      asharEndTime: '16:00',
+      asharRequiredClassEndTime: '15:00',
+      duplicateScanWindowMinutes: 5,
+      preferOfficialQrReader: true,
+      legacyQrScanEnabled: true,
+      updatedAt: '2026-07-23T00:00:00.000Z'
+    };
+    vi.stubGlobal('fetch', vi.fn(async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/attendance/policy') && init.method === 'PUT') {
+        requestBody = JSON.parse(String(init.body));
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/attendance/policy')) return new Response(JSON.stringify(attendancePolicy), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/access/geofence')) return new Response(JSON.stringify({ id: 1, centerLat: 0, centerLng: 0, radiusMeter: 300, enforceSessionOpen: true, arrivalGraceMinutes: 15, autoMissedGraceMinutes: 15, requireGateTapForOpen: false, allowPicketOverride: true, updatedAt: '2026-07-23T00:00:00.000Z' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<SettingsPage notify={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Simpan aturan absensi/i }));
+
+    await waitFor(() => expect(requestBody).not.toBeNull());
+    expect(requestBody).toEqual(expect.objectContaining({ dhuhaStartTime: '07:00', asharRequiredClassEndTime: '15:00', duplicateScanWindowMinutes: 5 }));
+    expect(requestBody).not.toHaveProperty('id');
+    expect(requestBody).not.toHaveProperty('updatedAt');
+  });
 });
 
 describe('Master Data account login slips', () => {
