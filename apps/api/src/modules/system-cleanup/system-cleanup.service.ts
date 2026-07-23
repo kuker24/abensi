@@ -1,8 +1,10 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
-import { CardStatus, Role } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { CardStatus, NotificationType, ReconciliationFlagType, ReconciliationStatus, Role } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
+import { businessDayBounds } from '../../common/business-time';
+import type { RequestMeta } from '../../common/request-meta';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SystemCleanupRunDto } from './system-cleanup.dto';
+import { PilotCleanupPreviewDto, PilotCleanupRunDto, SystemCleanupRunDto } from './system-cleanup.dto';
 
 type Actor = { sub: string; role: string };
 type CleanupOptions = Omit<SystemCleanupRunDto, 'reason'>;
@@ -18,6 +20,7 @@ const PROTECTED_DATA = [
   'Papan anomali',
   'Buku piket'
 ];
+const PILOT_CONFIRM_TEXT = 'BERSIHKAN PILOT';
 
 @Injectable()
 export class SystemCleanupService {
@@ -25,6 +28,20 @@ export class SystemCleanupService {
 
   private assertDeveloper(actor: Actor) {
     if (actor.role !== Role.DEVELOPER) throw new ForbiddenException('Clean data sistem hanya boleh dilakukan Developer.');
+  }
+
+  private assertPilotOperator(actor: Actor) {
+    if (actor.role !== Role.ADMIN_TU && actor.role !== Role.DEVELOPER) {
+      throw new ForbiddenException('Cleanup pilot hanya boleh dilakukan Admin/TU atau Developer.');
+    }
+  }
+
+  private pilotDate(date: string) {
+    try {
+      return businessDayBounds(date);
+    } catch {
+      throw new BadRequestException('Tanggal pilot harus valid dengan format YYYY-MM-DD.');
+    }
   }
 
   private cutoff(days = 30) {
@@ -191,5 +208,110 @@ export class SystemCleanupService {
     });
 
     return { ok: true, executed, skipped, protectedData: PROTECTED_DATA };
+  }
+
+  async previewPilot(actor: Actor, payload: PilotCleanupPreviewDto) {
+    this.assertPilotOperator(actor);
+    const { date, start, end, key } = this.pilotDate(payload.date);
+    const sessionWhere = { businessDate: date };
+    const flagWhere = {
+      type: ReconciliationFlagType.TIDAK_MENGAJAR,
+      status: ReconciliationStatus.OPEN,
+      session: sessionWhere
+    };
+    const notificationWhere = {
+      type: NotificationType.SESSION_MISSED,
+      createdAt: { gte: start, lte: end }
+    };
+    const [sessions, missedSessions, notifications, flags] = await Promise.all([
+      this.prisma.session.count({ where: sessionWhere }),
+      this.prisma.session.count({ where: { ...sessionWhere, status: 'MISSED' } }),
+      this.prisma.notification.count({ where: notificationWhere }),
+      this.prisma.reconciliationFlag.count({ where: flagWhere })
+    ]);
+
+    return {
+      date: key,
+      counts: { sessions, missedSessions, notifications, flags },
+      actions: {
+        notifications: 'DELETE',
+        flags: 'RESOLVE',
+        sessions: 'PRESERVE',
+        attendance: 'PRESERVE',
+        scans: 'PRESERVE',
+        audit: 'PRESERVE'
+      },
+      confirmText: PILOT_CONFIRM_TEXT
+    };
+  }
+
+  async runPilot(actor: Actor, payload: PilotCleanupRunDto, requestMeta: RequestMeta = {}) {
+    this.assertPilotOperator(actor);
+    const reason = String(payload.reason || '').trim();
+    if (reason.length < 10) throw new BadRequestException('Alasan cleanup pilot minimal 10 karakter.');
+    if (String(payload.confirmText || '').trim() !== PILOT_CONFIRM_TEXT) {
+      throw new BadRequestException(`Ketik ${PILOT_CONFIRM_TEXT} untuk konfirmasi.`);
+    }
+    const preview = await this.previewPilot(actor, payload);
+    const { date, start, end, key } = this.pilotDate(payload.date);
+    const resolvedAt = new Date();
+
+    const executed = await this.prisma.$transaction(async (tx) => {
+      const flags = await tx.reconciliationFlag.findMany({
+        where: {
+          type: ReconciliationFlagType.TIDAK_MENGAJAR,
+          status: ReconciliationStatus.OPEN,
+          session: { businessDate: date }
+        },
+        select: { id: true }
+      });
+      const flagIds = flags.map((flag) => flag.id);
+      const closedEscalations = flagIds.length > 0
+        ? await tx.reconciliationEscalation.updateMany({
+          where: { flagId: { in: flagIds }, status: 'QUEUED' },
+          data: { status: 'CLOSED', closedAt: resolvedAt, closedById: actor.sub }
+        })
+        : { count: 0 };
+      const resolvedFlags = flagIds.length > 0
+        ? await tx.reconciliationFlag.updateMany({
+          where: { id: { in: flagIds }, status: ReconciliationStatus.OPEN },
+          data: {
+            status: ReconciliationStatus.RESOLVED,
+            reviewStatus: 'RESOLVED',
+            resolvedAt,
+            resolvedById: actor.sub,
+            resolvedReason: reason
+          }
+        })
+        : { count: 0 };
+      const deletedNotifications = await tx.notification.deleteMany({
+        where: {
+          type: NotificationType.SESSION_MISSED,
+          createdAt: { gte: start, lte: end }
+        }
+      });
+
+      const result = {
+        deletedNotifications: deletedNotifications.count,
+        resolvedFlags: resolvedFlags.count,
+        closedEscalations: closedEscalations.count
+      };
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'system_cleanup',
+        action: 'system_cleanup.pilot_executed',
+        resource: 'pilotData',
+        resourceId: key,
+        reason,
+        requestIp: requestMeta.requestIp ?? null,
+        requestDevice: requestMeta.requestDevice ?? null,
+        before: preview.counts,
+        after: { ...result, preserved: preview.actions }
+      });
+      return result;
+    });
+
+    return { ok: true, date: key, executed, preserved: preview.actions };
   }
 }

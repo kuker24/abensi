@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
 
 export class SystemCleanupRunDto {
   @IsOptional()
@@ -25,4 +25,19 @@ export class SystemCleanupRunDto {
   @IsString()
   @MinLength(10)
   reason!: string;
+}
+
+export class PilotCleanupPreviewDto {
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  date!: string;
+}
+
+export class PilotCleanupRunDto extends PilotCleanupPreviewDto {
+  @IsString()
+  @MinLength(10)
+  reason!: string;
+
+  @IsString()
+  confirmText!: string;
 }

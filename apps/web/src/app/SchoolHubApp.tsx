@@ -1,4 +1,4 @@
-import { Component, lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ErrorInfo, type ReactNode } from 'react';
+import { Component, lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type ErrorInfo, type ReactNode } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -699,7 +699,7 @@ function TopBar({ crumbs, path, user, onOpenTutorial, onToggleSidebar, onLogout,
   // Ctrl+K to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
@@ -791,13 +791,129 @@ function TopBar({ crumbs, path, user, onOpenTutorial, onToggleSidebar, onLogout,
   );
 }
 
-function AppLayout({ user, path, onLogout, children }: { user: User; path: string; onLogout: () => void; children: ReactNode }) {
+function jakartaDateKey() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+type PilotCleanupPreview = {
+  date: string;
+  counts: { sessions: number; missedSessions: number; notifications: number; flags: number };
+  confirmText: string;
+};
+
+function ControlPanel({ user, onClose, notify }: { user: User; onClose: () => void; notify: Notify }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
+  const [date, setDate] = useState(jakartaDateKey);
+  const [reason, setReason] = useState('Menutup notifikasi dan anomali dari pelaksanaan uji coba pegawai.');
+  const [confirmText, setConfirmText] = useState('');
+  const [preview, setPreview] = useState<PilotCleanupPreview | null>(null);
+  const [loading, setLoading] = useState(false);
+  const isDeveloper = user.role === 'DEVELOPER';
+
+  useEffect(() => {
+    panelRef.current?.querySelector<HTMLElement>('button')?.focus();
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(panelRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [href]') || []);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => { window.removeEventListener('keydown', handler); openerRef.current?.focus(); };
+  }, [onClose]);
+
+  function navigate(path: AppRoutePath) { onClose(); go(path); }
+  async function loadPreview() {
+    setLoading(true);
+    try {
+      const data = await apiFetch<PilotCleanupPreview>('/system-cleanup/pilot/preview', { method: 'POST', body: JSON.stringify({ date }) });
+      setPreview(data);
+      setConfirmText('');
+      notify('Pratinjau cleanup pilot siap diperiksa.');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Gagal memuat pratinjau cleanup pilot.', 'bad');
+    } finally { setLoading(false); }
+  }
+  async function runCleanup() {
+    if (!preview) return notify('Lihat pratinjau cleanup pilot terlebih dahulu.', 'warn');
+    if (reason.trim().length < 10) return notify('Alasan minimal 10 karakter.', 'warn');
+    if (confirmText.trim() !== preview.confirmText) return notify(`Ketik ${preview.confirmText} untuk konfirmasi.`, 'warn');
+    if (!await riskConfirm(`Hapus ${preview.counts.notifications} notifikasi dan selesaikan ${preview.counts.flags} anomali pilot tanggal ${preview.date}? Sesi dan audit tetap disimpan.`, 'Cleanup data pilot')) return;
+    setLoading(true);
+    try {
+      await apiFetch('/system-cleanup/pilot/run', { method: 'POST', body: JSON.stringify({ date, reason: reason.trim(), confirmText: confirmText.trim() }) });
+      window.dispatchEvent(new Event(NOTIFICATION_REFRESH_EVENT));
+      notify('Artefak pilot selesai dibersihkan. Sesi dan audit tetap disimpan.');
+      setPreview(null);
+      setConfirmText('');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Cleanup pilot gagal.', 'bad');
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div className="modal-overlay siab2-control-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={panelRef} className="modal-card siab2-control-panel" role="dialog" aria-modal="true" aria-labelledby="control-panel-title">
+        <header className="siab2-control-head">
+          <span className="siab2-control-icon"><Shield size={20} /></span>
+          <div><small>KONTROL TERBATAS</small><h2 id="control-panel-title">Pusat Kontrol Khusus</h2><p>{roleLabel(user.role)} · Ctrl+Shift+K</p></div>
+          <IconBtn label="Tutup pusat kontrol" onClick={onClose}><X size={17} /></IconBtn>
+        </header>
+
+        <section className="siab2-control-actions" aria-label="Akses cepat">
+          <button type="button" onClick={() => navigate('/admin/master-data')}><Users size={17} /><span><b>Kelola siswa terpilih</b><small>Pilih manual; preview, PIN, dan audit tetap wajib.</small></span><ChevronRight size={15} /></button>
+          <button type="button" onClick={() => navigate('/admin/account-security')}><KeyRound size={17} /><span><b>Keamanan akun</b><small>Periksa atau buka lockout login.</small></span><ChevronRight size={15} /></button>
+          <button type="button" onClick={() => navigate('/admin/settings')}><Settings size={17} /><span><b>Aturan absensi</b><small>Sesuaikan mode pilot dan operasional.</small></span><ChevronRight size={15} /></button>
+          <button type="button" onClick={() => navigate('/admin/audit')}><Database size={17} /><span><b>Riwayat perubahan</b><small>Telusuri tindakan penting dan cleanup.</small></span><ChevronRight size={15} /></button>
+          {isDeveloper && <button type="button" onClick={() => navigate('/admin/developer-control')}><Zap size={17} /><span><b>Kontrol Developer</b><small>Tutorial, cleanup aman, kesehatan sistem.</small></span><ChevronRight size={15} /></button>}
+        </section>
+
+        <section className="siab2-pilot-cleanup" aria-labelledby="pilot-cleanup-title">
+          <div className="siab2-control-section-title"><div><h3 id="pilot-cleanup-title">Bersihkan artefak pilot</h3><p>Notifikasi sesi terlewat dihapus. Flag tidak mengajar diselesaikan. Sesi, scan, presensi, audit tetap tersimpan.</p></div><Flag size={18} /></div>
+          <div className="siab2-pilot-form">
+            <Field label="Tanggal pilot"><TextInput type="date" value={date} onChange={(event: ChangeEvent<HTMLInputElement>) => { setDate(event.target.value); setPreview(null); }} /></Field>
+            <Btn type="button" loading={loading} onClick={loadPreview}><Eye size={14} /> Lihat pratinjau</Btn>
+          </div>
+          {preview && <>
+            <div className="siab2-pilot-counts" aria-label="Ringkasan cleanup pilot">
+              <span><b>{preview.counts.sessions}</b>Total sesi</span><span><b>{preview.counts.missedSessions}</b>Sesi terlewat</span><span><b>{preview.counts.notifications}</b>Notifikasi dihapus</span><span><b>{preview.counts.flags}</b>Flag diselesaikan</span>
+            </div>
+            <div className="siab2-pilot-confirm">
+              <Field label="Alasan audit" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={2} value={reason} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setReason(event.target.value)} /></Field>
+              <Field label={`Ketik ${preview.confirmText}`}><TextInput value={confirmText} autoComplete="off" onChange={(event: ChangeEvent<HTMLInputElement>) => setConfirmText(event.target.value)} /></Field>
+              <Btn type="button" variant="danger" loading={loading} disabled={confirmText.trim() !== preview.confirmText || reason.trim().length < 10} onClick={runCleanup}><Zap size={14} /> Bersihkan artefak pilot</Btn>
+            </div>
+          </>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function AppLayout({ user, path, onLogout, notify, children }: { user: User; path: string; onLogout: () => void; notify: Notify; children: ReactNode }) {
   const crumbs = routeCrumbs(path);
   const [connection, setConnection] = useState<ConnectionStatus>(() => navigator.onLine ? 'checking' : 'offline');
   const [tutorialOpenKey, setTutorialOpenKey] = useState(0);
   const [tutorialEnabled, setTutorialEnabled] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [controlOpen, setControlOpen] = useState(false);
+  const closeControl = useCallback(() => setControlOpen(false), []);
   useEffect(() => { setSidebarOpen(false); }, [path]);
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k' && (user.role === 'ADMIN_TU' || user.role === 'DEVELOPER')) {
+        event.preventDefault();
+        setControlOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [user.role]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setTutorialEnabled(true), 4500);
@@ -872,6 +988,7 @@ function AppLayout({ user, path, onLogout, children }: { user: User; path: strin
         </div>
       </main>
       {showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} /></Suspense>}
+      {controlOpen && <ControlPanel user={user} notify={notify} onClose={closeControl} />}
     </div>
   );
 }
@@ -1027,7 +1144,7 @@ function App() {
   const exists = Boolean(route);
   const allowed = exists && canAccessRoute(path, user);
   const screen = !route ? <NotFound user={user} /> : !allowed ? <Unauthorized user={user} /> : route.render({ user, notify });
-  return <><AppLayout user={user} path={path} onLogout={logout}>{screen}</AppLayout><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  return <><AppLayout user={user} path={path} onLogout={logout} notify={notify}>{screen}</AppLayout><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
 }
 
 export { App };

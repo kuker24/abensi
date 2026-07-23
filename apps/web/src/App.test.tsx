@@ -290,4 +290,48 @@ describe('PRD v2.2 UI shell', () => {
     expect(screen.queryByText(/Check.?in/i)).not.toBeInTheDocument();
     expect(screen.getAllByText('Kehadiran Saya').length).toBeGreaterThan(0);
   });
+
+  it('opens the restricted control panel for Admin/TU with Ctrl+Shift+K without breaking Ctrl+K search', async () => {
+    const storage = mockStorage();
+    const admin = { id: 'admin-1', username: 'admin', fullName: 'Admin TU', role: 'ADMIN_TU' };
+    storage.setItem('schoolhub_user', JSON.stringify(admin));
+    window.history.replaceState({}, '', '/admin/dashboard');
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ user: admin }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.endsWith('/health/live')) return new Response(JSON.stringify({ status: 'ok' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/notifications?')) return new Response(JSON.stringify({ items: [], unreadCount: 0, meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ items: [], meta: { page: 1, limit: 20, total: 0, totalPages: 0 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as any;
+
+    render(<App />);
+    const search = await screen.findByLabelText('Cari menu');
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(search).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'K', ctrlKey: true, shiftKey: true });
+
+    expect(await screen.findByRole('dialog', { name: 'Pusat Kontrol Khusus' })).toBeInTheDocument();
+    expect(screen.getByText('Kelola siswa terpilih')).toBeInTheDocument();
+    expect(screen.queryByText('Kontrol Developer')).not.toBeInTheDocument();
+  });
+
+  it('does not open the restricted control panel for students', async () => {
+    const storage = mockStorage();
+    const student = { id: 'student-1', username: 'siswa', fullName: 'Siswa Demo', role: 'SISWA' };
+    storage.setItem('schoolhub_user', JSON.stringify(student));
+    window.history.replaceState({}, '', '/siswa/dashboard');
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ user: student }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.endsWith('/health/live')) return new Response(JSON.stringify({ status: 'ok' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/notifications?')) return new Response(JSON.stringify({ items: [], unreadCount: 0, meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ items: [], meta: { page: 1, limit: 20, total: 0, totalPages: 0 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as any;
+
+    render(<App />);
+    await screen.findByLabelText('Cari menu');
+    fireEvent.keyDown(window, { key: 'K', ctrlKey: true, shiftKey: true });
+
+    expect(screen.queryByRole('dialog', { name: 'Pusat Kontrol Khusus' })).not.toBeInTheDocument();
+  });
 });

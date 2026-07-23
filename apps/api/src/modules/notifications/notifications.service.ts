@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationType, Role, type Prisma } from '@prisma/client';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -46,10 +46,16 @@ export class NotificationsService {
   }
 
   async markRead(id: string, user: { sub: string; role: Role | string }) {
-    return this.prisma.notification.update({
-      where: { id },
+    const visibleToUser: Prisma.NotificationWhereInput = {
+      id,
+      OR: [{ userId: user.sub }, { role: user.role as Role }, { userId: null, role: null }]
+    };
+    const result = await this.prisma.notification.updateMany({
+      where: visibleToUser,
       data: { readAt: new Date() }
     });
+    if (result.count !== 1) throw new NotFoundException('Notifikasi tidak ditemukan.');
+    return this.prisma.notification.findFirstOrThrow({ where: visibleToUser });
   }
 
   async create(payload: NotifyPayload) {

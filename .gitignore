@@ -83,6 +83,7 @@ backups/
 Data Akun/simpanakun/
 Data Akun/Akunlogin/
 Data Akun/Excel-data-mapel/
+de7/
 *.dump
 *.dump.enc
 *.sql.gz

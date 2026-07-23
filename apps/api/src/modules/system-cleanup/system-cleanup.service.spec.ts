@@ -38,7 +38,12 @@ function makePrisma() {
     notification: prisma.notification,
     userTutorialState: prisma.userTutorialState,
     user: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    auditEntry: prisma.auditEntry
+    auditEntry: prisma.auditEntry,
+    reconciliationFlag: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'flag-1' }]),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
+    },
+    reconciliationEscalation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
   }));
   return prisma;
 }
@@ -74,5 +79,47 @@ describe('SystemCleanupService', () => {
     const service = new SystemCleanupService(prisma);
 
     await expect(service.preview({ sub: 'admin-1', role: Role.ADMIN_TU }, {})).rejects.toThrow('Clean data sistem hanya boleh dilakukan Developer.');
+  });
+
+  it('preview cleanup pilot tersedia untuk Admin/TU tanpa mengubah data', async () => {
+    const prisma = makePrisma();
+    prisma.session.count.mockResolvedValueOnce(89).mockResolvedValueOnce(51);
+    prisma.notification.count = jest.fn().mockResolvedValue(102);
+    prisma.reconciliationFlag.count.mockResolvedValue(51);
+    const service = new SystemCleanupService(prisma);
+
+    const preview = await service.previewPilot({ sub: 'admin-1', role: Role.ADMIN_TU }, { date: '2026-07-23' });
+
+    expect(preview.counts).toEqual({ sessions: 89, missedSessions: 51, notifications: 102, flags: 51 });
+    expect(preview.actions.sessions).toBe('PRESERVE');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('run cleanup pilot hanya menghapus notifikasi dan menyelesaikan flag dalam transaksi', async () => {
+    const prisma = makePrisma();
+    prisma.session.count.mockResolvedValue(51);
+    prisma.notification.count = jest.fn().mockResolvedValue(102);
+    prisma.reconciliationFlag.count.mockResolvedValue(51);
+    const service = new SystemCleanupService(prisma);
+
+    const result = await service.runPilot(
+      { sub: 'admin-1', role: Role.ADMIN_TU },
+      { date: '2026-07-23', reason: 'Menutup artefak uji coba pegawai.', confirmText: 'BERSIHKAN PILOT' }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.executed).toEqual({ deletedNotifications: 1, resolvedFlags: 1, closedEscalations: 0 });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.auditEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'system_cleanup.pilot_executed' }) });
+  });
+
+  it('run cleanup pilot menolak role lain dan konfirmasi salah', async () => {
+    const prisma = makePrisma();
+    const service = new SystemCleanupService(prisma);
+    const payload = { date: '2026-07-23', reason: 'Menutup artefak uji coba pegawai.', confirmText: 'SALAH' };
+
+    await expect(service.runPilot({ sub: 'guru-1', role: Role.GURU_MAPEL }, payload)).rejects.toThrow('Cleanup pilot hanya boleh dilakukan');
+    await expect(service.runPilot({ sub: 'admin-1', role: Role.ADMIN_TU }, payload)).rejects.toThrow('Ketik BERSIHKAN PILOT');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
