@@ -54,7 +54,7 @@ async function routeCommonApi(page: Page) {
     const method = route.request().method();
     if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
     if (url.includes('/health/detail') || url.includes('/health/ready')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ready', api: 'ok', database: 'ok' }) });
-    if (url.includes('/tutorials/me') && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.04.26', shouldShow: false }) });
+    if (url.includes('/tutorials/me') && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.07.23', shouldShow: false }) });
     if (url.includes('/tutorials/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'guru-1', username: 'guru.demo', fullName: 'Guru Demo', role: 'GURU_MAPEL', active: true, tutorial: { shouldShow: false, completedAt: new Date().toISOString() } }])) });
     if (url.includes('/reports/dashboard')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionsToday: 2, closedSessions: 1, openSessions: 1, attendanceCoveragePercent: 80, openFlags: 0, gateTapCount: 12, studentCompleteness: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 } }) });
     if (url.includes('/reports/student-daily-completeness')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { completeCount: 1, missingArrivalCount: 1, missingDepartureCount: 1, missingClassAttendanceCount: 1, missingPrayerCount: 1, needsVerificationCount: 0 }, items: [{ studentId: 'siswa-1', fullName: 'Aisyah Putri', username: 'siswa.aisyah', schoolClass: 'X-A', gateArrivalAt: '2026-06-14T00:00:00.000Z', gateDepartureAt: null, classAttendanceLabel: '1/1 hadir', prayerAttendanceLabel: 'Belum scan sholat', finalStatus: 'BELUM_SCAN_PULANG', note: 'Belum scan pulang, Belum scan sholat' }, { studentId: 'siswa-2', fullName: 'Citra Lestari', username: 'siswa.citra', schoolClass: 'X-A', gateArrivalAt: '2026-06-14T00:05:00.000Z', gateDepartureAt: '2026-06-14T08:00:00.000Z', classAttendanceLabel: 'Belum diabsen guru', prayerAttendanceLabel: '2/2 sholat tercatat', finalStatus: 'BELUM_ABSEN_KELAS', note: 'Belum diabsen guru' }], meta: { page: 1, limit: 100, total: 2, totalPages: 1 } }) });
@@ -324,7 +324,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
       if (url.includes('/api/v1/auth/')) return route.fallback();
       const method = route.request().method();
       if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
-      if (url.includes('/tutorials/me') && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.04.26', shouldShow: !completed }) });
+      if (url.includes('/tutorials/me') && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.07.23', shouldShow: !completed }) });
       if (url.includes('/tutorials/me/complete')) { completed = true; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, shouldShow: false }) }); }
       if (url.includes('/tutorials/me/dismiss')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, shouldShow: false }) });
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([])) });
@@ -333,14 +333,57 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await page.goto('/guru/dashboard');
     await expect(page.getByRole('dialog', { name: 'Tutorial awal' })).toBeVisible();
     await page.getByRole('button', { name: /Lanjut/ }).click();
-    await page.getByRole('button', { name: /Lanjut/ }).click();
-    await page.getByRole('button', { name: /Lanjut/ }).click();
+    await expect(page.getByText('Pastikan akun dan sistem aktif')).toBeVisible();
+    await expect(page.locator('.tour-spotlight')).toBeVisible();
+    const statusBox = await page.locator('[data-tour="system-status"]').boundingBox();
+    const spotlightBox = await page.locator('.tour-spotlight').boundingBox();
+    expect(statusBox).not.toBeNull();
+    expect(spotlightBox).not.toBeNull();
+    expect(spotlightBox!.x).toBeLessThan(statusBox!.x);
+    expect(spotlightBox!.x + spotlightBox!.width).toBeGreaterThan(statusBox!.x + statusBox!.width);
+    const nextStep = page.getByRole('button', { name: /Lanjut/ });
+    while (await nextStep.isVisible().catch(() => false)) await nextStep.click();
     await page.getByRole('button', { name: /Selesai/ }).click();
     await expect(page.getByRole('dialog', { name: 'Tutorial awal' })).toHaveCount(0);
     await page.reload();
     await expect(page.getByRole('dialog', { name: 'Tutorial awal' })).toHaveCount(0);
     await page.getByLabel('Lihat tutorial').click();
     await expect(page.getByRole('dialog', { name: 'Tutorial awal' })).toBeVisible();
+  });
+
+  test('tutorial siswa tetap terarah dan tidak meluap pada layar ponsel', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedAuth(page, { id: 'siswa-1', username: 'siswa.demo', fullName: 'Siswa E2E', role: 'SISWA' });
+    await page.route('**/api/v1/**', async (route: Route) => {
+      const url = route.request().url();
+      if (url.includes('/api/v1/auth/')) return route.fallback();
+      const method = route.request().method();
+      if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
+      if (url.includes('/tutorials/me') && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.07.23', shouldShow: true }) });
+      if (url.includes('/notifications')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...paginated([]), unreadCount: 0 }) });
+      if (url.includes('/students/me/today-status')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(studentTodayStatusFixture()) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([])) });
+    });
+
+    await page.goto('/siswa/dashboard');
+    await expect(page.getByRole('dialog', { name: 'Tutorial awal' })).toBeVisible();
+    await page.getByRole('button', { name: /Lanjut/ }).click();
+    await page.getByRole('button', { name: /Lanjut/ }).click();
+    await expect(page.getByText('Baca Kehadiran Saya')).toBeVisible();
+    await expect(page.locator('.tour-spotlight')).toBeVisible();
+
+    const mobileLayout = await page.evaluate(() => {
+      const card = document.querySelector<HTMLElement>('.tour-card')!.getBoundingClientRect();
+      const spotlight = document.querySelector<HTMLElement>('.tour-spotlight')!.getBoundingClientRect();
+      const attendanceMenu = document.querySelector<HTMLElement>('[data-tour="nav:/siswa/dashboard"]')!.getBoundingClientRect();
+      return {
+        cardInsideViewport: card.left >= 0 && card.right <= window.innerWidth && card.top >= 0 && card.bottom <= window.innerHeight,
+        spotlightCoversMenu: spotlight.left < attendanceMenu.left && spotlight.right > attendanceMenu.right && spotlight.top < attendanceMenu.top && spotlight.bottom > attendanceMenu.bottom,
+        sidebarOpen: document.querySelector('.siab2-sidebar')?.classList.contains('side-open') || false,
+        noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth
+      };
+    });
+    expect(mobileLayout).toEqual({ cardInsideViewport: true, spotlightCoversMenu: true, sidebarOpen: true, noHorizontalOverflow: true });
   });
 
   test('admin dan developer melihat kontrol akun sesuai hak akses, serta developer bisa clean data', async ({ page }) => {
@@ -354,7 +397,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
       if (url.includes('/api/v1/auth/')) return route.fallback();
       const method = route.request().method();
       if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
-      if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.04.26', shouldShow: false }) });
+      if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.07.23', shouldShow: false }) });
       if (url.includes('/identity/users/siswa-history/permanent')) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: 'Akun ini punya riwayat penting. Nonaktifkan saja agar data tetap aman.' }) });
       if (url.includes('/identity/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated(users)) });
       if (url.includes('/system-cleanup/preview')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ olderThanDays: 30, categories: { inactiveTestUsers: { count: 1, sample: [{ username: 'contract.user.create.1' }], skipped: [], reason: 'Akun test aman.' }, inactiveUserCards: { count: 1, sample: [{ uid: 'UID-OLD' }], reason: 'Kartu akun nonaktif.' }, readNotifications: { count: 0, sample: [], reason: 'Notifikasi lama.' }, staleTutorialStates: { count: 0, sample: [], reason: 'Tutorial lama.' } }, protectedData: ['Riwayat perubahan resmi', 'Presensi siswa'] }) });
@@ -398,7 +441,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
       const method = route.request().method();
       if (url.includes('/health/live')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) });
       if (url.includes('/health/detail')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ready', database: 'ok' }) });
-      if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.04.26', shouldShow: false }) });
+      if (url.includes('/tutorials/me')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '2026.07.23', shouldShow: false }) });
       if (url.includes('/tutorials/users/guru-1/activate') && method === 'POST') { activated = true; return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ ok: true }) }); }
       if (url.includes('/tutorials/users')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([{ id: 'guru-1', username: 'guru.demo', fullName: 'Guru Demo', role: 'GURU_MAPEL', active: true, tutorial: { shouldShow: activated, completedAt: activated ? null : new Date().toISOString(), lastSeenAt: new Date().toISOString() } }])) });
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(paginated([])) });

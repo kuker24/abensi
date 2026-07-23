@@ -1,16 +1,16 @@
 import { Role } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CompleteTutorialDto {
-  @IsOptional()
   @IsString()
-  version?: string;
+  @IsNotEmpty()
+  version!: string;
 }
 
 export class DismissTutorialDto {
-  @IsOptional()
   @IsString()
-  version?: string;
+  @IsNotEmpty()
+  version!: string;
 }
 
 export class ActivateTutorialDto {

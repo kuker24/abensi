@@ -126,7 +126,7 @@ const LiveClock = memo(function LiveClock() {
     return () => clearInterval(t);
   }, []);
   return (
-    <span className="chip" aria-live="off" aria-label={now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' })}>
+    <span className="chip" data-tour="clock" aria-live="off" aria-label={now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' })}>
       <Clock size={12} />
       <span className="hide-sm">{now.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })} · </span>
       <b>{now.toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Jakarta' })}</b>
@@ -611,6 +611,7 @@ function Sidebar({ user, path, onLogout, isOpen, onClose }: { user: User; path: 
                 <button
                   key={url}
                   className={`nav-item siab2-sidebar-nav-item${active ? ' active siab2-sidebar-nav-item-active' : ''}`}
+                  data-tour={`nav:${url}`}
                   onClick={() => handleNav(url)}
                   aria-current={active ? 'page' : undefined}
                 >
@@ -699,6 +700,7 @@ function TopBar({ crumbs, path, user, onOpenTutorial, onToggleSidebar, onLogout,
   // Ctrl+K to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (document.querySelector('[data-tutorial-dialog="true"]')) return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         searchRef.current?.focus();
@@ -717,8 +719,8 @@ function TopBar({ crumbs, path, user, onOpenTutorial, onToggleSidebar, onLogout,
   const currentTitle = currentRoute?.title || crumbs[crumbs.length - 1] || BRAND.compactName;
   const currentRoleLabel = roleLabel(user?.role);
   return (
-    <div className="topbar siab2-topbar">
-      <button className="btn icon ghost hamburger siab2-topbar-menu" aria-label="Buka menu navigasi" onClick={onToggleSidebar}>
+    <div className="topbar siab2-topbar" data-tour="topbar">
+      <button className="btn icon ghost hamburger siab2-topbar-menu" data-tour="navigation-toggle" aria-label="Buka menu navigasi" onClick={onToggleSidebar}>
         <Menu size={18} />
       </button>
       <div className="crumb siab2-topbar-crumb" aria-label="Jejak halaman">
@@ -756,12 +758,12 @@ function TopBar({ crumbs, path, user, onOpenTutorial, onToggleSidebar, onLogout,
         )}
       </div>
       <LiveClock />
-      <div className={`system-ribbon top-status siab2-topbar-status ${connection}`} aria-live="polite">
+      <div className={`system-ribbon top-status siab2-topbar-status ${connection}`} data-tour="system-status" aria-live="polite">
         <span className="connection-lamp" aria-hidden="true" />
         <span>{currentRoleLabel} {roleStatus}</span>
       </div>
-      <IconBtn label="Lihat tutorial" onClick={onOpenTutorial}><BookOpen size={16} /></IconBtn>
-      <span className="notif-wrapper"><IconBtn label={notificationLabel} onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
+      <IconBtn label="Lihat tutorial" data-tour="tutorial-button" onClick={onOpenTutorial}><BookOpen size={16} /></IconBtn>
+      <span className="notif-wrapper" data-tour="notifications"><IconBtn label={notificationLabel} onClick={() => { const area = normalizeRole(user?.role, 'admin'); go(area === 'guru' ? '/guru/notifikasi' : area === 'siswa' ? '/siswa/notifikasi' : '/admin/notifications'); }}>
         <Bell size={16} />
         {safeUnreadCount > 0 && <span className="notif-badge" aria-hidden="true">{notificationBadge}</span>}
       </IconBtn></span>
@@ -769,6 +771,7 @@ function TopBar({ crumbs, path, user, onOpenTutorial, onToggleSidebar, onLogout,
         <button
           type="button"
           className="siab2-topbar-user-trigger"
+          data-tour="profile"
           aria-haspopup="menu"
           aria-expanded={profileMenuOpen}
           onClick={() => setProfileMenuOpen((value) => !value)}
@@ -903,9 +906,11 @@ function AppLayout({ user, path, onLogout, notify, children }: { user: User; pat
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [controlOpen, setControlOpen] = useState(false);
   const closeControl = useCallback(() => setControlOpen(false), []);
+  const handleTutorialSidebar = useCallback((open: boolean) => setSidebarOpen(open), []);
   useEffect(() => { setSidebarOpen(false); }, [path]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if (document.querySelector('[data-tutorial-dialog="true"]')) return;
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k' && (user.role === 'ADMIN_TU' || user.role === 'DEVELOPER')) {
         event.preventDefault();
         setControlOpen(true);
@@ -987,7 +992,7 @@ function AppLayout({ user, path, onLogout, notify, children }: { user: User; pat
           </AppErrorBoundary>
         </div>
       </main>
-      {showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} /></Suspense>}
+      {showTutorial && <Suspense fallback={null}><OnboardingTour user={user} manualOpenKey={tutorialOpenKey} onRequestSidebar={handleTutorialSidebar} /></Suspense>}
       {controlOpen && <ControlPanel user={user} notify={notify} onClose={closeControl} />}
     </div>
   );

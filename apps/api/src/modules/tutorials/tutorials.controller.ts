@@ -18,8 +18,8 @@ export class TutorialsController {
   @Get('me')
   @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
   @Capabilities('profile.self.read')
-  me(@CurrentUser() user: { sub: string; role: string }) {
-    return this.tutorialsService.getMyTutorial(user);
+  me(@CurrentUser() user: { sub: string; role: string }, @Query('clientVersion') clientVersion?: string) {
+    return this.tutorialsService.getMyTutorial(user, clientVersion);
   }
 
   @Post('me/complete')

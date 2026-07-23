@@ -1,10 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 
-export const ACTIVE_TUTORIAL_VERSION = '2026.04.26';
+export const ACTIVE_TUTORIAL_VERSION = '2026.07.23';
+const LEGACY_TUTORIAL_VERSION = '2026.04.26';
 
 type Actor = { sub: string; role: string };
 
@@ -23,6 +24,10 @@ function shouldShowTutorial(state: any | null, version = ACTIVE_TUTORIAL_VERSION
   return versionChanged || neverClosed || forcedAfterClose;
 }
 
+function tutorialVersionForRole(role: string) {
+  return role === Role.GURU_MAPEL || role === Role.SISWA ? ACTIVE_TUTORIAL_VERSION : LEGACY_TUTORIAL_VERSION;
+}
+
 @Injectable()
 export class TutorialsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -31,25 +36,37 @@ export class TutorialsService {
     return this.prisma.$transaction(async (tx) => writeAudit(tx, payload));
   }
 
-  async getMyTutorial(actor: Actor) {
+  async getMyTutorial(actor: Actor, clientVersion?: string) {
     const state = await this.prisma.userTutorialState.findUnique({
       where: { userId: actor.sub },
       include: { forceShowBy: { select: { id: true, fullName: true, username: true, role: true } } }
     });
 
-    const shouldShow = shouldShowTutorial(state);
+    const activeVersion = tutorialVersionForRole(actor.role);
+    const compatibleVersion = clientVersion || LEGACY_TUTORIAL_VERSION;
+    if (compatibleVersion !== activeVersion) {
+      return {
+        version: compatibleVersion,
+        shouldShow: false,
+        updateRequired: true,
+        state,
+        forcedBy: state?.forceShowBy ?? null
+      };
+    }
+
+    const shouldShow = shouldShowTutorial(state, activeVersion);
     const now = new Date();
 
     const saved = await this.prisma.userTutorialState.upsert({
       where: { userId: actor.sub },
       update: {
-        tutorialVersion: ACTIVE_TUTORIAL_VERSION,
-        ...(state?.tutorialVersion !== ACTIVE_TUTORIAL_VERSION ? { completedAt: null, dismissedAt: null } : {}),
+        tutorialVersion: activeVersion,
+        ...(state?.tutorialVersion !== activeVersion ? { completedAt: null, dismissedAt: null } : {}),
         lastSeenAt: shouldShow ? now : state?.lastSeenAt ?? now
       },
       create: {
         userId: actor.sub,
-        tutorialVersion: ACTIVE_TUTORIAL_VERSION,
+        tutorialVersion: activeVersion,
         lastSeenAt: shouldShow ? now : null
       },
       include: { forceShowBy: { select: { id: true, fullName: true, username: true, role: true } } }
@@ -63,24 +80,26 @@ export class TutorialsService {
         action: 'tutorial.shown',
         resource: 'userTutorialState',
         resourceId: saved.id,
-        after: { userId: actor.sub, version: ACTIVE_TUTORIAL_VERSION, forced: Boolean(saved.forceShowAt) }
+        after: { userId: actor.sub, version: activeVersion, forced: Boolean(saved.forceShowAt) }
       });
     }
 
     return {
-      version: ACTIVE_TUTORIAL_VERSION,
+      version: activeVersion,
       shouldShow,
       state: saved,
       forcedBy: saved.forceShowBy ?? null
     };
   }
 
-  async completeMyTutorial(actor: Actor, version = ACTIVE_TUTORIAL_VERSION) {
+  async completeMyTutorial(actor: Actor, version?: string) {
+    const activeVersion = tutorialVersionForRole(actor.role);
+    if (version !== activeVersion) throw new BadRequestException('Versi tutorial tidak sesuai aplikasi terbaru. Muat ulang halaman.');
     const now = new Date();
     const state = await this.prisma.userTutorialState.upsert({
       where: { userId: actor.sub },
-      update: { tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, completedAt: now, dismissedAt: null, lastSeenAt: now },
-      create: { userId: actor.sub, tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, completedAt: now, lastSeenAt: now }
+      update: { tutorialVersion: activeVersion, completedAt: now, dismissedAt: null, lastSeenAt: now },
+      create: { userId: actor.sub, tutorialVersion: activeVersion, completedAt: now, lastSeenAt: now }
     });
 
     await this.audit({
@@ -96,12 +115,14 @@ export class TutorialsService {
     return { ok: true, version: state.tutorialVersion, shouldShow: false };
   }
 
-  async dismissMyTutorial(actor: Actor, version = ACTIVE_TUTORIAL_VERSION) {
+  async dismissMyTutorial(actor: Actor, version?: string) {
+    const activeVersion = tutorialVersionForRole(actor.role);
+    if (version !== activeVersion) throw new BadRequestException('Versi tutorial tidak sesuai aplikasi terbaru. Muat ulang halaman.');
     const now = new Date();
     const state = await this.prisma.userTutorialState.upsert({
       where: { userId: actor.sub },
-      update: { tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, dismissedAt: now, lastSeenAt: now },
-      create: { userId: actor.sub, tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, dismissedAt: now, lastSeenAt: now }
+      update: { tutorialVersion: activeVersion, dismissedAt: now, lastSeenAt: now },
+      create: { userId: actor.sub, tutorialVersion: activeVersion, dismissedAt: now, lastSeenAt: now }
     });
 
     await this.audit({
@@ -154,8 +175,8 @@ export class TutorialsService {
       items: items.map((user) => ({
         ...user,
         tutorial: {
-          version: user.tutorialState?.tutorialVersion ?? ACTIVE_TUTORIAL_VERSION,
-          shouldShow: shouldShowTutorial(user.tutorialState),
+          version: user.tutorialState?.tutorialVersion ?? tutorialVersionForRole(user.role),
+          shouldShow: shouldShowTutorial(user.tutorialState, tutorialVersionForRole(user.role)),
           completedAt: user.tutorialState?.completedAt ?? null,
           dismissedAt: user.tutorialState?.dismissedAt ?? null,
           forceShowAt: user.tutorialState?.forceShowAt ?? null,
@@ -168,15 +189,16 @@ export class TutorialsService {
     };
   }
 
-  async activateForUser(userId: string, actor: Actor, reason?: string, version = ACTIVE_TUTORIAL_VERSION) {
+  async activateForUser(userId: string, actor: Actor, reason?: string, version?: string) {
     if (actor.role !== Role.DEVELOPER) throw new ForbiddenException('Hanya developer yang boleh mengaktifkan ulang tutorial.');
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, username: true, role: true, active: true } });
     if (!user) throw new NotFoundException('Pengguna tidak ditemukan.');
+    const targetVersion = version || tutorialVersionForRole(user.role);
     const now = new Date();
     const state = await this.prisma.userTutorialState.upsert({
       where: { userId },
-      update: { tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, forceShowAt: now, forceShowById: actor.sub, dismissedAt: null },
-      create: { userId, tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, forceShowAt: now, forceShowById: actor.sub }
+      update: { tutorialVersion: targetVersion, forceShowAt: now, forceShowById: actor.sub, dismissedAt: null },
+      create: { userId, tutorialVersion: targetVersion, forceShowAt: now, forceShowById: actor.sub }
     });
 
     await this.audit({
@@ -193,15 +215,16 @@ export class TutorialsService {
     return { ok: true, user, tutorial: { shouldShow: true, forceShowAt: state.forceShowAt, version: state.tutorialVersion } };
   }
 
-  async activateForRole(role: Role, actor: Actor, reason?: string, version = ACTIVE_TUTORIAL_VERSION) {
+  async activateForRole(role: Role, actor: Actor, reason?: string, version?: string) {
     if (actor.role !== Role.DEVELOPER) throw new ForbiddenException('Hanya developer yang boleh mengaktifkan tutorial per peran.');
     const users = await this.prisma.user.findMany({ where: { role, active: true }, select: { id: true, username: true } });
+    const targetVersion = version || tutorialVersionForRole(role);
     const now = new Date();
     for (const user of users) {
       await this.prisma.userTutorialState.upsert({
         where: { userId: user.id },
-        update: { tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, forceShowAt: now, forceShowById: actor.sub, dismissedAt: null },
-        create: { userId: user.id, tutorialVersion: version || ACTIVE_TUTORIAL_VERSION, forceShowAt: now, forceShowById: actor.sub }
+        update: { tutorialVersion: targetVersion, forceShowAt: now, forceShowById: actor.sub, dismissedAt: null },
+        create: { userId: user.id, tutorialVersion: targetVersion, forceShowAt: now, forceShowById: actor.sub }
       });
     }
 
@@ -213,7 +236,7 @@ export class TutorialsService {
       resource: 'userTutorialState',
       resourceId: `role:${role}`,
       reason: reason ?? `Developer mengaktifkan tutorial untuk peran ${role}.`,
-      after: { targetRole: role, count: users.length, version: version || ACTIVE_TUTORIAL_VERSION }
+      after: { targetRole: role, count: users.length, version: targetVersion }
     });
 
     return { ok: true, role, activatedCount: users.length };
