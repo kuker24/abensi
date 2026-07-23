@@ -20,14 +20,17 @@ function downloadJsonFile(data, filename) {
 
 export function sanitizeSpreadsheetCell(value) {
   const text = String(value ?? '');
-  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return /^(?:[\t\r]|\s*[=+\-@])/.test(text) ? `'${text}` : text;
+}
+
+export function buildWindowsCsv(rows) {
+  const escape = (value) => `"${sanitizeSpreadsheetCell(value).replace(/"/g, '""')}"`;
+  const headers = Object.keys(rows[0] || {});
+  return `\uFEFFsep=,\r\n${[headers.map(escape).join(','), ...rows.map((row) => headers.map((key) => escape(row[key])).join(','))].join('\r\n')}\r\n`;
 }
 
 function downloadCsvFile(rows, filename) {
-  const escape = (value) => `"${sanitizeSpreadsheetCell(value).replace(/"/g, '""')}"`;
-  const headers = Object.keys(rows[0] || {});
-  const csv = [headers.join(','), ...rows.map((row) => headers.map((key) => escape(row[key])).join(','))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob([buildWindowsCsv(rows)], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

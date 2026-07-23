@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setRiskConfirmHandler } from '../../confirm';
-import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, ReportsPage, SchedulePage, SessionsPage, SettingsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
+import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, ReportsPage, SchedulePage, SessionsPage, SettingsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, buildWindowsCsv, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -17,12 +17,16 @@ afterEach(() => {
 });
 
 describe('Spreadsheet export safety', () => {
-  it.each(['=SUM(1,1)', '+CMD', '-2+3', '@IMPORT', '\tformula', '\rformula'])('prefixes formula-like cell %j', (value) => {
+  it.each(['=SUM(1,1)', '+CMD', '-2+3', '@IMPORT', '\tformula', '\rformula', '  =SUM(1,1)'])('prefixes formula-like cell %j', (value) => {
     expect(sanitizeSpreadsheetCell(value)).toBe(`'${value}`);
   });
 
   it('keeps ordinary credential values unchanged', () => {
     expect(sanitizeSpreadsheetCell('siswa.0001')).toBe('siswa.0001');
+  });
+
+  it('builds CSV for Excel Windows with UTF-8 BOM, an explicit separator, and CRLF rows', () => {
+    expect(buildWindowsCsv([{ Nama: 'Siswa Á', Kelas: 'X-A' }])).toBe('\uFEFFsep=,\r\n"Nama","Kelas"\r\n"Siswa Á","X-A"\r\n');
   });
 });
 

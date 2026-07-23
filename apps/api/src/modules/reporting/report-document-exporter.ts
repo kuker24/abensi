@@ -173,7 +173,7 @@ export function columnsFromRows(rows: Array<Record<string, unknown>>): ExportCol
 }
 
 export function sanitizeSpreadsheetText(value: string): string {
-  return /^\s*[=+\-@]/.test(value) ? `'${value}` : value;
+  return /^(?:[\t\r]|\s*[=+\-@])/.test(value) ? `'${value}` : value;
 }
 
 function normalizeSpreadsheetCellValue(value: unknown): string | number | boolean {
@@ -248,7 +248,7 @@ function buildCsv(model: ReportDocumentModel): Buffer {
   for (const row of rows) {
     lines.push(headers.map((header) => escapeCsvValue(row[header])).join(','));
   }
-  return Buffer.from(`${lines.join('\n')}\n`, 'utf-8');
+  return Buffer.from(`\uFEFFsep=,\r\n${lines.join('\r\n')}\r\n`, 'utf-8');
 }
 
 function addXlsxLetterhead(workbook: ExcelJS.Workbook, worksheet: ExcelJS.Worksheet, model: ReportDocumentModel) {

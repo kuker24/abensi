@@ -66,7 +66,7 @@ function formulaInjectionModel(): ReportDocumentModel {
 
 describe('report document exporter', () => {
   it.each([
-    ['csv', 'text/csv; charset=utf-8', '# Metadata Laporan Resmi SIAB2'],
+    ['csv', 'text/csv; charset=utf-8', 'sep=,'],
     ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'PK'],
     ['pdf', 'application/pdf', '%PDF'],
     ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'PK']
@@ -138,6 +138,8 @@ describe('report document exporter', () => {
     const rendered = await renderReportDocument(model, 'csv');
     const csv = rendered.buffer.toString('utf8');
 
+    expect(csv.startsWith('\uFEFFsep=,\r\n')).toBe(true);
+    expect(csv).not.toMatch(/(^|[^\r])\n/);
     expect(csv).toContain('# Metadata Laporan Resmi SIAB2');
     expect(csv).not.toContain('report_metadata');
     expect(csv).not.toContain('{"from"');

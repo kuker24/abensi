@@ -77,6 +77,7 @@ export class AcademicController {
 
   @Get('import/template')
   @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="template-import-siab2.csv"')
   @Capabilities('academic.read')
   template(@Query('target') target?: string) {
     return this.academicService.importTemplate(target);

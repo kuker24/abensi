@@ -52,7 +52,8 @@ function parseCsvLine(line: string): string[] {
 }
 
 function parseCsv(buffer: Buffer): ImportRow[] {
-  const lines = buffer.toString('utf8').trim().split(/\r?\n/).filter(Boolean);
+  const lines = buffer.toString('utf8').replace(/^\uFEFF/, '').trim().split(/\r?\n/).filter(Boolean);
+  if (/^sep=,$/i.test(lines[0] ?? '')) lines.shift();
   if (lines.length < 2) return [];
   const headers = parseCsvLine(lines[0]).map((header) => header.trim());
   return lines.slice(1).map((line) => {

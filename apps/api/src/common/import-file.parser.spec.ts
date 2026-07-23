@@ -13,6 +13,16 @@ describe('parseImportFile', () => {
     expect(rows).toEqual([{ username: 'siswa1', fullName: 'Siswa Satu', role: 'SISWA' }]);
   });
 
+  it('parses Excel Windows CSV with BOM, separator directive, and CRLF rows', async () => {
+    const rows = await parseImportFile({
+      originalname: 'users.csv',
+      mimetype: 'text/csv',
+      buffer: Buffer.from('\uFEFFsep=,\r\nusername,fullName,role\r\nsiswa1,Siswa Á,SISWA\r\n')
+    });
+
+    expect(rows).toEqual([{ username: 'siswa1', fullName: 'Siswa Á', role: 'SISWA' }]);
+  });
+
   it('parses XLSX rows', async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Import');

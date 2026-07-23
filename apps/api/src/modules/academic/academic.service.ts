@@ -995,9 +995,9 @@ export class AcademicService {
 
   importTemplate(target = 'academic') {
     if (target === 'users') {
-      return 'username,fullName,role,password\nsiswa.contoh,Nama Siswa,SISWA,ISI_PASSWORD_UNIK_MIN_8\n';
+      return '\uFEFFsep=,\r\nusername,fullName,role,password\r\nsiswa.contoh,Nama Siswa,SISWA,ISI_PASSWORD_UNIK_MIN_8\r\n';
     }
-    return 'type,code,name,yearLabel,username,classCode\nclass,X-1,Kelas X-1,2026/2027,,\nsubject,MTK,Matematika,,,\nenrollment,,,,siswa.contoh,X-1\n';
+    return '\uFEFFsep=,\r\ntype,code,name,yearLabel,username,classCode\r\nclass,X-1,Kelas X-1,2026/2027,,\r\nsubject,MTK,Matematika,,,\r\nenrollment,,,,siswa.contoh,X-1\r\n';
   }
 
   async listEnrollmentHistory(studentId: string) {
