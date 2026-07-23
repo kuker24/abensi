@@ -4,7 +4,7 @@ import { writeAudit } from '../../common/audit-log';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 
-export const ACTIVE_TUTORIAL_VERSION = '2026.07.23';
+export const ACTIVE_TUTORIAL_VERSION = '2026.07.24';
 const LEGACY_TUTORIAL_VERSION = '2026.04.26';
 
 type Actor = { sub: string; role: string };
@@ -24,10 +24,6 @@ function shouldShowTutorial(state: any | null, version = ACTIVE_TUTORIAL_VERSION
   return versionChanged || neverClosed || forcedAfterClose;
 }
 
-function tutorialVersionForRole(role: string) {
-  return role === Role.GURU_MAPEL || role === Role.SISWA ? ACTIVE_TUTORIAL_VERSION : LEGACY_TUTORIAL_VERSION;
-}
-
 @Injectable()
 export class TutorialsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -42,7 +38,7 @@ export class TutorialsService {
       include: { forceShowBy: { select: { id: true, fullName: true, username: true, role: true } } }
     });
 
-    const activeVersion = tutorialVersionForRole(actor.role);
+    const activeVersion = ACTIVE_TUTORIAL_VERSION;
     const compatibleVersion = clientVersion || LEGACY_TUTORIAL_VERSION;
     if (compatibleVersion !== activeVersion) {
       return {
@@ -93,7 +89,7 @@ export class TutorialsService {
   }
 
   async completeMyTutorial(actor: Actor, version?: string) {
-    const activeVersion = tutorialVersionForRole(actor.role);
+    const activeVersion = ACTIVE_TUTORIAL_VERSION;
     if (version !== activeVersion) throw new BadRequestException('Versi tutorial tidak sesuai aplikasi terbaru. Muat ulang halaman.');
     const now = new Date();
     const state = await this.prisma.userTutorialState.upsert({
@@ -116,7 +112,7 @@ export class TutorialsService {
   }
 
   async dismissMyTutorial(actor: Actor, version?: string) {
-    const activeVersion = tutorialVersionForRole(actor.role);
+    const activeVersion = ACTIVE_TUTORIAL_VERSION;
     if (version !== activeVersion) throw new BadRequestException('Versi tutorial tidak sesuai aplikasi terbaru. Muat ulang halaman.');
     const now = new Date();
     const state = await this.prisma.userTutorialState.upsert({
@@ -175,8 +171,8 @@ export class TutorialsService {
       items: items.map((user) => ({
         ...user,
         tutorial: {
-          version: user.tutorialState?.tutorialVersion ?? tutorialVersionForRole(user.role),
-          shouldShow: shouldShowTutorial(user.tutorialState, tutorialVersionForRole(user.role)),
+          version: user.tutorialState?.tutorialVersion ?? ACTIVE_TUTORIAL_VERSION,
+          shouldShow: shouldShowTutorial(user.tutorialState, ACTIVE_TUTORIAL_VERSION),
           completedAt: user.tutorialState?.completedAt ?? null,
           dismissedAt: user.tutorialState?.dismissedAt ?? null,
           forceShowAt: user.tutorialState?.forceShowAt ?? null,
@@ -193,7 +189,7 @@ export class TutorialsService {
     if (actor.role !== Role.DEVELOPER) throw new ForbiddenException('Hanya developer yang boleh mengaktifkan ulang tutorial.');
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, username: true, role: true, active: true } });
     if (!user) throw new NotFoundException('Pengguna tidak ditemukan.');
-    const targetVersion = version || tutorialVersionForRole(user.role);
+    const targetVersion = version || ACTIVE_TUTORIAL_VERSION;
     const now = new Date();
     const state = await this.prisma.userTutorialState.upsert({
       where: { userId },
@@ -218,7 +214,7 @@ export class TutorialsService {
   async activateForRole(role: Role, actor: Actor, reason?: string, version?: string) {
     if (actor.role !== Role.DEVELOPER) throw new ForbiddenException('Hanya developer yang boleh mengaktifkan tutorial per peran.');
     const users = await this.prisma.user.findMany({ where: { role, active: true }, select: { id: true, username: true } });
-    const targetVersion = version || tutorialVersionForRole(role);
+    const targetVersion = version || ACTIVE_TUTORIAL_VERSION;
     const now = new Date();
     for (const user of users) {
       await this.prisma.userTutorialState.upsert({

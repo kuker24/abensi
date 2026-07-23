@@ -29,7 +29,7 @@ class MockSpeechSynthesisUtterance {
 
 describe('OnboardingTour', () => {
   beforeEach(() => {
-    vi.mocked(apiFetch).mockResolvedValue({ shouldShow: false, version: '2026.07.23' });
+    vi.mocked(apiFetch).mockResolvedValue({ shouldShow: false, version: '2026.07.24' });
     window.localStorage.clear();
     speak.mockClear();
     cancel.mockClear();
@@ -66,6 +66,26 @@ describe('OnboardingTour', () => {
     const utterance = speak.mock.calls[speak.mock.calls.length - 1]?.[0] as MockSpeechSynthesisUtterance;
     expect(utterance.lang).toBe('id-ID');
     expect(utterance.text).toContain('Guru Mapel Sedang Aktif');
+
+    target.remove();
+  });
+
+  it('menyorot ringkasan dashboard Admin TU dan memakai versi tutorial terbaru', async () => {
+    const target = document.createElement('div');
+    target.dataset.tour = 'admin-summary';
+    target.getBoundingClientRect = () => ({ top: 120, right: 720, bottom: 280, left: 320, width: 400, height: 160, x: 320, y: 120, toJSON: () => ({}) });
+    document.body.appendChild(target);
+
+    render(<OnboardingTour user={{ id: 'admin-1', role: 'ADMIN_TU' }} manualOpenKey={1} />);
+    expect(await screen.findByRole('dialog', { name: 'Tutorial awal' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Lanjut/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Lanjut/ }));
+
+    expect(await screen.findByText('Baca ringkasan operasional')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.tour-spotlight')).toHaveStyle({ top: '113px', left: '313px' }));
+    expect(apiFetch).toHaveBeenCalledWith('/tutorials/me?clientVersion=2026.07.24');
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    expect((speak.mock.calls[speak.mock.calls.length - 1]?.[0] as MockSpeechSynthesisUtterance).text).toContain('Panel ringkasan menunjukkan');
 
     target.remove();
   });

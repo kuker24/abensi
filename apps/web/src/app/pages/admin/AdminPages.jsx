@@ -224,7 +224,7 @@ export function AdminDashboard() {
         <p>Mulai dari masalah aktif, lalu cek sesi berjalan dan aktivitas scan gerbang. Semua tombol di bawah diarahkan ke pekerjaan harian utama.</p>
         <div className="dashboard-hero-actions"><Btn variant="primary" size="lg" onClick={() => go('/admin/anomaly')}><AlertOctagon size={16} /> Tindak {openFlags} masalah</Btn><Btn size="lg" onClick={() => go('/admin/sessions')}><Radar size={16} /> Pantau sesi</Btn></div>
       </div>
-      <div className="dashboard-hero-panel">
+      <div className="dashboard-hero-panel" data-tour="admin-summary">
         <ProgressRing value={coverage} label="Cakupan presensi" sub={`${coverage}% data sudah tercatat`} />
         <div className="hero-kpi-grid"><span><b>{d.sessionsToday ?? 0}</b>Sesi hari ini</span><span><b>{gateScans}</b>Scan gerbang</span><span><b>{openFlags}</b>Masalah aktif</span></div>
       </div>
@@ -270,7 +270,7 @@ export function PrincipalDashboard() {
         <p>Gunakan angka ringkas ini untuk mengambil keputusan, lalu teruskan tindak lanjut ke Admin/TU, Operator IT, atau Guru Piket sesuai kewenangan.</p>
         <div className="dashboard-hero-actions"><span className="chip"><ShieldCheck size={12} /> Hanya lihat data</span><span className="chip"><Eye size={12} /> Tidak ada tombol mutasi</span></div>
       </div>
-      <div className="dashboard-hero-panel">
+      <div className="dashboard-hero-panel" data-tour="principal-summary">
         <ProgressRing value={coverage} label="Cakupan presensi" sub={`${coverage}% data sudah tercatat`} />
         <div className="hero-kpi-grid"><span><b>{d.sessionsToday ?? 0}</b>Sesi hari ini</span><span><b>{gateScans}</b>Scan gerbang</span><span><b>{openFlags}</b>Masalah aktif</span></div>
       </div>

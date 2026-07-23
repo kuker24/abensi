@@ -5,8 +5,7 @@ import { Btn, IconBtn } from './ui';
 import { BRAND } from './branding';
 import type { User } from './types';
 
-const LEGACY_TUTORIAL_VERSION = '2026.04.26';
-const INTERACTIVE_TUTORIAL_VERSION = '2026.07.23';
+const INTERACTIVE_TUTORIAL_VERSION = '2026.07.24';
 const VOICE_PREFERENCE_KEY = 'siab2_tutorial_voice';
 const VIEWPORT_MARGIN = 16;
 
@@ -28,11 +27,6 @@ type SpotlightRect = {
   height: number;
 };
 
-const COMMON_START: TutorialStep = {
-  title: `Selamat datang di ${BRAND.compactName}`,
-  body: 'Tutorial singkat ini membantu Anda mengenali menu penting. Anda bisa menyelesaikannya sekarang atau membukanya lagi dari tombol Panduan di bagian atas.'
-};
-
 const INTERACTIVE_COMMON_START: TutorialStep = {
   title: `Selamat datang di ${BRAND.compactName}`,
   body: 'Panduan ini menggunakan halaman SIAB2 yang sedang Anda buka. Area penting akan disorot, lalu panduan suara Bahasa Indonesia menjelaskan fungsinya.',
@@ -43,45 +37,212 @@ function navTarget(path: string) {
   return `[data-tour="nav:${path}"]`;
 }
 
-function isInteractiveRole(role?: string) {
-  return role === 'GURU_MAPEL' || role === 'SISWA';
-}
-
-function tutorialVersionForRole(role?: string) {
-  return isInteractiveRole(role) ? INTERACTIVE_TUTORIAL_VERSION : LEGACY_TUTORIAL_VERSION;
-}
-
 function stepsForRole(role?: string): TutorialStep[] {
   if (role === 'DEVELOPER') {
     return [
-      COMMON_START,
-      { title: 'Pusat Kontrol Developer', body: 'Gunakan halaman ini untuk memantau kesiapan sistem dan mengaktifkan tutorial ulang untuk akun tertentu.', action: { label: 'Buka Pusat Kontrol', path: '/admin/developer-control' } },
-      { title: 'Aktifkan tutorial untuk pengguna', body: 'Cari nama pengguna, cek status tutorialnya, lalu klik “Aktifkan Tutorial Lagi”. Pengguna akan melihat panduan saat login berikutnya.' },
-      { title: 'Pantau riwayat perubahan dan kesehatan sistem', body: 'Setiap aksi developer tercatat di Riwayat Perubahan. Gunakan catatan ini untuk memastikan perubahan tetap jelas dan bisa ditelusuri.', action: { label: 'Buka Riwayat Perubahan', path: '/admin/audit' } }
+      INTERACTIVE_COMMON_START,
+      {
+        title: 'Pastikan akun dan sistem aktif',
+        body: 'Bagian ini menunjukkan peran Developer dan kondisi sambungan SIAB2 sebelum Anda melakukan tindakan sistem.',
+        voice: 'Lihat status di bagian atas. Pastikan tertulis Developer Sedang Aktif sebelum melakukan tindakan sistem.',
+        target: '[data-tour="system-status"]',
+        compactTarget: '[data-tour="topbar"]'
+      },
+      {
+        title: 'Pegang prinsip perubahan aman',
+        body: 'Nonaktifkan akun yang memiliki riwayat. Hapus permanen hanya data uji kosong, dan selalu periksa pratinjau sebelum cleanup.',
+        voice: 'Perhatikan prinsip aman. Pertahankan data bersejarah, hapus permanen hanya data uji kosong, dan periksa pratinjau sebelum cleanup.',
+        target: '.content > .smart-help'
+      },
+      {
+        title: 'Kelola dari Pusat Kontrol',
+        body: 'Gunakan Pusat Kontrol untuk mengaktifkan tutorial ulang, memeriksa kesehatan sistem, dan menjalankan cleanup yang terkontrol.',
+        voice: 'Gunakan Pusat Kontrol untuk tutorial pengguna, kesehatan sistem, dan cleanup yang aman.',
+        target: navTarget('/admin/developer-control'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Periksa kesiapan teknis',
+        body: 'Cek Sistem merangkum kesiapan aplikasi, kartu, dan HP scanner sebelum operasional sekolah dimulai.',
+        voice: 'Buka Cek Sistem untuk memastikan aplikasi, kartu, dan HP scanner siap dipakai.',
+        target: navTarget('/admin/it-dashboard'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Telusuri setiap perubahan',
+        body: 'Riwayat Perubahan menunjukkan pelaku, waktu, dan tindakan penting. Gunakan sebagai jejak audit sebelum dan sesudah perubahan.',
+        voice: 'Gunakan Riwayat Perubahan untuk menelusuri pelaku, waktu, dan tindakan penting.',
+        target: navTarget('/admin/audit'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Periksa tugas dan notifikasi',
+        body: 'Lonceng menampilkan informasi yang perlu ditinjau. Tanda angka berarti masih ada notifikasi belum dibaca.',
+        voice: 'Periksa tombol lonceng untuk tugas dan notifikasi yang belum dibaca.',
+        target: '[data-tour="notifications"]'
+      },
+      {
+        title: 'Amankan sesi Developer',
+        body: 'Buka menu profil untuk memeriksa identitas atau keluar. Selalu keluar setelah memakai perangkat bersama.',
+        voice: 'Gunakan tombol profil untuk memeriksa identitas dan keluar dengan aman.',
+        target: '[data-tour="profile"]'
+      },
+      {
+        title: 'Buka panduan kapan saja',
+        body: 'Tombol buku membuka tutorial ini kembali ketika Anda perlu mengulang alur kontrol sistem.',
+        voice: 'Tombol buku membuka tutorial ini kembali kapan saja. Anda siap menggunakan SIAB2 sebagai Developer.',
+        target: '[data-tour="tutorial-button"]'
+      }
     ];
   }
   if (role === 'KEPALA_SEKOLAH') {
     return [
-      COMMON_START,
-      { title: 'Mulai dari Ringkasan Kepala Sekolah', body: 'Halaman ini berisi indikator hadir, scan gerbang, sesi, dan ibadah siswa dalam mode baca saja.', action: { label: 'Buka Ringkasan', path: '/admin/principal-dashboard' } },
-      { title: 'Baca laporan tanpa mengubah data', body: 'Gunakan menu laporan, kehadiran siswa, sholat siswa, dan aktivitas sekarang untuk memantau kondisi sekolah.' },
-      { title: 'Tindak lanjut melalui petugas', body: 'Jika ada masalah, koordinasikan dengan Admin/TU atau Guru Piket agar perubahan tetap dilakukan oleh petugas berwenang.' }
+      INTERACTIVE_COMMON_START,
+      {
+        title: 'Pastikan akun dan sistem aktif',
+        body: 'Bagian ini menunjukkan peran Kepala Sekolah dan kondisi sambungan SIAB2. Akses Anda bersifat baca saja.',
+        voice: 'Lihat status di bagian atas. Pastikan tertulis Kepala Sekolah Sedang Aktif. Akses ini digunakan untuk memantau tanpa mengubah data.',
+        target: '[data-tour="system-status"]',
+        compactTarget: '[data-tour="topbar"]'
+      },
+      {
+        title: 'Baca ringkasan kondisi sekolah',
+        body: 'Panel ini merangkum cakupan presensi, sesi hari ini, scan gerbang, dan masalah aktif untuk pengambilan keputusan.',
+        voice: 'Panel ringkasan menunjukkan cakupan presensi, sesi, scan gerbang, dan masalah aktif hari ini.',
+        target: '[data-tour="principal-summary"]'
+      },
+      {
+        title: 'Buka laporan sekolah',
+        body: 'Gunakan Laporan Sekolah untuk membaca dan mencetak ringkasan resmi tanpa mengubah data operasional.',
+        voice: 'Gunakan Laporan Sekolah untuk membaca dan mencetak ringkasan resmi dalam mode baca saja.',
+        target: navTarget('/admin/reports'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Pantau aktivitas sekarang',
+        body: 'Aktivitas Sekarang menampilkan kejadian gerbang dan sesi terbaru. Koordinasikan tindak lanjut dengan petugas berwenang.',
+        voice: 'Pantau Aktivitas Sekarang, lalu koordinasikan masalah dengan Admin TU, Operator IT, atau Guru Piket.',
+        target: navTarget('/admin/live-monitor'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Periksa notifikasi',
+        body: 'Lonceng menampilkan informasi untuk akun Anda. Tanda angka berarti masih ada notifikasi belum dibaca.',
+        voice: 'Periksa tombol lonceng untuk informasi yang belum dibaca.',
+        target: '[data-tour="notifications"]'
+      },
+      {
+        title: 'Jaga keamanan akun',
+        body: 'Buka menu profil untuk memeriksa identitas atau keluar. Jangan biarkan akun aktif pada perangkat bersama.',
+        voice: 'Gunakan tombol profil untuk memeriksa identitas dan keluar dengan aman.',
+        target: '[data-tour="profile"]'
+      },
+      {
+        title: 'Buka panduan kapan saja',
+        body: 'Tombol buku membuka tutorial ini kembali jika Anda ingin mengulang alur pantauan.',
+        voice: 'Tombol buku membuka tutorial ini kembali kapan saja. Anda siap memantau SIAB2 sebagai Kepala Sekolah.',
+        target: '[data-tour="tutorial-button"]'
+      }
     ];
   }
   if (role === 'OPERATOR_IT') {
     return [
-      COMMON_START,
-      { title: 'Mulai dari Cek Sistem', body: 'Cek aplikasi, kartu, dan HP scanner. Jika ada gangguan, buka menu HP Scanner & Kartu atau Riwayat Perubahan.', action: { label: 'Buka Cek Sistem', path: '/admin/it-dashboard' } },
-      { title: 'Kelola HP scanner dan kartu', body: 'Gunakan menu HP Scanner & Kartu untuk aktivasi HP Android, menambah kartu, atau mengganti status kartu hilang.', action: { label: 'Buka HP Scanner & Kartu', path: '/admin/devices' } },
-      { title: 'Lihat jejak perubahan', body: 'Riwayat Perubahan membantu operator melihat siapa melakukan perubahan dan kapan perubahan terjadi.', action: { label: 'Buka Riwayat Perubahan', path: '/admin/audit' } }
+      INTERACTIVE_COMMON_START,
+      {
+        title: 'Pastikan akun dan sistem aktif',
+        body: 'Bagian ini menunjukkan peran Operator IT dan kondisi sambungan SIAB2 sebelum pemeriksaan perangkat.',
+        voice: 'Lihat status di bagian atas. Pastikan tertulis Operator IT Sedang Aktif sebelum memeriksa perangkat.',
+        target: '[data-tour="system-status"]',
+        compactTarget: '[data-tour="topbar"]'
+      },
+      {
+        title: 'Periksa kesehatan sistem',
+        body: 'Kartu ini merangkum kesiapan aplikasi, jumlah kartu aktif atau hilang, dan alat reader yang aktif.',
+        voice: 'Periksa ringkasan kesehatan aplikasi, kartu, dan alat reader sebelum operasional dimulai.',
+        target: '.content > .grid.g-4'
+      },
+      {
+        title: 'Kelola HP scanner dan kartu',
+        body: 'Gunakan HP Scanner & Kartu untuk aktivasi Android, pengelolaan kartu, dan penanganan kartu hilang.',
+        voice: 'Gunakan HP Scanner dan Kartu untuk aktivasi Android, pengelolaan kartu, dan kartu hilang.',
+        target: navTarget('/admin/devices'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Lihat jejak perubahan',
+        body: 'Riwayat Perubahan membantu memastikan siapa melakukan tindakan teknis dan kapan tindakan terjadi.',
+        voice: 'Gunakan Riwayat Perubahan untuk menelusuri tindakan teknis dan waktu kejadiannya.',
+        target: navTarget('/admin/audit'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Periksa tugas dan notifikasi',
+        body: 'Lonceng menampilkan gangguan atau informasi yang perlu ditinjau. Tanda angka berarti ada notifikasi belum dibaca.',
+        voice: 'Periksa tombol lonceng untuk gangguan atau informasi yang belum dibaca.',
+        target: '[data-tour="notifications"]'
+      },
+      {
+        title: 'Amankan akun operator',
+        body: 'Buka menu profil untuk memeriksa identitas atau keluar setelah pekerjaan teknis selesai.',
+        voice: 'Gunakan tombol profil untuk memeriksa identitas dan keluar dengan aman.',
+        target: '[data-tour="profile"]'
+      },
+      {
+        title: 'Buka panduan kapan saja',
+        body: 'Tombol buku membuka tutorial ini kembali saat Anda perlu mengulang pemeriksaan sistem.',
+        voice: 'Tombol buku membuka tutorial ini kembali kapan saja. Anda siap menggunakan SIAB2 sebagai Operator IT.',
+        target: '[data-tour="tutorial-button"]'
+      }
     ];
   }
   if (role === 'GURU_PIKET') {
     return [
-      COMMON_START,
-      { title: 'Pantau tugas piket hari ini', body: 'Halaman Tugas Piket Hari Ini menampilkan sesi dan masalah yang perlu dibantu. Mulai dari sana setiap pergantian piket.', action: { label: 'Buka Tugas Piket', path: '/admin/picket-dashboard' } },
-      { title: 'Catat kejadian di Catatan Piket', body: 'Jika ada kejadian penting, catat di Catatan Piket agar petugas lain memahami riwayatnya.', action: { label: 'Buka Catatan Piket', path: '/admin/picket' } },
-      { title: 'Bantu cek masalah', body: 'Bila ada siswa belum scan atau data kelas tidak cocok, buka Masalah yang Perlu Dicek dan tulis alasan tindak lanjut dengan jelas.', action: { label: 'Buka Cek Masalah', path: '/admin/anomaly' } }
+      INTERACTIVE_COMMON_START,
+      {
+        title: 'Pastikan akun dan sistem aktif',
+        body: 'Bagian ini menunjukkan peran Guru Piket dan kondisi sambungan SIAB2 sebelum Anda menangani tugas hari ini.',
+        voice: 'Lihat status di bagian atas. Pastikan tertulis Guru Piket Sedang Aktif sebelum memulai tugas.',
+        target: '[data-tour="system-status"]',
+        compactTarget: '[data-tour="topbar"]'
+      },
+      {
+        title: 'Baca ringkasan tugas piket',
+        body: 'Ringkasan ini menunjukkan sesi yang belum dimulai, guru yang sedang mengajar, sesi belum ditutup, dan masalah aktif.',
+        voice: 'Periksa ringkasan sesi dan masalah aktif untuk menentukan prioritas tugas piket.',
+        target: '.content > .grid.g-4'
+      },
+      {
+        title: 'Catat kejadian penting',
+        body: 'Gunakan Catatan Piket agar petugas berikutnya memahami kejadian dan tindak lanjut yang sudah dilakukan.',
+        voice: 'Tulis kejadian penting di Catatan Piket agar riwayat tugas mudah dipahami.',
+        target: navTarget('/admin/picket'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Tindak masalah dengan jelas',
+        body: 'Cek Masalah digunakan ketika siswa belum scan atau data kelas tidak cocok. Tulis alasan tindak lanjut secara jelas.',
+        voice: 'Gunakan Cek Masalah untuk data yang tidak cocok, lalu tulis alasan tindak lanjut dengan jelas.',
+        target: navTarget('/admin/anomaly'),
+        compactTarget: '[data-tour="navigation-toggle"]'
+      },
+      {
+        title: 'Periksa tugas dan notifikasi',
+        body: 'Lonceng menampilkan tugas atau informasi piket. Tanda angka berarti masih ada notifikasi belum dibaca.',
+        voice: 'Periksa tombol lonceng untuk tugas atau informasi piket yang belum dibaca.',
+        target: '[data-tour="notifications"]'
+      },
+      {
+        title: 'Amankan akun Anda',
+        body: 'Buka menu profil untuk memeriksa identitas atau keluar setelah pergantian petugas.',
+        voice: 'Gunakan tombol profil untuk memeriksa identitas dan keluar setelah pergantian petugas.',
+        target: '[data-tour="profile"]'
+      },
+      {
+        title: 'Buka panduan kapan saja',
+        body: 'Tombol buku membuka tutorial ini kembali saat Anda perlu mengulang alur piket.',
+        voice: 'Tombol buku membuka tutorial ini kembali kapan saja. Anda siap menggunakan SIAB2 sebagai Guru Piket.',
+        target: '[data-tour="tutorial-button"]'
+      }
     ];
   }
   if (role === 'GURU_MAPEL') {
@@ -180,10 +341,59 @@ function stepsForRole(role?: string): TutorialStep[] {
     ];
   }
   return [
-    COMMON_START,
-    { title: 'Pantau sesi dan masalah', body: 'Gunakan Ringkasan Admin untuk melihat kondisi hari ini. Buka Cek Sesi Kelas dan Cek Masalah untuk tindak lanjut cepat.', action: { label: 'Buka Ringkasan', path: '/admin/dashboard' } },
-    { title: 'Kelola data harian', body: 'Menu Riwayat Scan, Catatan Piket, Akun & Data Sekolah, Jadwal Kelas, dan Laporan Sekolah disusun sesuai alur kerja sekolah agar mudah digunakan.' },
-    { title: 'Semua perubahan tercatat', body: 'Setiap perubahan penting masuk ke Riwayat Perubahan. Gunakan ini untuk memastikan data tetap aman dan transparan.', action: { label: 'Buka Riwayat Perubahan', path: '/admin/audit' } }
+    INTERACTIVE_COMMON_START,
+    {
+      title: 'Pastikan akun dan sistem aktif',
+      body: 'Bagian ini menunjukkan peran Admin TU dan kondisi sambungan SIAB2 sebelum pekerjaan operasional dimulai.',
+      voice: 'Lihat status di bagian atas. Pastikan tertulis Admin TU Sedang Aktif sebelum memulai pekerjaan.',
+      target: '[data-tour="system-status"]',
+      compactTarget: '[data-tour="topbar"]'
+    },
+    {
+      title: 'Baca ringkasan operasional',
+      body: 'Panel ini merangkum cakupan presensi, sesi hari ini, scan gerbang, dan masalah aktif yang perlu diprioritaskan.',
+      voice: 'Panel ringkasan menunjukkan cakupan presensi, sesi, scan gerbang, dan masalah aktif hari ini.',
+      target: '[data-tour="admin-summary"]'
+    },
+    {
+      title: 'Tindak masalah lebih dulu',
+      body: 'Cek Masalah menampilkan data gerbang atau kelas yang perlu diverifikasi. Catat alasan setiap tindak lanjut dengan jelas.',
+      voice: 'Gunakan Cek Masalah untuk data yang perlu diverifikasi, lalu tulis alasan tindak lanjut dengan jelas.',
+      target: navTarget('/admin/anomaly'),
+      compactTarget: '[data-tour="navigation-toggle"]'
+    },
+    {
+      title: 'Kelola akun dan data sekolah',
+      body: 'Akun & Data Sekolah digunakan untuk data master. Periksa data dan dampaknya sebelum menyimpan perubahan.',
+      voice: 'Gunakan Akun dan Data Sekolah untuk data master. Periksa data sebelum menyimpan perubahan.',
+      target: navTarget('/admin/master-data'),
+      compactTarget: '[data-tour="navigation-toggle"]'
+    },
+    {
+      title: 'Pastikan perubahan tercatat',
+      body: 'Riwayat Perubahan menampilkan tindakan penting agar data tetap aman, transparan, dan dapat ditelusuri.',
+      voice: 'Gunakan Riwayat Perubahan untuk memastikan tindakan penting dapat ditelusuri.',
+      target: navTarget('/admin/audit'),
+      compactTarget: '[data-tour="navigation-toggle"]'
+    },
+    {
+      title: 'Periksa tugas dan notifikasi',
+      body: 'Lonceng menampilkan pekerjaan atau informasi yang perlu ditinjau. Tanda angka berarti ada notifikasi belum dibaca.',
+      voice: 'Periksa tombol lonceng untuk pekerjaan atau informasi yang belum dibaca.',
+      target: '[data-tour="notifications"]'
+    },
+    {
+      title: 'Amankan akun Admin TU',
+      body: 'Buka menu profil untuk memeriksa identitas atau keluar setelah pekerjaan administrasi selesai.',
+      voice: 'Gunakan tombol profil untuk memeriksa identitas dan keluar dengan aman.',
+      target: '[data-tour="profile"]'
+    },
+    {
+      title: 'Buka panduan kapan saja',
+      body: 'Tombol buku membuka tutorial ini kembali saat Anda perlu mengulang alur administrasi.',
+      voice: 'Tombol buku membuka tutorial ini kembali kapan saja. Anda siap menggunakan SIAB2 sebagai Admin TU.',
+      target: '[data-tour="tutorial-button"]'
+    }
   ];
 }
 
@@ -244,8 +454,8 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
   const cardRef = useRef<HTMLDivElement>(null);
   const steps = useMemo(() => stepsForRole(String(user?.role || 'ADMIN_TU')), [user?.role]);
   const current = steps[Math.min(step, steps.length - 1)];
-  const tutorialVersion = tutorialVersionForRole(String(user?.role));
-  const voiceSupported = isInteractiveRole(String(user?.role)) && typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  const tutorialVersion = INTERACTIVE_TUTORIAL_VERSION;
+  const voiceSupported = typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 
   useEffect(() => {
     const update = () => setCompactViewport(window.innerWidth <= 768);
