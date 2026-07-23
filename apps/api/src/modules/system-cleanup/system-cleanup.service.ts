@@ -38,7 +38,8 @@ export class SystemCleanupService {
 
   private pilotDate(date: string) {
     try {
-      return businessDayBounds(date);
+      const bounds = businessDayBounds(date);
+      return { ...bounds, date: new Date(`${bounds.key}T00:00:00.000Z`) };
     } catch {
       throw new BadRequestException('Tanggal pilot harus valid dengan format YYYY-MM-DD.');
     }

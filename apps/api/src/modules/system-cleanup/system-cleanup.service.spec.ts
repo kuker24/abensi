@@ -92,6 +92,7 @@ describe('SystemCleanupService', () => {
 
     expect(preview.counts).toEqual({ sessions: 89, missedSessions: 51, notifications: 102, flags: 51 });
     expect(preview.actions.sessions).toBe('PRESERVE');
+    expect(prisma.session.count).toHaveBeenNthCalledWith(1, { where: { businessDate: new Date('2026-07-23T00:00:00.000Z') } });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
