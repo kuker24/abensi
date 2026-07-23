@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setRiskConfirmHandler } from '../../confirm';
-import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, ReportsPage, SchedulePage, SessionsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
+import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, ReportsPage, SchedulePage, SessionsPage, SettingsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -23,6 +23,35 @@ describe('Spreadsheet export safety', () => {
 
   it('keeps ordinary credential values unchanged', () => {
     expect(sanitizeSpreadsheetCell('siswa.0001')).toBe('siswa.0001');
+  });
+});
+
+describe('Attendance settings', () => {
+  it('sends only writable geofence fields', async () => {
+    setRiskConfirmHandler(async () => true);
+    let requestBody = null;
+    vi.stubGlobal('fetch', vi.fn(async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/access/geofence') && init.method === 'PUT') {
+        requestBody = JSON.parse(String(init.body));
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/access/geofence')) return new Response(JSON.stringify({ id: 1, centerLat: 0, centerLng: 0, radiusMeter: 300, enforceSessionOpen: true, arrivalGraceMinutes: 15, autoMissedGraceMinutes: 15, requireGateTapForOpen: false, allowPicketOverride: true, updatedAt: '2026-07-23T00:00:00.000Z' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/attendance/policy')) return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<SettingsPage notify={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText('Lintang lokasi'), { target: { value: '0.8805548' } });
+    fireEvent.change(screen.getByLabelText('Bujur lokasi'), { target: { value: '100.2953228' } });
+    fireEvent.change(screen.getByLabelText('Jarak aman (meter)'), { target: { value: '400' } });
+    fireEvent.click(screen.getByRole('button', { name: /Simpan lokasi/i }));
+
+    await waitFor(() => expect(requestBody).not.toBeNull());
+    expect(requestBody).toEqual({ centerLat: 0.8805548, centerLng: 100.2953228, radiusMeter: 400, enforceSessionOpen: true, arrivalGraceMinutes: 15, autoMissedGraceMinutes: 15, requireGateTapForOpen: false, allowPicketOverride: true });
+    expect(requestBody).not.toHaveProperty('id');
+    expect(requestBody).not.toHaveProperty('updatedAt');
   });
 });
 
