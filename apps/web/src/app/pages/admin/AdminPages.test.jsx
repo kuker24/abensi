@@ -95,10 +95,11 @@ describe('Attendance settings', () => {
     }));
 
     render(<SettingsPage notify={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText('Konfirmasi kata sandi'), { target: { value: 'sandi-admin' } });
     fireEvent.click(await screen.findByRole('button', { name: /Simpan aturan absensi/i }));
 
     await waitFor(() => expect(requestBody).not.toBeNull());
-    expect(requestBody).toEqual(expect.objectContaining({ dhuhaStartTime: '07:00', asharRequiredClassEndTime: '15:00', duplicateScanWindowMinutes: 5 }));
+    expect(requestBody).toEqual(expect.objectContaining({ dhuhaStartTime: '07:00', asharRequiredClassEndTime: '15:00', duplicateScanWindowMinutes: 5, stepUpPassword: 'sandi-admin' }));
     expect(requestBody).not.toHaveProperty('id');
     expect(requestBody).not.toHaveProperty('updatedAt');
   });

@@ -125,8 +125,10 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
   let response = await fetch(`${API_BASE}${path}`, { ...requestOptions, headers, credentials: 'include' });
   const canRefresh = path !== '/auth/login' && path !== '/auth/refresh';
   let authExpiredNotified = false;
+  let authRefreshed = false;
   if (response.status === 401 && canRefresh) {
     if (await refreshAuth()) {
+      authRefreshed = true;
       if (isUnsafeMethod(requestOptions.method)) {
         delete headers['x-csrf-token'];
         const csrfToken = await ensureCsrfToken();
@@ -138,7 +140,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       authExpiredNotified = true;
     }
   }
-  if (response.status === 401 && canRefresh && !authExpiredNotified && !suppressAuthExpired) notifyAuthExpired();
+  if (response.status === 401 && canRefresh && !authRefreshed && !authExpiredNotified && !suppressAuthExpired) notifyAuthExpired();
   const contentType = response.headers.get('content-type') || '';
   const text = contentType.includes('application/json') ? await response.text() : '';
   const data = text ? JSON.parse(text) : null;

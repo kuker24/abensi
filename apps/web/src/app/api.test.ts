@@ -108,4 +108,20 @@ describe('apiFetch auth handling', () => {
     expect(refreshCalls).toBe(1);
     expect(reportCalls).toBe(4);
   });
+
+  it('tidak menghapus sesi saat endpoint sensitif tetap 401 setelah refresh berhasil', async () => {
+    const storage = mockStorage();
+    storage.setItem(USER_KEY, JSON.stringify({ id: 'u1', role: 'ADMIN_TU' }));
+    const onExpired = vi.fn();
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/auth/refresh')) return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ message: 'Konfirmasi kata sandi wajib untuk aksi sensitif.' }), { status: 401, headers: { 'content-type': 'application/json' } });
+    }));
+
+    await expect(apiFetch('/attendance/policy', { method: 'PUT', body: '{}' })).rejects.toThrow('Konfirmasi kata sandi wajib');
+    expect(storage.getItem(USER_KEY)).toContain('ADMIN_TU');
+    expect(onExpired).not.toHaveBeenCalled();
+    window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  });
 });
