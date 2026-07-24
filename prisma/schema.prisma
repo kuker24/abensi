@@ -140,6 +140,7 @@ enum ReconciliationFlagType {
   OVERRIDE_BERLEBIHAN
   READER_ANOMALY
   POLICY_CHANGED_DURING_ATTENDANCE
+  PERSONNEL_PRESENT_DURING_APPROVED_LEAVE
   EXPORT_TIDAK_WAJAR
 }
 
@@ -191,6 +192,7 @@ enum TeacherLeaveStatus {
   APPROVED
   REJECTED
   CANCELLED
+  REVOKED
 }
 
 enum ReconciliationReviewStatus {
@@ -284,9 +286,11 @@ model User {
   updatedDeviceReaders                  DeviceReader[]                 @relation("DeviceReaderUpdatedBy")
   revokedDeviceReaders                  DeviceReader[]                 @relation("DeviceReaderRevokedBy")
   assignedFlags                         ReconciliationFlag[]           @relation("FlagAssignedToUser")
-  teacherLeaves                         TeacherLeave[]                 @relation("TeacherLeaveTeacher")
+  personnelLeaves                       TeacherLeave[]                 @relation("TeacherLeaveApplicant")
   reviewedTeacherLeaves                 TeacherLeave[]                 @relation("TeacherLeaveReviewedBy")
   substituteSessions                    TeacherLeave[]                 @relation("TeacherLeaveSubstitute")
+  cancelledPersonnelLeaves              TeacherLeave[]                 @relation("TeacherLeaveCancelledBy")
+  revokedPersonnelLeaves                TeacherLeave[]                 @relation("TeacherLeaveRevokedBy")
   weeklySchedules                       WeeklySchedule[]
   notifications                         Notification[]
   prayerAttendances                     PrayerAttendanceLog[]          @relation("PrayerAttendanceStudent")
@@ -566,16 +570,19 @@ model TeacherSessionPresence {
   checkInById         String?
   checkOutById        String?
   earlyCheckoutReason String?
+  leaveId             String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  teacher User    @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  session Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  teacher User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  leave   TeacherLeave? @relation(fields: [leaveId], references: [id], onDelete: SetNull)
 
   @@unique([sessionId, teacherId])
   @@index([checkInAt])
   @@index([checkOutAt])
   @@index([teacherId, checkInAt])
+  @@index([leaveId])
 }
 
 model GateLog {
@@ -937,26 +944,40 @@ model AccountDeleteSecuritySetting {
 
 model TeacherLeave {
   id                  String             @id @default(cuid())
-  teacherId           String
+  applicantId         String             @map("teacherId")
+  applicantRole       Role
   type                TeacherLeaveType
   status              TeacherLeaveStatus @default(PENDING)
-  date                DateTime
+  startDate           DateTime           @db.Date @map("date")
+  endDate             DateTime           @db.Date
   reason              String
-  adminNote           String?
+  decisionNote        String?            @map("adminNote")
   reviewedById        String?
   reviewedAt          DateTime?
   substituteTeacherId String?
+  cancelledAt         DateTime?
+  cancelledById       String?
+  cancellationReason  String?
+  revokedAt           DateTime?
+  revokedById         String?
+  revocationReason    String?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
-  teacher           User  @relation("TeacherLeaveTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
-  reviewedBy        User? @relation("TeacherLeaveReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  substituteTeacher User? @relation("TeacherLeaveSubstitute", fields: [substituteTeacherId], references: [id], onDelete: SetNull)
+  applicant         User                     @relation("TeacherLeaveApplicant", fields: [applicantId], references: [id], onDelete: Restrict)
+  reviewedBy        User?                    @relation("TeacherLeaveReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  substituteTeacher User?                    @relation("TeacherLeaveSubstitute", fields: [substituteTeacherId], references: [id], onDelete: SetNull)
+  cancelledBy       User?                    @relation("TeacherLeaveCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  revokedBy         User?                    @relation("TeacherLeaveRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  sessionPresences  TeacherSessionPresence[]
 
-  @@index([teacherId, date])
-  @@index([status, date])
-  @@index([date, status])
-  @@index([substituteTeacherId, date])
+  @@index([applicantId, startDate], map: "TeacherLeave_teacherId_date_idx")
+  @@index([status, startDate], map: "TeacherLeave_status_date_idx")
+  @@index([startDate, status], map: "TeacherLeave_date_status_idx")
+  @@index([substituteTeacherId, startDate], map: "TeacherLeave_substituteTeacherId_date_idx")
+  @@index([applicantId, status, startDate, endDate], map: "TeacherLeave_teacherId_status_range_idx")
+  @@index([cancelledById, cancelledAt])
+  @@index([revokedById, revokedAt])
 }
 
 model TeachingAssignment {

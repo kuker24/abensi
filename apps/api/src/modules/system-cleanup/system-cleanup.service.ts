@@ -58,7 +58,7 @@ export class SystemCleanupService {
       this.prisma.teacherSessionPresence.count({ where: { teacherId: userId } }),
       this.prisma.reconciliationFlag.count({ where: { OR: [{ userId }, { resolvedById: userId }, { assignedToId: userId }] } }),
       this.prisma.auditEntry.count({ where: { actorId: userId } }),
-      this.prisma.teacherLeave.count({ where: { OR: [{ teacherId: userId }, { reviewedById: userId }, { substituteTeacherId: userId }] } }),
+      this.prisma.teacherLeave.count({ where: { OR: [{ applicantId: userId }, { reviewedById: userId }, { substituteTeacherId: userId }] } }),
       this.prisma.weeklySchedule.count({ where: { teacherId: userId } }),
       this.prisma.prayerAttendanceLog.count({ where: { OR: [{ studentId: userId }, { createdById: userId }] } }),
       this.prisma.attendanceOverride.count({ where: { OR: [{ studentId: userId }, { createdById: userId }] } }),

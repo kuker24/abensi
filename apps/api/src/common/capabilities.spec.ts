@@ -33,10 +33,30 @@ describe('role capability matrix', () => {
     [Role.GURU_MAPEL, 'reports.school.read', false],
     [Role.ADMIN_TU, 'users.manage', true],
     [Role.ADMIN_TU, 'audit.read', true],
-    [Role.ADMIN_TU, 'reports.school.read', true]
+    [Role.ADMIN_TU, 'reports.school.read', true],
+    [Role.ADMIN_TU, 'leave.self.manage', true],
+    [Role.ADMIN_TU, 'leave.review', true],
+    [Role.KEPALA_SEKOLAH, 'leave.self.manage', true],
+    [Role.KEPALA_SEKOLAH, 'leave.review', true],
+    [Role.GURU_MAPEL, 'leave.self.manage', true],
+    [Role.GURU_MAPEL, 'leave.review', false],
+    [Role.GURU_PIKET, 'leave.self.manage', true],
+    [Role.GURU_PIKET, 'leave.review', false],
+    [Role.OPERATOR_IT, 'leave.self.manage', true],
+    [Role.OPERATOR_IT, 'leave.review', false],
+    [Role.SISWA, 'leave.self.manage', false],
+    [Role.SISWA, 'leave.review', false],
+    [Role.DEVELOPER, 'leave.self.manage', false],
+    [Role.DEVELOPER, 'leave.review', false]
   ];
 
   it.each(expected)('%s capability %s -> %s', (role, capability, allowed) => {
     expect(hasCapability(role, capability)).toBe(allowed);
+  });
+
+  it('preserves every non-leave capability for DEVELOPER', () => {
+    expect(ROLE_CAPABILITIES[Role.DEVELOPER]).toEqual(
+      CAPABILITIES.filter((capability) => capability !== 'leave.self.manage' && capability !== 'leave.review')
+    );
   });
 });

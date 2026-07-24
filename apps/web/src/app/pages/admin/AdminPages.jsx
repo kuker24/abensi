@@ -2069,16 +2069,34 @@ export function ItDashboardPage() {
   return <div className="content"><PageHead eyebrow="OPERATOR IT" title="Cek Sistem" sub="Pastikan aplikasi, kartu, dan HP scanner siap dipakai hari ini." actions={<><Btn onClick={() => ready.refresh()}><RefreshCw size={14} /> Cek ulang</Btn><Btn variant="primary" onClick={() => go('/admin/devices')}><CreditCard size={14} /> Kelola Perangkat</Btn></>} /><RoleTaskPanel tasks={[{ title: 'Aktivasi HP Scanner', desc: 'Buat kode aktivasi HP gerbang/mushola.', icon: <Smartphone size={18} />, tone: 'ok', onClick: () => go('/admin/devices') }, { title: 'Pantau aktivitas', desc: 'Lihat scan dan aktivitas terbaru.', icon: <Eye size={18} />, onClick: () => go('/admin/live-monitor') }, { title: 'Riwayat perubahan', desc: 'Cek catatan jika ada masalah teknis.', icon: <FileText size={18} />, onClick: () => go('/admin/audit') }]} /><div className="grid g-4"><StatCardPremium icon={<ShieldCheck size={18} />} label="Aplikasi" value={ready.error ? 'Gangguan' : 'Siap'} sub={ready.error || 'Aplikasi normal'} tone={ready.error ? 'bad' : 'ok'} /><StatCardPremium icon={<CreditCard size={18} />} label="Kartu Aktif" value={cardRows.filter((c) => c.status === 'ACTIVE').length} sub={`${cardRows.length} total kartu`} /><StatCardPremium icon={<AlertTriangle size={18} />} label="Kartu Hilang" value={cardRows.filter((c) => c.status === 'LOST').length} sub="Perlu ditindak" tone="bad" /><StatCardPremium icon={<Wifi size={18} />} label="Alat Aktif" value={readerRows.filter((r) => r.status === 'ACTIVE').length} sub={`${readerRows.length} total alat`} /></div><div className="grid g-2" style={{ marginTop: 18 }}><Card title="Status perangkat"><HorizontalBarList data={[{ label: 'Kartu aktif', value: cardRows.filter((c) => c.status === 'ACTIVE').length }, { label: 'Kartu hilang', value: cardRows.filter((c) => c.status === 'LOST').length }, { label: 'Alat aktif', value: readerRows.filter((r) => r.status === 'ACTIVE').length }]} labelKeys={['label']} valueKeys={['value']} /></Card><Card title="Perubahan terbaru"><AsyncTable state={audit} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.createdAt) }, { header: 'Aksi', key: 'action' }, { header: 'Modul', key: 'module' }]} /></Card></div></div>;
 }
 
-export function TeacherLeavesPage({ notify }) {
+export function PersonnelLeaveReviewPage({ user, notify }) {
   const [status, setStatus] = useState('PENDING');
-  const leaves = useRemote(() => apiFetch(`/teacher-leaves${qs({ status, page: 1, limit: 100 })}`), [status]);
-  const [note, setNote] = useState('Sudah diperiksa oleh Admin/TU.');
+  const [role, setRole] = useState('');
+  const [type, setType] = useState('');
+  const [date, setDate] = useState('');
+  const leaves = useRemote(() => apiFetch(`/teacher-leaves/review${qs({ role, status, type, date, page: 1, limit: 100 })}`), [role, status, type, date]);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [reviewingId, setReviewingId] = useState('');
+  const [actionError, setActionError] = useState('');
   async function review(row, nextStatus) {
-    await apiFetch(`/teacher-leaves/${row.id}/review`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus, adminNote: note }) });
-    leaves.refresh();
-    notify(nextStatus === 'APPROVED' ? 'Pengajuan disetujui.' : 'Pengajuan diperbarui.');
+    if (decisionNote.trim().length < 4) return;
+    setReviewingId(row.id);
+    setActionError('');
+    try {
+      await apiFetch(`/teacher-leaves/${row.id}/review`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus, decisionNote: decisionNote.trim() }) });
+      setDecisionNote('');
+      leaves.refresh();
+      notify(nextStatus === 'APPROVED' ? 'Pengajuan disetujui.' : 'Pengajuan ditolak.');
+    } catch (error) {
+      const message = error.message || 'Gagal meninjau pengajuan.';
+      setActionError(message);
+      notify(message, 'bad');
+    } finally { setReviewingId(''); }
   }
-  return <div className="content"><PageHead eyebrow="PENGAJUAN GURU" title="Izin, Sakit, dan Dinas Luar" sub="Admin/TU memeriksa keterangan guru sebelum sesi dianggap alpa." actions={<SelectInput value={status} onChange={(e) => setStatus(e.target.value)}><option value="PENDING">Menunggu</option><option value="APPROVED">Disetujui</option><option value="REJECTED">Ditolak</option><option value="CANCELLED">Dibatalkan</option></SelectInput>} /><Card title="Catatan review"><Field label="Catatan Admin/TU"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field></Card><Card title="Daftar pengajuan"><AsyncTable state={leaves} columns={[{ header: 'Tanggal', render: (r) => formatDateTime(r.date) }, { header: 'Guru', render: (r) => r.teacher?.fullName || '—' }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Alasan', key: 'reason' }]} onRow={(r) => <div className="row"><Btn size="sm" onClick={() => review(r, 'APPROVED')}>Setujui</Btn><Btn size="sm" variant="danger" onClick={() => review(r, 'REJECTED')}>Tolak</Btn></div>} /></Card></div>;
+  const requester = (row) => row.personnel || row.teacher || row.user || {};
+  const isOwn = (row) => requester(row).id === user?.id || row.personnelId === user?.id || row.teacherId === user?.id || row.userId === user?.id;
+  const dateLabel = (value) => value ? new Date(`${String(value).slice(0, 10)}T00:00:00Z`).toLocaleDateString('id-ID', { dateStyle: 'medium', timeZone: 'Asia/Jakarta' }) : '—';
+  return <div className="content"><PageHead eyebrow="REVIEW IZIN" title="Izin Personel" sub="Tinjau pengajuan personel lain yang masih menunggu keputusan." /><Card title="Filter pengajuan"><div className="field-row"><Field label="Peran"><SelectInput value={role} onChange={(e) => setRole(e.target.value)}><option value="">Semua peran</option><option value="ADMIN_TU">Admin/TU</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option><option value="GURU_MAPEL">Guru Mapel</option><option value="GURU_PIKET">Guru Piket</option><option value="OPERATOR_IT">Operator IT</option></SelectInput></Field><Field label="Status"><SelectInput value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Semua status</option><option value="PENDING">Menunggu</option><option value="APPROVED">Disetujui</option><option value="REJECTED">Ditolak</option><option value="CANCELLED">Dibatalkan</option><option value="REVOKED">Dicabut</option></SelectInput></Field><Field label="Jenis"><SelectInput value={type} onChange={(e) => setType(e.target.value)}><option value="">Semua jenis</option><option value="IZIN">Izin</option><option value="SAKIT">Sakit</option><option value="DINAS_LUAR">Dinas luar</option></SelectInput></Field><Field label="Tanggal"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field></div></Card><Card title="Keputusan" sub="Catatan wajib diisi minimal 4 karakter."><Field label="Catatan keputusan" hint={`${decisionNote.trim().length}/4+`}><TextInput type="textarea" rows={3} value={decisionNote} placeholder="Tulis dasar keputusan" onChange={(e) => setDecisionNote(e.target.value)} /></Field>{actionError && <div className="inline-note bad" role="alert">{actionError}</div>}</Card><Card title="Daftar pengajuan"><AsyncTable state={leaves} empty={{ title: 'Tidak ada pengajuan', sub: 'Ubah filter atau tunggu pengajuan baru.' }} columns={[{ header: 'Tanggal', render: (r) => `${dateLabel(r.startDate)} – ${dateLabel(r.endDate)}` }, { header: 'Personel', render: (r) => requester(r).fullName || '—' }, { header: 'Peran', render: (r) => <StatusPill status={requester(r).role} /> }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Alasan', key: 'reason' }]} onRow={(r) => r.status === 'PENDING' && !isOwn(r) ? <div className="row"><Btn size="sm" loading={reviewingId === r.id} disabled={decisionNote.trim().length < 4 || Boolean(reviewingId)} onClick={() => review(r, 'APPROVED')}>Setujui</Btn><Btn size="sm" variant="danger" loading={reviewingId === r.id} disabled={decisionNote.trim().length < 4 || Boolean(reviewingId)} onClick={() => review(r, 'REJECTED')}>Tolak</Btn></div> : null} /></Card></div>;
 }
 
 export function NotificationsPage() {

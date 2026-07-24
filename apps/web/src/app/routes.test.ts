@@ -55,6 +55,36 @@ describe('typed route registry', () => {
     expect(canAccessRoute('/guru/presensi', user('GURU_MAPEL'))).toBe(true);
   });
 
+  it('enforces personnel leave self-service and reviewer access', () => {
+    const selfRoutes = {
+      ADMIN_TU: '/admin/izin-saya',
+      KEPALA_SEKOLAH: '/admin/izin-saya',
+      GURU_MAPEL: '/guru/izin',
+      GURU_PIKET: '/admin/izin-saya',
+      OPERATOR_IT: '/admin/izin-saya'
+    } as const;
+
+    for (const [role, path] of Object.entries(selfRoutes)) {
+      const currentUser = user(role as User['role']);
+      expect(canAccessRoute(path, currentUser)).toBe(true);
+      expect(navItemsForUser(currentUser).map(([, url]) => url)).toContain(path);
+    }
+
+    for (const role of ['SISWA', 'DEVELOPER'] as const) {
+      const currentUser = user(role);
+      expect(canAccessRoute('/admin/izin-saya', currentUser)).toBe(false);
+      expect(canAccessRoute('/guru/izin', currentUser)).toBe(false);
+      expect(canAccessRoute('/admin/izin-personel', currentUser)).toBe(false);
+      expect(navItemsForUser(currentUser).map(([, url]) => url)).not.toContain('/admin/izin-saya');
+    }
+
+    expect(canAccessRoute('/admin/izin-personel', user('ADMIN_TU'))).toBe(true);
+    expect(canAccessRoute('/admin/izin-personel', user('KEPALA_SEKOLAH'))).toBe(true);
+    expect(canAccessRoute('/admin/izin-personel', user('OPERATOR_IT'))).toBe(false);
+    expect(navItemsForUser(user('ADMIN_TU')).map(([, url]) => url)).toContain('/admin/izin-personel');
+    expect(navItemsForUser(user('KEPALA_SEKOLAH')).map(([, url]) => url)).toContain('/admin/izin-personel');
+  });
+
   it('returns a safe crumb fallback for unknown paths', () => {
     expect(routeCrumbs('/unknown')).toEqual([BRAND.compactName]);
     expect(canAccessRoute('/unknown', user('DEVELOPER'))).toBe(false);

@@ -15,7 +15,7 @@ import {
 } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
 import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
-import { businessDayBounds, localMinutesOfDay } from '../../common/business-time';
+import { businessDateKey, businessDayBounds, localMinutesOfDay } from '../../common/business-time';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { RequestMeta } from '../../common/request-meta';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -319,13 +319,16 @@ export class ReconciliationService {
 
     const processed = [];
     for (const session of sessions) {
-      const { start: dayStart, end: dayEnd } = businessDayBounds(session.startsAt);
+      const dateKey = businessDateKey(session.startsAt);
+      const businessDate = new Date(`${dateKey}T00:00:00.000Z`);
 
       const approvedLeave = await this.prisma.teacherLeave.findFirst({
         where: {
-          teacherId: session.teacherId,
+          applicantId: session.teacherId,
+          applicantRole: Role.GURU_MAPEL,
           status: TeacherLeaveStatus.APPROVED,
-          date: { gte: dayStart, lte: dayEnd }
+          startDate: { lte: businessDate },
+          endDate: { gte: businessDate }
         }
       });
 

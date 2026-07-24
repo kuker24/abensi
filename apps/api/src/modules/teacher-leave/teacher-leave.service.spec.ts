@@ -5,18 +5,16 @@ import { TeacherLeaveService } from './teacher-leave.service';
 
 jest.mock('../../common/audit-log', () => ({ writeAudit: jest.fn().mockResolvedValue(undefined) }));
 
-const leave: {
-  id: string;
-  teacherId: string;
-  date: Date;
-  status: TeacherLeaveStatus;
-  teacher: { id: string; fullName: string };
-} = {
+const leave = {
   id: 'leave-1',
-  teacherId: 'teacher-original',
-  date: new Date('2026-06-14T00:00:00.000Z'),
+  applicantId: 'teacher-original',
+  applicantRole: Role.GURU_MAPEL,
+  startDate: new Date('2026-06-14T00:00:00.000Z'),
+  endDate: new Date('2026-06-14T00:00:00.000Z'),
+  type: 'IZIN',
+  reason: 'Alasan izin guru yang sah dan panjang.',
   status: TeacherLeaveStatus.PENDING,
-  teacher: { id: 'teacher-original', fullName: 'Guru Asal' }
+  applicant: { id: 'teacher-original', fullName: 'Guru Asal', role: Role.GURU_MAPEL }
 };
 
 const originalAssignment = {
@@ -64,6 +62,9 @@ function makePrisma() {
       if (sql.includes('SELECT "id" FROM "TeachingAssignment"')) events.push(`assignment.lock:${id}`);
       return [];
     }),
+    gateLog: {
+      findFirst: jest.fn(async () => null)
+    },
     user: {
       findUnique: jest.fn(async () => {
         events.push('user.read');
@@ -131,7 +132,9 @@ function makePrisma() {
       })
     },
     teacherSessionPresence: {
-      upsert: jest.fn(async () => ({}))
+      findFirst: jest.fn(async () => null),
+      upsert: jest.fn(async () => ({})),
+      deleteMany: jest.fn(async () => ({ count: 1 }))
     },
     notification: {
       create: jest.fn(async () => ({}))
@@ -146,7 +149,7 @@ function makePrisma() {
 async function reviewApproved(service: TeacherLeaveService, substituteTeacherId?: string) {
   return service.review('leave-1', { sub: 'admin-1', role: Role.ADMIN_TU }, {
     status: TeacherLeaveStatus.APPROVED,
-    adminNote: 'Pengganti telah dikonfirmasi.',
+    decisionNote: 'Pengganti telah dikonfirmasi.',
     ...(substituteTeacherId ? { substituteTeacherId } : {})
   });
 }
@@ -226,7 +229,7 @@ describe('TeacherLeaveService review serialization and substitute provenance', (
     const service = new TeacherLeaveService(prisma as any, { notifyRoles: jest.fn() } as any);
 
     await expect(reviewApproved(service)).rejects.toMatchObject({
-      response: { code: 'TEACHER_LEAVE_DATE_ALREADY_APPROVED' }
+      response: { code: 'PERSONNEL_LEAVE_DATE_OVERLAP' }
     });
     expect(events).toEqual(['leave.lock', 'leave.read', 'leave.advisory']);
     expect(tx.teacherLeave.update).not.toHaveBeenCalled();
@@ -236,7 +239,7 @@ describe('TeacherLeaveService review serialization and substitute provenance', (
     const { prisma, tx, events } = makePrisma();
     tx.teacherLeave.findUnique.mockImplementation(async () => {
       events.push('leave.read');
-      return { ...leave, status: TeacherLeaveStatus.APPROVED };
+      return { ...leave, status: TeacherLeaveStatus.APPROVED } as any;
     });
     const service = new TeacherLeaveService(prisma as any, { notifyRoles: jest.fn() } as any);
 

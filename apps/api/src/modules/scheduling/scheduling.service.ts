@@ -309,12 +309,15 @@ export class SchedulingService {
   }
 
   private async findApprovedTeacherLeave(tx: Prisma.TransactionClient, teacherId: string, businessDate: Date) {
-    const { start, end } = businessDayBounds(teacherLeaveBusinessDateKey(businessDate));
+    const key = businessDateKey(businessDate);
+    const date = new Date(`${key}T00:00:00.000Z`);
     const leaves = await tx.teacherLeave.findMany({
       where: {
-        teacherId,
+        applicantId: teacherId,
+        applicantRole: Role.GURU_MAPEL,
         status: TeacherLeaveStatus.APPROVED,
-        date: { gte: start, lte: end }
+        startDate: { lte: date },
+        endDate: { gte: date }
       },
       select: { id: true, substituteTeacherId: true },
       orderBy: { id: 'asc' }

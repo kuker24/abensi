@@ -17,7 +17,7 @@ export function LiveMonitorPage(): JSX.Element;
 export function SettingsPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function AuditPage(): JSX.Element;
 export function PicketBookPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
-export function TeacherLeavesPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function PersonnelLeaveReviewPage(props: { user: { id?: string }; notify: (message: string, type?: string) => void }): JSX.Element;
 export function NotificationsPage(): JSX.Element;
 export function DeveloperControlPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function HelpPage(props: { role?: string }): JSX.Element;

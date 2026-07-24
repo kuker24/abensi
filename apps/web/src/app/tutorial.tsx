@@ -5,7 +5,7 @@ import { Btn, IconBtn } from './ui';
 import { BRAND } from './branding';
 import type { User } from './types';
 
-const INTERACTIVE_TUTORIAL_VERSION = '2026.07.24';
+const INTERACTIVE_TUTORIAL_VERSION = '2026.07.25';
 const VOICE_PREFERENCE_KEY = 'siab2_tutorial_voice';
 const VIEWPORT_MARGIN = 16;
 
@@ -269,6 +269,14 @@ function stepsForRole(role?: string): TutorialStep[] {
         target: navTarget('/guru/presensi'),
         compactTarget: '[data-tour="navigation-toggle"]',
         action: { label: 'Buka Isi Presensi', path: '/guru/presensi' }
+      },
+      {
+        title: 'Ajukan Izin atau Sakit Pribadi',
+        body: 'Menu Izin / Sakit / Dinas Luar digunakan untuk mengajukan ketidakhadiran resmi sebelum sesi kelas berjalan.',
+        voice: 'Gunakan menu Izin untuk mengajukan ketidakhadiran resmi Anda. Pilih jenis izin, rentang tanggal, dan berikan alasan yang jelas.',
+        target: navTarget('/guru/izin'),
+        compactTarget: '[data-tour="navigation-toggle"]',
+        action: { label: 'Buka Pengajuan Izin', path: '/guru/izin' }
       },
       {
         title: 'Perbaiki hanya jika diperlukan',

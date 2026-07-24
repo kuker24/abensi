@@ -39,6 +39,8 @@ export declare const CAPABILITIES: readonly [
   'reports.school.read',
   'reports.export',
   'audit.read',
+  'leave.self.manage',
+  'leave.review',
   'profile.self.read',
   'profile.self.update'
 ];

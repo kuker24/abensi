@@ -37,6 +37,8 @@ export const CAPABILITIES = [
   'reports.school.read',
   'reports.export',
   'audit.read',
+  'leave.self.manage',
+  'leave.review',
   'profile.self.read',
   'profile.self.update'
 ];
@@ -55,10 +57,12 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'settings.read', 'settings.manage',
     'reports.self.read', 'reports.operational.read', 'reports.school.read', 'reports.export',
     'audit.read',
+    'leave.self.manage', 'leave.review',
     'profile.self.read', 'profile.self.update'
   ]),
   KEPALA_SEKOLAH: Object.freeze([
     'reports.self.read', 'reports.operational.read', 'reports.school.read',
+    'leave.self.manage', 'leave.review',
     'profile.self.read', 'profile.self.update'
   ]),
   OPERATOR_IT: Object.freeze([
@@ -67,12 +71,14 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'settings.read',
     'reports.self.read', 'reports.operational.read',
     'audit.read',
+    'leave.self.manage',
     'profile.self.read', 'profile.self.update'
   ]),
   GURU_MAPEL: Object.freeze([
     'classAttendance.read', 'classAttendance.record', 'classAttendance.correct',
     'session.open', 'session.close',
     'reports.self.read',
+    'leave.self.manage',
     'profile.self.read', 'profile.self.update'
   ]),
   GURU_PIKET: Object.freeze([
@@ -82,6 +88,7 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'attendanceOverrides.create',
     'reconciliation.read', 'reconciliation.escalate',
     'reports.self.read', 'reports.operational.read',
+    'leave.self.manage',
     'profile.self.read', 'profile.self.update'
   ]),
   SISWA: Object.freeze([
@@ -89,7 +96,9 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'profile.self.read',
     'profile.self.update'
   ]),
-  DEVELOPER: CAPABILITIES
+  DEVELOPER: Object.freeze(CAPABILITIES.filter(
+    (capability) => capability !== 'leave.self.manage' && capability !== 'leave.review'
+  ))
 });
 
 export const API_ERROR_CODES = Object.freeze({

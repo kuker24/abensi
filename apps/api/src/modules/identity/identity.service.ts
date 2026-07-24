@@ -572,7 +572,7 @@ export class IdentityService {
       this.prisma.qrCredential.count({ where: { userId } }),
       this.prisma.qrCredential.count({ where: { createdById: userId } }),
       this.prisma.qrCredential.count({ where: { revokedById: userId } }),
-      this.prisma.teacherLeave.count({ where: { teacherId: userId } }),
+      this.prisma.teacherLeave.count({ where: { applicantId: userId } }),
       this.prisma.teacherLeave.count({ where: { reviewedById: userId } }),
       this.prisma.teacherLeave.count({ where: { substituteTeacherId: userId } }),
       this.prisma.weeklySchedule.count({ where: { teacherId: userId } }),

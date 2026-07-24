@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setRiskConfirmHandler } from '../../confirm';
-import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, ReportsPage, SchedulePage, SessionsPage, SettingsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, buildWindowsCsv, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
+import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, PersonnelLeaveReviewPage, ReportsPage, SchedulePage, SessionsPage, SettingsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, buildWindowsCsv, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -27,6 +27,58 @@ describe('Spreadsheet export safety', () => {
 
   it('builds CSV for Excel Windows with UTF-8 BOM, an explicit separator, and CRLF rows', () => {
     expect(buildWindowsCsv([{ Nama: 'Siswa Á', Kelas: 'X-A' }])).toBe('\uFEFFsep=,\r\n"Nama","Kelas"\r\n"Siswa Á","X-A"\r\n');
+  });
+});
+
+describe('personnel leave review', () => {
+  it('acts only on another person pending leave and sends decisionNote', async () => {
+    const requests = [];
+    const rows = [
+      { id: 'own', personnelId: 'admin-1', startDate: '2026-08-03', endDate: '2026-08-03', type: 'IZIN', status: 'PENDING', reason: 'Urusan keluarga', personnel: { id: 'admin-1', fullName: 'Admin Sendiri', role: 'ADMIN_TU' } },
+      { id: 'decided', personnelId: 'guru-2', startDate: '2026-08-03', endDate: '2026-08-04', type: 'SAKIT', status: 'APPROVED', reason: 'Pemulihan kesehatan', personnel: { id: 'guru-2', fullName: 'Guru Diputuskan', role: 'GURU_MAPEL' } },
+      { id: 'pending', personnelId: 'guru-3', startDate: '2026-08-05', endDate: '2026-08-05', type: 'DINAS_LUAR', status: 'PENDING', reason: 'Rapat kabupaten', personnel: { id: 'guru-3', fullName: 'Guru Menunggu', role: 'GURU_MAPEL' } }
+    ];
+    const fetchMock = vi.fn(async (input, init = {}) => {
+      const url = String(input);
+      const method = String(init.method || 'GET').toUpperCase();
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (method === 'PATCH') requests.push({ url, body: JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify(method === 'GET' ? { items: rows } : { id: 'pending', status: 'APPROVED' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<PersonnelLeaveReviewPage user={{ id: 'admin-1' }} notify={vi.fn()} />);
+
+    const ownRow = (await screen.findByText('Admin Sendiri')).closest('tr');
+    const decidedRow = screen.getByText('Guru Diputuskan').closest('tr');
+    const pendingRow = screen.getByText('Guru Menunggu').closest('tr');
+    expect(within(ownRow).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(decidedRow).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(pendingRow).getByRole('button', { name: 'Setujui' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Catatan keputusan'), { target: { value: 'Dokumen lengkap.' } });
+    fireEvent.click(within(pendingRow).getByRole('button', { name: 'Setujui' }));
+
+    await waitFor(() => expect(requests).toEqual([{
+      url: expect.stringContaining('/teacher-leaves/pending/review'),
+      body: { status: 'APPROVED', decisionNote: 'Dokumen lengkap.' }
+    }]));
+  });
+
+  it('shows reviewer API errors in the page', async () => {
+    const row = { id: 'pending', personnelId: 'guru-3', startDate: '2026-08-05', endDate: '2026-08-05', type: 'IZIN', status: 'PENDING', reason: 'Urusan keluarga', personnel: { id: 'guru-3', fullName: 'Guru Menunggu', role: 'GURU_MAPEL' } };
+    vi.stubGlobal('fetch', vi.fn(async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (String(init.method || 'GET').toUpperCase() === 'PATCH') return new Response(JSON.stringify({ message: 'Pengajuan sudah diputuskan pengguna lain.' }), { status: 409, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ items: [row] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<PersonnelLeaveReviewPage user={{ id: 'admin-1' }} notify={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText('Catatan keputusan'), { target: { value: 'Data lengkap.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Tolak' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pengajuan sudah diputuskan pengguna lain.');
   });
 });
 

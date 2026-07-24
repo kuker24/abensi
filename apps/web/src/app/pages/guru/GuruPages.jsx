@@ -388,22 +388,61 @@ export function CorrectionPage({ notify }) {
   return <div className="content"><PageHead eyebrow="PERBAIKI PRESENSI" title="Perbaiki Presensi" sub="Gunakan hanya jika ada data yang salah, dan tulis alasan dengan jelas." /><StepGuide title="Cara koreksi" steps={['Pilih sesi.', 'Pilih siswa.', 'Pilih status baru.', 'Tulis alasan.', 'Klik Simpan koreksi.']} /><Card><form className="form-grid" onSubmit={submit}><Field label="Sesi"><SelectInput value={sessionId} onChange={(e) => { setSessionId(e.target.value); setStudentId(''); }} required><option value="">Pilih sesi</option>{itemsOf(sessions.data).map((s) => <option key={s.id} value={s.id}>{s.schoolClass?.code} · {s.subject?.name} · {statusLabel(s.status)}</option>)}</SelectInput></Field><Field label="Siswa"><SelectInput value={studentId} onChange={(e) => setStudentId(e.target.value)} required><option value="">Pilih siswa</option>{itemsOf(roster.data).map((r) => <option key={r.studentId} value={r.studentId}>{r.fullName} · {statusLabel(r.status)}</option>)}</SelectInput></Field><Field label="Status Baru"><SelectInput value={status} onChange={(e) => setStatus(e.target.value)}>{STATUS.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}</SelectInput></Field><Field label="Alasan" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={4} value={reason} placeholder="Tulis alasan koreksi dengan jelas" onChange={(e) => setReason(e.target.value)} /></Field><Btn variant="primary" disabled={reason.trim().length < 10 || saving} loading={saving}>Simpan koreksi</Btn></form></Card></div>;
 }
 
-export function TeacherLeavePage({ notify }) {
-  const leaves = useRemote(() => apiFetch('/teacher-leaves?page=1&limit=50'), []);
+function leaveDuration(startDate, endDate) {
+  if (!startDate || !endDate || endDate < startDate) return 0;
+  return Math.floor((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000) + 1;
+}
+
+function leaveDate(value) {
+  return value ? new Date(`${value.slice(0, 10)}T00:00:00Z`).toLocaleDateString('id-ID', { dateStyle: 'medium', timeZone: 'Asia/Jakarta' }) : '—';
+}
+
+export function PersonnelLeavePage({ notify }) {
+  const leaves = useRemote(() => apiFetch('/teacher-leaves/me?page=1&limit=50'), []);
   const [type, setType] = useState('IZIN');
-  const [date, setDate] = useState(today());
-  const [reason, setReason] = useState('Ada keperluan yang sudah dikonfirmasi kepada sekolah.');
+  const [startDate, setStartDate] = useState(today());
+  const [endDate, setEndDate] = useState(today());
+  const [reason, setReason] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [cancellingId, setCancellingId] = useState('');
+  const [formError, setFormError] = useState('');
+  const duration = leaveDuration(startDate, endDate);
   async function submit(e) {
     e.preventDefault();
+    if (!duration || reason.trim().length < 10) {
+      setFormError(duration ? 'Alasan wajib diisi minimal 10 karakter.' : 'Tanggal selesai tidak boleh sebelum tanggal mulai.');
+      return;
+    }
     setSaving(true);
+    setFormError('');
     try {
-      await apiFetch('/teacher-leaves', { method: 'POST', body: JSON.stringify({ type, date: new Date(date).toISOString(), reason }) });
+      await apiFetch('/teacher-leaves', { method: 'POST', body: JSON.stringify({ type, startDate, endDate, reason: reason.trim() }) });
+      setReason('');
       leaves.refresh();
-      notify('Pengajuan berhasil dikirim ke Admin/TU.');
-    } catch (error) { notify(error.message || 'Gagal mengirim pengajuan.', 'bad'); } finally { setSaving(false); }
+      notify('Pengajuan berhasil dikirim.');
+    } catch (error) {
+      const message = error.message || 'Gagal mengirim pengajuan.';
+      setFormError(message);
+      notify(message, 'bad');
+    } finally { setSaving(false); }
   }
-  return <div className="content"><PageHead eyebrow="KETERANGAN GURU" title="Izin, Sakit, dan Dinas Luar" sub="Ajukan keterangan sebelum sesi agar Admin/TU dan guru piket bisa menindaklanjuti." /><SimpleHelpBox title="Cara mengajukan" items={['Pilih jenis izin/sakit/dinas.', 'Pilih tanggal.', 'Tulis alasan singkat dan jelas.', 'Klik Kirim pengajuan.']} /><div className="grid g-2"><Card title="Buat pengajuan"><form className="form-grid" onSubmit={submit}><Field label="Jenis"><SelectInput value={type} onChange={(e) => setType(e.target.value)}><option value="IZIN">Izin</option><option value="SAKIT">Sakit</option><option value="DINAS_LUAR">Dinas luar</option></SelectInput></Field><Field label="Tanggal"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field><Field label="Alasan" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={4} value={reason} onChange={(e) => setReason(e.target.value)} /></Field><Btn variant="primary" disabled={reason.trim().length < 10 || saving} loading={saving}>Kirim pengajuan</Btn></form></Card><Card title="Riwayat pengajuan" sub="Status pengajuan yang sudah dikirim">{leaves.loading ? <LoadingState /> : leaves.error ? <ErrorState error={leaves.error} onRetry={leaves.refresh} /> : itemsOf(leaves.data).length ? <DataTable rows={itemsOf(leaves.data)} columns={[{ header: 'Tanggal', render: (r) => formatDateTime(r.date) }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Alasan', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.reason || '—'}</span> }, { header: 'Catatan Admin', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.adminNote || '—'}</span> }]} /> : <EmptyState title="Belum ada pengajuan" sub="Pengajuan yang sudah dikirim akan tampil di sini." />}</Card></div></div>;
+  async function cancel(row) {
+    if (cancelReason.trim().length < 10) return;
+    setCancellingId(row.id);
+    setFormError('');
+    try {
+      await apiFetch(`/teacher-leaves/${row.id}/cancel`, { method: 'PATCH', body: JSON.stringify({ reason: cancelReason.trim() }) });
+      setCancelReason('');
+      leaves.refresh();
+      notify('Pengajuan dibatalkan.');
+    } catch (error) {
+      const message = error.message || 'Gagal membatalkan pengajuan.';
+      setFormError(message);
+      notify(message, 'bad');
+    } finally { setCancellingId(''); }
+  }
+  return <div className="content"><PageHead eyebrow="IZIN PERSONEL" title="Izin, Sakit, dan Dinas Luar" sub="Ajukan keterangan untuk diri sendiri dan pantau keputusan peninjau." /><SimpleHelpBox title="Cara mengajukan" items={['Pilih jenis dan rentang tanggal.', 'Tulis alasan singkat dan jelas.', 'Kirim pengajuan.', 'Pengajuan yang masih menunggu dapat dibatalkan.']} /><div className="grid g-2"><Card title="Buat pengajuan"><form className="form-grid" onSubmit={submit}><Field label="Jenis"><SelectInput value={type} onChange={(e) => setType(e.target.value)}><option value="IZIN">Izin</option><option value="SAKIT">Sakit</option><option value="DINAS_LUAR">Dinas luar</option></SelectInput></Field><div className="field-row"><Field label="Tanggal mulai"><TextInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required /></Field><Field label="Tanggal selesai"><TextInput type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} required /></Field></div><div className={`inline-note ${duration ? 'info' : 'bad'}`} role="status">{duration ? `Durasi: ${duration} hari kalender.` : 'Tanggal selesai tidak boleh sebelum tanggal mulai.'}</div><Field label="Alasan" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={4} value={reason} placeholder="Jelaskan kebutuhan izin secara ringkas" onChange={(e) => setReason(e.target.value)} required /></Field>{formError && <div className="inline-note bad" role="alert">{formError}</div>}<Btn variant="primary" disabled={!duration || reason.trim().length < 10 || saving} loading={saving}>Kirim pengajuan</Btn></form></Card><Card title="Riwayat pengajuan" sub="Isi alasan pembatalan sebelum membatalkan pengajuan yang menunggu."><Field label="Alasan pembatalan" hint={`${cancelReason.trim().length}/10+`}><TextInput type="textarea" rows={2} value={cancelReason} placeholder="Wajib diisi untuk membatalkan" onChange={(e) => setCancelReason(e.target.value)} /></Field>{leaves.loading ? <LoadingState /> : leaves.error ? <ErrorState error={leaves.error} onRetry={leaves.refresh} /> : itemsOf(leaves.data).length ? <DataTable rows={itemsOf(leaves.data)} columns={[{ header: 'Tanggal', render: (r) => `${leaveDate(r.startDate)} – ${leaveDate(r.endDate)}` }, { header: 'Durasi', render: (r) => `${leaveDuration(r.startDate?.slice(0, 10), r.endDate?.slice(0, 10))} hari` }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Alasan', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.reason || '—'}</span> }, { header: 'Catatan keputusan', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.decisionNote || '—'}</span> }]} onRow={(r) => r.status === 'PENDING' ? <Btn size="sm" variant="danger" loading={cancellingId === r.id} disabled={cancelReason.trim().length < 10 || Boolean(cancellingId)} onClick={() => cancel(r)}>Batalkan</Btn> : null} /> : <EmptyState title="Belum ada pengajuan" sub="Pengajuan yang sudah dikirim akan tampil di sini." />}</Card></div></div>;
 }
 
 export function TeacherRecapPage() {

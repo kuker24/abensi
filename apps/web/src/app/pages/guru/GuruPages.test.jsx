@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ClassInputPage, TeacherDashboard, TeacherRecapPage } from './GuruPages.jsx';
+import { ClassInputPage, PersonnelLeavePage, TeacherDashboard, TeacherRecapPage } from './GuruPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -300,5 +300,39 @@ describe('guru self-scoped recap', () => {
     expect(reportUrl).toContain('from=');
     expect(reportUrl).toContain('to=');
     expect(reportUrl).not.toContain('teacherId');
+  });
+});
+
+describe('personnel leave self-service', () => {
+  it('submits the exact date range contract without a fake reason default', async () => {
+    const requests = [];
+    const notify = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async (input, init = {}) => {
+      const url = String(input);
+      const method = String(init.method || 'GET').toUpperCase();
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (method === 'POST' && url.endsWith('/teacher-leaves')) requests.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify(method === 'GET' ? { items: [] } : { id: 'leave-1' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<PersonnelLeavePage notify={notify} />);
+
+    expect(await screen.findByText('Belum ada pengajuan')).toBeInTheDocument();
+    expect(screen.getByLabelText('Alasan')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('Jenis'), { target: { value: 'DINAS_LUAR' } });
+    fireEvent.change(screen.getByLabelText('Tanggal mulai'), { target: { value: '2026-08-03' } });
+    fireEvent.change(screen.getByLabelText('Tanggal selesai'), { target: { value: '2026-08-05' } });
+    fireEvent.change(screen.getByLabelText('Alasan'), { target: { value: 'Mengikuti rapat dinas kabupaten.' } });
+
+    expect(screen.getByText('Durasi: 3 hari kalender.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Kirim pengajuan' }));
+
+    await waitFor(() => expect(requests).toEqual([{
+      type: 'DINAS_LUAR',
+      startDate: '2026-08-03',
+      endDate: '2026-08-05',
+      reason: 'Mengikuti rapat dinas kabupaten.'
+    }]));
+    expect(notify).toHaveBeenCalledWith('Pengajuan berhasil dikirim.');
   });
 });
