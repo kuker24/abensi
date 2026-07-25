@@ -97,7 +97,7 @@ fun HomeScreen(
             Text("Pilih Mode Scan", style = MaterialTheme.typography.headlineMedium)
             Text(config.deviceName.ifBlank { "HP Scanner" }, style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Satu aplikasi untuk Mode Gerbang, Mode Mushola, dan Cek Identitas.",
+                "Satu aplikasi untuk Mode Gerbang, Mode Mushola, dan Uji Coba Card.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -123,7 +123,7 @@ fun HomeScreen(
                     Text(modeSummary, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("2 HP scanner fleksibel", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
-                        if (testOnly) "Semua mode di HP ini hanya untuk uji fungsi. Tidak ada presensi yang dicatat." else "Pilih mode sesuai kebutuhan. Mode Cek Identitas hanya membaca biodata terbatas dan tidak mencatat presensi.",
+                        if (testOnly) "Semua mode di HP ini hanya untuk uji fungsi. Tidak ada presensi yang dicatat." else "Pilih mode sesuai kebutuhan. Uji Coba Card hanya cek kartu/QR valid dan tidak mencatat presensi.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -159,7 +159,7 @@ fun HomeScreen(
 
             if (canCheckIdentity) {
                 ModeActionCard(
-                    title = "Cek Identitas",
+                    title = "Uji Coba Card",
                     helper = modeHelp("CHECK_ONLY"),
                     primary = !canScanDatang && !canScanPulang && !canScanMushola,
                     onClick = { onMode("CHECK_ONLY"); onStart() }

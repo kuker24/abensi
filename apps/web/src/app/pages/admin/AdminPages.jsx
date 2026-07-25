@@ -230,7 +230,7 @@ export function AdminDashboard() {
       </div>
     </section>
 
-    <RoleTaskPanel title="Aksi cepat operasional" tasks={[{ title: 'Aktifkan HP Scanner', desc: 'Buat kode untuk 4 reader target produksi.', icon: <Smartphone size={18} />, tone: 'ok', onClick: () => go('/admin/devices') }, { title: 'Kelengkapan Siswa', desc: 'Cek datang, pulang, kelas, dan sholat siswa.', icon: <CheckSquare size={18} />, tone: 'warn', onClick: () => go('/admin/student-completeness') }, { title: 'Lihat Sesi Guru', desc: 'Pantau guru masuk kelas dan sesi belum ditutup.', icon: <Radar size={18} />, onClick: () => go('/admin/sessions') }, { title: 'Lihat Absensi Sholat', desc: 'Ringkasan Dhuha/Dzuhur dan daftar siswa scan.', icon: <Building2 size={18} />, onClick: () => go('/admin/prayer-attendance') }, { title: 'Kepala/Staf Hadir', desc: 'Datang-pulang kepala, TU, staf, guru, dan siswa di Mode Gerbang.', icon: <Users size={18} />, onClick: () => go('/admin/staff-attendance') }, { title: 'Laporan Hari Ini', desc: 'Unduh laporan resmi harian.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }, { title: 'Cetak Kartu QR', desc: 'Siapkan kartu dari Master Data.', icon: <CreditCard size={18} />, onClick: () => go('/admin/master-data') }]} />
+    <RoleTaskPanel title="Aksi cepat operasional" tasks={[{ title: 'Aktifkan HP Scanner', desc: 'Buat kode untuk 3 reader target produksi.', icon: <Smartphone size={18} />, tone: 'ok', onClick: () => go('/admin/devices') }, { title: 'Kelengkapan Siswa', desc: 'Cek datang, pulang, kelas, dan sholat siswa.', icon: <CheckSquare size={18} />, tone: 'warn', onClick: () => go('/admin/student-completeness') }, { title: 'Lihat Sesi Guru', desc: 'Pantau guru masuk kelas dan sesi belum ditutup.', icon: <Radar size={18} />, onClick: () => go('/admin/sessions') }, { title: 'Lihat Absensi Sholat', desc: 'Ringkasan Dhuha/Dzuhur dan daftar siswa scan.', icon: <Building2 size={18} />, onClick: () => go('/admin/prayer-attendance') }, { title: 'Kepala/Staf Hadir', desc: 'Datang-pulang kepala, TU, staf, guru, dan siswa di Mode Gerbang.', icon: <Users size={18} />, onClick: () => go('/admin/staff-attendance') }, { title: 'Laporan Hari Ini', desc: 'Unduh laporan resmi harian.', icon: <FileText size={18} />, onClick: () => go('/admin/reports') }, { title: 'Cetak Kartu QR', desc: 'Siapkan kartu dari Master Data.', icon: <CreditCard size={18} />, onClick: () => go('/admin/master-data') }]} />
 
     {dashboard.loading ? <LoadingState /> : dashboard.error ? <ErrorState error={dashboard.error} onRetry={dashboard.refresh} /> : <><div className="grid g-4">
       <StatCardPremium icon={<Smartphone size={20} />} label="HP Scanner aktif" value={d.androidReaders?.activeCount ?? 0} sub="Maksimal 4 HP reader sekolah" tone={(d.androidReaders?.activeCount ?? 0) > 0 ? 'ok' : 'warn'} onClick={() => go('/admin/devices')} />
@@ -1356,7 +1356,7 @@ export function DevicesPage({ notify }) {
   const options = [['android', 'Aktivasi 4 HP Reader'], ['qr', 'Cetak Kartu'], ['apk', 'APK Update Center'], ['version', 'Versi Manual'], ['cards', 'Kartu RFID'], ['scan', 'Input Manual Cadangan']];
   const pageCopy = tab === 'qr'
     ? { title: 'Cetak Kartu SIAB2', sub: 'Pilih kelas, sistem melengkapi QR resmi, lalu cetak kartu siap pakai.' }
-    : { title: 'Aktivasi 4 HP Reader', sub: 'Fokus ke 4 reader produksi resmi; alat lama disembunyikan agar operator tidak salah pilih.' };
+    : { title: 'Aktivasi 3 HP Reader', sub: 'Fokus ke 3 reader produksi resmi; alat lama disembunyikan agar operator tidak salah pilih.' };
   return <div className="content"><PageHead eyebrow="PERANGKAT ABSENSI" title={pageCopy.title} sub={pageCopy.sub} /><TabBar value={tab} onChange={setTab} options={options} />{tab === 'android' && <AndroidReaderPanel notify={notify} />}{tab === 'qr' && <QrCredentialPanel notify={notify} />}{tab === 'apk' && <AndroidApkUpdatePanel notify={notify} />}{tab === 'version' && <MobileVersionPanel notify={notify} />}{tab === 'cards' && <CardsPanel notify={notify} />}{tab === 'scan' && <ManualQrScanPanel notify={notify} />}</div>;
 }
 
@@ -1448,17 +1448,15 @@ const ANDROID_MODE_LABELS = {
   GATE_IN: 'Gerbang',
   GATE_OUT: 'Gerbang',
   MUSHOLA: 'Mushola',
-  CHECK_ONLY: 'Cek Identitas'
+  CHECK_ONLY: 'Uji Coba Card'
 };
 
-const CHECK_ONLY_ANDROID_MODES = ['CHECK_ONLY'];
-const GATE_PRAYER_ANDROID_MODES = ['GATE_IN', 'GATE_OUT', 'MUSHOLA'];
+const GATE_PRAYER_ANDROID_MODES = ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'];
 
 const ANDROID_READER_PRESETS = [
-  { key: 'dev-identity', icon: <ShieldCheck size={26} />, title: 'READER_DEV_TEST_01', shortTitle: 'Dev Test Identitas', desc: 'Cek kartu/identitas; tidak mencatat absensi.', name: 'READER_DEV_TEST_01', locationName: 'Dev Test Identitas', allowedModes: CHECK_ONLY_ANDROID_MODES, tone: 'safe' },
-  { key: 'dev-gate-prayer', icon: <Smartphone size={26} />, title: 'READER_IDENTITY_01', shortTitle: 'Dev Test Gerbang & Mushola', desc: 'Uji Scan Gerbang Datang, Pulang, dan Mushola tanpa mencatat absensi.', name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'safe' },
-  { key: 'gate-prayer-1', icon: <DoorOpen size={26} />, title: 'READER_GATE_PRAYER_01', shortTitle: 'Gerbang/Mushola 01', desc: 'Reader live UAT utama setelah approval.', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' },
-  { key: 'gate-prayer-2', icon: <Building2 size={26} />, title: 'READER_GATE_PRAYER_02', shortTitle: 'Gerbang/Mushola 02', desc: 'Reader live UAT kedua setelah approval.', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' }
+  { key: 'dev-gate-prayer', icon: <Smartphone size={26} />, title: 'READER_IDENTITY_01', shortTitle: 'Dev Test Gerbang & Mushola', desc: 'Uji Scan Gerbang, Mushola, dan Uji Coba Card tanpa mencatat absensi.', name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'safe' },
+  { key: 'gate-prayer-1', icon: <DoorOpen size={26} />, title: 'READER_GATE_PRAYER_01', shortTitle: 'Gerbang/Mushola 01', desc: 'Reader live: Datang, Pulang, Mushola, dan Uji Coba Card.', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' },
+  { key: 'gate-prayer-2', icon: <Building2 size={26} />, title: 'READER_GATE_PRAYER_02', shortTitle: 'Gerbang/Mushola 02', desc: 'Reader live kedua: Datang, Pulang, Mushola, dan Uji Coba Card.', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' }
 ];
 
 function presetForReader(reader) {
@@ -1474,10 +1472,15 @@ function androidModesText(modes = []) {
   const normalized = modes || [];
   const hasGerbang = normalized.includes('GERBANG') || normalized.includes('GATE_IN') || normalized.includes('GATE_OUT');
   const hasMushola = normalized.includes('MUSHOLA');
+  const hasCheck = normalized.includes('CHECK_ONLY');
+  if (hasGerbang && hasMushola && hasCheck) return 'Gerbang, Mushola & Uji Coba Card';
   if (hasGerbang && hasMushola) return 'Gerbang & Mushola';
+  if (hasGerbang && hasCheck) return 'Gerbang & Uji Coba Card';
+  if (hasMushola && hasCheck) return 'Mushola & Uji Coba Card';
   if (hasGerbang) return 'Gerbang';
   if (hasMushola) return 'Mushola';
-  return normalized.map(androidModeLabel).join(', ') || 'Gerbang & Mushola';
+  if (hasCheck) return 'Uji Coba Card';
+  return normalized.map(androidModeLabel).join(', ') || 'Gerbang, Mushola & Uji Coba Card';
 }
 
 function androidLastUsedModeText(mode) {
@@ -1542,9 +1545,9 @@ function androidWarningText(reader) {
 function AndroidReaderPanel({ notify }) {
   const readers = useRemote(() => apiFetch('/device-readers?page=1&limit=200'), []);
   const [result, setResult] = useState(null);
-  const [selectedPreset, setSelectedPreset] = useState('dev-test');
+  const [selectedPreset, setSelectedPreset] = useState('dev-gate-prayer');
   const [now, setNow] = useState(Date.now());
-  const [form, set, reset] = useForm({ name: 'READER_DEV_TEST_01', locationName: 'PR127 Developer Test', allowedModes: CHECK_ONLY_ANDROID_MODES, expiresInMinutes: 15, revokeReason: 'HP reader dicabut oleh admin.' });
+  const [form, set, reset] = useForm({ name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: GATE_PRAYER_ANDROID_MODES, expiresInMinutes: 15, revokeReason: 'HP reader dicabut oleh admin.' });
 
   useEffect(() => {
     if (!result?.expiresAt) return;
@@ -1602,7 +1605,7 @@ function AndroidReaderPanel({ notify }) {
   const onlineAndroidCount = targetAndroidItems.filter((row) => androidMonitorStatus(row) === 'ONLINE').length;
   const offlineAndroidCount = targetAndroidItems.filter((row) => androidMonitorStatus(row) === 'OFFLINE').length;
   const pendingQueueTotal = targetAndroidItems.reduce((sum, row) => sum + (Number(row.pendingQueueCount) || 0), 0);
-  const MAX_ACTIVE_ANDROID_READERS = 4;
+  const MAX_ACTIVE_ANDROID_READERS = 3;
   const limitReached = activeAndroidCount > MAX_ACTIVE_ANDROID_READERS;
   const selectedScannerName = ANDROID_READER_PRESETS.find((preset) => preset.key === selectedPreset)?.title || form.name || 'Reader target';
   const selectedTarget = androidItems.find((row) => row.deviceId === form.name || row.name === form.name);
@@ -1617,15 +1620,15 @@ function AndroidReaderPanel({ notify }) {
   return <div className="android-activation-page">
     <div className="activation-hero activation-hero-clean">
       <div>
-        <Pill tone="ok"><ShieldCheck size={13} /> 4 reader resmi</Pill>
+        <Pill tone="ok"><ShieldCheck size={13} /> 3 reader resmi</Pill>
         <h2>Aktivasi Android Reader</h2>
-        <p>Pilih salah satu dari 4 reader produksi. Operator cukup membuat <b>Kode Aktivasi</b>, lalu memasukkannya di APK resmi. API key dan signing secret tidak ditampilkan di web.</p>
+        <p>Pilih salah satu dari 3 reader produksi. Operator cukup membuat <b>Kode Aktivasi</b>, lalu memasukkannya di APK resmi. API key dan signing secret tidak ditampilkan di web.</p>
       </div>
       <div className="activation-safe"><ShieldCheck size={20} /><span>Live scan tetap dikunci SOP: tunggu heartbeat/seen semua HP dan approval UAT terpisah.</span></div>
     </div>
 
     <div className="grid g-4 reader-monitor-summary">
-      <StatCardPremium icon={<Smartphone size={18} />} label="Target aktif" value={`${targetActiveCount}/${MAX_ACTIVE_ANDROID_READERS}`} sub="Hanya 4 mapping resmi" tone={targetActiveCount === MAX_ACTIVE_ANDROID_READERS ? 'ok' : 'warn'} />
+      <StatCardPremium icon={<Smartphone size={18} />} label="Target aktif" value={`${targetActiveCount}/${MAX_ACTIVE_ANDROID_READERS}`} sub="Hanya 3 mapping resmi" tone={targetActiveCount === MAX_ACTIVE_ANDROID_READERS ? 'ok' : 'warn'} />
       <StatCardPremium icon={<Wifi size={18} />} label="HP online" value={`${onlineAndroidCount}/${targetActiveCount}`} sub="Heartbeat ±2 menit terakhir" tone={onlineAndroidCount === targetActiveCount && targetActiveCount > 0 ? 'ok' : 'warn'} />
       <StatCardPremium icon={<AlertTriangle size={18} />} label="HP offline" value={offlineAndroidCount} sub="Perlu cek internet/aplikasi" tone={offlineAndroidCount > 0 ? 'bad' : 'ok'} />
       <StatCardPremium icon={<ListChecks size={18} />} label="Antrean offline" value={pendingQueueTotal} sub="Scan tersimpan di HP" tone={pendingQueueTotal > 0 ? 'warn' : 'ok'} />
@@ -1674,8 +1677,8 @@ function AndroidReaderPanel({ notify }) {
       </Card>}
     </div>
 
-    <Card title="Daftar 4 Reader Android Resmi" sub="Tabel ini hanya menampilkan 4 reader target PR128. Panel alat lama tidak ditampilkan di halaman operator agar tidak rancu.">
-      <div className="android-reader-table target-reader-table"><AsyncTable state={targetRows} empty="4 reader target belum ditemukan di database" columns={[{ header: 'Reader', render: (r) => <div className="reader-monitor-cell"><b>{presetForReader(r)?.shortTitle || r.name || 'Reader'}</b><small>{r.deviceId || r.name || '—'}</small></div> }, { header: 'Mode', render: (r) => androidModesText(r.allowedModes) }, { header: 'Status HP', render: (r) => <div className="reader-monitor-cell"><Pill tone={androidMonitorTone(androidMonitorStatus(r))}>{androidMonitorLabel(androidMonitorStatus(r))}</Pill><AndroidReaderStatusBadge reader={r} /></div> }, { header: 'Antrean', render: (r) => <span className={(r.pendingQueueCount || 0) > 0 ? 'reader-queue-warn' : ''}>{r.pendingQueueCount ?? 0}</span> }, { header: 'Heartbeat / Flush', render: (r) => <div className="reader-monitor-cell"><span>{formatDateTime(r.lastHeartbeatAt || r.lastSeenAt)}</span><small>Flush: {formatDateTime(r.lastQueueFlushAt)}</small></div> }, { header: 'Versi', render: (r) => r.appVersion ? `${r.appVersion}${r.appVersionCode ? ` (${r.appVersionCode})` : ''}` : '—' }, { header: 'Baterai/Jaringan', render: (r) => <div className="reader-monitor-cell"><span>{r.batteryLevel == null ? 'Baterai —' : `${r.batteryLevel}%`}</span><small>{r.networkStatus || 'Jaringan —'}</small></div> }, { header: 'Peringatan', render: (r) => androidWarningText(r) || 'Aman' }]} onRow={(r) => renderAndroidReaderActions(r)} /></div>
+    <Card title="Daftar 3 Reader Android Resmi" sub="Tabel ini hanya menampilkan 3 reader target resmi. Panel alat lama tidak ditampilkan di halaman operator agar tidak rancu.">
+      <div className="android-reader-table target-reader-table"><AsyncTable state={targetRows} empty="3 reader target belum ditemukan di database" columns={[{ header: 'Reader', render: (r) => <div className="reader-monitor-cell"><b>{presetForReader(r)?.shortTitle || r.name || 'Reader'}</b><small>{r.deviceId || r.name || '—'}</small></div> }, { header: 'Mode', render: (r) => androidModesText(r.allowedModes) }, { header: 'Status HP', render: (r) => <div className="reader-monitor-cell"><Pill tone={androidMonitorTone(androidMonitorStatus(r))}>{androidMonitorLabel(androidMonitorStatus(r))}</Pill><AndroidReaderStatusBadge reader={r} /></div> }, { header: 'Antrean', render: (r) => <span className={(r.pendingQueueCount || 0) > 0 ? 'reader-queue-warn' : ''}>{r.pendingQueueCount ?? 0}</span> }, { header: 'Heartbeat / Flush', render: (r) => <div className="reader-monitor-cell"><span>{formatDateTime(r.lastHeartbeatAt || r.lastSeenAt)}</span><small>Flush: {formatDateTime(r.lastQueueFlushAt)}</small></div> }, { header: 'Versi', render: (r) => r.appVersion ? `${r.appVersion}${r.appVersionCode ? ` (${r.appVersionCode})` : ''}` : '—' }, { header: 'Baterai/Jaringan', render: (r) => <div className="reader-monitor-cell"><span>{r.batteryLevel == null ? 'Baterai —' : `${r.batteryLevel}%`}</span><small>{r.networkStatus || 'Jaringan —'}</small></div> }, { header: 'Peringatan', render: (r) => androidWarningText(r) || 'Aman' }]} onRow={(r) => renderAndroidReaderActions(r)} /></div>
     </Card>
   </div>;
 }

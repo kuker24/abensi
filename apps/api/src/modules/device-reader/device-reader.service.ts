@@ -27,8 +27,8 @@ function generateProvisionToken() {
   return `shrp_${randomBytes(24).toString('base64url')}`;
 }
 
-export const MAX_ACTIVE_ANDROID_READERS = 4;
-export const ANDROID_READER_LIMIT_MESSAGE = 'Batas HP scanner aktif sudah penuh. Cabut salah satu dari 4 HP dulu untuk mengganti perangkat.';
+export const MAX_ACTIVE_ANDROID_READERS = 3;
+export const ANDROID_READER_LIMIT_MESSAGE = 'Batas HP scanner aktif sudah penuh. Cabut salah satu dari 3 HP dulu untuk mengganti perangkat.';
 
 const PRODUCTION_ANDROID_TARGET_MESSAGE = 'Reader Android produksi harus memakai target server yang disetujui.';
 const PRODUCTION_ANDROID_TARGET_EXISTS_MESSAGE = 'Target reader Android produksi sudah terdaftar. Gunakan kode aktivasi untuk target tersebut.';
@@ -68,11 +68,17 @@ function defaultModes(type?: ReaderType) {
   return [];
 }
 
+const GATE_MUSHOLA_CHECK_MODES = [
+  AndroidReaderMode.GATE_IN,
+  AndroidReaderMode.GATE_OUT,
+  AndroidReaderMode.MUSHOLA,
+  AndroidReaderMode.CHECK_ONLY
+];
+
 const PR128_READER_TARGET_MODES = new Map<string, AndroidReaderMode[]>([
-  ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
-  ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-  ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-  ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]]
+  ['READER_IDENTITY_01', [...GATE_MUSHOLA_CHECK_MODES]],
+  ['READER_GATE_PRAYER_01', [...GATE_MUSHOLA_CHECK_MODES]],
+  ['READER_GATE_PRAYER_02', [...GATE_MUSHOLA_CHECK_MODES]]
 ]);
 
 function effectiveAllowedModes(type: ReaderType, requested?: AndroidReaderMode[] | null) {
@@ -368,7 +374,7 @@ export class DeviceReaderService {
     const reader = match.reader;
     if (reader.type !== ReaderType.QR_ANDROID) throw new BadRequestException('Kode aktivasi hanya untuk HP Android reader.');
     if (reader.status === DeviceReaderStatus.REVOKED) throw new ForbiddenException('Reader sudah dicabut.');
-    if (!targetReaderKey(reader)) throw new BadRequestException('Kode aktivasi PR128 hanya untuk 4 reader produksi yang disetujui.');
+    if (!targetReaderKey(reader)) throw new BadRequestException('Kode aktivasi PR128 hanya untuk 3 reader produksi yang disetujui.');
     const allowedModes = targetAllowedModes(reader);
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.assertAndroidReaderActiveSlotAvailable(tx, reader.id);

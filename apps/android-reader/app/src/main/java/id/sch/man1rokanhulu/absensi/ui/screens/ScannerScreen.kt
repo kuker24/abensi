@@ -547,7 +547,7 @@ internal fun parseServerScanSummary(body: String): ServerScanSummary = runCatchi
     val actionLabel = when {
         !action.isNullOrBlank() -> action
         kind == "PRAYER" && !prayer.isNullOrBlank() -> prayer.lowercase().replaceFirstChar { it.uppercase() }
-        kind == "CHECK_ONLY" -> "Cek Identitas"
+        kind == "CHECK_ONLY" -> "Uji Coba Card"
         else -> kind
     }
     if (kind == "CHECK_ONLY" && user != null) {
@@ -620,7 +620,7 @@ internal fun buildCheckOnlySummary(
     return ServerScanSummary(
         displayName = safeName,
         displayMeta = meta,
-        actionLabel = "Cek Identitas",
+        actionLabel = "Uji Coba Card",
         feedbackMessage = lines.joinToString("\n").ifBlank { "QR valid. Tidak ada presensi yang dicatat." }
     )
 }

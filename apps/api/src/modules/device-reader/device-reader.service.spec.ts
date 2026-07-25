@@ -26,7 +26,7 @@ function makePrisma() {
       create: jest.fn(async ({ data }) => ({ id: data.id ?? 'reader-1', status: data.status ?? DeviceReaderStatus.ACTIVE, type: data.type ?? ReaderType.GATE, allowedModes: data.allowedModes ?? [], ...data })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'reader-1', deviceId: 'android-1', name: 'Android', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY], provisioningTokenHash: null, readerSecretCiphertext: 'enc-secret' }),
-      update: jest.fn(async ({ data, where }) => ({ id: where.id ?? 'reader-1', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: data.allowedModes ?? [], ...data }))
+      update: jest.fn(async ({ data, where }) => ({ id: where.id ?? 'reader-1', deviceId: 'READER_IDENTITY_01', name: 'READER_IDENTITY_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: data.allowedModes ?? [], ...data }))
     }
   };
   const prisma = {
@@ -113,32 +113,31 @@ describe('DeviceReaderService credential security', () => {
 
     const result = await service.listReaders({ page: 1, limit: 20, skip: 0 } as any);
 
-    expect(result.items[0].allowedModes).toEqual([AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]);
+    expect(result.items[0].allowedModes).toEqual([AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
   });
 
   it('creates a short-lived activation code for an approved PR128 target reader without storing plaintext', async () => {
     const prisma = makePrisma();
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-dev', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] }]);
+    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-identity', deviceId: 'READER_IDENTITY_01', name: 'READER_IDENTITY_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY] }]);
     prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
     const service = new DeviceReaderService(prisma, makeSignatures());
 
-    const result = await service.issueAndroidProvisionCode('READER_DEV_TEST_01', { expiresInMinutes: 10 }, actor);
+    const result = await service.issueAndroidProvisionCode('READER_IDENTITY_01', { expiresInMinutes: 10 }, actor);
     const data = prisma.__tx.deviceReader.update.mock.calls[0][0].data;
 
     expect(result.provisionToken).toMatch(/^shrp_/);
     expect(result.provisioningQr).toBe(`schoolhub:reader-provision:v1:${result.provisionToken}`);
     expect(data.provisioningTokenHash).toBe(readerCredentialDigest(result.provisionToken));
     expect(data.provisioningTokenHash).not.toBe(result.provisionToken);
-    expect(data.allowedModes).toEqual([AndroidReaderMode.CHECK_ONLY]);
+    expect(data.allowedModes).toEqual([AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
     expect(data.provisioningExpiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('supports the approved 4-reader activation mapping', async () => {
+  it('supports the approved 3-reader activation mapping', async () => {
     const targets = [
-      ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
-      ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]]
+      ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
     ] as const;
 
     for (const [deviceId, modes] of targets) {
@@ -159,8 +158,8 @@ describe('DeviceReaderService credential security', () => {
     await expect(new DeviceReaderService(nonTarget, makeSignatures()).issueAndroidProvisionCode('android-other', {}, actor)).rejects.toBeInstanceOf(BadRequestException);
 
     const revoked = makePrisma();
-    revoked.deviceReader.findMany.mockResolvedValue([{ id: 'reader-revoked', deviceId: 'READER_DEV_TEST_01', name: 'READER_DEV_TEST_01', status: DeviceReaderStatus.REVOKED, type: ReaderType.QR_ANDROID, allowedModes: [] }]);
-    await expect(new DeviceReaderService(revoked, makeSignatures()).issueAndroidProvisionCode('READER_DEV_TEST_01', {}, actor)).rejects.toBeInstanceOf(ForbiddenException);
+    revoked.deviceReader.findMany.mockResolvedValue([{ id: 'reader-revoked', deviceId: 'READER_IDENTITY_01', name: 'READER_IDENTITY_01', status: DeviceReaderStatus.REVOKED, type: ReaderType.QR_ANDROID, allowedModes: [] }]);
+    await expect(new DeviceReaderService(revoked, makeSignatures()).issueAndroidProvisionCode('READER_IDENTITY_01', {}, actor)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('completes provisioning with current HMAC token and clears token atomically', async () => {
@@ -196,7 +195,7 @@ describe('DeviceReaderService credential security', () => {
       provisioningExpiresAt: new Date(Date.now() + 60_000)
     };
     prisma.deviceReader.findMany.mockResolvedValue([reader]);
-    prisma.__tx.deviceReader.findUniqueOrThrow.mockResolvedValue({ ...reader, status: DeviceReaderStatus.ACTIVE, allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA], provisioningTokenHash: null, readerSecretCiphertext: 'enc:shrsec_test-reader-secret' });
+    prisma.__tx.deviceReader.findUniqueOrThrow.mockResolvedValue({ ...reader, status: DeviceReaderStatus.ACTIVE, allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY], provisioningTokenHash: null, readerSecretCiphertext: 'enc:shrsec_test-reader-secret' });
     const service = new DeviceReaderService(prisma, signatures);
 
     const result = await service.completeAndroidProvision({ provisionToken: token, deviceId: 'android-install-id', deviceName: 'HP Operator' });
@@ -204,11 +203,11 @@ describe('DeviceReaderService credential security', () => {
 
     expect(data.deviceId).toBe('READER_IDENTITY_01');
     expect(data.name).toBe('READER_IDENTITY_01');
-    expect(data.allowedModes).toEqual([AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]);
+    expect(data.allowedModes).toEqual([AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
     expect(data.readerSecretCiphertext).toBe('enc:shrsec_test-reader-secret');
     expect(signatures.generateReaderSecret).toHaveBeenCalledTimes(1);
     expect(signatures.encryptSecret).toHaveBeenCalledWith('shrsec_test-reader-secret');
-    expect(result).toMatchObject({ deviceId: 'READER_IDENTITY_01', allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA], readerSecret: 'shrsec_test-reader-secret' });
+    expect(result).toMatchObject({ deviceId: 'READER_IDENTITY_01', allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY], readerSecret: 'shrsec_test-reader-secret' });
   });
 
   it('rejects a reused one-time activation code after it is claimed', async () => {
@@ -313,17 +312,16 @@ describe('DeviceReaderService credential security', () => {
   it('creates each production QR_ANDROID target inactive with pinned identity and modes, without generating or returning a secret', async () => {
     process.env.NODE_ENV = 'production';
     const targets = [
-      ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
-      ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]]
+      ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
     ] as const;
 
     for (const [target, allowedModes] of targets) {
       const prisma = makePrisma();
       const signatures = makeSignatures();
       const service = new DeviceReaderService(prisma, signatures);
-      const identity = target === 'READER_DEV_TEST_01' ? { deviceId: target, name: 'Nama bebas diabaikan' } : { name: target };
+      const identity = { name: target };
 
       const result = await service.createReader({ ...identity, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.CHECK_ONLY] }, actor);
       const data = prisma.__tx.deviceReader.create.mock.calls[0][0].data;
@@ -351,10 +349,10 @@ describe('DeviceReaderService credential security', () => {
   it('rejects duplicate production target before creation with activation-code guidance', async () => {
     process.env.NODE_ENV = 'production';
     const prisma = makePrisma();
-    prisma.deviceReader.findUnique.mockResolvedValue({ id: 'reader-dev', deviceId: 'READER_DEV_TEST_01' });
+    prisma.deviceReader.findUnique.mockResolvedValue({ id: 'reader-identity', deviceId: 'READER_IDENTITY_01' });
     const service = new DeviceReaderService(prisma, makeSignatures());
 
-    await expect(service.createReader({ name: 'READER_DEV_TEST_01', type: ReaderType.QR_ANDROID }, actor)).rejects.toMatchObject({ message: expect.stringContaining('kode aktivasi') });
+    await expect(service.createReader({ name: 'READER_IDENTITY_01', type: ReaderType.QR_ANDROID }, actor)).rejects.toMatchObject({ message: expect.stringContaining('kode aktivasi') });
     expect(prisma.__tx.deviceReader.create).not.toHaveBeenCalled();
   });
 
@@ -364,11 +362,11 @@ describe('DeviceReaderService credential security', () => {
     const signatures = makeSignatures();
     const target = {
       id: 'reader-target-pending',
-      name: 'READER_DEV_TEST_01',
-      deviceId: 'READER_DEV_TEST_01',
+      name: 'READER_IDENTITY_01',
+      deviceId: 'READER_IDENTITY_01',
       status: DeviceReaderStatus.INACTIVE,
       type: ReaderType.QR_ANDROID,
-      allowedModes: [AndroidReaderMode.CHECK_ONLY],
+      allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY],
       readerSecretCiphertext: null
     };
     prisma.deviceReader.findUnique.mockResolvedValue(target);
@@ -387,11 +385,11 @@ describe('DeviceReaderService credential security', () => {
     const signatures = makeSignatures();
     const target = {
       id: 'reader-target-pending',
-      name: 'READER_DEV_TEST_01',
-      deviceId: 'READER_DEV_TEST_01',
+      name: 'READER_IDENTITY_01',
+      deviceId: 'READER_IDENTITY_01',
       status: DeviceReaderStatus.INACTIVE,
       type: ReaderType.QR_ANDROID,
-      allowedModes: [AndroidReaderMode.CHECK_ONLY],
+      allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY],
       provisionedAt: null,
       readerSecretCiphertext: null
     };
@@ -447,7 +445,7 @@ describe('DeviceReaderService credential security', () => {
     process.env.NODE_ENV = 'production';
     const prisma = makePrisma();
     const target = 'READER_GATE_PRAYER_01';
-    const targetModes = [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA];
+    const targetModes = [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY];
     const before = {
       id: 'reader-gate-prayer',
       name: target,
@@ -577,10 +575,9 @@ describe('DeviceReaderService credential security', () => {
 
   it('preserves target Android reader mode mappings when reactivating', async () => {
     const targets = [
-      ['READER_DEV_TEST_01', [AndroidReaderMode.CHECK_ONLY]],
-      ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]],
-      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]]
+      ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
     ];
 
     for (const [deviceId, allowedModes] of targets) {
@@ -733,7 +730,7 @@ describe('DeviceReaderService credential security', () => {
 
     expect(prisma.deviceReader.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]
+        allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]
       })
     }));
   });

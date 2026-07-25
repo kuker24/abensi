@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-readonly DEFAULT_VERSION_NAME="1.2.9"
-readonly DEFAULT_VERSION_CODE="13"
+readonly DEFAULT_VERSION_NAME="1.3.1"
+readonly DEFAULT_VERSION_CODE="12"
 readonly PRODUCTION_PACKAGE_NAME="id.sch.man1rokanhulu.absensi"
 readonly APPROVED_SIGNER_SHA256="d59641008136073660c01f7b57957895d21ca4f310bcf7a4329c05173a3581eb"
 

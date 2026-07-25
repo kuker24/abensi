@@ -17,7 +17,7 @@ fun modeLabel(mode: String): String = when (mode) {
     "GATE_IN" -> "Datang"
     "GATE_OUT" -> "Pulang"
     "MUSHOLA" -> "Mushola"
-    "CHECK_ONLY" -> "Cek Identitas"
+    "CHECK_ONLY" -> "Uji Coba Card"
     else -> mode.replace('_', ' ')
 }
 
@@ -26,7 +26,7 @@ fun modeHelp(mode: String): String = when (mode) {
     "GATE_IN" -> "Catat kedatangan siswa, guru, staf, dan kepala."
     "GATE_OUT" -> "Catat kepulangan siswa, guru, staf, dan kepala."
     "MUSHOLA" -> "Untuk sholat/ibadah siswa."
-    "CHECK_ONLY" -> "Baca identitas online tanpa mencatat presensi."
+    "CHECK_ONLY" -> "Tes apakah kartu/QR valid. Tidak mencatat presensi."
     else -> "Mode scan aktif."
 }
 

@@ -38,14 +38,14 @@ fun readerDeviceKind(allowedModes: List<String>): ReaderDeviceKind {
 
 fun readerDeviceTitle(allowedModes: List<String>): String = when (readerDeviceKind(allowedModes)) {
     ReaderDeviceKind.GATE, ReaderDeviceKind.MUSHOLA, ReaderDeviceKind.MIXED, ReaderDeviceKind.UNAVAILABLE -> "HP Scanner"
-    ReaderDeviceKind.CHECK_ONLY -> "Cek Identitas"
+    ReaderDeviceKind.CHECK_ONLY -> "Uji Coba Card"
 }
 
 fun readerModeSummary(allowedModes: List<String>): String = when (readerDeviceKind(allowedModes)) {
     ReaderDeviceKind.GATE -> "Mode Gerbang tersedia"
     ReaderDeviceKind.MUSHOLA -> "Mode Mushola tersedia"
-    ReaderDeviceKind.CHECK_ONLY -> "Mode: Cek Identitas"
-    ReaderDeviceKind.MIXED -> "Pilih Scan Datang, Scan Pulang, Mode Mushola, atau Cek Identitas"
+    ReaderDeviceKind.CHECK_ONLY -> "Mode: Uji Coba Card"
+    ReaderDeviceKind.MIXED -> "Pilih Scan Datang, Scan Pulang, Mode Mushola, atau Uji Coba Card"
     ReaderDeviceKind.UNAVAILABLE -> "Mode scan belum tersedia. Minta admin aktivasi ulang."
 }
 
@@ -66,7 +66,7 @@ fun scanModeTitle(mode: String): String = when (normalizeMode(mode)) {
     "GATE_IN" -> "Scan Gerbang Datang"
     "GATE_OUT" -> "Scan Gerbang Pulang"
     "MUSHOLA" -> "Mode Mushola"
-    "CHECK_ONLY" -> "Mode Cek Identitas"
+    "CHECK_ONLY" -> "Uji Coba Card"
     else -> "Mode Scan"
 }
 
@@ -74,7 +74,7 @@ fun scanModeHelper(mode: String): String = when (normalizeMode(mode)) {
     "GATE_IN" -> "Catat kedatangan. Scan pulang dipilih lewat menu terpisah."
     "GATE_OUT" -> "Catat kepulangan. Hanya berlaku setelah scan datang tercatat."
     "MUSHOLA" -> "Dhuha, Dzuhur, atau Ashar sesuai waktu server."
-    "CHECK_ONLY" -> "Cek identitas tanpa mencatat presensi."
+    "CHECK_ONLY" -> "Tes apakah kartu/QR valid. Tidak mencatat presensi."
     else -> "Arahkan QR ke kamera."
 }
 

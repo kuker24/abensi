@@ -105,7 +105,7 @@ function prayerLabel(prayerType: PrayerType) {
 function scanModeLabel(mode?: AndroidReaderMode | null) {
   if (!mode) return null;
   if (mode === AndroidReaderMode.MUSHOLA) return 'Mushola';
-  if (mode === AndroidReaderMode.CHECK_ONLY) return 'Cek Saja';
+  if (mode === AndroidReaderMode.CHECK_ONLY) return 'Uji Coba Card';
   if (GATE_QR_ANDROID_MODES.has(mode)) return 'Gerbang';
   return String(mode).replace('_', ' ');
 }

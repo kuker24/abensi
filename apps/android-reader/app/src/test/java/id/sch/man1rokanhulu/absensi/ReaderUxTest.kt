@@ -77,8 +77,8 @@ class ReaderUxTest {
         val modes = listOf("CHECK_ONLY")
 
         assertEquals(ReaderDeviceKind.CHECK_ONLY, readerDeviceKind(modes))
-        assertEquals("Cek Identitas", readerDeviceTitle(modes))
-        assertEquals("Mode: Cek Identitas", readerModeSummary(modes))
+        assertEquals("Uji Coba Card", readerDeviceTitle(modes))
+        assertEquals("Mode: Uji Coba Card", readerModeSummary(modes))
         assertEquals(listOf("CHECK_ONLY"), selectableScanModes(modes))
         assertEquals("CHECK_ONLY", effectiveScanMode(modes, "GERBANG"))
     }

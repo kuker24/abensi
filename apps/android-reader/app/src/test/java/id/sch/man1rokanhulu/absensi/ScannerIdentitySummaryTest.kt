@@ -21,7 +21,7 @@ class ScannerIdentitySummaryTest {
 
         assertEquals("Siswa Satu", summary.displayName)
         assertEquals("SISWA · Kelas X A · NIS 12345", summary.displayMeta)
-        assertEquals("Cek Identitas", summary.actionLabel)
+        assertEquals("Uji Coba Card", summary.actionLabel)
         val message = summary.feedbackMessage.orEmpty()
         assertTrue(message.contains("Nama: Siswa Satu"))
         assertTrue(message.contains("NIS: 12345"))
