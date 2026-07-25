@@ -25,8 +25,8 @@ import {
 } from '../apps/api/src/common/business-time';
 
 const CLASS_ID = 'cmrcl0ba90031nh8h7v93l981';
-const ACADEMIC_YEAR_ID = 'cmrcl033m0000nh8h90f0sfrf';
-const SEMESTER_ID = 'cmrcl09xs002mnh8hhggk00l2';
+const ACADEMIC_YEAR_ID = 'cmrl11f2u0004k9h5e7v4zdil';
+const SEMESTER_ID = 'cmrl11f3i0009k9h5pgpfm6ll';
 const DAY_OF_WEEK = 5;
 const EFFECTIVE_FROM_NEW = '2026-07-31';
 const EFFECTIVE_TO_OLD = '2026-07-30';
