@@ -1454,7 +1454,7 @@ const ANDROID_MODE_LABELS = {
 const GATE_PRAYER_ANDROID_MODES = ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'];
 
 const ANDROID_READER_PRESETS = [
-  { key: 'dev-gate-prayer', icon: <Smartphone size={26} />, title: 'READER_IDENTITY_01', shortTitle: 'Dev Test Gerbang & Mushola', desc: 'Uji Scan Gerbang, Mushola, dan Uji Coba Card tanpa mencatat absensi.', name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'safe' },
+  { key: 'dev-gate-prayer', icon: <Smartphone size={26} />, title: 'READER_IDENTITY_01', shortTitle: 'Dev Gate Live', desc: 'Reader live untuk developer: Datang, Pulang, Mushola, dan Uji Coba Card. Gate/Mushola mencatat absensi.', name: 'READER_IDENTITY_01', locationName: 'Dev Gate Live', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' },
   { key: 'gate-prayer-1', icon: <DoorOpen size={26} />, title: 'READER_GATE_PRAYER_01', shortTitle: 'Gerbang/Mushola 01', desc: 'Reader live: Datang, Pulang, Mushola, dan Uji Coba Card.', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' },
   { key: 'gate-prayer-2', icon: <Building2 size={26} />, title: 'READER_GATE_PRAYER_02', shortTitle: 'Gerbang/Mushola 02', desc: 'Reader live kedua: Datang, Pulang, Mushola, dan Uji Coba Card.', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: GATE_PRAYER_ANDROID_MODES, tone: 'live' }
 ];
@@ -1547,7 +1547,7 @@ function AndroidReaderPanel({ notify }) {
   const [result, setResult] = useState(null);
   const [selectedPreset, setSelectedPreset] = useState('dev-gate-prayer');
   const [now, setNow] = useState(Date.now());
-  const [form, set, reset] = useForm({ name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: GATE_PRAYER_ANDROID_MODES, expiresInMinutes: 15, revokeReason: 'HP reader dicabut oleh admin.' });
+  const [form, set, reset] = useForm({ name: 'READER_IDENTITY_01', locationName: 'Dev Gate Live', allowedModes: GATE_PRAYER_ANDROID_MODES, expiresInMinutes: 15, revokeReason: 'HP reader dicabut oleh admin.' });
 
   useEffect(() => {
     if (!result?.expiresAt) return;

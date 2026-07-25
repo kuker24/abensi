@@ -71,7 +71,6 @@ fun HomeScreen(
     val canScanPulang = scanModes.contains("GATE_OUT")
     val canScanMushola = scanModes.contains("MUSHOLA")
     val canCheckIdentity = scanModes.contains("CHECK_ONLY")
-    val testOnly = config.deviceId == "READER_IDENTITY_01"
     val lastEntry = recentEntries.firstOrNull()
 
     PullToRefreshBox(
@@ -123,7 +122,7 @@ fun HomeScreen(
                     Text(modeSummary, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("2 HP scanner fleksibel", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
-                        if (testOnly) "Semua mode di HP ini hanya untuk uji fungsi. Tidak ada presensi yang dicatat." else "Pilih mode sesuai kebutuhan. Uji Coba Card hanya cek kartu/QR valid dan tidak mencatat presensi.",
+                        "Pilih mode sesuai kebutuhan. Uji Coba Card hanya cek kartu/QR valid dan tidak mencatat presensi.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -133,7 +132,7 @@ fun HomeScreen(
             if (canScanDatang) {
                 ModeActionCard(
                     title = "Scan Gerbang Datang",
-                    helper = if (testOnly) "Uji scan kedatangan tanpa mencatat presensi." else modeHelp("GATE_IN"),
+                    helper = modeHelp("GATE_IN"),
                     primary = true,
                     onClick = { onMode("GATE_IN"); onStart() }
                 )
@@ -142,7 +141,7 @@ fun HomeScreen(
             if (canScanPulang) {
                 ModeActionCard(
                     title = "Scan Gerbang Pulang",
-                    helper = if (testOnly) "Uji scan kepulangan tanpa mencatat presensi." else modeHelp("GATE_OUT"),
+                    helper = modeHelp("GATE_OUT"),
                     primary = !canScanDatang,
                     onClick = { onMode("GATE_OUT"); onStart() }
                 )
@@ -151,7 +150,7 @@ fun HomeScreen(
             if (canScanMushola) {
                 ModeActionCard(
                     title = "Scan Mushola",
-                    helper = if (testOnly) "Uji scan mushola tanpa mencatat presensi." else "Dhuha, Dzuhur, atau Ashar sesuai waktu server.",
+                    helper = "Dhuha, Dzuhur, atau Ashar sesuai waktu server.",
                     primary = !canScanDatang && !canScanPulang,
                     onClick = { onMode("MUSHOLA"); onStart() }
                 )

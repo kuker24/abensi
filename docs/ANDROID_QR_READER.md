@@ -71,7 +71,7 @@ PR128 menetapkan maksimal 4 HP reader produksi aktif:
 | Reader | Fungsi | Mode APK |
 |---|---|---|
 | `READER_DEV_TEST_01` | Dev Test Identitas | `CHECK_ONLY` |
-| `READER_IDENTITY_01` | Dev Test Gerbang & Mushola, tanpa presensi | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
+| `READER_IDENTITY_01` | Dev Gate Live (developer uji coba, menulis presensi) | `GATE_IN`, `GATE_OUT`, `MUSHOLA`, `CHECK_ONLY` |
 | `READER_GATE_PRAYER_01` | Gerbang/mushola UAT | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
 | `READER_GATE_PRAYER_02` | Gerbang/mushola backup | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
 

@@ -295,7 +295,7 @@ describe('HP Scanner Android operator UI', () => {
     expect(screen.getAllByText('READER_IDENTITY_01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('READER_GATE_PRAYER_01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('READER_GATE_PRAYER_02').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Dev Test Gerbang & Mushola').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Dev Gate Live').length).toBeGreaterThan(0);
     expect(screen.getByText(/API key dan signing secret tidak ditampilkan di web/i)).toBeInTheDocument();
     expect(screen.queryByText('Alat Lama')).not.toBeInTheDocument();
     expect(screen.queryByText('Tambah Alat Pembaca')).not.toBeInTheDocument();
@@ -372,7 +372,7 @@ describe('HP Scanner Android operator UI', () => {
       if (url.includes('/device-readers')) {
         return new Response(JSON.stringify({
           items: [
-            { id: 'reader-identity', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_IDENTITY_01', name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], lastUsedMode: 'GATE_IN', hasReaderSecret: true },
+            { id: 'reader-identity', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_IDENTITY_01', name: 'READER_IDENTITY_01', locationName: 'Dev Gate Live', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], lastUsedMode: 'GATE_IN', hasReaderSecret: true },
             { id: 'reader-gate-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_GATE_PRAYER_01', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], lastUsedMode: 'GATE_IN', hasReaderSecret: true }
           ],
           meta: { page: 1, limit: 200, total: 2, totalPages: 1 }
@@ -403,7 +403,7 @@ describe('HP Scanner Android operator UI', () => {
   it('shows safe secret copy and does not offer Aktifkan lagi for pending unprovisioned readers', async () => {
     const notify = vi.fn();
     const readers = [
-      { id: 'pending-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: null, name: 'READER_IDENTITY_01', locationName: 'Dev Test Gerbang & Mushola', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'] },
+      { id: 'pending-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: null, name: 'READER_IDENTITY_01', locationName: 'Dev Gate Live', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'] },
       { id: 'active-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_GATE_PRAYER_01', name: 'READER_GATE_PRAYER_01', locationName: 'PR127 Gate Prayer 01', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], lastUsedMode: 'GATE_IN' },
       { id: 'inactive-1', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'READER_GATE_PRAYER_02', name: 'READER_GATE_PRAYER_02', locationName: 'PR127 Gate Prayer 02', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], lastUsedMode: 'MUSHOLA' },
       { id: 'legacy-1', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'legacy-android', name: 'Legacy Android', locationName: 'Legacy', allowedModes: ['GERBANG', 'MUSHOLA'] }

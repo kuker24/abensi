@@ -627,23 +627,19 @@ describe('AttendanceGateService adaptive QR scan', () => {
     expect(prisma.__tx.prayerAttendanceLog.create).not.toHaveBeenCalled();
   });
 
-  it('READER_IDENTITY_01 menguji mode gerbang dan mushola tanpa membuat log absensi', async () => {
+  it('READER_IDENTITY_01 mencatat scan GATE_IN live seperti reader gerbang produksi', async () => {
     const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', nis: null, nip: '198001012006041001', active: true, cardStatus: CardStatus.ACTIVE, role: Role.GURU_MAPEL, enrollments: [] };
     const prisma = makePrisma(user);
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
     const signatures = new DeviceSignatureService(prisma, redis);
     const secret = signatures.generateReaderSecret();
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-dev', deviceId: 'READER_IDENTITY_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA], appVersion: '1.0.0', appVersionCode: 1, readerSecretCiphertext: signatures.encryptSecret(secret) }]);
+    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-dev', deviceId: 'READER_IDENTITY_01', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY], appVersion: '1.0.0', appVersionCode: 1, readerSecretCiphertext: signatures.encryptSecret(secret) }]);
     const qrCredentials = { findActiveByQrCode: jest.fn().mockResolvedValue({ id: 'qr-guru-1', user }) } as any;
     const service = new AttendanceGateService(prisma, signatures, undefined, undefined, qrCredentials, { getAndroidReaderVersion: jest.fn().mockResolvedValue({ minSupportedVersionCode: 1 }) } as any);
+    const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_7F3K9X2P8LQ1', scanMode: AndroidReaderMode.GATE_IN, appVersionCode: 1 };
 
-    for (const scanMode of [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA]) {
-      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_7F3K9X2P8LQ1', scanMode, appVersionCode: 1 };
-      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, `nonce-test-only-${scanMode}`, '/api/v1/attendance/qr-reader-scan', 'READER_IDENTITY_01'))).resolves.toMatchObject({ kind: 'TEST_ONLY', ok: true, readOnly: true, attendanceRecorded: false });
-    }
-
-    expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
-    expect(prisma.__tx.prayerAttendanceLog.create).not.toHaveBeenCalled();
+    await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-identity-gate-in', '/api/v1/attendance/qr-reader-scan', 'READER_IDENTITY_01'))).resolves.toMatchObject({ kind: 'GATE', ok: true, action: 'Datang' });
+    expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 'guru-1', direction: GateDirection.IN, scanMode: AndroidReaderMode.GATE_IN }) }));
   });
 
 });

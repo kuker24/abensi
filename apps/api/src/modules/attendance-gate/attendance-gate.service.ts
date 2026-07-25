@@ -36,7 +36,6 @@ const STEP_UP_FOR_POLICY = process.env.STEP_UP_FOR_POLICY === 'true';
 const WRONG_SCAN_MODE_MESSAGE = 'QR tidak cocok untuk mode scan ini. Ubah mode HP terlebih dahulu.';
 const GATE_QR_ANDROID_MODES = new Set<AndroidReaderMode>([AndroidReaderMode.GERBANG, AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT]);
 const VALID_QR_ANDROID_MODES = new Set<AndroidReaderMode>([AndroidReaderMode.GERBANG, AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]);
-const TEST_ONLY_QR_READER_DEVICE_ID = 'READER_IDENTITY_01';
 const OFFLINE_SCAN_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 const OFFLINE_SCAN_MAX_AGE_MS = {
   default: 24 * 60 * 60 * 1000,
@@ -482,8 +481,7 @@ export class AttendanceGateService {
       receivedAt
     };
 
-    const testOnly = verification.reader.deviceId === TEST_ONLY_QR_READER_DEVICE_ID;
-    if (requestedMode === AndroidReaderMode.CHECK_ONLY || testOnly) {
+    if (requestedMode === AndroidReaderMode.CHECK_ONLY) {
       const result = await this.prisma.$transaction(async (tx) => {
         await tx.deviceReader.update({ where: { id: verification.reader.id }, data: { lastSeenAt: receivedAt, lastSignedScanAt: receivedAt, currentMode: requestedMode, appVersion: payload.appVersion ?? verification.reader.appVersion, appVersionCode: payload.appVersionCode ?? verification.reader.appVersionCode } });
         await tx.qrCredential.update({ where: { id: credential.id }, data: { lastUsedAt: scannedAt } });
@@ -494,16 +492,16 @@ export class AttendanceGateService {
           action: 'attendance.qr.reader.scan.accepted',
           resource: 'qrCredential',
           resourceId: credential.id,
-          after: { mode: requestedMode, qrMasked: redactQr(payload.qrCode), userId: user.id, readerId: verification.reader.id, checkOnly: requestedMode === AndroidReaderMode.CHECK_ONLY, testOnly } as Prisma.InputJsonValue
+          after: { mode: requestedMode, qrMasked: redactQr(payload.qrCode), userId: user.id, readerId: verification.reader.id, checkOnly: true } as Prisma.InputJsonValue
         });
         return true;
       });
       return {
-        kind: testOnly ? 'TEST_ONLY' : 'CHECK_ONLY',
+        kind: 'CHECK_ONLY',
         ok: result,
         readOnly: true,
         attendanceRecorded: false,
-        message: testOnly ? `Uji ${scanModeLabel(requestedMode)} berhasil. Tidak ada presensi yang dicatat.` : 'QR valid. Tidak ada presensi yang dicatat.',
+        message: 'QR valid. Tidak ada presensi yang dicatat.',
         user: this.scanUserPayload(user, true),
         serverTime: receivedAt.toISOString()
       };

@@ -161,7 +161,7 @@ Catatan:
 7. Tempel kode aktivasi dari admin; jangan screenshot/share ke chat/log.
 8. Pastikan status heartbeat/seen muncul sebelum live scan.
 
-`READER_DEV_TEST_01` khusus Dev Test Identitas (`CHECK_ONLY`). `READER_IDENTITY_01` khusus Dev Test Gerbang & Mushola (`GATE_IN`, `GATE_OUT`, `MUSHOLA`), tetapi semua scan hanya menguji validasi QR dan tidak mencatat absensi. Dua HP `READER_GATE_PRAYER_*` tetap untuk Gerbang/Mushola production setelah approval controlled UAT terpisah.
+`READER_IDENTITY_01` adalah Dev Gate Live: mode `GATE_IN`/`GATE_OUT`/`MUSHOLA` menulis presensi seperti reader produksi; `CHECK_ONLY` (Uji Coba Card) tetap read-only. Dua HP `READER_GATE_PRAYER_*` sama-sama live untuk Gerbang/Mushola production.
 
 ## Troubleshooting Singkat
 
