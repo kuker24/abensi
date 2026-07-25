@@ -59,7 +59,8 @@
     "validate:deployment-evidence": "node scripts/validate_deployment_evidence.mjs",
     "uat:attendance-live": "node scripts/attendance_live_uat_readiness.mjs",
     "test:attendance-live-uat": "node scripts/test_attendance_live_uat_readiness.mjs",
-    "uat:attendance-live:db": "bash scripts/attendance_live_uat_db_readonly.sh"
+    "uat:attendance-live:db": "bash scripts/attendance_live_uat_db_readonly.sh",
+    "ops:xii-a-friday-schedule": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/xii_a_friday_schedule_revision.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
