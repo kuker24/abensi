@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors
@@ -145,7 +146,7 @@ export class TeacherLeaveController {
     const letter = await this.teacherLeaveService.getLetterPdf(id, user);
     response.setHeader('Content-Disposition', `attachment; filename="${letter.filename}"`);
     response.setHeader('Content-Length', String(letter.buffer.length));
-    return letter.buffer;
+    return new StreamableFile(letter.buffer);
   }
 
   @Get(':id/attachments/:kind')

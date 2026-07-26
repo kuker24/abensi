@@ -28,5 +28,27 @@ describe('leave-letter-pdf', () => {
     expect(buffer.length).toBeGreaterThan(40_000);
     expect(buffer.includes(Buffer.from([0xff, 0xd8, 0xff]))).toBe(true);
     expect(buffer.toString('latin1')).toContain('/Type /Catalog');
+    expect(buffer.toString('latin1').match(/\/Type \/Page\b/g)).toHaveLength(1);
+  });
+
+  it('keeps signatures clear of maximum-length letter content', async () => {
+    const buffer = await buildLeaveLetterPdf({
+      id: 'leave-long-content',
+      type: 'IZIN',
+      applicantName: 'Budi Santoso',
+      applicantRole: 'GURU_MAPEL',
+      startDate: '2026-07-20',
+      endDate: '2026-07-22',
+      reason: 'A'.repeat(2000),
+      decisionNote: 'B'.repeat(2000),
+      reviewedByName: 'Admin TU',
+      reviewedAt: '2026-07-21T02:00:00.000Z',
+      letterNumber: 'IZN/2026/LONG',
+      generatedAt: '26/7/2026, 11.00.00',
+      visitInstruction: 'Pemohon wajib menjumpai Admin TU untuk tanda tangan basah.'
+    });
+
+    expect(buffer.subarray(0, 5).toString('utf8')).toBe('%PDF-');
+    expect(buffer.toString('latin1').match(/\/Type \/Page\b/g)?.length).toBeGreaterThan(1);
   });
 });

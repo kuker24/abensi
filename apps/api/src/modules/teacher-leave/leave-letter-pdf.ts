@@ -9,6 +9,9 @@ const TEXT = '1F2937';
 const MUTED = '64748B';
 const RULE = 'D1D5DB';
 const LOGO_SIZE = 56;
+const SIGNATURE_HEIGHT = 132;
+const SIGNATURE_GAP = 22;
+const FOOTER_CLEARANCE = 28;
 
 const TYPE_LABEL: Record<TeacherLeaveType, string> = {
   IZIN: 'Izin',
@@ -186,17 +189,21 @@ export async function buildLeaveLetterPdf(model: LeaveLetterModel): Promise<Buff
 
     doc.moveDown(0.7);
     doc.font('Helvetica').fontSize(10).fillColor(`#${TEXT}`)
-      .text(model.visitInstruction, { width: pageWidth, align: 'justify' });
+      .text(model.visitInstruction, left, doc.y, { width: pageWidth, align: 'justify' });
     doc.moveDown(0.35);
     doc.font('Helvetica').fontSize(8).fillColor(`#${MUTED}`)
       .text(
         'Dokumen dicetak dari SIAB2 untuk ditandatangani basah di kertas (offline). Tidak ada tanda tangan digital. Admin/TU di kolom kiri; pemohon di kolom kanan.',
+        left,
+        doc.y,
         { width: pageWidth }
       );
 
     const gap = 28;
     const colWidth = (pageWidth - gap) / 2;
-    const signTop = Math.min(doc.y + 22, doc.page.height - doc.page.margins.bottom - 150);
+    const footerY = doc.page.height - doc.page.margins.bottom - 12;
+    if (doc.y + SIGNATURE_GAP + SIGNATURE_HEIGHT > footerY - FOOTER_CLEARANCE) doc.addPage();
+    const signTop = doc.y + SIGNATURE_GAP;
     drawSignatureBlock(doc, left, signTop, colWidth, 'Admin / TU', 'Tanda tangan basah + stempel', model.reviewedByName || '');
     drawSignatureBlock(doc, left + colWidth + gap, signTop, colWidth, 'Pemohon', 'Tanda tangan basah', model.applicantName);
 
@@ -204,7 +211,7 @@ export async function buildLeaveLetterPdf(model: LeaveLetterModel): Promise<Buff
       .text(
         `Dicetak ${model.generatedAt} · ${model.letterNumber} · MAN 1 Rokan Hulu`,
         left,
-        doc.page.height - 36,
+        footerY,
         { width: pageWidth, align: 'center' }
       );
 
