@@ -1,10 +1,14 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import type { Role, TeacherLeaveType } from '@prisma/client';
 
 const BRAND_GREEN = '126B3A';
 const BRAND_GOLD = 'C9A227';
-const TEXT = '111827';
-const MUTED = '6B7280';
+const TEXT = '1F2937';
+const MUTED = '64748B';
+const RULE = 'D1D5DB';
+const LOGO_SIZE = 56;
 
 const TYPE_LABEL: Record<TeacherLeaveType, string> = {
   IZIN: 'Izin',
@@ -38,10 +42,26 @@ export interface LeaveLetterModel {
   visitInstruction: string;
 }
 
+function loadInstitutionLogo(): Buffer | null {
+  const candidates = [
+    join(process.cwd(), 'assets', 'logoman1.jpeg'),
+    join(process.cwd(), 'apps', 'api', 'assets', 'logoman1.jpeg')
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return readFileSync(candidate);
+  }
+  return null;
+}
+
 function formatIdDate(value: string) {
   const key = value.slice(0, 10);
   const date = new Date(`${key}T00:00:00+07:00`);
-  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Asia/Jakarta'
+  });
 }
 
 export function buildLeaveLetterNumber(id: string, reviewedAt: Date | string | null | undefined) {
@@ -52,98 +72,141 @@ export function buildLeaveLetterNumber(id: string, reviewedAt: Date | string | n
   return `IZN/${year}/${short}`;
 }
 
+function drawKop(doc: PDFKit.PDFDocument, logo: Buffer | null) {
+  const left = doc.page.margins.left;
+  const right = doc.page.width - doc.page.margins.right;
+  const pageWidth = right - left;
+  const startY = doc.y;
+  const textLeft = logo ? left + LOGO_SIZE + 14 : left;
+  const textWidth = logo ? pageWidth - LOGO_SIZE - 14 : pageWidth;
+
+  if (logo) {
+    doc.image(logo, left, startY, { fit: [LOGO_SIZE, LOGO_SIZE], align: 'center', valign: 'center' });
+  }
+
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(`#${BRAND_GREEN}`)
+    .text('KEMENTERIAN AGAMA REPUBLIK INDONESIA', textLeft, startY, { width: textWidth, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(`#${TEXT}`)
+    .text('MADRASAH ALIYAH NEGERI 1 ROKAN HULU', textLeft, doc.y + 1, { width: textWidth, align: 'center' });
+  doc.font('Helvetica').fontSize(8).fillColor(`#${MUTED}`)
+    .text('Kabupaten Rokan Hulu · Provinsi Riau', textLeft, doc.y + 1, { width: textWidth, align: 'center' });
+  doc.fontSize(8).fillColor(`#${MUTED}`)
+    .text('SIAB2 · Sistem Informasi Akademik Berkarakter', textLeft, doc.y + 1, { width: textWidth, align: 'center' });
+
+  const lineY = Math.max(startY + LOGO_SIZE + 8, doc.y + 8);
+  doc.moveTo(left, lineY).lineTo(right, lineY).lineWidth(1.6).strokeColor(`#${BRAND_GREEN}`).stroke();
+  doc.moveTo(left, lineY + 3).lineTo(right, lineY + 3).lineWidth(0.7).strokeColor(`#${BRAND_GOLD}`).stroke();
+  doc.y = lineY + 14;
+}
+
+function drawFieldRows(doc: PDFKit.PDFDocument, rows: Array<[string, string]>, pageWidth: number) {
+  const left = doc.page.margins.left;
+  const labelW = 128;
+  const valueX = left + labelW + 10;
+  const valueW = pageWidth - labelW - 10;
+
+  for (const [label, value] of rows) {
+    const y = doc.y;
+    doc.font('Helvetica').fontSize(10).fillColor(`#${MUTED}`).text(label, left, y, { width: labelW });
+    doc.font('Helvetica').fontSize(10).fillColor(`#${TEXT}`)
+      .text(`:  ${value}`, valueX, y, { width: valueW });
+    doc.y = Math.max(doc.y, y + 16);
+  }
+}
+
+function drawSignatureBlock(
+  doc: PDFKit.PDFDocument,
+  x: number,
+  y: number,
+  width: number,
+  title: string,
+  subtitle: string,
+  name: string
+) {
+  doc.font('Helvetica').fontSize(9).fillColor(`#${TEXT}`).text(title, x, y, { width, align: 'center' });
+  doc.font('Helvetica').fontSize(8).fillColor(`#${MUTED}`).text(subtitle, x, y + 14, { width, align: 'center' });
+  const lineY = y + 92;
+  doc.moveTo(x + 18, lineY).lineTo(x + width - 18, lineY).lineWidth(0.7).strokeColor(`#${RULE}`).stroke();
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(`#${TEXT}`)
+    .text(name || '................................', x, lineY + 8, { width, align: 'center' });
+  doc.font('Helvetica').fontSize(8).fillColor(`#${MUTED}`)
+    .text('Tanggal: ........ / ........ / ............', x, lineY + 24, { width, align: 'center' });
+}
+
 export async function buildLeaveLetterPdf(model: LeaveLetterModel): Promise<Buffer> {
+  const logo = loadInstitutionLogo();
+
   return new Promise<Buffer>((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', layout: 'portrait', margin: 48 });
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'portrait',
+      margin: 48,
+      info: {
+        Title: `Surat Keterangan ${TYPE_LABEL[model.type]} ${model.letterNumber}`,
+        Author: 'MAN 1 Rokan Hulu · SIAB2',
+        Subject: 'Surat keterangan izin personel (TTD basah offline)'
+      }
+    });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const pageWidth = right - left;
 
-    doc.font('Helvetica-Bold').fontSize(14).fillColor(`#${BRAND_GREEN}`)
-      .text('MADRASAH ALIYAH NEGERI 1 ROKAN HULU', { align: 'center', width: pageWidth });
-    doc.font('Helvetica').fontSize(10).fillColor(`#${TEXT}`)
-      .text('SIAB2 · SchoolHub e-Hadir', { align: 'center', width: pageWidth });
-    doc.fontSize(8).fillColor(`#${MUTED}`)
-      .text('Dokumen resmi internal madrasah', { align: 'center', width: pageWidth });
-    doc.moveDown(0.4);
-    doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.margins.left + pageWidth, doc.y)
-      .lineWidth(1.5).strokeColor(`#${BRAND_GOLD}`).stroke();
-    doc.moveDown(0.8);
+    drawKop(doc, logo);
 
     doc.font('Helvetica-Bold').fontSize(13).fillColor(`#${TEXT}`)
-      .text(`SURAT KETERANGAN ${TYPE_LABEL[model.type].toUpperCase()}`, { align: 'center', width: pageWidth });
-    doc.font('Helvetica').fontSize(9).fillColor(`#${MUTED}`)
-      .text(`Nomor: ${model.letterNumber}`, { align: 'center', width: pageWidth });
-    doc.moveDown(1);
+      .text(`SURAT KETERANGAN ${TYPE_LABEL[model.type].toUpperCase()}`, left, doc.y, {
+        width: pageWidth,
+        align: 'center'
+      });
+    doc.font('Helvetica').fontSize(10).fillColor(`#${TEXT}`)
+      .text(`Nomor: ${model.letterNumber}`, left, doc.y + 4, { width: pageWidth, align: 'center' });
+    doc.moveDown(1.1);
 
     doc.font('Helvetica').fontSize(10).fillColor(`#${TEXT}`)
-      .text('Yang bertanda tangan di bawah ini menerangkan bahwa:', { width: pageWidth });
-    doc.moveDown(0.6);
+      .text('Dengan ini diterangkan bahwa:', { width: pageWidth });
+    doc.moveDown(0.55);
 
-    const rows: Array<[string, string]> = [
+    drawFieldRows(doc, [
       ['Nama', model.applicantName],
       ['Jabatan / Peran', ROLE_LABEL[model.applicantRole] || model.applicantRole],
       ['Jenis keterangan', TYPE_LABEL[model.type]],
       ['Tanggal mulai', formatIdDate(model.startDate)],
       ['Tanggal selesai', formatIdDate(model.endDate)],
       ['Alasan', model.reason],
-      ['Keputusan', 'DISETUJUI'],
-      ['Catatan peninjau', model.decisionNote || '—'],
+      ['Status keputusan', 'DISETUJUI'],
+      ['Catatan peninjau', model.decisionNote?.trim() || '—'],
       ['Ditinjau oleh', model.reviewedByName || '—'],
       ['Tanggal keputusan', model.reviewedAt ? formatIdDate(model.reviewedAt) : '—']
-    ];
+    ], pageWidth);
 
-    for (const [label, value] of rows) {
-      const y = doc.y;
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(`#${MUTED}`).text(label, doc.page.margins.left, y, { width: 130 });
-      doc.font('Helvetica').fontSize(10).fillColor(`#${TEXT}`)
-        .text(value, doc.page.margins.left + 140, y, { width: pageWidth - 140 });
-      doc.moveDown(0.35);
-    }
-
-    doc.moveDown(0.6);
-    doc.font('Helvetica').fontSize(9).fillColor(`#${TEXT}`)
+    doc.moveDown(0.7);
+    doc.font('Helvetica').fontSize(10).fillColor(`#${TEXT}`)
       .text(model.visitInstruction, { width: pageWidth, align: 'justify' });
     doc.moveDown(0.35);
-    doc.fontSize(8).fillColor(`#${MUTED}`)
-      .text('Cetak dokumen ini, lalu tandatangani basah (offline) di kertas: Admin/TU di kiri, pemohon di kanan. Tidak ada tanda tangan digital.', {
-        width: pageWidth
-      });
-
-    doc.moveDown(1.2);
-    const colWidth = (pageWidth - 24) / 2;
-    const signTop = doc.y;
-    const leftX = doc.page.margins.left;
-    const rightX = leftX + colWidth + 24;
-
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(`#${TEXT}`)
-      .text('Admin / TU', leftX, signTop, { width: colWidth, align: 'center' });
-    doc.text('Pemohon', rightX, signTop, { width: colWidth, align: 'center' });
-
     doc.font('Helvetica').fontSize(8).fillColor(`#${MUTED}`)
-      .text('Tanda tangan basah + stempel', leftX, signTop + 14, { width: colWidth, align: 'center' });
-    doc.text('Tanda tangan basah', rightX, signTop + 14, { width: colWidth, align: 'center' });
+      .text(
+        'Dokumen dicetak dari SIAB2 untuk ditandatangani basah di kertas (offline). Tidak ada tanda tangan digital. Admin/TU di kolom kiri; pemohon di kolom kanan.',
+        { width: pageWidth }
+      );
 
-    const lineY = signTop + 100;
-    doc.moveTo(leftX + 16, lineY).lineTo(leftX + colWidth - 16, lineY).strokeColor(`#${MUTED}`).lineWidth(0.8).stroke();
-    doc.moveTo(rightX + 16, lineY).lineTo(rightX + colWidth - 16, lineY).stroke();
+    const gap = 28;
+    const colWidth = (pageWidth - gap) / 2;
+    const signTop = Math.min(doc.y + 22, doc.page.height - doc.page.margins.bottom - 150);
+    drawSignatureBlock(doc, left, signTop, colWidth, 'Admin / TU', 'Tanda tangan basah + stempel', model.reviewedByName || '');
+    drawSignatureBlock(doc, left + colWidth + gap, signTop, colWidth, 'Pemohon', 'Tanda tangan basah', model.applicantName);
 
-    doc.font('Helvetica').fontSize(9).fillColor(`#${TEXT}`)
-      .text(model.reviewedByName || '................................', leftX, lineY + 8, { width: colWidth, align: 'center' });
-    doc.text(model.applicantName, rightX, lineY + 8, { width: colWidth, align: 'center' });
-
-    doc.fontSize(8).fillColor(`#${MUTED}`)
-      .text('Tanggal: ........ / ........ / ............', leftX, lineY + 28, { width: colWidth, align: 'center' });
-    doc.text('Tanggal: ........ / ........ / ............', rightX, lineY + 28, { width: colWidth, align: 'center' });
-
-    doc.fontSize(7).fillColor(`#${MUTED}`)
-      .text(`Dicetak ${model.generatedAt} · ${model.letterNumber} · TTD basah offline`, doc.page.margins.left, doc.page.height - 36, {
-        width: pageWidth,
-        align: 'center'
-      });
+    doc.font('Helvetica').fontSize(7).fillColor(`#${MUTED}`)
+      .text(
+        `Dicetak ${model.generatedAt} · ${model.letterNumber} · MAN 1 Rokan Hulu`,
+        left,
+        doc.page.height - 36,
+        { width: pageWidth, align: 'center' }
+      );
 
     doc.end();
   });
