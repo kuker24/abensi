@@ -27,6 +27,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OutboxService, type LiveMonitorEvent } from '../outbox/outbox.service';
 import { ReportingService } from './reporting.service';
+import { AccessPolicyService } from '../security/access-policy.service';
 
 type StreamJwtPayload = { sub: string; role: string; sid?: string; ver?: number };
 
@@ -43,7 +44,8 @@ export class ReportingController {
     private readonly reportingService: ReportingService,
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
-    private readonly outbox: OutboxService
+    private readonly outbox: OutboxService,
+    private readonly accessPolicy: AccessPolicyService
   ) {}
 
   @Get('dashboard')
@@ -150,7 +152,7 @@ export class ReportingController {
 
   @Get('my-attendance')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.SISWA, Role.DEVELOPER)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.PEGAWAI, Role.SISWA, Role.DEVELOPER)
   @Capabilities('reports.self.read')
   myAttendance(
     @CurrentUser() user: { sub: string; role: string },
@@ -391,8 +393,8 @@ export class ReportingController {
 
   @Get('export')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
-  @Roles(Role.ADMIN_TU, Role.DEVELOPER)
-  @Capabilities('reports.export')
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_MAPEL, Role.GURU_PIKET, Role.PEGAWAI, Role.SISWA, Role.DEVELOPER)
+  @Capabilities('reports.self.read')
   async exportReport(
     @Query('reportType') reportType?: string,
     @Query('format') format?: string,
@@ -405,6 +407,8 @@ export class ReportingController {
     @Query('status') status?: string,
     @Query('missingRequirement') missingRequirement?: string,
     @Query('month') month?: string,
+    @Query('date') date?: string,
+    @Query('days') days?: string,
     @CurrentUser() user?: { sub: string; role: Role },
     @Req() request?: Request,
     @Res({ passthrough: true }) response?: Response
@@ -412,7 +416,8 @@ export class ReportingController {
     if (!reportType || !format) {
       throw new BadRequestException('reportType dan format wajib diisi.');
     }
-    const result = await this.reportingService.exportReport(reportType, format, {
+    if (!user) throw new UnauthorizedException('Sesi pengguna tidak tersedia.');
+    const filters = {
       from,
       to,
       classId,
@@ -421,12 +426,18 @@ export class ReportingController {
       studentId,
       status,
       missingRequirement,
-      month
-    }, user, request ? { requestIp: request.ip, requestDevice: request.headers['user-agent'] || null } : undefined);
+      month,
+      date,
+      days
+    };
+    this.accessPolicy.assertCanExportReport(user, reportType, filters);
+    const result = await this.reportingService.exportReport(reportType, format, filters, user, request ? { requestIp: request.ip, requestDevice: request.headers['user-agent'] || null } : undefined);
 
     response?.setHeader('Content-Type', result.contentType);
     response?.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     response?.setHeader('X-SchoolHub-Report-Checksum', result.checksum);
+    response?.setHeader('Cache-Control', 'private, no-store');
+    response?.setHeader('Pragma', 'no-cache');
     return new StreamableFile(result.buffer);
   }
 

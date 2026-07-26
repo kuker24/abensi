@@ -3,6 +3,7 @@ export const ROLES = [
   'KEPALA_SEKOLAH',
   'GURU_MAPEL',
   'GURU_PIKET',
+  'PEGAWAI',
   'SISWA',
   'OPERATOR_IT',
   'DEVELOPER'
@@ -55,7 +56,7 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'devices.read', 'devices.manage',
     'reconciliation.read', 'reconciliation.escalate', 'reconciliation.resolve',
     'settings.read', 'settings.manage',
-    'reports.self.read', 'reports.operational.read', 'reports.school.read', 'reports.export',
+    'reports.self.read', 'reports.operational.read', 'reports.school.read',
     'audit.read',
     'leave.self.manage', 'leave.review',
     'profile.self.read', 'profile.self.update'
@@ -88,6 +89,11 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'attendanceOverrides.create',
     'reconciliation.read', 'reconciliation.escalate',
     'reports.self.read', 'reports.operational.read',
+    'leave.self.manage',
+    'profile.self.read', 'profile.self.update'
+  ]),
+  PEGAWAI: Object.freeze([
+    'reports.self.read',
     'leave.self.manage',
     'profile.self.read', 'profile.self.update'
   ]),

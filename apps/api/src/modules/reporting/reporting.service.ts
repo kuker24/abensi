@@ -45,6 +45,7 @@ const SCHOOL_PERSONNEL_GATE_ROLES: Role[] = [
   Role.GURU_MAPEL,
   Role.GURU_PIKET,
   Role.OPERATOR_IT,
+  Role.PEGAWAI,
   Role.DEVELOPER
 ];
 
@@ -63,6 +64,8 @@ interface RecapFilters {
   month?: string;
   status?: string;
   missingRequirement?: string;
+  date?: string;
+  days?: string;
 }
 
 interface MonthlyFilters {
@@ -469,7 +472,7 @@ export class ReportingService {
       prayerDzuhurToday,
       androidReaders: {
         activeCount: activeAndroidReaders.length,
-        maxActive: 2,
+        maxActive: 3,
         gate: readerPayload(findReader('gate')),
         mushola: readerPayload(findReader('mushola'))
       },
@@ -764,9 +767,9 @@ export class ReportingService {
   }
 
   async myAttendance(user: AuthenticatedUser, days: number) {
-    const safeDays = Math.max(1, Math.min(days, 60));
+    const safeDays = Math.max(1, Math.min(Number.isFinite(days) ? Math.floor(days) : 30, 60));
     const now = new Date();
-    const start = new Date(now.getTime() - safeDays * 24 * 60 * 60 * 1000);
+    const start = startOfDay(new Date(now.getTime() - (safeDays - 1) * 24 * 60 * 60 * 1000));
 
     const gateLogs = await this.prisma.gateLog.findMany({
       where: {
@@ -777,8 +780,22 @@ export class ReportingService {
         }
       },
       orderBy: { tappedAt: 'desc' },
+      select: { id: true, direction: true, businessDate: true, tappedAt: true },
       take: 300
     });
+    const gateItems = gateLogs.map((log) => ({
+      id: `gate-${log.id}`,
+      type: 'GATE',
+      date: log.businessDate.toISOString(),
+      at: log.tappedAt.toISOString(),
+      direction: log.direction,
+      status: 'HADIR',
+      note: log.direction === GateDirection.IN ? 'Scan datang' : 'Scan pulang'
+    }));
+
+    if (user.role === Role.PEGAWAI) {
+      return { role: user.role, items: gateItems };
+    }
 
     if (user.role === Role.SISWA) {
       const attendances = await this.prisma.studentAttendance.findMany({
@@ -808,14 +825,28 @@ export class ReportingService {
         take: 300
       });
 
+      const classItems = attendances.map((attendance) => ({
+        id: `class-${attendance.id}`,
+        type: 'CLASS',
+        date: attendance.session.startsAt.toISOString(),
+        at: attendance.session.startsAt.toISOString(),
+        status: attendance.status,
+        note: attendance.note,
+        session: {
+          startsAt: attendance.session.startsAt,
+          schoolClass: attendance.session.schoolClass,
+          subject: attendance.session.subject
+        },
+        ...rosterTrustFlags(attendance.session.rosterState)
+      }));
       return {
         role: user.role,
-        gateLogs,
-        classAttendances: attendances.map((attendance) => ({
-          ...attendance,
-          ...rosterTrustFlags(attendance.session.rosterState)
-        }))
+        items: [...gateItems, ...classItems].sort((left, right) => right.at.localeCompare(left.at))
       };
+    }
+
+    if (user.role !== Role.GURU_MAPEL) {
+      return { role: user.role, items: gateItems };
     }
 
     const teacherPresence = await this.prisma.teacherSessionPresence.findMany({
@@ -844,13 +875,23 @@ export class ReportingService {
       take: 300
     });
 
+    const teacherItems = teacherPresence.map((presence) => ({
+      id: `teaching-${presence.id}`,
+      type: 'TEACHING',
+      date: presence.session.startsAt.toISOString(),
+      at: presence.session.startsAt.toISOString(),
+      status: presence.status,
+      note: null,
+      session: {
+        startsAt: presence.session.startsAt,
+        schoolClass: presence.session.schoolClass,
+        subject: presence.session.subject
+      },
+      ...rosterTrustFlags(presence.session.rosterState)
+    }));
     return {
       role: user.role,
-      gateLogs,
-      teacherPresence: teacherPresence.map((presence) => ({
-        ...presence,
-        ...rosterTrustFlags(presence.session.rosterState)
-      }))
+      items: [...gateItems, ...teacherItems].sort((left, right) => right.at.localeCompare(left.at))
     };
   }
 
@@ -1998,6 +2039,8 @@ export class ReportingService {
       'gate_scan_no_class_attendance',
       'prayer_recap',
       'audit_coverage'
+      , 'my_attendance'
+      , 'operational_activity_snapshot'
     ]);
 
     if (!supportedTypes.has(normalizedType)) {
@@ -2011,6 +2054,45 @@ export class ReportingService {
     };
 
     let rows: Array<Record<string, unknown>> = [];
+
+    if (!actor) throw new BadRequestException('Actor export wajib tersedia.');
+
+    if (normalizedType === 'my_attendance') {
+      const parsedDays = Number(filters.days ?? '30');
+      const data = await this.myAttendance(actor, Number.isFinite(parsedDays) ? parsedDays : 30);
+      rows = data.items.map((item) => ({
+        date: item.date,
+        time: item.at,
+        activity: item.type,
+        direction: 'direction' in item ? item.direction : null,
+        status: item.status,
+        subject_name: 'session' in item ? item.session.subject?.name : null,
+        class_name: 'session' in item ? item.session.schoolClass?.name : null,
+        note: item.note
+      }));
+    }
+
+    if (normalizedType === 'operational_activity_snapshot') {
+      const snapshot = await this.dashboard(filters.date);
+      rows = [{
+        date: snapshot.date,
+        sessions_today: snapshot.sessionsToday,
+        open_sessions: snapshot.openSessions,
+        closed_sessions: snapshot.closedSessions,
+        unclosed_sessions: snapshot.unclosedSessions,
+        attendance_coverage_percent: snapshot.attendanceCoveragePercent,
+        open_anomalies: snapshot.anomalyOpenCount,
+        gate_taps_today: snapshot.gateTapToday,
+        staff_present_today: snapshot.staffPresentToday,
+        teachers_teaching_today: snapshot.teacherTeachingToday,
+        student_complete_today: snapshot.studentCompleteCount,
+        student_needs_verification: snapshot.studentNeedsVerificationCount
+      }];
+    }
+
+    if (normalizedType === 'recap_classes' && actor.role === Role.GURU_MAPEL) {
+      filters = { ...filters, teacherId: actor.sub };
+    }
 
     if (normalizedType === 'recap_classes') {
       const data = await this.recapClasses(exportPagination, filters);
@@ -2216,8 +2298,13 @@ export class ReportingService {
       }));
     }
 
-    const rangeForMeta = filters.month ? this.resolveMonthRange(filters.month) : this.resolveDateRange(filters);
-    const [openAnomalyCount, resolvedAnomalyCount, overrideCount, correctionCount] = await Promise.all([
+    const selfDays = Math.max(1, Math.min(Number.isFinite(Number(filters.days)) ? Math.floor(Number(filters.days)) : 30, 60));
+    const metadataFilters = normalizedType === 'my_attendance'
+      ? { from: businessDateKey(new Date(Date.now() - (selfDays - 1) * 24 * 60 * 60 * 1000)), to: businessDateKey() }
+      : filters.date ? { from: filters.date, to: filters.date } : filters;
+    const rangeForMeta = filters.month ? this.resolveMonthRange(filters.month) : this.resolveDateRange(metadataFilters);
+    const isScopedAggregateExport = normalizedType === 'my_attendance' || normalizedType === 'operational_activity_snapshot';
+    const [openAnomalyCount, resolvedAnomalyCount, overrideCount, correctionCount] = isScopedAggregateExport ? [0, 0, 0, 0] : await Promise.all([
       this.prisma.reconciliationFlag.count({ where: { status: 'OPEN', createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
       this.prisma.reconciliationFlag.count({ where: { status: 'RESOLVED', createdAt: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
       this.prisma.attendanceOverride.count({ where: { date: { gte: rangeForMeta.from, lte: rangeForMeta.to } } }),
@@ -2234,7 +2321,7 @@ export class ReportingService {
       : formatReportRangeLabel(rangeForMeta);
     const metadata = {
       generatedAt,
-      generatedBy: actor?.role ?? 'unknown',
+      generatedBy: actor.role,
       reportType: normalizedType,
       format: normalizedFormat,
       filters: { ...filters } as Record<string, unknown>,
@@ -2264,7 +2351,7 @@ export class ReportingService {
     const timestamp = generatedAt.replaceAll(':', '-').replace('T', '_').slice(0, 19);
     const filename = `${normalizedType}_${timestamp}.${rendered.extension}`;
 
-    if (actor) await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role,

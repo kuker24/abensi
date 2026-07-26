@@ -60,7 +60,7 @@ describe('ReportingController role/capability contract', () => {
     [Role.SISWA, 'dashboard', 403],
     [Role.KEPALA_SEKOLAH, 'dashboard', 200],
     [Role.KEPALA_SEKOLAH, 'studentDailyCompleteness', 200],
-    [Role.KEPALA_SEKOLAH, 'exportReport', 403],
+    [Role.KEPALA_SEKOLAH, 'exportReport', 200],
     [Role.OPERATOR_IT, 'liveMonitor', 200],
     [Role.OPERATOR_IT, 'streamLiveMonitor', 200],
     [Role.OPERATOR_IT, 'teacherMonthly', 403],
@@ -68,6 +68,8 @@ describe('ReportingController role/capability contract', () => {
     [Role.GURU_MAPEL, 'myAttendance', 200],
     [Role.GURU_MAPEL, 'teacherMonthly', 403],
     [Role.GURU_MAPEL, 'recapClasses', 200],
+    [Role.PEGAWAI, 'myAttendance', 200],
+    [Role.PEGAWAI, 'exportReport', 200],
     [Role.GURU_PIKET, 'liveMonitor', 200],
     [Role.GURU_PIKET, 'recapClasses', 403],
     [Role.ADMIN_TU, 'classMonthly', 200],
@@ -90,6 +92,7 @@ describe('ReportingController role/capability contract', () => {
     const recapClasses = jest.fn().mockResolvedValue({ items: [] });
     const controller = new ReportingController(
       { recapClasses } as any,
+      {} as any,
       {} as any,
       {} as any,
       {} as any

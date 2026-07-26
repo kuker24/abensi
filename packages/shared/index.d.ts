@@ -3,6 +3,7 @@ export declare const ROLES: readonly [
   'KEPALA_SEKOLAH',
   'GURU_MAPEL',
   'GURU_PIKET',
+  'PEGAWAI',
   'SISWA',
   'OPERATOR_IT',
   'DEVELOPER'

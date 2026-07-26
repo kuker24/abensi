@@ -9,8 +9,8 @@ export class LoginDto {
   password!: string;
 
   @IsOptional()
-  @IsIn(['admin', 'guru', 'siswa'])
-  expectedRole?: 'admin' | 'guru' | 'siswa';
+  @IsIn(['admin', 'guru', 'pegawai', 'siswa'])
+  expectedRole?: 'admin' | 'guru' | 'pegawai' | 'siswa';
 }
 
 export class ChangePasswordDto {

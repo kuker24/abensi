@@ -24,7 +24,7 @@ describe('typed route registry', () => {
   });
 
   it('drives navigation from the same route guard metadata', () => {
-    for (const role of ['ADMIN_TU', 'KEPALA_SEKOLAH', 'OPERATOR_IT', 'GURU_PIKET', 'GURU_MAPEL', 'SISWA', 'DEVELOPER'] as const) {
+    for (const role of ['ADMIN_TU', 'KEPALA_SEKOLAH', 'OPERATOR_IT', 'GURU_PIKET', 'GURU_MAPEL', 'PEGAWAI', 'SISWA', 'DEVELOPER'] as const) {
       const currentUser = user(role);
       const nav = navItemsForUser(currentUser);
       expect(nav.length).toBeGreaterThan(0);
@@ -83,6 +83,17 @@ describe('typed route registry', () => {
     expect(canAccessRoute('/admin/izin-personel', user('OPERATOR_IT'))).toBe(false);
     expect(navItemsForUser(user('ADMIN_TU')).map(([, url]) => url)).toContain('/admin/izin-personel');
     expect(navItemsForUser(user('KEPALA_SEKOLAH')).map(([, url]) => url)).toContain('/admin/izin-personel');
+  });
+
+  it('isolates PEGAWAI inside the personal portal', () => {
+    const employee = user('PEGAWAI');
+    const paths = navItemsForUser(employee).map(([, path]) => path);
+
+    expect(paths).toEqual(['/pegawai/dashboard', '/pegawai/izin', '/pegawai/notifikasi', '/pegawai/panduan']);
+    expect(canAccessRoute('/admin/dashboard', employee)).toBe(false);
+    expect(canAccessRoute('/admin/reports', employee)).toBe(false);
+    expect(canAccessRoute('/guru/dashboard', employee)).toBe(false);
+    expect(canAccessRoute('/siswa/dashboard', employee)).toBe(false);
   });
 
   it('returns a safe crumb fallback for unknown paths', () => {

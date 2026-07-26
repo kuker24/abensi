@@ -93,6 +93,8 @@ export const REPORT_TYPE_TITLES: Record<string, string> = {
   gate_scan_no_class_attendance: 'Scan Gerbang Tanpa Absensi Kelas',
   prayer_recap: 'Rekap Sholat Siswa',
   audit_coverage: 'Cakupan Audit Presensi'
+  , my_attendance: 'Kehadiran Saya'
+  , operational_activity_snapshot: 'Ringkasan Aktivitas Operasional'
 };
 
 export const REPORT_COLUMN_LABELS: Record<string, string> = {
@@ -134,6 +136,9 @@ export const REPORT_COLUMN_LABELS: Record<string, string> = {
   teacher_name: 'Nama Guru',
   role: 'Peran',
   date: 'Tanggal',
+  time: 'Waktu',
+  activity: 'Aktivitas',
+  direction: 'Arah',
   datang: 'Datang',
   pulang: 'Pulang',
   gate_arrival_at: 'Scan Datang',

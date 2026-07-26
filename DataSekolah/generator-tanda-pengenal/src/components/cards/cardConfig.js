@@ -32,6 +32,7 @@ export const getCardSubLabel = (user = {}) => {
   if (roleLabel === 'GURU' || roleLabel === 'GURU PIKET') return 'Guru / Tendik';
   if (roleLabel === 'KEPALA SEKOLAH') return 'Kepala Madrasah';
   if (roleLabel === 'ADMIN TU' || roleLabel === 'OPERATOR IT') return 'Admin / Operator';
+  if (roleLabel === 'PEGAWAI') return 'Tenaga Kependidikan';
   return 'Anggota';
 };
 
@@ -50,7 +51,7 @@ export const getCardIdentityNumber = (user = {}) => {
 };
 
 export const getCardLevel = (user = {}) => safeText(
-  user?.className || user?.classCode || user?.kelas || user?.level || user?.raw?.['Kelas/Jabatan'],
+  user?.className || user?.classCode || user?.kelas || user?.jobTitle || user?.level || user?.raw?.jobTitle || user?.raw?.['Kelas/Jabatan'],
   'MAN 1 Rokan Hulu'
 );
 

@@ -636,6 +636,10 @@ describe('official report download UI', () => {
   });
 
   it('keeps print preview and downloads official report blobs from /reports/export', async () => {
+    const storedUser = JSON.stringify({ id: 'admin-1', role: 'ADMIN_TU' });
+    const localStorageMock = { getItem: vi.fn((key) => key === 'schoolhub_user' ? storedUser : null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn() };
+    Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true });
+    Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, configurable: true });
     const notify = vi.fn();
     const print = vi.fn();
     Object.defineProperty(window, 'print', { value: print, configurable: true });
@@ -686,7 +690,7 @@ describe('official report download UI', () => {
     expect(notify).toHaveBeenCalledWith('Laporan resmi berhasil diunduh.');
   });
 
-  it('hides official export controls for Kepala Sekolah read-only reports', async () => {
+  it('shows official export controls for Kepala Sekolah school reports', async () => {
     const storedUser = JSON.stringify({ id: 'kepala-1', role: 'KEPALA_SEKOLAH' });
     const localStorageMock = { getItem: vi.fn((key) => key === 'schoolhub_user' ? storedUser : null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn() };
     Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true });
@@ -699,12 +703,16 @@ describe('official report download UI', () => {
     render(<ReportsPage notify={vi.fn()} />);
 
     expect(await screen.findByText(/Belum ada data laporan/i)).toBeInTheDocument();
-    expect(screen.queryByText('Excel Resmi (.xlsx)')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Unduh Laporan/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Excel Resmi (.xlsx)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Unduh Laporan/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Cetak Pratinjau \/ Cetak/i })).toBeInTheDocument();
   });
 
   it('does not expose raw server errors to report operators', async () => {
+    const storedUser = JSON.stringify({ id: 'admin-1', role: 'ADMIN_TU' });
+    const localStorageMock = { getItem: vi.fn((key) => key === 'schoolhub_user' ? storedUser : null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn() };
+    Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true });
+    Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, configurable: true });
     const notify = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);

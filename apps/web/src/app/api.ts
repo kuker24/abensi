@@ -23,6 +23,7 @@ export function readStoredUser(): User | null {
 
 export function normalizeRole(apiRole?: string, fallback: RouteArea = 'admin'): RouteArea {
   if (apiRole === 'GURU_MAPEL') return 'guru';
+  if (apiRole === 'PEGAWAI') return 'pegawai';
   if (apiRole === 'SISWA') return 'siswa';
   if (apiRole === 'ADMIN_TU' || apiRole === 'KEPALA_SEKOLAH' || apiRole === 'OPERATOR_IT' || apiRole === 'GURU_PIKET' || apiRole === 'DEVELOPER') return 'admin';
   return fallback;
@@ -33,6 +34,7 @@ export function defaultPathFor(user?: User | null): string {
   if (user?.role === 'KEPALA_SEKOLAH') return '/admin/principal-dashboard';
   if (user?.role === 'OPERATOR_IT') return '/admin/it-dashboard';
   if (user?.role === 'GURU_PIKET') return '/admin/picket-dashboard';
+  if (user?.role === 'PEGAWAI') return '/pegawai/dashboard';
   const role = normalizeRole(user?.role, 'admin');
   if (role === 'guru') return '/guru/dashboard';
   if (role === 'siswa') return '/siswa/dashboard';
@@ -41,6 +43,7 @@ export function defaultPathFor(user?: User | null): string {
 
 export function pathArea(path: string): RouteArea {
   if (path.startsWith('/guru')) return 'guru';
+  if (path.startsWith('/pegawai')) return 'pegawai';
   if (path.startsWith('/siswa')) return 'siswa';
   if (path.startsWith('/admin')) return 'admin';
   return 'public';

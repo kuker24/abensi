@@ -4,7 +4,7 @@ export interface SchoolHubUser {
   id: string;
   username: string;
   fullName: string;
-  role: 'ADMIN_TU' | 'KEPALA_SEKOLAH' | 'OPERATOR_IT' | 'GURU_MAPEL' | 'GURU_PIKET' | 'SISWA' | 'DEVELOPER';
+  role: 'ADMIN_TU' | 'KEPALA_SEKOLAH' | 'OPERATOR_IT' | 'GURU_MAPEL' | 'GURU_PIKET' | 'PEGAWAI' | 'SISWA' | 'DEVELOPER';
 }
 
 function App() {

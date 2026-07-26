@@ -12,11 +12,11 @@ import { normalizeSchoolImportRows, summarizeNormalizedRows } from './school-imp
 import type { RawImportRow, SchoolImportPreviewRow, SchoolImportSourceKind } from './school-import/school-import.types';
 
 const ACCOUNT_SLIP_CREATOR_ROLES = new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]);
-const ACCOUNT_SLIP_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
+const ACCOUNT_SLIP_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH, Role.PEGAWAI]);
 const MAX_ACCOUNT_SLIP_USERS = 50;
 
 const ACCOUNT_DELETE_ACTOR_ROLES = new Set<Role>([Role.ADMIN_TU, Role.DEVELOPER]);
-const ACCOUNT_DELETE_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
+const ACCOUNT_DELETE_TARGET_ROLES = new Set<Role>([Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH, Role.PEGAWAI]);
 const ACCOUNT_DELETE_SENSITIVE_ROLES = new Set<Role>([Role.DEVELOPER, Role.ADMIN_TU, Role.OPERATOR_IT]);
 const MAX_ACCOUNT_DELETE_USERS = 50;
 const MAX_SCHOOL_IMPORT_ROWS = 5000;
@@ -99,7 +99,8 @@ export class IdentityService {
           fullName: true,
           nis: true,
           nkd: true,
-          nip: true,
+           nip: true,
+           jobTitle: true,
           birthDate: true,
           role: true,
           active: true,
@@ -274,7 +275,7 @@ export class IdentityService {
     if (inactiveUsers.length > 0) throw new BadRequestException('Lembar akun hanya boleh dibuat untuk pengguna aktif.');
 
     const unsupportedUsers = users.filter((user) => !ACCOUNT_SLIP_TARGET_ROLES.has(user.role));
-    if (unsupportedUsers.length > 0) throw new ForbiddenException('Target lembar akun hanya SISWA, GURU_MAPEL, GURU_PIKET, atau KEPALA_SEKOLAH.');
+    if (unsupportedUsers.length > 0) throw new ForbiddenException('Target lembar akun hanya SISWA, GURU_MAPEL, GURU_PIKET, KEPALA_SEKOLAH, atau PEGAWAI.');
 
     const prepared = await Promise.all(users.map(async (user) => {
       const initialPassword = generateAccountSlipPassword();
@@ -297,7 +298,7 @@ export class IdentityService {
           where: { id: item.user.id },
           data: {
             passwordHash: item.passwordHash,
-            mustChangePassword: false,
+            mustChangePassword: true,
             passwordChangedAt: null,
             sessionVersion: { increment: 1 }
           }
@@ -371,7 +372,8 @@ export class IdentityService {
           fullName: payload.fullName,
           nis: cleanOptionalText(payload.nis),
           nkd,
-          nip: cleanOptionalText(payload.nip),
+           nip: cleanOptionalText(payload.nip),
+           jobTitle: cleanOptionalText(payload.jobTitle),
           birthDate: parseOptionalDate(payload.birthDate),
           passwordHash,
           mustChangePassword: true,
@@ -384,7 +386,8 @@ export class IdentityService {
           fullName: true,
           nis: true,
           nkd: true,
-          nip: true,
+           nip: true,
+           jobTitle: true,
           birthDate: true,
           role: true,
           cardStatus: true,
@@ -450,7 +453,8 @@ export class IdentityService {
           ...(payload.fullName !== undefined ? { fullName: payload.fullName } : {}),
           ...(payload.nis !== undefined ? { nis: cleanOptionalText(payload.nis) } : {}),
           ...(!before.nkd && requestedNkd ? { nkd: requestedNkd } : {}),
-          ...(payload.nip !== undefined ? { nip: cleanOptionalText(payload.nip) } : {}),
+           ...(payload.nip !== undefined ? { nip: cleanOptionalText(payload.nip) } : {}),
+           ...(payload.jobTitle !== undefined ? { jobTitle: cleanOptionalText(payload.jobTitle) } : {}),
           ...(payload.birthDate !== undefined ? { birthDate } : {}),
           ...(passwordHash ? { passwordHash, passwordChangedAt: null, mustChangePassword: true } : {}),
           ...(payload.role !== undefined ? { role: payload.role } : {}),
@@ -465,7 +469,8 @@ export class IdentityService {
           fullName: true,
           nis: true,
           nkd: true,
-          nip: true,
+           nip: true,
+           jobTitle: true,
           birthDate: true,
           role: true,
           cardStatus: true,
@@ -862,6 +867,7 @@ export class IdentityService {
       nkdInput: row.nkd,
       nkd: null as string | null,
       nip: cleanOptionalText(row.nip),
+      jobTitle: cleanOptionalText(row.jobTitle),
       birthDate: row.birthDate?.trim() || '',
       parsedBirthDate: null as Date | null,
       role: row.role,
@@ -950,14 +956,15 @@ export class IdentityService {
             fullName: row.fullName.trim(),
             nis: cleanOptionalText(row.nis),
             nkd,
-            nip: cleanOptionalText(row.nip),
+             nip: cleanOptionalText(row.nip),
+             jobTitle: cleanOptionalText(row.jobTitle),
             birthDate,
             role: row.role,
             passwordHash,
             mustChangePassword: true,
             cardStatus: CardStatus.ACTIVE
           },
-          select: { id: true, username: true, fullName: true, nis: true, nkd: true, nip: true, birthDate: true, role: true, active: true }
+          select: { id: true, username: true, fullName: true, nis: true, nkd: true, nip: true, jobTitle: true, birthDate: true, role: true, active: true }
         }));
       }
 
@@ -1125,13 +1132,14 @@ export class IdentityService {
             fullName: row.fullName,
             nis: cleanOptionalText(row.nis),
             nkd: row.role === Role.SISWA ? row.nkd : null,
-            nip: cleanOptionalText(row.nip),
+             nip: cleanOptionalText(row.nip),
+             jobTitle: cleanOptionalText(row.jobTitle),
             birthDate: parseOptionalDate(row.birthDate),
             passwordHash: password.hash,
             role: row.role,
             active: true,
             cardStatus: CardStatus.ACTIVE,
-            mustChangePassword: false,
+            mustChangePassword: true,
             passwordChangedAt: null
           },
           select: { id: true, username: true, fullName: true, role: true }
@@ -1153,7 +1161,8 @@ export class IdentityService {
           fullName: row.fullName,
           nis: cleanOptionalText(row.nis),
           ...(row.role === Role.SISWA && !existingNkdById.get(row.existingUserId!) && row.nkd ? { nkd: row.nkd } : {}),
-          nip: cleanOptionalText(row.nip),
+           nip: cleanOptionalText(row.nip),
+           jobTitle: cleanOptionalText(row.jobTitle),
           birthDate: parseOptionalDate(row.birthDate),
           role: row.role,
           active: true,
@@ -1162,7 +1171,7 @@ export class IdentityService {
         const password = preparedPasswords.get(row.index);
         if (password) {
           data.passwordHash = password.hash;
-          data.mustChangePassword = false;
+          data.mustChangePassword = true;
           data.passwordChangedAt = null;
           data.sessionVersion = { increment: 1 };
         }
@@ -1238,7 +1247,9 @@ export class IdentityService {
         id: true,
         username: true,
         fullName: true,
-        role: true,
+         role: true,
+         nip: true,
+         jobTitle: true,
         active: true,
         cardStatus: true,
         createdAt: true,

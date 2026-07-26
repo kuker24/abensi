@@ -237,7 +237,7 @@ describe('IdentityService', () => {
       where: { id: 'student-1' },
       data: expect.objectContaining({
         passwordHash: expect.stringMatching(/^hash:length:/),
-        mustChangePassword: false,
+        mustChangePassword: true,
         passwordChangedAt: null,
         sessionVersion: { increment: 1 }
       })
@@ -284,7 +284,7 @@ describe('IdentityService', () => {
     expect(result.committed).toBe(true);
     expect(result.slips).toHaveLength(1);
     expect(result.slips[0].initialPassword).toHaveLength(14);
-    expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ passwordHash: expect.stringMatching(/^hash:length:14/), mustChangePassword: false, passwordChangedAt: null }) }));
+    expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ passwordHash: expect.stringMatching(/^hash:length:14/), mustChangePassword: true, passwordChangedAt: null }) }));
     expect(prisma.classEnrollment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ classId: 'class-1', studentId: 'student-1' }) }));
     expect(safeJson(prisma.auditEntry.create.mock.calls)).not.toContain(result.slips[0].initialPassword);
   });
@@ -304,7 +304,7 @@ describe('IdentityService', () => {
     const service = new IdentityService(prisma);
 
     await expect(service.generateAccountLoginSlips({ userIds: ['student-1'], reason: 'Cetak slip akun awal.' }, { sub: 'operator-1', role: 'OPERATOR_IT' })).rejects.toThrow('Lembar akun login hanya boleh dibuat oleh Admin TU atau Developer.');
-    await expect(service.generateAccountLoginSlips({ userIds: ['dev-1'], reason: 'Cetak slip akun awal.' }, { sub: 'dev-admin', role: 'DEVELOPER' })).rejects.toThrow('Target lembar akun hanya SISWA, GURU_MAPEL, GURU_PIKET, atau KEPALA_SEKOLAH.');
+    await expect(service.generateAccountLoginSlips({ userIds: ['dev-1'], reason: 'Cetak slip akun awal.' }, { sub: 'dev-admin', role: 'DEVELOPER' })).rejects.toThrow('Target lembar akun hanya SISWA, GURU_MAPEL, GURU_PIKET, KEPALA_SEKOLAH, atau PEGAWAI.');
   });
 
   it('rejects inactive users for account login slips', async () => {

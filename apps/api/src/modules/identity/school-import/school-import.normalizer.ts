@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Role } from '@prisma/client';
 import type { NormalizedSchoolImportRow, RawImportRow, SchoolImportOptions, SchoolImportSourceKind } from './school-import.types';
 
-const ALLOWED_STAFF_ROLES = new Set<Role>([Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
+const ALLOWED_STAFF_ROLES = new Set<Role>([Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH, Role.PEGAWAI]);
 
 function clean(value?: string | null) {
   return String(value ?? '').replace(/^\ufeff/, '').replace(/\s+/g, ' ').trim();
@@ -63,14 +63,16 @@ function roleFromLegacy(value: string) {
   if (text === 'siswa') return Role.SISWA;
   if (text.includes('kepala')) return Role.KEPALA_SEKOLAH;
   if (text.includes('piket')) return Role.GURU_PIKET;
-  return Role.GURU_MAPEL;
+  if (text.includes('guru')) return Role.GURU_MAPEL;
+  return Role.PEGAWAI;
 }
 
 function roleFromStaff(value: string, jobTitle: string) {
   const text = `${clean(value)} ${clean(jobTitle)}`.toLowerCase();
   if (text.includes('kepala sekolah')) return Role.KEPALA_SEKOLAH;
   if (text.includes('piket')) return Role.GURU_PIKET;
-  return Role.GURU_MAPEL;
+  if (text.includes('guru')) return Role.GURU_MAPEL;
+  return Role.PEGAWAI;
 }
 
 function normalizeClassCode(value: string) {
@@ -93,6 +95,7 @@ function baseErrors(row: NormalizedSchoolImportRow) {
   }
   if (row.subjectType === 'staff' && row.nkd) row.errors.push('NKD hanya boleh dipakai siswa');
   if (row.subjectType === 'staff' && !row.nip) row.errors.push('NIP pegawai/guru wajib');
+  if (row.jobTitle && row.jobTitle.length > 120) row.errors.push('jabatan maksimal 120 karakter');
   if (row.subjectType === 'staff' && !ALLOWED_STAFF_ROLES.has(row.role)) row.errors.push('role pegawai/guru tidak valid');
 }
 
@@ -141,7 +144,7 @@ export function normalizeSchoolImportRows(rows: RawImportRow[], source: SchoolIm
       jobTitle = classOrJob || typeUser || null;
       sourceType = typeUser || null;
       const loweredType = clean(typeUser).toLowerCase();
-      if (loweredType && loweredType !== 'guru') warnings.push(`TIPE USER '${typeUser}' dimapping sementara ke ${role}`);
+      if (loweredType && loweredType !== 'guru' && role !== Role.PEGAWAI) warnings.push(`TIPE USER '${typeUser}' dimapping ke ${role}`);
     }
 
     const existingUsername = get(raw, ['Username', 'username']);
@@ -165,7 +168,7 @@ export function normalizeSchoolImportRows(rows: RawImportRow[], source: SchoolIm
       jobTitle,
       sourceType,
       ignoredLegacyPassword,
-      fingerprint: fingerprint({ source, username, fullName, nis, nkd, nip, classCode, role }),
+      fingerprint: fingerprint({ source, username, fullName, nis, nkd, nip, classCode, jobTitle, role }),
       errors,
       warnings
     };

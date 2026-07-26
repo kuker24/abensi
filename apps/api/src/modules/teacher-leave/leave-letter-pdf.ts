@@ -24,6 +24,7 @@ const ROLE_LABEL: Record<Role, string> = {
   KEPALA_SEKOLAH: 'Kepala Sekolah',
   GURU_MAPEL: 'Guru Mapel',
   GURU_PIKET: 'Guru Piket',
+  PEGAWAI: 'Pegawai',
   OPERATOR_IT: 'Operator IT',
   SISWA: 'Siswa',
   DEVELOPER: 'Developer'

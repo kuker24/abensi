@@ -24,6 +24,7 @@ test('role labels map SIAB2 roles without falling back to username', () => {
   assert.equal(getCardRoleLabel({ role: 'ADMIN_TU' }), 'ADMIN TU');
   assert.equal(getCardRoleLabel({ role: 'OPERATOR_IT' }), 'OPERATOR IT');
   assert.equal(getCardRoleLabel({ role: 'KEPALA_SEKOLAH' }), 'KEPALA SEKOLAH');
+  assert.equal(getCardRoleLabel({ role: 'PEGAWAI' }), 'PEGAWAI');
 });
 
 test('student identity keeps NISN and NKD separate without falling back to username', () => {
@@ -37,6 +38,7 @@ test('student identity keeps NISN and NKD separate without falling back to usern
 test('class and jabatan labels come from official export fields', () => {
   assert.equal(getCardLevel({ role: 'SISWA', className: 'X A · Kelas X A' }), 'X A · Kelas X A');
   assert.equal(getCardLevel({ role: 'GURU_MAPEL', level: 'Guru / Pegawai MAN 1 Rokan Hulu' }), 'Guru / Pegawai MAN 1 Rokan Hulu');
+  assert.equal(getCardLevel({ role: 'PEGAWAI', jobTitle: 'Staf Bendahara Komite', level: 'Pegawai MAN 1 Rokan Hulu' }), 'Staf Bendahara Komite');
 });
 
 test('QR payload remains the opaque schoolhub QR value when supplied', () => {

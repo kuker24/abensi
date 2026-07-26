@@ -275,6 +275,48 @@ describe('QrCredentialsService stable student identity cards', () => {
     });
   });
 
+  it('exports employee card data with exact NIP and job title', async () => {
+    const prisma = makePrisma({
+      credentials: [{
+        id: 'credential-employee-1',
+        userId: 'employee-1',
+        status: QrCredentialStatus.ACTIVE,
+        label: 'QR SIAB2',
+        shortCode: 'EMP001',
+        codeCiphertext: 'enc:schoolhub:qr:v1:QR_EMPLOYEE_ACTIVE',
+        issuedAt: new Date('2026-01-01T00:00:00.000Z'),
+        expiresAt: null,
+        user: {
+          id: 'employee-1',
+          fullName: 'MAYA WULANDARI',
+          username: 'pegawai.maya.wulandari',
+          nis: null,
+          nkd: null,
+          nip: '1406034104960006',
+          jobTitle: 'Staf Bendahara Komite',
+          role: Role.PEGAWAI,
+          active: true,
+          cardStatus: 'ACTIVE',
+          enrollments: []
+        }
+      }]
+    });
+    const service = new QrCredentialsService(prisma, makeSignatures());
+
+    const result = await service.exportCards({ userId: 'employee-1' });
+
+    expect(result.cards[0]).toMatchObject({
+      fullName: 'MAYA WULANDARI',
+      role: Role.PEGAWAI,
+      roleLabel: 'Pegawai',
+      nip: '1406034104960006',
+      jobTitle: 'Staf Bendahara Komite',
+      level: 'Staf Bendahara Komite',
+      qr_value: 'schoolhub:qr:v1:QR_EMPLOYEE_ACTIVE'
+    });
+    expect(result.cards[0]).not.toHaveProperty('password');
+  });
+
   it('filters class card exports to students actively enrolled on the business date', async () => {
     const prisma = makePrisma();
     const service = new QrCredentialsService(prisma, makeSignatures());

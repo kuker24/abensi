@@ -90,7 +90,7 @@ function scannedPrayerType(scannedAt: Date, policy: { dhuhaStartTime: string; dh
 }
 
 function isStaffRole(role: Role) {
-  return role === Role.ADMIN_TU || role === Role.OPERATOR_IT || role === Role.GURU_PIKET || role === Role.DEVELOPER;
+  return role === Role.ADMIN_TU || role === Role.OPERATOR_IT || role === Role.GURU_PIKET || role === Role.PEGAWAI || role === Role.DEVELOPER;
 }
 
 function gateDirectionLabel(direction: GateDirection) {

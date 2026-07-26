@@ -279,17 +279,26 @@ describe('ReportingService roster provenance', () => {
     const siswa = await service.myAttendance({ sub: student.id, role: Role.SISWA }, 1);
     const guru = await service.myAttendance({ sub: 'guru-1', role: Role.GURU_MAPEL }, 1);
 
-    expect(siswa.classAttendances?.[0]).toMatchObject({
+    expect(siswa.items.find((item) => item.type === 'CLASS')).toMatchObject({
       rosterState: SessionRosterState.BACKFILLED_UNVERIFIED,
       rosterVerified: false,
       rosterUnverified: true
     });
-    expect(guru.teacherPresence?.[0]).toMatchObject({
+    expect(guru.items.find((item) => item.type === 'TEACHING')).toMatchObject({
       rosterState: SessionRosterState.LEGACY_ROSTER_MISSING,
       rosterVerified: false,
       rosterUnverified: true
     });
     expect(prisma.gateLog.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns only gate attendance for PEGAWAI', async () => {
+    const { service, prisma } = makeProvenanceService();
+
+    const result = await service.myAttendance({ sub: 'pegawai-1', role: Role.PEGAWAI }, 30);
+
+    expect(result).toEqual({ role: Role.PEGAWAI, items: [] });
+    expect(prisma.teacherSessionPresence.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -310,6 +319,7 @@ describe('ReportingService school personnel gate attendance', () => {
               Role.GURU_MAPEL,
               Role.GURU_PIKET,
               Role.OPERATOR_IT,
+              Role.PEGAWAI,
               Role.DEVELOPER
             ]
           },

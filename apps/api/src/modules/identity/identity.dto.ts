@@ -24,6 +24,11 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
+  jobTitle?: string;
+
+  @IsOptional()
+  @IsString()
   birthDate?: string;
 
   @IsString()
@@ -55,6 +60,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   nip?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  jobTitle?: string;
 
   @IsOptional()
   @IsString()
@@ -102,6 +112,11 @@ export class ImportUserRowDto {
   @IsOptional()
   @IsString()
   nip?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  jobTitle?: string;
 
   @IsOptional()
   @IsString()

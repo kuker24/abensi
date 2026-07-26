@@ -34,7 +34,7 @@ import {
 } from './teacher-leave.dto';
 import { TeacherLeaveService } from './teacher-leave.service';
 
-const APPLICANT_ROLES = [Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.GURU_PIKET, Role.OPERATOR_IT] as const;
+const APPLICANT_ROLES = [Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.GURU_PIKET, Role.OPERATOR_IT, Role.PEGAWAI] as const;
 const REVIEWER_ROLES = [Role.ADMIN_TU, Role.KEPALA_SEKOLAH] as const;
 
 const LEAVE_UPLOAD_OPTIONS = {

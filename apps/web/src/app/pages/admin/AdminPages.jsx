@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, Building2, Calendar, Check, CheckSquare, Clock, Copy, CreditCard, DoorOpen, Download, Eye, FileText, Flag, HelpCircle, KeyRound, ListChecks, Plus, QrCode, Radar, RefreshCw, Save, ShieldCheck, Smartphone, Users, Wifi, Zap, Activity, TrendingUp, AlertOctagon, ScanLine } from 'lucide-react';
 import { apiDownload, apiFetch, formatDateTime, go, itemsOf, metaOf, qs, readStoredUser, today } from '../../api';
+import { hasCapability } from '../../capabilities';
 import { BRAND } from '../../branding';
 import { riskConfirm } from '../../confirm';
 import { useForm, useRemote } from '../../hooks';
@@ -16,6 +17,10 @@ function downloadJsonFile(data, filename) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function canExportSchoolReports() {
+  return hasCapability(readStoredUser()?.role, 'reports.school.read');
 }
 
 export function sanitizeSpreadsheetCell(value) {
@@ -368,28 +373,49 @@ export function HistoryPage() {
 
 export function StaffAttendancePage({ notify }) {
   const [date, setDate] = useState(today());
-  const canExport = readStoredUser()?.role !== 'KEPALA_SEKOLAH';
+  const [format, setFormat] = useState('xlsx');
+  const canExport = canExportSchoolReports();
   const state = useRemote(() => apiFetch(`/reports/staff-gate-attendance${qs({ from: date, to: date, page: 1, limit: 200 })}`), [date]);
   async function exportReport() {
-    await apiDownload(`/reports/export${qs({ reportType: 'staff_gate_attendance', format: 'xlsx', from: date, to: date })}`);
+    await apiDownload(`/reports/export${qs({ reportType: 'staff_gate_attendance', format, from: date, to: date })}`);
     notify('Laporan Kepala/Staf berhasil diunduh.');
   }
-  return <div className="content"><PageHead eyebrow="KEPALA / STAF" title="Datang & Pulang" sub="Tabel sederhana scan Mode Gerbang untuk kepala, TU, dan staf/karyawan." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal staf" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn>{canExport && <Btn variant="primary" onClick={exportReport}><Download size={14} /> Export Laporan</Btn>}</>} /><Card title="Kehadiran Kepala/Staf" sub="Scan pertama = Datang. Scan berikutnya setelah jeda aman = Pulang."><AsyncTable state={state} columns={[{ header: 'Nama', render: (r) => r.fullName || r.username }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Datang', render: (r) => formatDateTime(r.datang) }, { header: 'Pulang', render: (r) => formatDateTime(r.pulang) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Keterangan', render: (r) => r.note || '—' }]} empty="Belum ada scan kepala/staf pada tanggal ini." /></Card></div>;
+  return <div className="content"><PageHead eyebrow="KEPALA / STAF" title="Datang & Pulang" sub="Tabel sederhana scan Mode Gerbang untuk kepala, TU, dan staf/karyawan." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal staf" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn>{canExport && <><SelectInput aria-label="Format export staf" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn variant="primary" onClick={exportReport}><Download size={14} /> Export Laporan</Btn></>}</>} /><Card title="Kehadiran Kepala/Staf" sub="Scan pertama = Datang. Scan berikutnya setelah jeda aman = Pulang."><AsyncTable state={state} columns={[{ header: 'Nama', render: (r) => r.fullName || r.username }, { header: 'Peran', render: (r) => <StatusPill status={r.role} /> }, { header: 'Datang', render: (r) => formatDateTime(r.datang) }, { header: 'Pulang', render: (r) => formatDateTime(r.pulang) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Keterangan', render: (r) => r.note || '—' }]} empty="Belum ada scan kepala/staf pada tanggal ini." /></Card></div>;
+}
+
+export function OperationalExportPage({ notify }) {
+  const [date, setDate] = useState(today());
+  const [format, setFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
+  const state = useRemote(() => apiFetch(`/reports/dashboard${qs({ date })}`), [date]);
+  async function exportSnapshot() {
+    setExporting(true);
+    try {
+      await apiDownload(`/reports/export${qs({ reportType: 'operational_activity_snapshot', format, date })}`);
+      notify('Ringkasan aktivitas operasional berhasil diunduh.');
+    } catch (error) {
+      notify(error.message || 'Ringkasan aktivitas belum bisa diunduh.', 'bad');
+    } finally { setExporting(false); }
+  }
+  const summary = state.data || {};
+  return <div className="content"><PageHead eyebrow="AKTIVITAS OPERASIONAL" title="Export Ringkasan Harian" sub="Unduh angka operasional yang memang tersedia untuk peran Anda; tanpa data akun atau laporan sekolah." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal ringkasan operasional" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label><SelectInput aria-label="Format ringkasan operasional" value={format} onChange={(event) => setFormat(event.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput><Btn variant="primary" onClick={exportSnapshot} disabled={exporting}><Download size={14} /> {exporting ? 'Menyiapkan…' : 'Download'}</Btn></>} />{state.loading ? <LoadingState label="Memuat ringkasan operasional…" /> : state.error ? <ErrorState error={state.error} onRetry={state.refresh} /> : <div className="grid g-4"><StatCardPremium icon={<Radar size={18} />} label="Sesi hari ini" value={summary.sessionsToday ?? 0} sub={`${summary.openSessions ?? 0} sedang terbuka`} /><StatCardPremium icon={<CheckSquare size={18} />} label="Cakupan presensi" value={`${summary.attendanceCoveragePercent ?? 0}%`} sub={`${summary.closedSessions ?? 0} sesi ditutup`} tone="ok" /><StatCardPremium icon={<Flag size={18} />} label="Anomali terbuka" value={summary.anomalyOpenCount ?? 0} sub="Perlu verifikasi petugas" tone={summary.anomalyOpenCount ? 'warn' : 'ok'} /><StatCardPremium icon={<Users size={18} />} label="Staf hadir" value={summary.staffPresentToday ?? 0} sub={`${summary.gateTapToday ?? 0} scan gerbang`} /></div>}</div>;
 }
 
 export function PrayerAttendancePage({ notify }) {
   const [date, setDate] = useState(today());
+  const [format, setFormat] = useState('xlsx');
+  const canExport = canExportSchoolReports();
   const logs = useRemote(() => apiFetch(`/reports/student-prayer-attendance${qs({ from: date, to: date, page: 1, limit: 200 })}`), [date]);
   const recap = useRemote(() => apiFetch(`/reports/student-worship-recap${qs({ from: date, to: date, page: 1, limit: 200 })}`), [date]);
   const rows = itemsOf(logs.data);
   const dhuha = rows.filter((r) => r.prayerType === 'DHUHA').length;
   const dzuhur = rows.filter((r) => r.prayerType === 'DZUHUR').length;
   async function exportLogs() {
-    await apiDownload(`/reports/export${qs({ reportType: 'student_prayer_attendance', format: 'xlsx', from: date, to: date })}`);
+    await apiDownload(`/reports/export${qs({ reportType: 'student_prayer_attendance', format, from: date, to: date })}`);
     notify('Laporan sholat siswa berhasil diunduh.');
   }
   async function exportRecap() {
-    await apiDownload(`/reports/export${qs({ reportType: 'student_worship_recap', format: 'xlsx', from: date, to: date })}`);
+    await apiDownload(`/reports/export${qs({ reportType: 'student_worship_recap', format, from: date, to: date })}`);
     notify('Rekap karakter/ibadah berhasil diunduh.');
   }
   return <div className="content"><PageHead eyebrow="SHOLAT SISWA" title="Absensi Sholat" sub="Pantau scan QR siswa di Mode Mushola untuk Dhuha dan Dzuhur." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal sholat" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><Btn onClick={() => { logs.refresh(); recap.refresh(); }}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" onClick={exportLogs}><Download size={14} /> Export Log</Btn><Btn onClick={exportRecap}><Download size={14} /> Export Rekap</Btn></>} /><div className="grid g-4"><StatCardPremium icon={<Building2 size={18} />} label="Dhuha" value={dhuha} sub="Sudah scan" tone="ok" /><StatCardPremium icon={<Building2 size={18} />} label="Dzuhur" value={dzuhur} sub="Sudah scan" tone="ok" /><StatCardPremium icon={<Users size={18} />} label="Total Scan" value={rows.length} sub="Hari ini" /><StatCardPremium icon={<AlertTriangle size={18} />} label="Belum Scan" value="Lihat rekap" sub="Gunakan export/rekap kelas" tone="warn" /></div><div className="grid g-2" style={{ marginTop: 18 }}><Card title="Log Sholat" sub="Data scan siswa dari Mode Mushola"><AsyncTable state={logs} columns={[{ header: 'Siswa', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Sholat', render: (r) => <StatusPill status={r.prayerType} /> }, { header: 'Waktu', render: (r) => formatDateTime(r.scannedAt) }, { header: 'HP', render: (r) => r.reader || '—' }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} empty="Belum ada scan sholat pada tanggal ini." /></Card><Card title="Rekap Ibadah Siswa" sub="Hitungan Dhuha/Dzuhur per siswa"><AsyncTable state={recap} columns={[{ header: 'Siswa', render: (r) => r.fullName || r.username }, { header: 'Kelas', render: (r) => r.schoolClass || '—' }, { header: 'Dhuha', render: (r) => r.dhuhaCount ?? 0 }, { header: 'Dzuhur', render: (r) => r.dzuhurCount ?? 0 }, { header: 'Ringkasan', render: (r) => r.periodSummary || '—' }]} empty="Belum ada rekap ibadah pada tanggal ini." /></Card></div></div>;
@@ -567,7 +593,7 @@ function TabBar({ value, onChange, groups, options }) {
 function UsersPanel({ notify }) {
   const currentUser = readStoredUser();
   const isDeveloper = currentUser?.role === 'DEVELOPER';
-  const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
+  const roleOptions = [['ADMIN_TU', 'Admin/TU'], ['KEPALA_SEKOLAH', 'Kepala Sekolah'], ['OPERATOR_IT', 'Operator IT'], ['GURU_MAPEL', 'Guru Mapel'], ['GURU_PIKET', 'Guru Piket'], ['PEGAWAI', 'Pegawai'], ['SISWA', 'Siswa'], ...(isDeveloper ? [['DEVELOPER', 'Developer']] : [])];
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
   const statusQuery = statusFilter === 'ALL' ? 'all' : statusFilter === 'ARCHIVED' ? 'archived' : statusFilter === 'INACTIVE' ? 'inactive' : 'active';
   const [page, setPage] = useState(1);
@@ -585,12 +611,18 @@ function UsersPanel({ notify }) {
   const [pinWorking, setPinWorking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
-  const emptyUserForm = { id: '', username: '', fullName: '', password: '', role: 'SISWA', cardStatus: 'ACTIVE' };
-  const [form, set, reset, setForm] = useForm(emptyUserForm);
+  const emptyUserForm = { id: '', username: '', fullName: '', nip: '', jobTitle: '', password: '', role: 'SISWA', cardStatus: 'ACTIVE' };
+  const [form, set, reset, setFormState] = useForm(emptyUserForm);
+  const setForm = (next) => setFormState((current) => {
+    const value = typeof next === 'function' ? next(current) : next;
+    const stored = value?.id ? itemsOf(state.data).find((user) => user.id === value.id) : null;
+    return { ...emptyUserForm, ...(stored || {}), ...value };
+  });
   const userPresets = [
     { role: 'SISWA', title: 'Buat Akun Siswa', desc: 'Untuk siswa yang akan melihat kehadiran dan punya QR.', icon: <Users size={18} /> },
     { role: 'GURU_MAPEL', title: 'Buat Akun Guru', desc: 'Untuk guru mapel yang mengisi presensi kelas.', icon: <BookOpen size={18} /> },
     { role: 'GURU_PIKET', title: 'Buat Akun Guru Piket', desc: 'Untuk petugas piket yang cek masalah dan catatan piket.', icon: <ListChecks size={18} /> },
+    { role: 'PEGAWAI', title: 'Buat Akun Pegawai', desc: 'Untuk tenaga kependidikan dengan akses data pribadi.', icon: <Users size={18} /> },
     { role: 'OPERATOR_IT', title: 'Buat Akun Operator', desc: 'Untuk pengelola perangkat, kartu, dan sistem.', icon: <ShieldCheck size={18} /> }
   ];
   function applyUserPreset(role) {
@@ -621,7 +653,7 @@ function UsersPanel({ notify }) {
     setSubmitting(true);
     setFormError('');
     try {
-      if (form.id) await apiFetch(`/identity/users/${form.id}`, { method: 'PATCH', body: JSON.stringify({ fullName: form.fullName, role: form.role, cardStatus: form.cardStatus, ...(password ? { password } : {}) }) });
+      if (form.id) await apiFetch(`/identity/users/${form.id}`, { method: 'PATCH', body: JSON.stringify({ fullName: form.fullName, nip: form.nip, jobTitle: form.jobTitle, role: form.role, cardStatus: form.cardStatus, ...(password ? { password } : {}) }) });
       else await apiFetch('/identity/users', { method: 'POST', body: JSON.stringify({ ...form, password }) });
       reset(emptyUserForm);
       state.refresh();
@@ -746,6 +778,8 @@ function UsersPanel({ notify }) {
           <form onSubmit={submit} className="form-grid">
             <Field label="Nama akun" hint="wajib"><TextInput value={form.username} placeholder="contoh: siswa.aisyah" onChange={(e) => set('username', e.target.value)} required disabled={Boolean(form.id) || submitting} /></Field>
             <Field label="Nama Lengkap" hint="wajib"><TextInput value={form.fullName} placeholder="Nama lengkap sesuai data sekolah" onChange={(e) => set('fullName', e.target.value)} required disabled={submitting} /></Field>
+            <Field label="NIP"><TextInput value={form.nip} inputMode="numeric" placeholder="Nomor induk pegawai" onChange={(e) => set('nip', e.target.value)} disabled={submitting} /></Field>
+            <Field label="Jabatan"><TextInput value={form.jobTitle} maxLength={120} placeholder="Contoh: Staf Bendahara Komite" onChange={(e) => set('jobTitle', e.target.value)} disabled={submitting} /></Field>
             <Field label="Kata sandi" hint={form.id ? 'opsional saat edit' : 'minimal 8 karakter'}><TextInput type="password" value={form.password} placeholder={form.id ? 'Kosongkan jika tidak diganti' : 'Isi password sementara'} autoComplete="new-password" onChange={(e) => set('password', e.target.value)} minLength={8} required={!form.id} disabled={submitting} /></Field>
             <Field label="Peran"><SelectInput value={form.role} onChange={(e) => set('role', e.target.value)} disabled={submitting}>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput></Field>
             <Field label="Status Kartu"><SelectInput value={form.cardStatus} onChange={(e) => set('cardStatus', e.target.value)} disabled={submitting}><option value="ACTIVE">Aktif</option><option value="LOST">Hilang</option><option value="INACTIVE">Nonaktif</option></SelectInput></Field>
@@ -780,7 +814,7 @@ function UsersPanel({ notify }) {
           </div>
           <div className="master-data-table-region user-table-region">
             <AsyncTable state={filteredState} empty={userEmpty} columns={[
-              { header: 'Pilih', render: (r) => <input type="checkbox" aria-label={`Pilih ${r.fullName}`} checked={selectedSet.has(r.id)} disabled={Boolean(r.archivedAt) || !['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH'].includes(r.role)} onChange={() => toggleSelectUser(r.id)} /> },
+              { header: 'Pilih', render: (r) => <input type="checkbox" aria-label={`Pilih ${r.fullName}`} checked={selectedSet.has(r.id)} disabled={Boolean(r.archivedAt) || !['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH', 'PEGAWAI'].includes(r.role)} onChange={() => toggleSelectUser(r.id)} /> },
               { header: 'Nama', render: (r) => <span className="row master-data-user-cell"><Avatar name={r.fullName} size="sm" /> <span>{r.fullName}</span></span> },
               { header: 'Nama akun', render: (r) => <span className="mono" title={r.username}>{r.username}</span> },
               { header: 'Peran', render: (r) => <StatusPill status={r.role} /> },
@@ -816,7 +850,7 @@ function UsersPanel({ notify }) {
 }
 
 
-const ACCOUNT_SLIP_ALLOWED_ROLES = new Set(['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH']);
+const ACCOUNT_SLIP_ALLOWED_ROLES = new Set(['SISWA', 'GURU_MAPEL', 'GURU_PIKET', 'KEPALA_SEKOLAH', 'PEGAWAI']);
 const ACCOUNT_SLIP_LOGIN_URL = 'https://absensi.man1rokanhulu.cloud';
 
 function AccountLoginSlipPanel({ notify }) {
@@ -1954,7 +1988,7 @@ export function ReportsPage({ notify }) {
   const previewPath = buildReportPreviewPath(type, { from, to });
   const state = useRemote(() => apiFetch(previewPath), [previewPath]);
   const [exporting, setExporting] = useState(false);
-  const canExport = readStoredUser()?.role !== 'KEPALA_SEKOLAH';
+  const canExport = canExportSchoolReports();
   const periodLabel = formatReportPeriod(from, to);
   async function exportNow() {
     setExporting(true);
@@ -2243,6 +2277,15 @@ export function HelpPage({ role = 'ADMIN_TU' }) {
         { title: 'Ajukan izin', desc: 'Izin/sakit/dinas luar.', icon: <Calendar size={18} />, onClick: () => go('/guru/izin') }
       ],
       steps: ['Pilih sesi kelas.', 'Klik Absen Masuk.', 'Tandai siswa dan Simpan.', 'Klik Absen Keluar saat selesai.']
+    },
+    PEGAWAI: {
+      title: 'Panduan Pegawai',
+      tasks: [
+        { title: 'Kehadiran saya', desc: 'Cek scan datang dan pulang.', icon: <Eye size={18} />, onClick: () => go('/pegawai/dashboard') },
+        { title: 'Ajukan izin', desc: 'Izin, sakit, atau dinas luar.', icon: <Calendar size={18} />, onClick: () => go('/pegawai/izin') },
+        { title: 'Notifikasi', desc: 'Baca pemberitahuan sekolah.', icon: <HelpCircle size={18} />, onClick: () => go('/pegawai/notifikasi') }
+      ],
+      steps: ['Buka Kehadiran Saya.', 'Periksa scan datang dan pulang.', 'Ajukan izin bila diperlukan.', 'Baca notifikasi sekolah.']
     },
     SISWA: {
       title: 'Panduan Siswa',

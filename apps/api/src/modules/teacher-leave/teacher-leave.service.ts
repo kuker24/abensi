@@ -38,7 +38,8 @@ const APPLICANT_ROLES = new Set<Role>([
   Role.KEPALA_SEKOLAH,
   Role.GURU_MAPEL,
   Role.GURU_PIKET,
-  Role.OPERATOR_IT
+  Role.OPERATOR_IT,
+  Role.PEGAWAI
 ]);
 
 const ACTIVE_STATUSES = [TeacherLeaveStatus.PENDING, TeacherLeaveStatus.APPROVED];
@@ -197,6 +198,7 @@ function requiredText(value: string | undefined, message: string) {
 }
 
 function applicantHref(role: Role) {
+  if (role === Role.PEGAWAI) return '/pegawai/izin';
   return role === Role.GURU_MAPEL ? '/guru/izin' : '/admin/izin-saya';
 }
 
@@ -215,7 +217,7 @@ export class TeacherLeaveService {
 
   private reviewableRoles(actor: { role: Role }): Role[] {
     if (actor.role === Role.ADMIN_TU) {
-      return [Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.GURU_PIKET, Role.OPERATOR_IT];
+      return [Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.GURU_PIKET, Role.OPERATOR_IT, Role.PEGAWAI];
     }
     if (actor.role === Role.KEPALA_SEKOLAH) return [Role.ADMIN_TU];
     throw new ForbiddenException('Peran ini tidak dapat meninjau pengajuan izin pegawai.');

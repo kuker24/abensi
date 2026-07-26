@@ -29,14 +29,16 @@ function stableCredentialExpiresAt(value: string | undefined, role: Role) {
 function printableRole(role: Role) {
   if (role === Role.SISWA) return 'Siswa';
   if (role === Role.GURU_MAPEL || role === Role.GURU_PIKET) return 'Guru';
+  if (role === Role.PEGAWAI) return 'Pegawai';
   if (role === Role.ADMIN_TU) return 'Admin/TU';
   if (role === Role.OPERATOR_IT) return 'Operator IT';
   if (role === Role.DEVELOPER) return 'Developer';
   return String(role);
 }
 
-function printableLevel(role: Role, className?: string | null) {
+function printableLevel(role: Role, className?: string | null, jobTitle?: string | null) {
   if (className) return className;
+  if (jobTitle) return jobTitle;
   if (role === Role.SISWA) return 'Siswa MAN 1 Rokan Hulu';
   if (role === Role.GURU_MAPEL || role === Role.GURU_PIKET) return 'Guru / Pegawai MAN 1 Rokan Hulu';
   if (role === Role.ADMIN_TU || role === Role.OPERATOR_IT) return 'Pegawai MAN 1 Rokan Hulu';
@@ -178,7 +180,7 @@ export class QrCredentialsService {
       effectiveFrom: { lte: asOf },
       OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }]
     };
-    const where: Prisma.UserWhereInput = { active: true, role: { in: [Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.ADMIN_TU, Role.OPERATOR_IT] } };
+    const where: Prisma.UserWhereInput = { active: true, role: { in: [Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.PEGAWAI, Role.ADMIN_TU, Role.OPERATOR_IT] } };
     if (payload.classId) where.enrollments = { some: { classId: payload.classId, ...currentEnrollmentWhere } };
     if (payload.onlyMissing) where.qrCredentials = { none: { status: QrCredentialStatus.ACTIVE } };
     const users = await this.prisma.user.findMany({ where, select: { id: true, fullName: true, role: true }, take: 1000, orderBy: { fullName: 'asc' } });
@@ -217,7 +219,7 @@ export class QrCredentialsService {
     };
     const userWhere: Prisma.UserWhereInput = {
       active: true,
-      role: { in: [Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.ADMIN_TU, Role.OPERATOR_IT] }
+      role: { in: [Role.SISWA, Role.GURU_MAPEL, Role.GURU_PIKET, Role.PEGAWAI, Role.ADMIN_TU, Role.OPERATOR_IT] }
     };
     if (params.classId) userWhere.enrollments = { some: { classId: params.classId, ...currentEnrollmentWhere } };
 
@@ -304,6 +306,7 @@ export class QrCredentialsService {
             nis: true,
             nkd: true,
             nip: true,
+            jobTitle: true,
             birthDate: true,
             role: true,
             active: true,
@@ -333,6 +336,7 @@ export class QrCredentialsService {
         username: item.user.username,
         nis: item.user.nis ?? null,
         nip: item.user.nip ?? null,
+        jobTitle: item.user.jobTitle ?? null,
         birthDate: item.user.birthDate ? item.user.birthDate.toISOString().slice(0, 10) : null,
         nisn: isStudent ? item.user.nis ?? null : null,
         nkd: isStudent ? item.user.nkd ?? null : null,
@@ -341,7 +345,7 @@ export class QrCredentialsService {
         displayRole,
         className,
         classCode: schoolClass?.code || null,
-        level: isStudent ? 'SISWA' : printableLevel(item.user.role, className),
+        level: isStudent ? 'SISWA' : printableLevel(item.user.role, className, item.user.jobTitle),
         program: 'e-Hadir Absensi',
         status: item.user.active ? 'Aktif' : 'Nonaktif',
         cardStatus: item.user.cardStatus,
@@ -377,7 +381,7 @@ export class QrCredentialsService {
     const codeHash = qrCodeHash(qrCode);
     const credential = await this.prisma.qrCredential.findUnique({
       where: { codeHash },
-      include: { user: { select: { id: true, username: true, fullName: true, nis: true, nkd: true, nip: true, birthDate: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } }
+      include: { user: { select: { id: true, username: true, fullName: true, nis: true, nkd: true, nip: true, jobTitle: true, birthDate: true, role: true, active: true, cardStatus: true, enrollments: { include: { schoolClass: true }, take: 1 } } } }
     }) as any;
     if (!credential) throw new NotFoundException('QR credential tidak ditemukan.');
     if (credential.status !== QrCredentialStatus.ACTIVE) throw new ForbiddenException('QR credential tidak aktif.');

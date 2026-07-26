@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Circle, RefreshCw, ShieldCheck } from 'lucide-react';
-import { apiFetch, formatDateTime, go, itemsOf, today } from '../../api';
+import { apiDownload, apiFetch, formatDateTime, go, itemsOf, qs, today } from '../../api';
 import { useRemote } from '../../hooks';
 import { Btn, Card, DataTable, EmptyState, ErrorState, Field, LoadingState, PageHead, RoleTaskPanel, SelectInput, SimpleHelpBox, StatCardPremium, StatusDonut, StatusPill } from '../../ui';
 
@@ -45,7 +45,7 @@ function AttendanceTable({ rows }) {
     {
       header: 'Tanggal / Waktu',
       render: (r) => {
-        const ts = r.startsAt || r.date || r.createdAt || r.at;
+        const ts = r.at || r.startsAt || r.date || r.createdAt;
         return ts ? formatDateTime(ts) : '—';
       }
     },
@@ -165,23 +165,33 @@ function StudentTodayStatusPanel({ state }) {
   </section>;
 }
 
-export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) {
+export function MyAttendancePage({ title = 'Kehadiran Saya', student = false, employee = false }) {
   const [days, setDays] = useState('60');
   const [status, setStatus] = useState('');
+  const [format, setFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const data = useRemote(() => apiFetch(`/reports/my-attendance?days=${days}`), [days]);
   const todayStatus = useRemote(() => student ? apiFetch('/students/me/today-status') : Promise.resolve(null), [student]);
   const rows = itemsOf(data.data).filter((row) => !status || row.status === status || row.attendanceStatus === status || row.presenceStatus === status);
   const counts = countByStatus({ items: rows });
   const todayRows = rows.filter((row) => String(row.date || row.startsAt || row.createdAt || '').slice(0, 10) === today());
+  const exportMine = async () => {
+    setExporting(true);
+    setExportError('');
+    try { await apiDownload(`/reports/export${qs({ reportType: 'my_attendance', format, days })}`); }
+    catch (error) { setExportError(error?.message || 'Data belum bisa diunduh. Coba lagi.'); }
+    finally { setExporting(false); }
+  };
 
   return (
     <div className="content dashboard-redesign">
       <PageHead
-        eyebrow={student ? 'SISWA · LIHAT SAJA' : 'PRIBADI'}
+        eyebrow={student ? 'SISWA · LIHAT SAJA' : employee ? 'PEGAWAI · DATA PRIBADI' : 'PRIBADI'}
         title={student ? 'Status Kehadiran Hari Ini' : title}
         sub={student
           ? 'Lihat bagian yang sudah tercatat dan yang masih perlu dilengkapi hari ini.'
-          : 'Gabungan data tap gerbang dan presensi kelas.'}
+           : employee ? 'Riwayat scan datang dan pulang milik Anda.' : 'Gabungan data tap gerbang dan presensi kelas.'}
         actions={
           <>
             <Field label="Rentang">
@@ -189,9 +199,14 @@ export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) 
                 <option value="14">14 hari</option>
                 <option value="30">30 hari</option>
                 <option value="60">60 hari</option>
-                <option value="120">120 hari</option>
               </SelectInput>
             </Field>
+            <Field label="Format export">
+              <SelectInput value={format} onChange={(e) => setFormat(e.target.value)}>
+                <option value="csv">CSV</option><option value="xlsx">XLSX</option><option value="pdf">PDF</option><option value="docx">DOCX</option>
+              </SelectInput>
+            </Field>
+            <Btn onClick={exportMine} disabled={exporting}>{exporting ? 'Menyiapkan…' : 'Download data saya'}</Btn>
             <Field label="Status">
               <SelectInput value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="">Semua status</option>
@@ -206,11 +221,13 @@ export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) 
         }
       />
 
+      {exportError && <div className="inline-error" role="alert"><AlertTriangle size={14} /> {exportError}</div>}
+
       {student && <StudentTodayStatusPanel state={todayStatus} />}
       {student && <RoleTaskPanel title="Aksi cepat siswa" tasks={[{ title: 'Lihat data hari ini', desc: 'Cek apakah presensi sudah muncul.', onClick: () => go('/siswa/dashboard') }, { title: 'Baca notifikasi', desc: 'Lihat pesan atau tugas dari sekolah.', onClick: () => go('/siswa/notifikasi') }, { title: 'Minta bantuan', desc: 'Jika data salah, hubungi wali kelas atau guru piket.', onClick: () => go('/siswa/panduan'), tone: 'warn' }]} />}
       {student && <SimpleHelpBox title="Yang perlu dipahami" items={['Data bisa belum final sampai guru menyimpan dan menutup sesi.', 'Siswa hanya melihat data, tidak bisa mengubah presensi.', 'Jika ada kesalahan, hubungi wali kelas atau guru piket.']} />}
       <div className="grid g-3">
-        <Card title="Ringkasan kehadiran" sub="Komposisi status dari rentang yang dipilih.">
+         <Card title="Ringkasan kehadiran" sub="Komposisi status dari rentang yang dipilih.">
           {rows.length === 0 ? (
             <EmptyState title="Belum ada data" sub="Data akan muncul setelah sesi berjalan dan guru menutupnya." />
           ) : (
@@ -228,9 +245,9 @@ export function MyAttendancePage({ title = 'Kehadiran Saya', student = false }) 
               </div>
             </div>
             <div className="stat">
-              <div className="stat-label">Hadir bulan ini</div>
+              <div className="stat-label">Catatan hadir</div>
               <div className="stat-num">{counts.HADIR || 0}</div>
-              <div className="stat-delta up">dari {rows.length} catatan · {counts.ALPA ? `${counts.ALPA} alpa` : 'tidak ada alpa'}</div>
+              <div className="stat-delta up">dari {rows.length} catatan pada rentang terpilih</div>
             </div>
           </div>
           {student && (

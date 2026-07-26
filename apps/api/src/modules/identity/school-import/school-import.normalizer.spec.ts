@@ -42,8 +42,7 @@ describe('school import normalizer', () => {
     ], 'staff');
     summarizeNormalizedRows(rows);
 
-    expect(rows[0].role).toBe(Role.GURU_MAPEL);
-    expect(rows[0].warnings.join(' ')).toContain('dimapping sementara');
+    expect(rows[0].role).toBe(Role.PEGAWAI);
     expect(rows[0].errors).toContain('NIP duplikat di file import');
   });
 });

@@ -4,6 +4,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 export type PolicyActor = { sub: string; role: Role | string };
 
+const SCHOOL_REPORT_TYPES = new Set([
+  'recap_students', 'recap_subjects', 'recap_teachers', 'teacher_monthly',
+  'staff_gate_attendance', 'teacher_session_activity', 'student_prayer_attendance',
+  'student_worship_recap', 'student_daily_complete_attendance', 'missing_arrival_scan',
+  'missing_departure_scan', 'class_present_no_gate_scan', 'gate_scan_no_class_attendance',
+  'prayer_recap', 'audit_coverage'
+]);
+
 function roleOf(actor: PolicyActor): Role {
   return actor.role as Role;
 }
@@ -118,7 +126,22 @@ export class AccessPolicyService {
     return hasRole(actor, [Role.ADMIN_TU, Role.OPERATOR_IT, Role.DEVELOPER]);
   }
 
-  async canExportReport(actor: PolicyActor, _reportType: string, _filters: unknown) {
-    return hasRole(actor, [Role.ADMIN_TU, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
+  canExportReport(actor: PolicyActor, reportType: string, _filters: unknown) {
+    const normalizedType = reportType.trim().toLowerCase();
+    if (normalizedType === 'my_attendance') return Object.values(Role).includes(roleOf(actor));
+    if (normalizedType === 'operational_activity_snapshot') {
+      return hasRole(actor, [Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.OPERATOR_IT, Role.GURU_PIKET, Role.DEVELOPER]);
+    }
+    if (normalizedType === 'recap_classes' && roleOf(actor) === Role.GURU_MAPEL) return true;
+    if (normalizedType === 'recap_classes' || SCHOOL_REPORT_TYPES.has(normalizedType)) {
+      return hasRole(actor, [Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER]);
+    }
+    return false;
+  }
+
+  assertCanExportReport(actor: PolicyActor, reportType: string, filters: unknown) {
+    if (!this.canExportReport(actor, reportType, filters)) {
+      throw new ForbiddenException('Export laporan berada di luar cakupan peran Anda.');
+    }
   }
 }

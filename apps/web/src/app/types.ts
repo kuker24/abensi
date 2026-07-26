@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
-export type Role = 'ADMIN_TU' | 'KEPALA_SEKOLAH' | 'OPERATOR_IT' | 'GURU_MAPEL' | 'GURU_PIKET' | 'SISWA' | 'DEVELOPER';
-export type RouteArea = 'admin' | 'guru' | 'siswa' | 'public';
+export type Role = 'ADMIN_TU' | 'KEPALA_SEKOLAH' | 'OPERATOR_IT' | 'GURU_MAPEL' | 'GURU_PIKET' | 'PEGAWAI' | 'SISWA' | 'DEVELOPER';
+export type RouteArea = 'admin' | 'guru' | 'pegawai' | 'siswa' | 'public';
 export type AttendanceStatus = 'HADIR' | 'TELAT' | 'IZIN' | 'SAKIT' | 'ALPA';
 
 export interface User {

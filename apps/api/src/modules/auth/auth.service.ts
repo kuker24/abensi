@@ -15,7 +15,7 @@ const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS ?? String(8 * 60 * 60 *
 const REFRESH_TTL_MS = Number(process.env.REFRESH_TTL_MS ?? String(7 * 24 * 60 * 60 * 1000));
 
 type AttemptState = { count: number; firstFailedAt: number; lockedUntil?: number };
-type LoginArea = 'admin' | 'guru' | 'siswa';
+type LoginArea = 'admin' | 'guru' | 'pegawai' | 'siswa';
 type LoginSecurityActor = { sub: string; role: Role };
 type LoginLimitBucket = 'account' | 'accountCurrentNetwork' | 'legacyCurrentNetwork';
 const loginAttempts = new Map<string, AttemptState>();
@@ -51,6 +51,7 @@ function publicLoginError() {
 
 function roleToLoginArea(role: Role): LoginArea {
   if (role === Role.GURU_MAPEL) return 'guru';
+  if (role === Role.PEGAWAI) return 'pegawai';
   if (role === Role.SISWA) return 'siswa';
   return 'admin';
 }
