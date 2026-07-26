@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowRight, BarChart3, Check, CheckSquare, Clock, MapPin, Save, Users, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
-import { apiFetch, formatDateTime, go, itemsOf, monthNow, qs, setNavigationGuard, today } from '../../api';
+import { apiDownload, apiFetch, formatDateTime, go, itemsOf, monthNow, qs, setNavigationGuard, today } from '../../api';
 import { riskConfirm } from '../../confirm';
 import { BrowserGeoError, captureBrowserGeolocation } from '../../geolocation';
 import { useRemote } from '../../hooks';
@@ -403,22 +403,43 @@ export function PersonnelLeavePage({ notify }) {
   const [startDate, setStartDate] = useState(today());
   const [endDate, setEndDate] = useState(today());
   const [reason, setReason] = useState('');
+  const [medicalLetter, setMedicalLetter] = useState(null);
+  const [medicinePhoto, setMedicinePhoto] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState('');
+  const [downloadingId, setDownloadingId] = useState('');
   const [formError, setFormError] = useState('');
   const duration = leaveDuration(startDate, endDate);
+  const sakitReady = type !== 'SAKIT' || (medicalLetter && medicinePhoto);
   async function submit(e) {
     e.preventDefault();
     if (!duration || reason.trim().length < 10) {
       setFormError(duration ? 'Alasan wajib diisi minimal 10 karakter.' : 'Tanggal selesai tidak boleh sebelum tanggal mulai.');
       return;
     }
+    if (type === 'SAKIT' && (!medicalLetter || !medicinePhoto)) {
+      setFormError('SAKIT wajib lampirkan foto surat dokter dan foto obat.');
+      return;
+    }
     setSaving(true);
     setFormError('');
     try {
-      await apiFetch('/teacher-leaves', { method: 'POST', body: JSON.stringify({ type, startDate, endDate, reason: reason.trim() }) });
+      if (type === 'SAKIT') {
+        const body = new FormData();
+        body.set('type', type);
+        body.set('startDate', startDate);
+        body.set('endDate', endDate);
+        body.set('reason', reason.trim());
+        body.set('medicalLetter', medicalLetter);
+        body.set('medicinePhoto', medicinePhoto);
+        await apiFetch('/teacher-leaves', { method: 'POST', body });
+      } else {
+        await apiFetch('/teacher-leaves', { method: 'POST', body: JSON.stringify({ type, startDate, endDate, reason: reason.trim() }) });
+      }
       setReason('');
+      setMedicalLetter(null);
+      setMedicinePhoto(null);
       leaves.refresh();
       notify('Pengajuan berhasil dikirim.');
     } catch (error) {
@@ -432,7 +453,7 @@ export function PersonnelLeavePage({ notify }) {
     setCancellingId(row.id);
     setFormError('');
     try {
-      await apiFetch(`/teacher-leaves/${row.id}/cancel`, { method: 'PATCH', body: JSON.stringify({ reason: cancelReason.trim() }) });
+      await apiFetch(`/teacher-leaves/${row.id}/cancel`, { method: 'PATCH', body: JSON.stringify({ cancellationReason: cancelReason.trim() }) });
       setCancelReason('');
       leaves.refresh();
       notify('Pengajuan dibatalkan.');
@@ -442,7 +463,23 @@ export function PersonnelLeavePage({ notify }) {
       notify(message, 'bad');
     } finally { setCancellingId(''); }
   }
-  return <div className="content"><PageHead eyebrow="IZIN PERSONEL" title="Izin, Sakit, dan Dinas Luar" sub="Ajukan keterangan untuk diri sendiri dan pantau keputusan peninjau." /><SimpleHelpBox title="Cara mengajukan" items={['Pilih jenis dan rentang tanggal.', 'Tulis alasan singkat dan jelas.', 'Kirim pengajuan.', 'Pengajuan yang masih menunggu dapat dibatalkan.']} /><div className="grid g-2"><Card title="Buat pengajuan"><form className="form-grid" onSubmit={submit}><Field label="Jenis"><SelectInput value={type} onChange={(e) => setType(e.target.value)}><option value="IZIN">Izin</option><option value="SAKIT">Sakit</option><option value="DINAS_LUAR">Dinas luar</option></SelectInput></Field><div className="field-row"><Field label="Tanggal mulai"><TextInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required /></Field><Field label="Tanggal selesai"><TextInput type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} required /></Field></div><div className={`inline-note ${duration ? 'info' : 'bad'}`} role="status">{duration ? `Durasi: ${duration} hari kalender.` : 'Tanggal selesai tidak boleh sebelum tanggal mulai.'}</div><Field label="Alasan" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={4} value={reason} placeholder="Jelaskan kebutuhan izin secara ringkas" onChange={(e) => setReason(e.target.value)} required /></Field>{formError && <div className="inline-note bad" role="alert">{formError}</div>}<Btn variant="primary" disabled={!duration || reason.trim().length < 10 || saving} loading={saving}>Kirim pengajuan</Btn></form></Card><Card title="Riwayat pengajuan" sub="Isi alasan pembatalan sebelum membatalkan pengajuan yang menunggu."><Field label="Alasan pembatalan" hint={`${cancelReason.trim().length}/10+`}><TextInput type="textarea" rows={2} value={cancelReason} placeholder="Wajib diisi untuk membatalkan" onChange={(e) => setCancelReason(e.target.value)} /></Field>{leaves.loading ? <LoadingState /> : leaves.error ? <ErrorState error={leaves.error} onRetry={leaves.refresh} /> : itemsOf(leaves.data).length ? <DataTable rows={itemsOf(leaves.data)} columns={[{ header: 'Tanggal', render: (r) => `${leaveDate(r.startDate)} – ${leaveDate(r.endDate)}` }, { header: 'Durasi', render: (r) => `${leaveDuration(r.startDate?.slice(0, 10), r.endDate?.slice(0, 10))} hari` }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Alasan', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.reason || '—'}</span> }, { header: 'Catatan keputusan', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.decisionNote || '—'}</span> }]} onRow={(r) => r.status === 'PENDING' ? <Btn size="sm" variant="danger" loading={cancellingId === r.id} disabled={cancelReason.trim().length < 10 || Boolean(cancellingId)} onClick={() => cancel(r)}>Batalkan</Btn> : null} /> : <EmptyState title="Belum ada pengajuan" sub="Pengajuan yang sudah dikirim akan tampil di sini." />}</Card></div></div>;
+  async function downloadLetter(row) {
+    setDownloadingId(row.id);
+    try {
+      await apiDownload(`/teacher-leaves/${row.id}/letter.pdf`, `surat-izin-${row.id}.pdf`);
+      notify('Surat PDF diunduh.');
+    } catch (error) {
+      notify(error.message || 'Gagal mengunduh surat.', 'bad');
+    } finally { setDownloadingId(''); }
+  }
+  function documentLabel(row) {
+    if (row.status !== 'APPROVED') return '—';
+    if (row.documentStatus === 'SIGNED') return 'TTD selesai';
+    if (row.visitEligible || row.documentStatus === 'AWAITING_VISIT') return 'Menunggu TTD di TU';
+    if (row.type === 'SAKIT') return 'Cetak PDF · TTD setelah sembuh';
+    return 'Siap cetak · TTD di TU';
+  }
+  return <div className="content"><PageHead eyebrow="IZIN PERSONEL" title="Izin, Sakit, dan Dinas Luar" sub="Ajukan keterangan, unduh surat formal setelah disetujui, lalu tandatangani basah di Admin TU." /><SimpleHelpBox title="Cara mengajukan" items={['Pilih jenis dan rentang tanggal.', 'SAKIT wajib unggah foto surat dokter dan foto obat.', 'Tulis alasan singkat dan jelas.', 'Setelah disetujui: unduh PDF formal, datang ke Admin TU untuk TTD basah (SAKIT setelah tanggal selesai).']} /><div className="grid g-2"><Card title="Buat pengajuan"><form className="form-grid" onSubmit={submit}><Field label="Jenis"><SelectInput value={type} onChange={(e) => setType(e.target.value)}><option value="IZIN">Izin</option><option value="SAKIT">Sakit</option><option value="DINAS_LUAR">Dinas luar</option></SelectInput></Field><div className="field-row"><Field label="Tanggal mulai"><TextInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required /></Field><Field label="Tanggal selesai"><TextInput type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} required /></Field></div><div className={`inline-note ${duration ? 'info' : 'bad'}`} role="status">{duration ? `Durasi: ${duration} hari kalender.` : 'Tanggal selesai tidak boleh sebelum tanggal mulai.'}</div><Field label="Alasan" hint={`${reason.trim().length}/10+`}><TextInput type="textarea" rows={4} value={reason} placeholder="Jelaskan kebutuhan izin secara ringkas" onChange={(e) => setReason(e.target.value)} required /></Field>{type === 'SAKIT' ? <><Field label="Foto surat dokter"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setMedicalLetter(e.target.files?.[0] || null)} required /></Field><Field label="Foto obat"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setMedicinePhoto(e.target.files?.[0] || null)} required /></Field></> : null}{formError && <div className="inline-note bad" role="alert">{formError}</div>}<Btn variant="primary" disabled={!duration || reason.trim().length < 10 || !sakitReady || saving} loading={saving}>Kirim pengajuan</Btn></form></Card><Card title="Riwayat pengajuan" sub="Isi alasan pembatalan sebelum membatalkan pengajuan yang menunggu. Surat formal hanya untuk yang disetujui."><Field label="Alasan pembatalan" hint={`${cancelReason.trim().length}/10+`}><TextInput type="textarea" rows={2} value={cancelReason} placeholder="Wajib diisi untuk membatalkan" onChange={(e) => setCancelReason(e.target.value)} /></Field>{leaves.loading ? <LoadingState /> : leaves.error ? <ErrorState error={leaves.error} onRetry={leaves.refresh} /> : itemsOf(leaves.data).length ? <DataTable rows={itemsOf(leaves.data)} columns={[{ header: 'Tanggal', render: (r) => `${leaveDate(r.startDate)} – ${leaveDate(r.endDate)}` }, { header: 'Durasi', render: (r) => `${leaveDuration(r.startDate?.slice(0, 10), r.endDate?.slice(0, 10))} hari` }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Surat formal', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{documentLabel(r)}</span> }, { header: 'Alasan', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.reason || '—'}</span> }, { header: 'Catatan keputusan', render: (r) => <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{r.decisionNote || '—'}</span> }]} onRow={(r) => <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{r.status === 'PENDING' ? <Btn size="sm" variant="danger" loading={cancellingId === r.id} disabled={cancelReason.trim().length < 10 || Boolean(cancellingId)} onClick={() => cancel(r)}>Batalkan</Btn> : null}{r.letterAvailable || r.status === 'APPROVED' ? <Btn size="sm" loading={downloadingId === r.id} disabled={Boolean(downloadingId)} onClick={() => downloadLetter(r)}>Unduh PDF</Btn> : null}{r.hasMedicalLetter ? <Btn size="sm" variant="ghost" onClick={() => apiDownload(`/teacher-leaves/${r.id}/attachments/medical-letter`, `surat-dokter-${r.id}.jpg`).catch((error) => notify(error.message || 'Gagal membuka lampiran.', 'bad'))}>Surat dokter</Btn> : null}{r.hasMedicinePhoto ? <Btn size="sm" variant="ghost" onClick={() => apiDownload(`/teacher-leaves/${r.id}/attachments/medicine-photo`, `foto-obat-${r.id}.jpg`).catch((error) => notify(error.message || 'Gagal membuka lampiran.', 'bad'))}>Foto obat</Btn> : null}</div>} /> : <EmptyState title="Belum ada pengajuan" sub="Pengajuan yang sudah dikirim akan tampil di sini." />}</Card></div></div>;
 }
 
 export function TeacherRecapPage() {

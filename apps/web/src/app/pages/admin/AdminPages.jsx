@@ -2079,7 +2079,10 @@ export function PersonnelLeaveReviewPage({ user, notify }) {
   const [date, setDate] = useState('');
   const leaves = useRemote(() => apiFetch(`/teacher-leaves/review${qs({ role, status, type, date, page: 1, limit: 100 })}`), [role, status, type, date]);
   const [decisionNote, setDecisionNote] = useState('');
+  const [signNote, setSignNote] = useState('');
   const [reviewingId, setReviewingId] = useState('');
+  const [signingId, setSigningId] = useState('');
+  const [downloadingId, setDownloadingId] = useState('');
   const [actionError, setActionError] = useState('');
   async function review(row, nextStatus) {
     if (decisionNote.trim().length < 4) return;
@@ -2089,17 +2092,47 @@ export function PersonnelLeaveReviewPage({ user, notify }) {
       await apiFetch(`/teacher-leaves/${row.id}/review`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus, decisionNote: decisionNote.trim() }) });
       setDecisionNote('');
       leaves.refresh();
-      notify(nextStatus === 'APPROVED' ? 'Pengajuan disetujui.' : 'Pengajuan ditolak.');
+      notify(nextStatus === 'APPROVED' ? 'Pengajuan disetujui. Cetak PDF formal untuk TTD basah.' : 'Pengajuan ditolak.');
     } catch (error) {
       const message = error.message || 'Gagal meninjau pengajuan.';
       setActionError(message);
       notify(message, 'bad');
     } finally { setReviewingId(''); }
   }
-  const requester = (row) => row.personnel || row.teacher || row.user || {};
-  const isOwn = (row) => requester(row).id === user?.id || row.personnelId === user?.id || row.teacherId === user?.id || row.userId === user?.id;
+  async function signDocument(row) {
+    setSigningId(row.id);
+    setActionError('');
+    try {
+      await apiFetch(`/teacher-leaves/${row.id}/document-sign`, { method: 'PATCH', body: JSON.stringify({ note: signNote.trim() || undefined }) });
+      setSignNote('');
+      leaves.refresh();
+      notify('TTD basah Admin TU dan pemohon dicatat.');
+    } catch (error) {
+      const message = error.message || 'Gagal mencatat TTD basah.';
+      setActionError(message);
+      notify(message, 'bad');
+    } finally { setSigningId(''); }
+  }
+  async function downloadLetter(row) {
+    setDownloadingId(row.id);
+    try {
+      await apiDownload(`/teacher-leaves/${row.id}/letter.pdf`, `surat-izin-${row.id}.pdf`);
+      notify('Surat PDF diunduh.');
+    } catch (error) {
+      notify(error.message || 'Gagal mengunduh surat.', 'bad');
+    } finally { setDownloadingId(''); }
+  }
+  const requester = (row) => row.applicant || row.personnel || row.teacher || row.user || {};
+  const isOwn = (row) => requester(row).id === user?.id || row.applicantId === user?.id || row.personnelId === user?.id || row.teacherId === user?.id || row.userId === user?.id;
   const dateLabel = (value) => value ? new Date(`${String(value).slice(0, 10)}T00:00:00Z`).toLocaleDateString('id-ID', { dateStyle: 'medium', timeZone: 'Asia/Jakarta' }) : '—';
-  return <div className="content"><PageHead eyebrow="REVIEW IZIN" title="Izin Personel" sub="Tinjau pengajuan personel lain yang masih menunggu keputusan." /><Card title="Filter pengajuan"><div className="field-row"><Field label="Peran"><SelectInput value={role} onChange={(e) => setRole(e.target.value)}><option value="">Semua peran</option><option value="ADMIN_TU">Admin/TU</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option><option value="GURU_MAPEL">Guru Mapel</option><option value="GURU_PIKET">Guru Piket</option><option value="OPERATOR_IT">Operator IT</option></SelectInput></Field><Field label="Status"><SelectInput value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Semua status</option><option value="PENDING">Menunggu</option><option value="APPROVED">Disetujui</option><option value="REJECTED">Ditolak</option><option value="CANCELLED">Dibatalkan</option><option value="REVOKED">Dicabut</option></SelectInput></Field><Field label="Jenis"><SelectInput value={type} onChange={(e) => setType(e.target.value)}><option value="">Semua jenis</option><option value="IZIN">Izin</option><option value="SAKIT">Sakit</option><option value="DINAS_LUAR">Dinas luar</option></SelectInput></Field><Field label="Tanggal"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field></div></Card><Card title="Keputusan" sub="Catatan wajib diisi minimal 4 karakter."><Field label="Catatan keputusan" hint={`${decisionNote.trim().length}/4+`}><TextInput type="textarea" rows={3} value={decisionNote} placeholder="Tulis dasar keputusan" onChange={(e) => setDecisionNote(e.target.value)} /></Field>{actionError && <div className="inline-note bad" role="alert">{actionError}</div>}</Card><Card title="Daftar pengajuan"><AsyncTable state={leaves} empty={{ title: 'Tidak ada pengajuan', sub: 'Ubah filter atau tunggu pengajuan baru.' }} columns={[{ header: 'Tanggal', render: (r) => `${dateLabel(r.startDate)} – ${dateLabel(r.endDate)}` }, { header: 'Personel', render: (r) => requester(r).fullName || '—' }, { header: 'Peran', render: (r) => <StatusPill status={requester(r).role} /> }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Alasan', key: 'reason' }]} onRow={(r) => r.status === 'PENDING' && !isOwn(r) ? <div className="row"><Btn size="sm" loading={reviewingId === r.id} disabled={decisionNote.trim().length < 4 || Boolean(reviewingId)} onClick={() => review(r, 'APPROVED')}>Setujui</Btn><Btn size="sm" variant="danger" loading={reviewingId === r.id} disabled={decisionNote.trim().length < 4 || Boolean(reviewingId)} onClick={() => review(r, 'REJECTED')}>Tolak</Btn></div> : null} /></Card></div>;
+  const documentLabel = (row) => {
+    if (row.status !== 'APPROVED') return '—';
+    if (row.documentStatus === 'SIGNED') return 'TTD selesai';
+    if (row.visitEligible || row.documentStatus === 'AWAITING_VISIT') return 'Menunggu visit TTD';
+    if (row.type === 'SAKIT') return 'PDF siap · TTD setelah sembuh';
+    return 'PDF siap';
+  };
+  return <div className="content"><PageHead eyebrow="REVIEW IZIN" title="Izin Personel" sub="Tinjau pengajuan, cek lampiran SAKIT, unduh surat formal, catat TTD basah saat pemohon datang ke TU." /><Card title="Filter pengajuan"><div className="field-row"><Field label="Peran"><SelectInput value={role} onChange={(e) => setRole(e.target.value)}><option value="">Semua peran</option><option value="ADMIN_TU">Admin/TU</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option><option value="GURU_MAPEL">Guru Mapel</option><option value="GURU_PIKET">Guru Piket</option><option value="OPERATOR_IT">Operator IT</option></SelectInput></Field><Field label="Status"><SelectInput value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Semua status</option><option value="PENDING">Menunggu</option><option value="APPROVED">Disetujui</option><option value="REJECTED">Ditolak</option><option value="CANCELLED">Dibatalkan</option><option value="REVOKED">Dicabut</option></SelectInput></Field><Field label="Jenis"><SelectInput value={type} onChange={(e) => setType(e.target.value)}><option value="">Semua jenis</option><option value="IZIN">Izin</option><option value="SAKIT">Sakit</option><option value="DINAS_LUAR">Dinas luar</option></SelectInput></Field><Field label="Tanggal"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field></div></Card><Card title="Keputusan" sub="Catatan wajib diisi minimal 4 karakter. Setelah setujui, unduh PDF formal; catat TTD basah saat pemohon datang."><Field label="Catatan keputusan" hint={`${decisionNote.trim().length}/4+`}><TextInput type="textarea" rows={3} value={decisionNote} placeholder="Tulis dasar keputusan" onChange={(e) => setDecisionNote(e.target.value)} /></Field><Field label="Catatan TTD basah (opsional)" hint="Diisi saat pemohon datang"><TextInput type="textarea" rows={2} value={signNote} placeholder="Contoh: kedua belah pihak hadir, TTD basah di TU" onChange={(e) => setSignNote(e.target.value)} /></Field>{actionError && <div className="inline-note bad" role="alert">{actionError}</div>}</Card><Card title="Daftar pengajuan"><AsyncTable state={leaves} empty={{ title: 'Tidak ada pengajuan', sub: 'Ubah filter atau tunggu pengajuan baru.' }} columns={[{ header: 'Tanggal', render: (r) => `${dateLabel(r.startDate)} – ${dateLabel(r.endDate)}` }, { header: 'Personel', render: (r) => requester(r).fullName || '—' }, { header: 'Peran', render: (r) => <StatusPill status={requester(r).role || r.applicantRole} /> }, { header: 'Jenis', render: (r) => <StatusPill status={r.type} /> }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }, { header: 'Surat', render: (r) => <span style={{ fontSize: 12 }}>{documentLabel(r)}</span> }, { header: 'Alasan', key: 'reason' }]} onRow={(r) => <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{r.status === 'PENDING' && !isOwn(r) ? <><Btn size="sm" loading={reviewingId === r.id} disabled={decisionNote.trim().length < 4 || Boolean(reviewingId)} onClick={() => review(r, 'APPROVED')}>Setujui</Btn><Btn size="sm" variant="danger" loading={reviewingId === r.id} disabled={decisionNote.trim().length < 4 || Boolean(reviewingId)} onClick={() => review(r, 'REJECTED')}>Tolak</Btn></> : null}{r.status === 'APPROVED' ? <Btn size="sm" loading={downloadingId === r.id} disabled={Boolean(downloadingId)} onClick={() => downloadLetter(r)}>Unduh PDF</Btn> : null}{r.visitEligible ? <Btn size="sm" variant="primary" loading={signingId === r.id} disabled={Boolean(signingId)} onClick={() => signDocument(r)}>Catat TTD basah</Btn> : null}{r.hasMedicalLetter ? <Btn size="sm" variant="ghost" onClick={() => apiDownload(`/teacher-leaves/${r.id}/attachments/medical-letter`, `surat-dokter-${r.id}.jpg`).catch((error) => notify(error.message || 'Gagal membuka lampiran.', 'bad'))}>Surat dokter</Btn> : null}{r.hasMedicinePhoto ? <Btn size="sm" variant="ghost" onClick={() => apiDownload(`/teacher-leaves/${r.id}/attachments/medicine-photo`, `foto-obat-${r.id}.jpg`).catch((error) => notify(error.message || 'Gagal membuka lampiran.', 'bad'))}>Foto obat</Btn> : null}</div>} /></Card></div>;
 }
 
 export function NotificationsPage() {

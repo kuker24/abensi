@@ -185,9 +185,12 @@ services:
       DEVELOPER_FULL_NAME: ${DEVELOPER_FULL_NAME:-Developer Sistem}
       ANDROID_APK_STORAGE_DIR: ${ANDROID_APK_STORAGE_DIR:-/app/uploads/android-apk-releases}
       ANDROID_APK_MAX_BYTES: ${ANDROID_APK_MAX_BYTES:-157286400}
+      LEAVE_ATTACHMENT_DIR: ${LEAVE_ATTACHMENT_DIR:-/app/uploads/teacher-leave}
+      LEAVE_ATTACHMENT_MAX_BYTES: ${LEAVE_ATTACHMENT_MAX_BYTES:-5242880}
       PORT: 3000
     volumes:
       - android_apk_releases:/app/uploads/android-apk-releases
+      - teacher_leave_attachments:/app/uploads/teacher-leave
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -314,3 +317,4 @@ volumes:
   postgres_data:
   redis_data:
   android_apk_releases:
+  teacher_leave_attachments:

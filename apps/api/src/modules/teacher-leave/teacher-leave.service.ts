@@ -1,11 +1,13 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, StreamableFile } from '@nestjs/common';
 import {
   GateDirection,
   NotificationType,
   Prisma,
   Role,
   SessionStatus,
+  TeacherLeaveDocumentStatus,
   TeacherLeaveStatus,
+  TeacherLeaveType,
   TeacherSessionStatus
 } from '@prisma/client';
 import { writeAudit } from '../../common/audit-log';
@@ -15,7 +17,21 @@ import { lockScheduleMutationRows } from '../../common/schedule-mutation-lock';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { lockTeacherLeaveBusinessDates } from '../scheduling/teacher-leave-lock';
-import { CancelTeacherLeaveDto, CreateTeacherLeaveDto, ReviewTeacherLeaveDto, RevokeTeacherLeaveDto } from './teacher-leave.dto';
+import {
+  deleteLeaveAttachment,
+  LeaveAttachmentKind,
+  LeaveUploadFile,
+  openLeaveAttachmentStream,
+  saveLeaveAttachment
+} from './leave-attachment-storage';
+import { buildLeaveLetterNumber, buildLeaveLetterPdf } from './leave-letter-pdf';
+import {
+  CancelTeacherLeaveDto,
+  CreateTeacherLeaveDto,
+  ReviewTeacherLeaveDto,
+  RevokeTeacherLeaveDto,
+  SignTeacherLeaveDocumentDto
+} from './teacher-leave.dto';
 
 const APPLICANT_ROLES = new Set<Role>([
   Role.ADMIN_TU,
@@ -45,12 +61,23 @@ const LEAVE_SELECT = {
   cancelledById: true,
   cancelledAt: true,
   cancellationReason: true,
+  medicalLetterPath: true,
+  medicalLetterMime: true,
+  medicalLetterSize: true,
+  medicinePhotoPath: true,
+  medicinePhotoMime: true,
+  medicinePhotoSize: true,
+  documentStatus: true,
+  documentSignedAt: true,
+  documentSignedById: true,
+  documentSignNote: true,
   createdAt: true,
   updatedAt: true,
   applicant: { select: PERSON_SELECT },
   reviewedBy: { select: PERSON_SELECT },
   substituteTeacher: { select: PERSON_SELECT },
-  cancelledBy: { select: PERSON_SELECT }
+  cancelledBy: { select: PERSON_SELECT },
+  documentSignedBy: { select: PERSON_SELECT }
 } satisfies Prisma.TeacherLeaveSelect;
 
 type LeaveRecord = Prisma.TeacherLeaveGetPayload<{ select: typeof LEAVE_SELECT }>;
@@ -70,7 +97,75 @@ function leaveAuditSnapshot(leave: LeaveRecord) {
     substituteTeacherId: leave.substituteTeacherId,
     cancelledById: leave.cancelledById,
     cancelledAt: leave.cancelledAt,
-    cancellationReason: leave.cancellationReason
+    cancellationReason: leave.cancellationReason,
+    documentStatus: leave.documentStatus,
+    documentSignedAt: leave.documentSignedAt,
+    documentSignedById: leave.documentSignedById,
+    hasMedicalLetter: Boolean(leave.medicalLetterPath),
+    hasMedicinePhoto: Boolean(leave.medicinePhotoPath)
+  };
+}
+
+function isVisitWindowOpen(leave: Pick<LeaveRecord, 'status' | 'type' | 'endDate' | 'documentStatus'>) {
+  if (leave.status !== TeacherLeaveStatus.APPROVED) return false;
+  if (leave.documentStatus === TeacherLeaveDocumentStatus.SIGNED) return false;
+  if (leave.type === TeacherLeaveType.SAKIT) {
+    return dateKey(leave.endDate) <= businessDateKey();
+  }
+  return true;
+}
+
+function effectiveDocumentStatus(leave: LeaveRecord): TeacherLeaveDocumentStatus {
+  if (leave.status !== TeacherLeaveStatus.APPROVED) return TeacherLeaveDocumentStatus.NOT_APPLICABLE;
+  if (leave.documentStatus === TeacherLeaveDocumentStatus.SIGNED) return TeacherLeaveDocumentStatus.SIGNED;
+  if (isVisitWindowOpen(leave)) return TeacherLeaveDocumentStatus.AWAITING_VISIT;
+  return TeacherLeaveDocumentStatus.READY;
+}
+
+function visitInstruction(leave: Pick<LeaveRecord, 'type' | 'endDate'>) {
+  if (leave.type === TeacherLeaveType.SAKIT) {
+    return `Pemohon wajib menjumpai Admin TU setelah masa sakit berakhir (mulai ${dateKey(leave.endDate)}) untuk menandatangani basah surat ini bersama Admin TU. Foto surat dokter dan obat telah dilampirkan di sistem.`;
+  }
+  return 'Pemohon wajib menjumpai Admin TU untuk menandatangani basah surat ini bersama Admin TU setelah keputusan disetujui.';
+}
+
+function toPublicLeave(leave: LeaveRecord) {
+  const documentStatus = effectiveDocumentStatus(leave);
+  return {
+    id: leave.id,
+    applicantId: leave.applicantId,
+    applicantRole: leave.applicantRole,
+    startDate: leave.startDate,
+    endDate: leave.endDate,
+    type: leave.type,
+    status: leave.status,
+    reason: leave.reason,
+    decisionNote: leave.decisionNote,
+    reviewedById: leave.reviewedById,
+    reviewedAt: leave.reviewedAt,
+    substituteTeacherId: leave.substituteTeacherId,
+    cancelledById: leave.cancelledById,
+    cancelledAt: leave.cancelledAt,
+    cancellationReason: leave.cancellationReason,
+    documentStatus,
+    documentSignedAt: leave.documentSignedAt,
+    documentSignedById: leave.documentSignedById,
+    documentSignNote: leave.documentSignNote,
+    hasMedicalLetter: Boolean(leave.medicalLetterPath),
+    hasMedicinePhoto: Boolean(leave.medicinePhotoPath),
+    medicalLetterMime: leave.medicalLetterMime,
+    medicalLetterSize: leave.medicalLetterSize,
+    medicinePhotoMime: leave.medicinePhotoMime,
+    medicinePhotoSize: leave.medicinePhotoSize,
+    letterAvailable: leave.status === TeacherLeaveStatus.APPROVED,
+    visitEligible: isVisitWindowOpen(leave),
+    createdAt: leave.createdAt,
+    updatedAt: leave.updatedAt,
+    applicant: leave.applicant,
+    reviewedBy: leave.reviewedBy,
+    substituteTeacher: leave.substituteTeacher,
+    cancelledBy: leave.cancelledBy,
+    documentSignedBy: leave.documentSignedBy
   };
 }
 
@@ -197,7 +292,7 @@ export class TeacherLeaveService {
       this.prisma.teacherLeave.count({ where }),
       this.prisma.teacherLeave.findMany({ where, select: LEAVE_SELECT, orderBy: { createdAt: 'desc' }, skip: pagination.skip, take: pagination.limit })
     ]);
-    return { items, meta: buildPaginationMeta(total, pagination) };
+    return { items: items.map(toPublicLeave), meta: buildPaginationMeta(total, pagination) };
   }
 
   async listForReview(user: { sub: string; role: Role }, pagination: PaginationQuery, status?: TeacherLeaveStatus) {
@@ -212,50 +307,78 @@ export class TeacherLeaveService {
       this.prisma.teacherLeave.count({ where }),
       this.prisma.teacherLeave.findMany({ where, select: LEAVE_SELECT, orderBy: { createdAt: 'desc' }, skip: pagination.skip, take: pagination.limit })
     ]);
-    return { items, meta: buildPaginationMeta(total, pagination) };
+    return { items: items.map(toPublicLeave), meta: buildPaginationMeta(total, pagination) };
   }
 
-  async create(user: { sub: string; role: Role }, payload: CreateTeacherLeaveDto) {
+  async create(
+    user: { sub: string; role: Role },
+    payload: CreateTeacherLeaveDto,
+    files?: { medicalLetter?: LeaveUploadFile; medicinePhoto?: LeaveUploadFile }
+  ) {
     this.assertApplicant(user);
     const reason = requiredText(payload.reason, 'Alasan wajib diisi.');
     if (reason.length < 10 || reason.length > 2000) throw new BadRequestException('Alasan harus 10 sampai 2000 karakter.');
     const { startDate, endDate } = this.validateRange(payload.startDate, payload.endDate);
 
-    const leave = await this.prisma.$transaction(async (tx) => {
-      await this.lockRange(tx, user.sub, startDate, endDate);
-      if (await this.findActiveOverlap(tx, user.sub, startDate, endDate)) this.activeOverlap();
+    let medical: Awaited<ReturnType<typeof saveLeaveAttachment>> | null = null;
+    let medicine: Awaited<ReturnType<typeof saveLeaveAttachment>> | null = null;
+    if (payload.type === TeacherLeaveType.SAKIT) {
+      medical = await saveLeaveAttachment('medical-letter', files?.medicalLetter, 'Foto surat dokter');
+      medicine = await saveLeaveAttachment('medicine-photo', files?.medicinePhoto, 'Foto obat');
+    } else if (files?.medicalLetter || files?.medicinePhoto) {
+      throw new BadRequestException('Lampiran surat dokter/obat hanya untuk jenis SAKIT.');
+    }
 
-      const created = await tx.teacherLeave.create({
-        data: {
-          applicantId: user.sub,
-          applicantRole: user.role,
-          startDate,
-          endDate,
-          type: payload.type,
-          reason
-        },
-        select: LEAVE_SELECT
-      });
-      await writeAudit(tx, {
-        actorId: user.sub,
-        actorRole: user.role,
-        module: 'teacher-leave',
-        action: 'personnel_leave.submitted',
-        resource: 'teacherLeave',
-        resourceId: created.id,
-        reason,
-        after: leaveAuditSnapshot(created)
-      });
-      return created;
-    });
+    try {
+      const leave = await this.prisma.$transaction(async (tx) => {
+        await this.lockRange(tx, user.sub, startDate, endDate);
+        if (await this.findActiveOverlap(tx, user.sub, startDate, endDate)) this.activeOverlap();
 
-    await this.notifications.notifyRoles(user.role === Role.ADMIN_TU ? [Role.KEPALA_SEKOLAH] : [Role.ADMIN_TU], {
-      type: NotificationType.LEAVE_SUBMITTED,
-      title: 'Pengajuan izin pegawai masuk',
-      body: `${leave.applicant.fullName} mengajukan ${payload.type}.`,
-      href: '/admin/teacher-leaves'
-    });
-    return leave;
+        const created = await tx.teacherLeave.create({
+          data: {
+            applicantId: user.sub,
+            applicantRole: user.role,
+            startDate,
+            endDate,
+            type: payload.type,
+            reason,
+            medicalLetterPath: medical?.storageKey ?? null,
+            medicalLetterMime: medical?.mime ?? null,
+            medicalLetterSize: medical?.size ?? null,
+            medicinePhotoPath: medicine?.storageKey ?? null,
+            medicinePhotoMime: medicine?.mime ?? null,
+            medicinePhotoSize: medicine?.size ?? null,
+            documentStatus: TeacherLeaveDocumentStatus.NOT_APPLICABLE
+          },
+          select: LEAVE_SELECT
+        });
+        await writeAudit(tx, {
+          actorId: user.sub,
+          actorRole: user.role,
+          module: 'teacher-leave',
+          action: 'personnel_leave.submitted',
+          resource: 'teacherLeave',
+          resourceId: created.id,
+          reason,
+          after: leaveAuditSnapshot(created)
+        });
+        return created;
+      });
+
+      await this.notifications.notifyRoles(user.role === Role.ADMIN_TU ? [Role.KEPALA_SEKOLAH] : [Role.ADMIN_TU], {
+        type: NotificationType.LEAVE_SUBMITTED,
+        title: 'Pengajuan izin pegawai masuk',
+        body: `${leave.applicant.fullName} mengajukan ${payload.type}.`,
+        href: '/admin/izin-personel'
+      });
+      return toPublicLeave(leave);
+    } catch (error) {
+      await Promise.all([
+        deleteLeaveAttachment(medical?.storageKey),
+        deleteLeaveAttachment(medicine?.storageKey)
+      ]);
+      throw error;
+    }
   }
 
   async cancel(id: string, actor: { sub: string; role: Role }, payload: CancelTeacherLeaveDto) {
@@ -275,7 +398,8 @@ export class TeacherLeaveService {
           status: TeacherLeaveStatus.CANCELLED,
           cancelledById: actor.sub,
           cancelledAt: new Date(),
-          cancellationReason
+          cancellationReason,
+          documentStatus: TeacherLeaveDocumentStatus.NOT_APPLICABLE
         },
         select: LEAVE_SELECT
       });
@@ -290,7 +414,7 @@ export class TeacherLeaveService {
         before: leaveAuditSnapshot(existing),
         after: leaveAuditSnapshot(updated)
       });
-      return updated;
+      return toPublicLeave(updated);
     });
   }
 
@@ -583,14 +707,28 @@ export class TeacherLeaveService {
         }
       }
 
+      const reviewedAt = new Date();
+      let documentStatus: TeacherLeaveDocumentStatus = TeacherLeaveDocumentStatus.NOT_APPLICABLE;
+      if (payload.status === TeacherLeaveStatus.APPROVED) {
+        documentStatus = isVisitWindowOpen({
+          status: TeacherLeaveStatus.APPROVED,
+          type: existing.type,
+          endDate: existing.endDate,
+          documentStatus: TeacherLeaveDocumentStatus.READY
+        })
+          ? TeacherLeaveDocumentStatus.AWAITING_VISIT
+          : TeacherLeaveDocumentStatus.READY;
+      }
+
       const updated = await tx.teacherLeave.update({
         where: { id },
         data: {
           status: payload.status,
           decisionNote,
           reviewedById: actor.sub,
-          reviewedAt: new Date(),
-          substituteTeacherId: payload.status === TeacherLeaveStatus.APPROVED ? payload.substituteTeacherId || null : null
+          reviewedAt,
+          substituteTeacherId: payload.status === TeacherLeaveStatus.APPROVED ? payload.substituteTeacherId || null : null,
+          documentStatus
         },
         select: LEAVE_SELECT
       });
@@ -605,16 +743,19 @@ export class TeacherLeaveService {
         before: leaveAuditSnapshot(existing),
         after: leaveAuditSnapshot(updated)
       });
+      const approveBody = payload.status === TeacherLeaveStatus.APPROVED
+        ? `${decisionNote || 'Pengajuan disetujui.'} Cetak surat resmi lalu datang ke Admin TU untuk tanda tangan basah.`
+        : decisionNote || `Status pengajuan Anda: ${payload.status}`;
       await tx.notification.create({
         data: {
           userId: existing.applicantId,
           type: payload.status === TeacherLeaveStatus.APPROVED ? NotificationType.LEAVE_APPROVED : NotificationType.LEAVE_REJECTED,
           title: payload.status === TeacherLeaveStatus.APPROVED ? 'Pengajuan disetujui' : 'Pengajuan ditolak',
-          body: decisionNote || `Status pengajuan Anda: ${payload.status}`,
+          body: approveBody,
           href: applicantHref(existing.applicantRole)
         }
       });
-      return updated;
+      return toPublicLeave(updated);
     });
   }
 
@@ -756,7 +897,8 @@ export class TeacherLeaveService {
           status: TeacherLeaveStatus.CANCELLED,
           cancelledById: actor.sub,
           cancelledAt: new Date(),
-          cancellationReason: reason
+          cancellationReason: reason,
+          documentStatus: TeacherLeaveDocumentStatus.NOT_APPLICABLE
         },
         select: LEAVE_SELECT
       });
@@ -780,7 +922,120 @@ export class TeacherLeaveService {
           href: applicantHref(existing.applicantRole)
         }
       });
-      return updated;
+      return toPublicLeave(updated);
+    });
+  }
+
+  private async loadAccessibleLeave(id: string, actor: { sub: string; role: Role }, mode: 'read' | 'review') {
+    const leave = await this.prisma.teacherLeave.findUnique({ where: { id }, select: LEAVE_SELECT });
+    if (!leave) throw new NotFoundException('Pengajuan tidak ditemukan.');
+    if (mode === 'read') {
+      if (leave.applicantId === actor.sub) {
+        this.assertApplicant(actor);
+        return leave;
+      }
+      this.assertCanReview(actor, leave);
+      return leave;
+    }
+    this.assertCanReview(actor, leave);
+    return leave;
+  }
+
+  async getLetterPdf(id: string, actor: { sub: string; role: Role }) {
+    const leave = await this.loadAccessibleLeave(id, actor, 'read');
+    if (leave.status !== TeacherLeaveStatus.APPROVED) {
+      throw new ConflictException('Surat formal hanya tersedia untuk pengajuan yang disetujui.');
+    }
+    const letterNumber = buildLeaveLetterNumber(leave.id, leave.reviewedAt);
+    const buffer = await buildLeaveLetterPdf({
+      id: leave.id,
+      type: leave.type,
+      applicantName: leave.applicant.fullName,
+      applicantRole: leave.applicantRole,
+      startDate: dateKey(leave.startDate),
+      endDate: dateKey(leave.endDate),
+      reason: leave.reason,
+      decisionNote: leave.decisionNote,
+      reviewedByName: leave.reviewedBy?.fullName ?? null,
+      reviewedAt: leave.reviewedAt ? leave.reviewedAt.toISOString() : null,
+      letterNumber,
+      generatedAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
+      visitInstruction: visitInstruction(leave)
+    });
+    return {
+      buffer,
+      filename: `surat-izin-${letterNumber.replace(/\//g, '-')}.pdf`
+    };
+  }
+
+  async getAttachment(id: string, kind: LeaveAttachmentKind, actor: { sub: string; role: Role }) {
+    const leave = await this.loadAccessibleLeave(id, actor, 'read');
+    if (leave.type !== TeacherLeaveType.SAKIT) {
+      throw new BadRequestException('Lampiran hanya tersedia untuk pengajuan SAKIT.');
+    }
+    const pathKey = kind === 'medical-letter' ? leave.medicalLetterPath : leave.medicinePhotoPath;
+    const mime = kind === 'medical-letter' ? leave.medicalLetterMime : leave.medicinePhotoMime;
+    if (!pathKey || !mime) throw new NotFoundException('Lampiran tidak ditemukan.');
+    const opened = await openLeaveAttachmentStream(pathKey);
+    return new StreamableFile(opened.stream, {
+      type: mime,
+      disposition: `inline; filename="${kind}-${leave.id}.${mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg'}"`,
+      length: opened.size
+    });
+  }
+
+  async signDocument(id: string, actor: { sub: string; role: Role }, payload: SignTeacherLeaveDocumentDto) {
+    const note = payload.note?.trim() || null;
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockLeave(tx, id);
+      const existing = await tx.teacherLeave.findUnique({ where: { id }, select: LEAVE_SELECT });
+      if (!existing) throw new NotFoundException('Pengajuan tidak ditemukan.');
+      this.assertCanReview(actor, existing);
+      if (existing.status !== TeacherLeaveStatus.APPROVED) {
+        throw new ConflictException('Hanya pengajuan APPROVED yang dapat dicatat TTD basah.');
+      }
+      if (existing.documentStatus === TeacherLeaveDocumentStatus.SIGNED) {
+        throw new ConflictException('TTD basah sudah dicatat sebelumnya.');
+      }
+      if (!isVisitWindowOpen(existing)) {
+        throw new ConflictException(
+          existing.type === TeacherLeaveType.SAKIT
+            ? 'Pemohon SAKIT baru wajib datang ke Admin TU setelah tanggal selesai masa sakit.'
+            : 'Kunjungan TTD basah belum tersedia untuk pengajuan ini.'
+        );
+      }
+
+      const updated = await tx.teacherLeave.update({
+        where: { id },
+        data: {
+          documentStatus: TeacherLeaveDocumentStatus.SIGNED,
+          documentSignedAt: new Date(),
+          documentSignedById: actor.sub,
+          documentSignNote: note
+        },
+        select: LEAVE_SELECT
+      });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'teacher-leave',
+        action: 'personnel_leave.document_signed',
+        resource: 'teacherLeave',
+        resourceId: id,
+        reason: note || 'TTD basah Admin TU dan pemohon dicatat.',
+        before: leaveAuditSnapshot(existing),
+        after: leaveAuditSnapshot(updated)
+      });
+      await tx.notification.create({
+        data: {
+          userId: existing.applicantId,
+          type: NotificationType.SYSTEM,
+          title: 'Surat izin ditandatangani',
+          body: 'Tanda tangan basah Admin TU dan pemohon telah dicatat.',
+          href: applicantHref(existing.applicantRole)
+        }
+      });
+      return toPublicLeave(updated);
     });
   }
 

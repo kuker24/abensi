@@ -14,7 +14,30 @@ const leave = {
   type: 'IZIN',
   reason: 'Alasan izin guru yang sah dan panjang.',
   status: TeacherLeaveStatus.PENDING,
-  applicant: { id: 'teacher-original', fullName: 'Guru Asal', role: Role.GURU_MAPEL }
+  decisionNote: null,
+  reviewedById: null,
+  reviewedAt: null,
+  substituteTeacherId: null,
+  cancelledById: null,
+  cancelledAt: null,
+  cancellationReason: null,
+  medicalLetterPath: null,
+  medicalLetterMime: null,
+  medicalLetterSize: null,
+  medicinePhotoPath: null,
+  medicinePhotoMime: null,
+  medicinePhotoSize: null,
+  documentStatus: 'NOT_APPLICABLE',
+  documentSignedAt: null,
+  documentSignedById: null,
+  documentSignNote: null,
+  createdAt: new Date('2026-06-13T00:00:00.000Z'),
+  updatedAt: new Date('2026-06-13T00:00:00.000Z'),
+  applicant: { id: 'teacher-original', fullName: 'Guru Asal', role: Role.GURU_MAPEL },
+  reviewedBy: null,
+  substituteTeacher: null,
+  cancelledBy: null,
+  documentSignedBy: null
 };
 
 const originalAssignment = {
@@ -49,6 +72,7 @@ function rawSqlValue(query: unknown, position = 0) {
 
 function makePrisma() {
   const events: string[] = [];
+  let currentLeave: Record<string, unknown> = { ...leave };
   const tx = {
     $queryRaw: jest.fn(async (query: unknown) => {
       const sql = rawSqlText(query);
@@ -74,19 +98,27 @@ function makePrisma() {
     teacherLeave: {
       findUnique: jest.fn(async () => {
         events.push('leave.read');
-        return { ...leave };
+        return { ...currentLeave };
       }),
       findFirst: jest.fn(async () => null),
-      update: jest.fn(async ({ data }) => ({
-        ...leave,
-        ...data,
-        teacher: { id: 'teacher-original', fullName: 'Guru Asal' },
-        substituteTeacher: data.substituteTeacherId ? { id: data.substituteTeacherId, fullName: 'Guru Pengganti' } : null
-      }))
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        currentLeave = {
+          ...currentLeave,
+          ...data,
+          teacher: { id: 'teacher-original', fullName: 'Guru Asal' },
+          substituteTeacher: data.substituteTeacherId
+            ? { id: data.substituteTeacherId, fullName: 'Guru Pengganti' }
+            : currentLeave.substituteTeacher ?? null
+        };
+        return { ...currentLeave };
+      }),
+      setCurrent(next: Record<string, unknown>) {
+        currentLeave = { ...next };
+      }
     },
     session: {
-      findMany: jest.fn(async (args) => {
-        events.push(args.where.id ? 'sessions.reread' : 'sessions.initial');
+      findMany: jest.fn(async (args: { where?: { id?: unknown } }) => {
+        events.push(args.where?.id ? 'sessions.reread' : 'sessions.initial');
         return [scheduledSession()];
       }),
       updateMany: jest.fn(async ({ where }) => {
@@ -269,8 +301,8 @@ describe('TeacherLeaveService review serialization and substitute provenance', (
     const { prisma, tx, events } = makePrisma();
     const first = scheduledSession({ id: 'session-a', classId: 'class-a' });
     const second = scheduledSession({ id: 'session-z', classId: 'class-z' });
-    tx.session.findMany.mockImplementation(async (args) => {
-      events.push(args.where.id ? 'sessions.reread' : 'sessions.initial');
+    tx.session.findMany.mockImplementation(async (args: { where?: { id?: unknown } }) => {
+      events.push(args?.where?.id ? 'sessions.reread' : 'sessions.initial');
       return [first, second];
     });
     tx.teachingAssignment.findFirst.mockImplementation(async (args?: unknown) => {
@@ -359,7 +391,7 @@ describe('TeacherLeaveService review serialization and substitute provenance', (
     ['end time', scheduledSession({ endsAt: new Date('2026-06-14T01:30:00.000Z') })]
   ])('rejects %s changed after session lock without mutation', async (_field, changedSession) => {
     const { prisma, tx } = makePrisma();
-    tx.session.findMany.mockImplementation(async (args) => (args.where.id ? [changedSession] : [scheduledSession()]));
+    tx.session.findMany.mockImplementation(async (args: { where?: { id?: unknown } }) => (args?.where?.id ? [changedSession] : [scheduledSession()]));
     const service = new TeacherLeaveService(prisma as any, { notifyRoles: jest.fn() } as any);
 
     await expect(reviewApproved(service, 'teacher-substitute')).rejects.toMatchObject({
@@ -410,5 +442,67 @@ describe('TeacherLeaveService review serialization and substitute provenance', (
       response: { code: 'TEACHER_LEAVE_SESSION_STATE_CHANGED' }
     });
     expect(tx.notification.create).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('TeacherLeaveService formal document', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sets document status READY/AWAITING_VISIT on approve', async () => {
+    const { prisma, tx } = makePrisma();
+    const service = new TeacherLeaveService(prisma as any, { notifyRoles: jest.fn() } as any);
+    const result = await service.review('leave-1', { sub: 'admin-1', role: Role.ADMIN_TU }, {
+      status: TeacherLeaveStatus.APPROVED,
+      decisionNote: 'Disetujui untuk surat formal.'
+    });
+    expect(tx.teacherLeave.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: TeacherLeaveStatus.APPROVED,
+        documentStatus: expect.stringMatching(/READY|AWAITING_VISIT/)
+      })
+    }));
+    expect(result.letterAvailable).toBe(true);
+  });
+
+  it('blocks document-sign before SAKIT recovery window', async () => {
+    const { prisma, tx } = makePrisma();
+    const futureEnd = new Date();
+    futureEnd.setUTCDate(futureEnd.getUTCDate() + 3);
+    tx.teacherLeave.setCurrent({
+      ...leave,
+      type: 'SAKIT',
+      status: TeacherLeaveStatus.APPROVED,
+      endDate: futureEnd,
+      documentStatus: 'READY',
+      reviewedBy: { id: 'admin-1', fullName: 'Admin', role: Role.ADMIN_TU }
+    });
+    const service = new TeacherLeaveService(prisma as any, { notifyRoles: jest.fn() } as any);
+    await expect(service.signDocument('leave-1', { sub: 'admin-1', role: Role.ADMIN_TU }, {}))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(tx.teacherLeave.update).not.toHaveBeenCalled();
+  });
+
+  it('records wet dual-sign when visit eligible', async () => {
+    const { prisma, tx } = makePrisma();
+    tx.teacherLeave.setCurrent({
+      ...leave,
+      type: 'IZIN',
+      status: TeacherLeaveStatus.APPROVED,
+      documentStatus: 'AWAITING_VISIT',
+      reviewedBy: { id: 'admin-1', fullName: 'Admin', role: Role.ADMIN_TU }
+    });
+    const service = new TeacherLeaveService(prisma as any, { notifyRoles: jest.fn() } as any);
+    const result = await service.signDocument('leave-1', { sub: 'admin-1', role: Role.ADMIN_TU }, { note: 'TTD basah hadir' });
+    expect(tx.teacherLeave.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        documentStatus: 'SIGNED',
+        documentSignedById: 'admin-1',
+        documentSignNote: 'TTD basah hadir'
+      })
+    }));
+    expect(result.documentStatus).toBe('SIGNED');
   });
 });

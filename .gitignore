@@ -80,6 +80,8 @@ tools/apk-builder/.pytest_cache/
 postgres_data/
 redis_data/
 backups/
+uploads/
+apps/api/uploads/
 Data Akun/simpanakun/
 Data Akun/Akunlogin/
 Data Akun/Excel-data-mapel/

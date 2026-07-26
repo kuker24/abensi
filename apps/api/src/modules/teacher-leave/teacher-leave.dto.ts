@@ -47,3 +47,10 @@ export class RevokeTeacherLeaveDto {
   @MaxLength(2000)
   reason!: string;
 }
+
+export class SignTeacherLeaveDocumentDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}

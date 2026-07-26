@@ -58,7 +58,7 @@ COPY --from=build /workspace/apps/api/package*.json ./
 COPY --from=build --chown=node:node /workspace/apps/api/assets ./assets
 RUN find ./assets -type d -exec chmod 755 {} + \
   && find ./assets -type f -exec chmod 644 {} + \
-  && mkdir -p /app/uploads/android-apk-releases \
+  && mkdir -p /app/uploads/android-apk-releases /app/uploads/teacher-leave \
   && chown -R node:node /app/uploads \
   && /opt/android-sdk/build-tools/35.0.0/aapt version \
   && /opt/android-sdk/build-tools/35.0.0/apksigner version

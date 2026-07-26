@@ -52,8 +52,10 @@ describe('personnel leave review', () => {
     const ownRow = (await screen.findByText('Admin Sendiri')).closest('tr');
     const decidedRow = screen.getByText('Guru Diputuskan').closest('tr');
     const pendingRow = screen.getByText('Guru Menunggu').closest('tr');
-    expect(within(ownRow).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(decidedRow).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(ownRow).queryByRole('button', { name: 'Setujui' })).not.toBeInTheDocument();
+    expect(within(ownRow).queryByRole('button', { name: 'Tolak' })).not.toBeInTheDocument();
+    expect(within(decidedRow).queryByRole('button', { name: 'Setujui' })).not.toBeInTheDocument();
+    expect(within(decidedRow).getByRole('button', { name: 'Unduh PDF' })).toBeInTheDocument();
     expect(within(pendingRow).getByRole('button', { name: 'Setujui' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('Catatan keputusan'), { target: { value: 'Dokumen lengkap.' } });

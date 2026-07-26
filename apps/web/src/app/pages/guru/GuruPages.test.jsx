@@ -311,7 +311,20 @@ describe('personnel leave self-service', () => {
       const url = String(input);
       const method = String(init.method || 'GET').toUpperCase();
       if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
-      if (method === 'POST' && url.endsWith('/teacher-leaves')) requests.push(JSON.parse(String(init.body)));
+      if (method === 'POST' && url.endsWith('/teacher-leaves')) {
+        const body = init.body;
+        if (typeof body === 'string') requests.push(JSON.parse(body));
+        else if (body instanceof FormData) {
+          requests.push({
+            type: body.get('type'),
+            startDate: body.get('startDate'),
+            endDate: body.get('endDate'),
+            reason: body.get('reason'),
+            hasMedicalLetter: Boolean(body.get('medicalLetter')),
+            hasMedicinePhoto: Boolean(body.get('medicinePhoto'))
+          });
+        }
+      }
       return new Response(JSON.stringify(method === 'GET' ? { items: [] } : { id: 'leave-1' }), { status: 200, headers: { 'content-type': 'application/json' } });
     }));
 
