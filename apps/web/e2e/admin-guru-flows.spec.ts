@@ -333,7 +333,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await page.goto('/guru/dashboard');
     await expect(page.getByRole('dialog', { name: 'Tutorial awal' })).toBeVisible();
     await page.getByRole('button', { name: /Lanjut/ }).click();
-    await expect(page.getByText('Pastikan akun dan sistem aktif')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pastikan akun dan sistem aktif' })).toBeVisible();
     await expect(page.locator('.tour-spotlight')).toBeVisible();
     const statusBox = await page.locator('[data-tour="system-status"]').boundingBox();
     const spotlightBox = await page.locator('.tour-spotlight').boundingBox();
@@ -369,7 +369,7 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await expect(page.getByRole('dialog', { name: 'Tutorial awal' })).toBeVisible();
     await page.getByRole('button', { name: /Lanjut/ }).click();
     await page.getByRole('button', { name: /Lanjut/ }).click();
-    await expect(page.getByText('Baca Kehadiran Saya')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Baca Kehadiran Saya' })).toBeVisible();
     await expect(page.locator('.tour-spotlight')).toBeVisible();
 
     const mobileLayout = await page.evaluate(() => {
