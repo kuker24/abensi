@@ -1,0 +1,7 @@
+vulnerabilities:
+  - id: GHSA-qwww-vcr4-c8h2
+    paths:
+      - "Data Akun/generator-tanda-pengenal/package-lock.json"
+      - "DataSekolah/generator-tanda-pengenal/package-lock.json"
+    expired_at: 2026-09-14
+    statement: Generator kartu memakai SPA HashRouter tanpa RSC atau server actions; lihat docs/RISK_ACCEPTANCE_REACT_ROUTER_RSC_2026-07-27.md.
