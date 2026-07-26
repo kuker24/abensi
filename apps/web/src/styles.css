@@ -6155,13 +6155,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   }
 }
 
-/* ========= Lab Belajar SIAB2 (sandbox, not production) ========= */
-.belajar-lab {
-  min-height: 100vh;
-  color: var(--fg, #f0ede8);
-  background:
-    radial-gradient(900px circle at 10% -10%, rgba(137, 170, 204, 0.16), transparent 55%),
-    var(--bg, #16181c);
+/* ========= Lab Belajar SIAB2 (sandbox chrome overlays; shell = production siab2) ========= */
+.belajar-lab.app.siab2-shell {
   position: relative;
 }
 
@@ -6178,8 +6173,21 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   transform: rotate(-18deg);
 }
 
+.belajar-lab .siab2-shell-main,
+.belajar-lab .siab2-sidebar,
+.belajar-lab .siab2-shell-page-wrap {
+  position: relative;
+  z-index: 1;
+}
+
 .belajar-hub {
+  min-height: 100vh;
   padding: clamp(24px, 4vw, 48px);
+  color: var(--fg, #f0ede8);
+  background:
+    radial-gradient(900px circle at 10% -10%, rgba(137, 170, 204, 0.16), transparent 55%),
+    var(--bg, #16181c);
+  position: relative;
 }
 
 .belajar-hub.present .belajar-hub-lead,
@@ -6237,42 +6245,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 .belajar-hub-help ol { margin: 8px 0 12px 18px; color: rgba(232, 242, 252, 0.78); }
 
-.belajar-sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: min(280px, 88vw);
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 12px;
-  border-right: 1px solid rgba(137, 170, 204, 0.16);
-  background: rgba(7, 12, 20, 0.96);
-  transform: translateX(0);
-}
-
-.belajar-brand b { display: block; font-size: 15px; }
-.belajar-brand small { color: rgba(137, 170, 204, 0.9); }
-
-.belajar-nav { display: grid; gap: 4px; flex: 1; overflow: auto; }
-
-.belajar-nav-item {
-  border: 1px solid transparent;
-  background: transparent;
-  color: rgba(232, 242, 252, 0.72);
-  text-align: left;
-  border-radius: 12px;
-  padding: 10px 12px;
-  cursor: pointer;
-}
-
-.belajar-nav-item:hover,
-.belajar-nav-item.active {
-  color: #fff;
-  background: rgba(137, 170, 204, 0.14);
-  border-color: rgba(137, 170, 204, 0.28);
+.belajar-role-switch {
+  padding: 10px 12px 4px;
+  border-top: 1px solid rgba(137, 170, 204, 0.12);
+  margin-top: auto;
 }
 
 .belajar-role-switch small {
@@ -6299,30 +6275,21 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   color: #fff;
 }
 
-.belajar-main {
-  position: relative;
-  z-index: 1;
-  margin-left: min(280px, 88vw);
-  min-height: 100vh;
+.belajar-nav-stub {
+  opacity: 0.72;
 }
 
-.belajar-topbar {
+.belajar-top-actions {
   display: flex;
   flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(137, 170, 204, 0.12);
-  background: rgba(8, 14, 22, 0.72);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 20;
 }
 
-.belajar-top-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
-
-.belajar-page { padding: 16px clamp(12px, 2vw, 22px) 40px; position: relative; z-index: 1; }
+.belajar-bell-wrap {
+  position: relative;
+  display: inline-flex;
+}
 
 .belajar-analogy-line {
   margin: 0 0 12px;
@@ -6332,6 +6299,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   background: rgba(137, 170, 204, 0.08);
   color: rgba(232, 242, 252, 0.82);
   font-size: 13px;
+}
+
+.belajar-lab .siab2-shell-page-wrap > .belajar-analogy-line {
+  margin: 12px clamp(12px, 2vw, 22px) 0;
 }
 
 .belajar-analogy {
@@ -6348,14 +6319,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .belajar-timeline-item { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
 .belajar-timeline-item small { color: rgba(232, 242, 252, 0.5); }
 .belajar-notif-row { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 13px; }
-
-.belajar-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 35;
-  border: 0;
-  background: rgba(0, 0, 0, 0.45);
-}
 
 .belajar-coach-layer {
   position: fixed;
@@ -6461,19 +6424,14 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .belajar-impact-card p { margin: 4px 0 0; font-size: 12px; color: rgba(232, 242, 252, 0.72); }
 .belajar-impact-hint { font-size: 12px; margin-bottom: 12px; }
 
-.belajar-closed { display: grid; place-items: center; padding: 24px; }
-
-@media (max-width: 860px) {
-  .belajar-sidebar {
-    transform: translateX(-105%);
-    transition: transform .2s ease;
-  }
-  .belajar-sidebar.open { transform: translateX(0); }
-  .belajar-main { margin-left: 0; }
-  .hide-desktop { display: inline-flex !important; }
+.belajar-closed {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg, #16181c);
 }
 
-@media (min-width: 861px) {
-  .hide-desktop { display: none !important; }
-  .belajar-scrim { display: none; }
+@media (max-width: 900px) {
+  .belajar-lab .hide-sm { display: none !important; }
 }

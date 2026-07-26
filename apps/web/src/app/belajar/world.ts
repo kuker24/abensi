@@ -64,15 +64,36 @@ export type DemoWorld = {
     presentCount: number;
     totalStudents: number;
   };
-  flags: Array<{ id: string; type: string; subject: string; open: boolean }>;
-  devices: { readersOnline: number; max: number; lastNote: string };
+  flags: Array<{ id: string; type: string; subject: string; open: boolean; priority?: string }>;
+  devices: { readersOnline: number; max: number; lastNote: string; cardsActive: number; cardsLost: number };
+  picketNotes: Array<{ id: string; title: string; level: string; officer: string }>;
+  sessionsToday: Array<{ id: string; time: string; classCode: string; teacher: string; status: string; subject: string }>;
+  auditLog: Array<{ id: string; time: string; action: string; module: string }>;
+  trend: Array<{ label: string; coveragePercent: number }>;
+  studentDay: {
+    gateIn: boolean;
+    classPresent: boolean;
+    dhuha: boolean;
+    dzuhur: boolean;
+    ashar: boolean;
+    gateOut: boolean;
+  };
   notifications: Record<DemoRole, DemoNotification[]>;
   events: DemoEvent[];
   lastImpactEventId?: string;
   stats: {
     staffPresent: number;
+    staffTotal: number;
     studentComplete: number;
+    studentTotal: number;
     openProblems: number;
+    notYetOut: number;
+    openSessions: number;
+    closedSessions: number;
+    gateScans: number;
+    prayerDhuha: number;
+    prayerDzuhur: number;
+    teachersTeaching: number;
   };
 };
 
@@ -131,9 +152,39 @@ export function createSeedWorld(): DemoWorld {
       totalStudents: 32
     },
     flags: [
-      { id: 'flag_demo_1', type: 'LUPA_TAP_GERBANG', subject: 'Alya Putri', open: true }
+      { id: 'flag_demo_1', type: 'LUPA_TAP_GERBANG', subject: 'Alya Putri', open: true, priority: 'NORMAL' }
     ],
-    devices: { readersOnline: 2, max: 3, lastNote: '2 dari 3 HP scanner online' },
+    devices: { readersOnline: 2, max: 3, lastNote: '2 dari 3 HP scanner online', cardsActive: 612, cardsLost: 3 },
+    picketNotes: [
+      { id: 'pn1', title: 'Siswa lupa kartu gerbang', level: 'NORMAL', officer: 'Bu Sari (Piket)' }
+    ],
+    sessionsToday: [
+      { id: 'session_demo_1', time: '07:30', classCode: 'X-IPA-1', teacher: 'Pak Budi (Mapel)', status: 'SCHEDULED', subject: 'Matematika' },
+      { id: 'session_demo_2', time: '09:00', classCode: 'XI-IPS-2', teacher: 'Bu Lestari', status: 'OPEN', subject: 'Bahasa Arab' },
+      { id: 'session_demo_3', time: '10:30', classCode: 'XII-IPA-1', teacher: 'Pak Andi', status: 'CLOSED', subject: 'Fisika' }
+    ],
+    auditLog: [
+      { id: 'a1', time: '07:12', action: 'READER_HEARTBEAT', module: 'devices' },
+      { id: 'a2', time: '06:58', action: 'CARD_LOOKUP', module: 'devices' },
+      { id: 'a3', time: '06:40', action: 'LOGIN', module: 'auth' }
+    ],
+    trend: [
+      { label: 'Sen', coveragePercent: 88 },
+      { label: 'Sel', coveragePercent: 91 },
+      { label: 'Rab', coveragePercent: 86 },
+      { label: 'Kam', coveragePercent: 93 },
+      { label: 'Jum', coveragePercent: 90 },
+      { label: 'Sab', coveragePercent: 0 },
+      { label: 'Min', coveragePercent: 0 }
+    ],
+    studentDay: {
+      gateIn: true,
+      classPresent: false,
+      dhuha: true,
+      dzuhur: false,
+      ashar: false,
+      gateOut: false
+    },
     notifications: {
       'admin-tu': [{ id: 'n0', text: 'Ada 1 pengajuan izin menunggu keputusan.', unread: true }],
       'kepala-sekolah': [{ id: 'n0', text: 'Pantau ringkasan kehadiran hari ini.', unread: false }],
@@ -143,7 +194,20 @@ export function createSeedWorld(): DemoWorld {
       siswa: [{ id: 'n0', text: 'Belum ada pesan baru dari sekolah.', unread: false }]
     },
     events: [],
-    stats: { staffPresent: 18, studentComplete: 240, openProblems: 1 }
+    stats: {
+      staffPresent: 18,
+      staffTotal: 42,
+      studentComplete: 240,
+      studentTotal: 860,
+      openProblems: 1,
+      notYetOut: 54,
+      openSessions: 3,
+      closedSessions: 12,
+      gateScans: 410,
+      prayerDhuha: 320,
+      prayerDzuhur: 180,
+      teachersTeaching: 9
+    }
   };
 }
 
@@ -229,7 +293,12 @@ export function applyDemoAction(world: DemoWorld, action: DemoAction): { world: 
 
   if (action.type === 'OPEN_SESSION') {
     if (world.session.status !== 'SCHEDULED') return { world, event: null };
-    let next: DemoWorld = { ...world, session: { ...world.session, status: 'OPEN', presentCount: 0 } };
+    let next: DemoWorld = {
+      ...world,
+      session: { ...world.session, status: 'OPEN', presentCount: 0 },
+      sessionsToday: world.sessionsToday.map((s) => (s.id === world.session.id ? { ...s, status: 'OPEN' } : s)),
+      stats: { ...world.stats, openSessions: world.stats.openSessions + 1, teachersTeaching: world.stats.teachersTeaching + 1 }
+    };
     const impacts: DemoImpact[] = [
       { role: 'siswa', surface: 'Kehadiran', message: 'Kelas dibuka — absensi bisa diisi guru.' },
       { role: 'admin-tu', surface: 'Sesi', message: 'Sesi X-IPA-1 berstatus Berjalan.' },
@@ -253,9 +322,10 @@ export function applyDemoAction(world: DemoWorld, action: DemoAction): { world: 
     let next: DemoWorld = {
       ...world,
       session: { ...world.session, presentCount },
+      studentDay: { ...world.studentDay, classPresent: presentCount > 0 },
       stats: {
         ...world.stats,
-        studentComplete: world.stats.studentComplete + 8
+        studentComplete: Math.min(world.stats.studentTotal, world.stats.studentComplete + 8)
       }
     };
     const impacts: DemoImpact[] = [
@@ -278,7 +348,17 @@ export function applyDemoAction(world: DemoWorld, action: DemoAction): { world: 
   if (action.type === 'CLOSE_SESSION') {
     if (world.session.status !== 'OPEN') return { world, event: null };
     const closedSession = { ...world.session, status: 'CLOSED' as const };
-    let next: DemoWorld = { ...world, session: closedSession };
+    let next: DemoWorld = {
+      ...world,
+      session: closedSession,
+      sessionsToday: world.sessionsToday.map((s) => (s.id === world.session.id ? { ...s, status: 'CLOSED' } : s)),
+      stats: {
+        ...world.stats,
+        openSessions: Math.max(0, world.stats.openSessions - 1),
+        closedSessions: world.stats.closedSessions + 1,
+        teachersTeaching: Math.max(0, world.stats.teachersTeaching - 1)
+      }
+    };
     const impacts: DemoImpact[] = [
       { role: 'admin-tu', surface: 'Sesi', message: 'Sesi selesai dan terkunci di rekap.' },
       { role: 'siswa', surface: 'Kehadiran', message: 'Kelas ditutup untuk hari ini.' }
@@ -296,7 +376,14 @@ export function applyDemoAction(world: DemoWorld, action: DemoAction): { world: 
   }
 
   if (action.type === 'LOG_PICKET') {
-    let next = pushNotif(world, 'admin-tu', 'Piket mencatat kejadian baru di buku piket latihan.');
+    let next: DemoWorld = {
+      ...world,
+      picketNotes: [
+        { id: nid('pn'), title: 'Catatan kejadian latihan', level: 'NORMAL', officer: world.characters.piket },
+        ...world.picketNotes
+      ].slice(0, 8)
+    };
+    next = pushNotif(next, 'admin-tu', 'Piket mencatat kejadian baru di buku piket latihan.');
     next = pushNotif(next, 'kepala-sekolah', 'Ada catatan piket baru untuk dipantau.');
     const impacts: DemoImpact[] = [
       { role: 'admin-tu', surface: 'Catatan Piket', message: 'Baris baru muncul di buku piket.' },
@@ -311,8 +398,7 @@ export function applyDemoAction(world: DemoWorld, action: DemoAction): { world: 
     next = {
       ...next,
       events: [event, ...next.events].slice(0, 30),
-      lastImpactEventId: event.id,
-      flags: next.flags
+      lastImpactEventId: event.id
     };
     return { world: next, event };
   }
@@ -368,11 +454,11 @@ export function applyDemoAction(world: DemoWorld, action: DemoAction): { world: 
     const online = action.type === 'SET_READER_ONLINE'
       ? Math.min(world.devices.max, world.devices.readersOnline + 1)
       : Math.max(0, world.devices.readersOnline - 1);
-    let next = {
+    let next: DemoWorld = {
       ...world,
       devices: {
+        ...world.devices,
         readersOnline: online,
-        max: world.devices.max,
         lastNote: `${online} dari ${world.devices.max} HP scanner online`
       }
     };
