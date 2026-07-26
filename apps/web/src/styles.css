@@ -6154,3 +6154,326 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     padding: 5mm;
   }
 }
+
+/* ========= Lab Belajar SIAB2 (sandbox, not production) ========= */
+.belajar-lab {
+  min-height: 100vh;
+  color: var(--fg, #f0ede8);
+  background:
+    radial-gradient(900px circle at 10% -10%, rgba(137, 170, 204, 0.16), transparent 55%),
+    var(--bg, #16181c);
+  position: relative;
+}
+
+.belajar-watermark {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  font: 800 18vw/1 var(--font-sans, system-ui);
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.035);
+  transform: rotate(-18deg);
+}
+
+.belajar-hub {
+  padding: clamp(24px, 4vw, 48px);
+}
+
+.belajar-hub.present .belajar-hub-lead,
+.belajar-hub.present .belajar-hub-card {
+  font-size: 1.05em;
+}
+
+.belajar-hub-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.belajar-hub h1 {
+  margin: 12px 0 8px;
+  font-size: clamp(28px, 4vw, 40px);
+  letter-spacing: -0.03em;
+}
+
+.belajar-hub-lead {
+  max-width: 62ch;
+  color: rgba(232, 242, 252, 0.72);
+  margin-bottom: 22px;
+}
+
+.belajar-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.belajar-hub-card {
+  text-align: left;
+  border: 1px solid rgba(137, 170, 204, 0.22);
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(160deg, rgba(137, 170, 204, 0.12), rgba(8, 14, 22, 0.72));
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  transition: transform .18s ease, border-color .18s ease;
+}
+
+.belajar-hub-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(137, 170, 204, 0.45);
+}
+
+.belajar-hub-card b { font-size: 16px; }
+.belajar-hub-card span { color: rgba(232, 242, 252, 0.7); font-size: 13px; }
+.belajar-hub-card small { color: rgba(137, 170, 204, 0.8); font-family: var(--font-mono, monospace); }
+
+.belajar-hub-help ol { margin: 8px 0 12px 18px; color: rgba(232, 242, 252, 0.78); }
+
+.belajar-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(280px, 88vw);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px;
+  border-right: 1px solid rgba(137, 170, 204, 0.16);
+  background: rgba(7, 12, 20, 0.96);
+  transform: translateX(0);
+}
+
+.belajar-brand b { display: block; font-size: 15px; }
+.belajar-brand small { color: rgba(137, 170, 204, 0.9); }
+
+.belajar-nav { display: grid; gap: 4px; flex: 1; overflow: auto; }
+
+.belajar-nav-item {
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(232, 242, 252, 0.72);
+  text-align: left;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.belajar-nav-item:hover,
+.belajar-nav-item.active {
+  color: #fff;
+  background: rgba(137, 170, 204, 0.14);
+  border-color: rgba(137, 170, 204, 0.28);
+}
+
+.belajar-role-switch small {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(232, 242, 252, 0.5);
+  font-size: 11px;
+}
+
+.belajar-role-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.belajar-chip {
+  border: 1px solid rgba(137, 170, 204, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 242, 252, 0.78);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.belajar-chip.on {
+  background: rgba(137, 170, 204, 0.24);
+  color: #fff;
+}
+
+.belajar-main {
+  position: relative;
+  z-index: 1;
+  margin-left: min(280px, 88vw);
+  min-height: 100vh;
+}
+
+.belajar-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(137, 170, 204, 0.12);
+  background: rgba(8, 14, 22, 0.72);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.belajar-top-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+
+.belajar-page { padding: 16px clamp(12px, 2vw, 22px) 40px; position: relative; z-index: 1; }
+
+.belajar-analogy-line {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(137, 170, 204, 0.28);
+  background: rgba(137, 170, 204, 0.08);
+  color: rgba(232, 242, 252, 0.82);
+  font-size: 13px;
+}
+
+.belajar-analogy {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  color: #fde68a;
+  font-size: 13px;
+}
+
+.belajar-timeline { margin-top: 16px; }
+.belajar-timeline-item { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.belajar-timeline-item small { color: rgba(232, 242, 252, 0.5); }
+.belajar-notif-row { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 13px; }
+
+.belajar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  border: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.belajar-coach-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  pointer-events: none;
+}
+
+.belajar-coach-layer.has-target::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 12, 0.45);
+  pointer-events: none;
+}
+
+.belajar-spotlight {
+  position: fixed;
+  z-index: 501;
+  border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgba(2, 6, 12, 0.62), 0 0 0 2px rgba(137, 170, 204, 0.85);
+  pointer-events: none;
+}
+
+.belajar-coach-card {
+  pointer-events: auto;
+  position: fixed;
+  z-index: 502;
+  right: 16px;
+  bottom: 16px;
+  width: min(420px, calc(100vw - 24px));
+  padding: 14px 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(137, 170, 204, 0.28);
+  background: rgba(9, 16, 26, 0.96);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.4);
+}
+
+.belajar-coach-card h3 { margin: 4px 0 8px; font-size: 17px; }
+.belajar-coach-card p { margin: 0; color: rgba(232, 242, 252, 0.78); font-size: 13px; line-height: 1.45; }
+.belajar-coach-tools { display: flex; align-items: center; gap: 6px; }
+.belajar-coach-tools .pill { margin-right: auto; }
+.belajar-coach-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.belajar-coach-reopen {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+}
+
+.belajar-impact-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 560;
+  background: rgba(2, 7, 12, 0.72);
+  display: grid;
+  place-items: end center;
+  padding: 16px;
+}
+
+.belajar-impact-panel {
+  width: min(520px, 100%);
+  border-radius: 20px 20px 14px 14px;
+  border: 1px solid rgba(137, 170, 204, 0.3);
+  background: linear-gradient(180deg, #122033, #0a121c);
+  padding: 16px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.45);
+  animation: belajarImpactIn .28s ease;
+}
+
+@keyframes belajarImpactIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.belajar-impact-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.belajar-impact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fde68a;
+  font-size: 12px;
+  font-weight: 700;
+}
+.belajar-impact-panel h2 { margin: 10px 0 6px; font-size: 20px; }
+.belajar-impact-list { display: grid; gap: 8px; margin: 12px 0; }
+.belajar-impact-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(137, 170, 204, 0.22);
+  background: rgba(137, 170, 204, 0.08);
+  color: inherit;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.belajar-impact-card b { display: block; }
+.belajar-impact-card small { color: rgba(137, 170, 204, 0.9); }
+.belajar-impact-card p { margin: 4px 0 0; font-size: 12px; color: rgba(232, 242, 252, 0.72); }
+.belajar-impact-hint { font-size: 12px; margin-bottom: 12px; }
+
+.belajar-closed { display: grid; place-items: center; padding: 24px; }
+
+@media (max-width: 860px) {
+  .belajar-sidebar {
+    transform: translateX(-105%);
+    transition: transform .2s ease;
+  }
+  .belajar-sidebar.open { transform: translateX(0); }
+  .belajar-main { margin-left: 0; }
+  .hide-desktop { display: inline-flex !important; }
+}
+
+@media (min-width: 861px) {
+  .hide-desktop { display: none !important; }
+  .belajar-scrim { display: none; }
+}

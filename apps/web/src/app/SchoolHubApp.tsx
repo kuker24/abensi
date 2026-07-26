@@ -98,6 +98,7 @@ const PersonnelLeavePage = lazyPage(loadGuruPages, 'PersonnelLeavePage');
 const TeacherRecapPage = lazyPage(loadGuruPages, 'TeacherRecapPage');
 const MyAttendancePage = lazyPage(loadSiswaPages, 'MyAttendancePage');
 const SIAB2PreviewLanding = lazy(() => import('./pages/SIAB2PreviewLanding'));
+const BelajarApp = lazy(() => import('./belajar'));
 const OnboardingTour = lazyPage(() => import('./tutorial'), 'OnboardingTour');
 const LOGIN_PATH = '/login';
 const CANONICAL_SIAB2_PATH = '/siab2';
@@ -106,8 +107,12 @@ const SIAB2_LOGIN_PATH = '/siab2/login';
 const PUBLIC_ROUTE_PATHS = new Set([CANONICAL_SIAB2_PATH]);
 const LOGIN_ROUTE_PATHS = new Set([LOGIN_PATH, SIAB2_LOGIN_PATH]);
 
+function isBelajarLabPath(path: string) {
+  return path === '/belajar' || path.startsWith('/belajar/');
+}
+
 function isPublicRoutePath(path: string) {
-  return PUBLIC_ROUTE_PATHS.has(path);
+  return PUBLIC_ROUTE_PATHS.has(path) || isBelajarLabPath(path);
 }
 
 function isLegacySiab2RoutePath(path: string) {
@@ -1147,6 +1152,7 @@ function App() {
 
   if (isLegacySiab2RoutePath(path)) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (path === LOGIN_PATH) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
+  if (isBelajarLabPath(path)) return <><Suspense fallback={<PageLoading />}><BelajarApp path={path} /></Suspense><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (isPublicRoutePath(path)) return <><Suspense fallback={<PageLoading />}><SIAB2PreviewLanding /></Suspense><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
   if (!path || path === '/') { setTimeout(() => go(user ? defaultPathFor(user) : SIAB2_LOGIN_PATH), 0); return null; }
   if (!sessionChecked && !isLoginRoutePath(path)) return <><PageLoading /><ToastHost toasts={toasts} onClose={removeToast} />{confirmLayer}</>;
