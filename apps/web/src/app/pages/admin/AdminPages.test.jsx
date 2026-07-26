@@ -55,7 +55,7 @@ describe('personnel leave review', () => {
     expect(within(ownRow).queryByRole('button', { name: 'Setujui' })).not.toBeInTheDocument();
     expect(within(ownRow).queryByRole('button', { name: 'Tolak' })).not.toBeInTheDocument();
     expect(within(decidedRow).queryByRole('button', { name: 'Setujui' })).not.toBeInTheDocument();
-    expect(within(decidedRow).getByRole('button', { name: 'Unduh PDF' })).toBeInTheDocument();
+    expect(within(decidedRow).getByRole('button', { name: /Cetak PDF TTD/i })).toBeInTheDocument();
     expect(within(pendingRow).getByRole('button', { name: 'Setujui' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('Catatan keputusan'), { target: { value: 'Dokumen lengkap.' } });
