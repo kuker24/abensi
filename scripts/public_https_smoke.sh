@@ -197,6 +197,8 @@ expect_success "Re-login for SSE succeeds" "$code"
 if curl "${CURL_BASE_OPTS[@]}" --cookie "$cookie_jar" -N --max-time 10 -D "$ARTIFACT_DIR/sse.headers" "$API_BASE/reports/live-monitor/stream?limit=1" -o "$ARTIFACT_DIR/sse.txt" 2>"$TMP_DIR/sse.err" || true; then
   if grep -iq 'content-type: text/event-stream' "$ARTIFACT_DIR/sse.headers" && grep -Eq 'event: (snapshot|heartbeat)' "$ARTIFACT_DIR/sse.txt"; then
     pass "Authenticated SSE connection opens and emits event"
+  elif jq -e '.code == "PASSWORD_CHANGE_REQUIRED"' "$ARTIFACT_DIR/sse.txt" >/dev/null 2>&1; then
+    skip "Authenticated SSE connection opens and emits event" "smoke account requires password change"
   else
     fail "Authenticated SSE connection opens and emits event" "SSE headers/body did not contain expected event"
   fi
