@@ -15,7 +15,7 @@ for (const viewport of viewports) {
     await expect(page.locator('.login')).toBeVisible();
     await expect(page.locator('.login-card')).toBeVisible();
     await expect(page.locator('.login-left')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: /Masuk ke portal/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Masuk ke SIAB2/i })).toBeVisible();
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(1);

@@ -478,15 +478,15 @@ function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: 
             {isScoped && (
               <div className="siab2-scoped-login-lockup">
                 <span className="siab2-scoped-login-logo"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /></span>
-                <span className="siab2-scoped-login-brand"><strong>SIAB2</strong><small>MAN 1 Rokan Hulu</small></span>
+                <span className="siab2-scoped-login-brand"><strong>SIAB2</strong><small>{BRAND.fullName}</small></span>
                 <a className="siab2-scoped-login-link" href={CANONICAL_SIAB2_PATH}>Tentang SIAB2 ↗</a>
               </div>
             )}
-            <div className="siab2-login-card-status">{!isScoped && <span />} Portal aman · {loginAreaLabel(role)}</div>
+            <div className="siab2-login-card-status">{!isScoped && <span />} Akses aman untuk {loginAreaLabel(role)}</div>
             <div className="siab2-login-card-header">
-              <div className="siab2-login-card-kicker">AKSES RESMI SIAB2</div>
-              <h2>Masuk ke portal</h2>
-              <p>{BRAND.fullName}</p>
+              <div className="siab2-login-card-kicker">PORTAL KEHADIRAN RESMI</div>
+              <h2>Masuk ke SIAB2</h2>
+              <p>Gunakan akun {loginAreaLabel(role)} yang terdaftar di MAN 1 Rokan Hulu.</p>
             </div>
 
             <div className="login-role-label siab2-login-role-label">Pilih area akun</div>
