@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserGeoError, captureBrowserGeolocation } from './geolocation';
 
 function setGeolocation(geolocation: Partial<Geolocation> | undefined) {
@@ -13,7 +13,13 @@ describe('captureBrowserGeolocation', () => {
     vi.restoreAllMocks();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('requests high-accuracy fresh browser coordinates and maps payload fields', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime('2026-06-14T01:05:00.000Z');
     const getCurrentPosition = vi.fn((success) => success({
       coords: { latitude: -6.2, longitude: 106.816666, accuracy: 9 },
       timestamp: Date.parse('2026-06-14T01:00:00.000Z')
@@ -24,7 +30,7 @@ describe('captureBrowserGeolocation', () => {
       latitude: -6.2,
       longitude: 106.816666,
       accuracyMeter: 9,
-      capturedAt: '2026-06-14T01:00:00.000Z',
+      capturedAt: '2026-06-14T01:05:00.000Z',
       source: 'browser_geolocation'
     });
     expect(getCurrentPosition).toHaveBeenCalledWith(expect.any(Function), expect.any(Function), {

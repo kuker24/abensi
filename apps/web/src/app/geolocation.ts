@@ -34,7 +34,7 @@ export function captureBrowserGeolocation(timeoutMs = GEOLOCATION_TIMEOUT_MS): P
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracyMeter: position.coords.accuracy,
-          capturedAt: new Date(position.timestamp).toISOString(),
+          capturedAt: new Date().toISOString(),
           source: 'browser_geolocation'
         });
       },
