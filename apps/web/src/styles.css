@@ -3046,7 +3046,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 .siab2-login-page-scoped .siab2-login-footer .login-footer-text {
   flex-wrap: wrap;
-  color: #68766f;
+  color: #64716a;
   font-size: 12px;
 }
 
@@ -3056,7 +3056,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .siab2-login-page-scoped .siab2-login-footer .login-footer-tag {
-  color: #68766f;
+  color: #64716a;
 }
 
 @media (max-width: 520px) {

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserGeoError, captureBrowserGeolocation } from './geolocation';
 
+const originalGeolocation = Object.getOwnPropertyDescriptor(navigator, 'geolocation');
+
 function setGeolocation(geolocation: Partial<Geolocation> | undefined) {
   Object.defineProperty(navigator, 'geolocation', {
     configurable: true,
@@ -15,6 +17,8 @@ describe('captureBrowserGeolocation', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    if (originalGeolocation) Object.defineProperty(navigator, 'geolocation', originalGeolocation);
+    else Reflect.deleteProperty(navigator, 'geolocation');
   });
 
   it('requests high-accuracy fresh browser coordinates and maps payload fields', async () => {
