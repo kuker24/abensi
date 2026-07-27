@@ -148,9 +148,10 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
   const text = contentType.includes('application/json') ? await response.text() : '';
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    const error = new Error(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || `HTTP ${response.status}`) as Error & { code?: string; status?: number };
+    const error = new Error(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || `HTTP ${response.status}`) as Error & { code?: string; status?: number; details?: Record<string, unknown> };
     error.code = data?.code;
     error.status = response.status;
+    error.details = data && typeof data === 'object' ? data : undefined;
     throw error;
   }
   return data;

@@ -14,8 +14,8 @@ function makePrisma(user: any) {
     dhuhaEndTime: '10:30',
     dzuhurStartTime: '11:45',
     dzuhurEndTime: '13:30',
-    asharStartTime: '15:00',
-    asharEndTime: '16:30',
+    asharStartTime: '15:30',
+    asharEndTime: '16:15',
     asharRequiredClassEndTime: '15:00',
     requireStudentAsharForAfternoon: true,
     allowStudentAsharCheckoutOverride: true,
@@ -157,7 +157,7 @@ describe('AttendanceGateService adaptive QR scan', () => {
       prayerType: 'OUTSIDE_WINDOW',
       currentWindow: null,
       nextWindow: { prayerType: PrayerType.DZUHUR, startMinute: 11 * 60 + 45, endMinute: 13 * 60 + 30 }
-    })).rejects.toMatchObject({
+    }, { asharStartTime: '15:30', asharEndTime: '16:15' })).rejects.toMatchObject({
       response: expect.objectContaining({
         code: 'PRAYER_OUTSIDE_WINDOW',
         nextWindow: expect.objectContaining({ prayerType: PrayerType.DZUHUR })
@@ -418,6 +418,87 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
     expect(result).toMatchObject({ kind: 'GATE', action: 'Pulang', message: 'Pulang tercatat.' });
     expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ direction: GateDirection.OUT, scanMode: AndroidReaderMode.GATE_OUT }) }));
+  });
+
+  it.each([
+    Role.GURU_MAPEL,
+    Role.GURU_PIKET,
+    Role.KEPALA_SEKOLAH
+  ])('membatasi GATE_OUT %s ke pukul 15:30–16:30 WIB', async (role) => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T08:29:00.000Z'));
+    try {
+      const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const firstIn = { id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 60 * 60_000) };
+      prisma.gateLog.findMany.mockResolvedValue([firstIn]);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(firstIn);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_GURU', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, `nonce-gate-out-${role}`, '/api/v1/attendance/qr-reader-scan'))).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW', startTime: '15:30', endTime: '16:30' })
+      });
+      expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('menerima GATE_OUT guru tepat pukul 15:30 WIB', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T08:30:00.000Z'));
+    try {
+      const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role: Role.GURU_MAPEL, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const firstIn = { id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 60 * 60_000) };
+      prisma.gateLog.findMany.mockResolvedValue([firstIn]);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(firstIn);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_GURU', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-gate-out-window-start', '/api/v1/attendance/qr-reader-scan'))).resolves.toMatchObject({ action: 'Pulang' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['16:30', '2026-07-27T09:30:00.000Z', true],
+    ['16:31', '2026-07-27T09:31:00.000Z', false]
+  ])('memperlakukan batas akhir GATE_OUT guru pukul %s secara inklusif', async (label, instant, accepted) => {
+    jest.useFakeTimers().setSystemTime(new Date(instant));
+    try {
+      const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role: Role.GURU_MAPEL, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const firstIn = { id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 60 * 60_000) };
+      prisma.gateLog.findMany.mockResolvedValue([firstIn]);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(firstIn);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_GURU', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+      const request = service.qrReaderScan(payload, signedHeaders(secret, payload, `nonce-gate-out-${label}`, '/api/v1/attendance/qr-reader-scan'));
+
+      if (accepted) await expect(request).resolves.toMatchObject({ action: 'Pulang' });
+      else await expect(request).rejects.toMatchObject({ response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW' }) });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['15:29', '2026-07-27T08:29:00.000Z', false],
+    ['15:30', '2026-07-27T08:30:00.000Z', true],
+    ['16:15', '2026-07-27T09:15:00.000Z', true],
+    ['16:16', '2026-07-27T09:16:00.000Z', false]
+  ])('menerapkan jendela Ashar pada pukul %s', async (label, instant, accepted) => {
+    jest.useFakeTimers().setSystemTime(new Date(instant));
+    try {
+      const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, role: Role.SISWA, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.MUSHOLA]);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_ASHAR', scanMode: AndroidReaderMode.MUSHOLA, appVersionCode: 1 };
+      const request = service.qrReaderScan(payload, signedHeaders(secret, payload, `nonce-ashar-${label}`, '/api/v1/attendance/qr-reader-scan'));
+
+      if (accepted) await expect(request).resolves.toMatchObject({ kind: 'PRAYER', message: 'Sholat Ashar tercatat.' });
+      else await expect(request).rejects.toMatchObject({ response: expect.objectContaining({ code: 'PRAYER_OUTSIDE_WINDOW', message: expect.stringContaining('15:30–16:15') }) });
+      if (!accepted) expect(prisma.__tx.prayerAttendanceLog.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('mode GATE_IN eksplisit idempotent jika sudah ada Datang hari ini', async () => {

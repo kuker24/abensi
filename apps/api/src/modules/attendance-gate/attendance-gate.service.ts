@@ -41,6 +41,9 @@ const OFFLINE_SCAN_MAX_AGE_MS = {
   default: 24 * 60 * 60 * 1000,
   mushola: 2 * 60 * 60 * 1000
 } as const;
+const TEACHER_GATE_OUT_START_MINUTE = 15 * 60 + 30;
+const TEACHER_GATE_OUT_END_MINUTE = 16 * 60 + 30;
+const TEACHER_GATE_OUT_ROLES = new Set<Role>([Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
 function dayBounds(value: Date | string = new Date()) {
   return jakartaBusinessDayBounds(value);
 }
@@ -416,7 +419,7 @@ export class AttendanceGateService {
       const policy = await this.getAttendancePolicy();
       const classification = scannedPrayerType(scannedAt, policy);
       if (classification.prayerType === 'OUTSIDE_WINDOW') {
-        return this.rejectPrayerOutsideWindow(card.user.id, scannedAt, ReaderType.MUSHOLA, actor, commonOptions, classification);
+        return this.rejectPrayerOutsideWindow(card.user.id, scannedAt, ReaderType.MUSHOLA, actor, commonOptions, classification, policy);
       }
       return this.recordPrayerScan(card.user.id, classification.prayerType, scannedAt, ReaderType.MUSHOLA, actor, commonOptions);
     }
@@ -522,7 +525,7 @@ export class AttendanceGateService {
       const policy = await this.getAttendancePolicy();
       const classification = scannedPrayerType(scannedAt, policy);
       if (classification.prayerType === 'OUTSIDE_WINDOW') {
-        return this.rejectPrayerOutsideWindow(user.id, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions, classification);
+        return this.rejectPrayerOutsideWindow(user.id, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions, classification, policy);
       }
       const result = await this.recordPrayerScan(user.id, classification.prayerType, scannedAt, ReaderType.QR_ANDROID, actor, commonOptions);
       await this.securityAudit('attendance.qr.reader.scan.accepted', result.item.id, { mode: requestedMode, prayerType: classification.prayerType, userId: user.id, qrCredentialId: credential.id, readerId: verification.reader.id });
@@ -759,6 +762,25 @@ export class AttendanceGateService {
 
   private async ensureGateScanAllowed(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, role?: Role) {
     const policy = await this.getAttendancePolicy();
+    if (direction === GateDirection.OUT && role && TEACHER_GATE_OUT_ROLES.has(role)) {
+      const minute = localMinutesOfDay(scannedAt);
+      if (minute < TEACHER_GATE_OUT_START_MINUTE || minute > TEACHER_GATE_OUT_END_MINUTE) {
+        await this.securityAudit('attendance.gate.scan.rejected_teacher_checkout_window', userId, {
+          actorId: actor.sub,
+          actorRole: actor.role,
+          role,
+          scannedAt: scannedAt.toISOString(),
+          startTime: '15:30',
+          endTime: '16:30'
+        });
+        throw new ForbiddenException({
+          code: API_ERROR_CODES.TEACHER_GATE_OUT_OUTSIDE_WINDOW,
+          message: 'Jam pulang guru dan kepala sekolah adalah pukul 15:30–16:30 WIB.',
+          startTime: '15:30',
+          endTime: '16:30'
+        });
+      }
+    }
     const { start, end } = dayBounds(scannedAt);
     const duplicateWindowMs = Math.max(0, policy.duplicateScanWindowMinutes || 0) * 60 * 1000;
     if (duplicateWindowMs > 0) {
@@ -903,7 +925,7 @@ export class AttendanceGateService {
     }
   }
 
-  private async rejectPrayerOutsideWindow(studentId: string, scannedAt: Date, source: ReaderType, actor: ScanActor, options: RecordOptions, classification: PrayerClassification): Promise<never> {
+  private async rejectPrayerOutsideWindow(studentId: string, scannedAt: Date, source: ReaderType, actor: ScanActor, options: RecordOptions, classification: PrayerClassification, policy: { asharStartTime?: string; asharEndTime?: string }): Promise<never> {
     const nextWindow = classification.nextWindow
       ? {
           prayerType: classification.nextWindow.prayerType,
@@ -930,7 +952,7 @@ export class AttendanceGateService {
     });
     throw new ForbiddenException({
       code: API_ERROR_CODES.PRAYER_OUTSIDE_WINDOW,
-      message: 'Scan ibadah di luar jadwal yang diizinkan.',
+      message: `Scan ibadah di luar jadwal yang diizinkan. Jadwal Ashar pukul ${policy.asharStartTime || '15:30'}–${policy.asharEndTime || '16:15'} WIB.`,
       currentWindow: null,
       nextWindow
     });

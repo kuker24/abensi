@@ -606,8 +606,8 @@ async function main() {
       dhuhaEndTime: '10:30',
       dzuhurStartTime: '11:45',
       dzuhurEndTime: '13:30',
-      asharStartTime: '15:00',
-      asharEndTime: '16:30',
+      asharStartTime: '15:30',
+      asharEndTime: '16:15',
       asharRequiredClassEndTime: '15:00',
       duplicateScanWindowMinutes: 5
     },
@@ -628,8 +628,8 @@ async function main() {
       dhuhaEndTime: '10:30',
       dzuhurStartTime: '11:45',
       dzuhurEndTime: '13:30',
-      asharStartTime: '15:00',
-      asharEndTime: '16:30',
+      asharStartTime: '15:30',
+      asharEndTime: '16:15',
       asharRequiredClassEndTime: '15:00',
       duplicateScanWindowMinutes: 5
     }

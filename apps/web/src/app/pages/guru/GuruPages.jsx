@@ -246,11 +246,22 @@ export function ClassInputPage({ notify }) {
     setGeoStatus({ tone: 'info', message: 'Meminta izin lokasi akurat dari browser...' });
     try {
       const location = await captureBrowserGeolocation();
-      setGeoStatus({ tone: 'ok', message: `Lokasi diterima (akurasi ±${Math.round(location.accuracyMeter)} m).` });
-      await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify(location) });
+      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify(location) });
+      const geofence = result?.geofence;
+      setGeoStatus({
+        tone: 'ok',
+        message: geofence
+          ? `Di dalam area sekolah · jarak ${geofence.distanceMeter} m · radius ${geofence.radiusMeter} m · akurasi ±${geofence.accuracyMeter} m.`
+          : `Lokasi diterima (akurasi ±${Math.round(location.accuracyMeter)} m).`
+      });
       sessions.refresh(); rosterState.refresh(); notify('Absen masuk guru tercatat. Silakan isi presensi siswa awal pembelajaran.');
     } catch (error) {
-      const message = error instanceof BrowserGeoError ? error.message : (error.message || 'Gagal membuka sesi.');
+      const details = error?.details;
+      const message = error instanceof BrowserGeoError
+        ? error.message
+        : error?.code === 'SESSION_OUTSIDE_GEOFENCE' && details
+          ? `Di luar area sekolah · jarak ${details.distanceMeter} m · radius ${details.radiusMeter} m · akurasi ±${details.accuracyMeter} m · batas toleransi ${details.allowedDistanceMeter} m.`
+          : (error.message || 'Gagal membuka sesi.');
       setGeoStatus({ tone: 'bad', message });
       notify(message, 'bad');
     } finally { setActionLoading(''); }

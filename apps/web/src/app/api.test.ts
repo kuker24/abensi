@@ -59,6 +59,25 @@ describe('apiDownload official report downloads', () => {
 });
 
 describe('apiFetch auth handling', () => {
+  it('mempertahankan detail error terstruktur untuk indikator geofence', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      code: 'SESSION_OUTSIDE_GEOFENCE',
+      message: 'Di luar area sekolah.',
+      distanceMeter: 520,
+      radiusMeter: 400,
+      accuracyMeter: 30,
+      allowedDistanceMeter: 430
+    }), { status: 403, headers: { 'content-type': 'application/json' } })));
+
+    const error = await apiFetch('/attendance/class-sessions/session-1/open', { method: 'POST', body: '{}' }).catch((caught) => caught);
+
+    expect(error).toMatchObject({
+      code: 'SESSION_OUTSIDE_GEOFENCE',
+      status: 403,
+      details: expect.objectContaining({ distanceMeter: 520, radiusMeter: 400, accuracyMeter: 30, allowedDistanceMeter: 430 })
+    });
+  });
+
   it('membersihkan sesi lokal dan memberi tahu app saat refresh gagal', async () => {
     const storage = mockStorage();
     storage.setItem(USER_KEY, JSON.stringify({ id: 'u1', role: 'ADMIN_TU' }));

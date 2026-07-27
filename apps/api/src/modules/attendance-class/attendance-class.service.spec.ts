@@ -1059,6 +1059,31 @@ describe('AttendanceClassService teacher check-in/out', () => {
     await expect(service.openSession('session-1', guru, browserGeo({ latitude: -6.3, longitude: 106.9 }))).rejects.toThrow('Di luar area sekolah.');
   });
 
+  it('menerima deviasi GPS yang masih berada dalam radius plus akurasi', async () => {
+    const policy = { enforceSessionOpen: true, allowPicketOverride: true, requireGateTapForOpen: false, centerLat: 0, centerLng: 0, radiusMeter: 400 };
+    const { service } = makeService({ status: SessionStatus.SCHEDULED }, null, policy);
+
+    const result = await service.openSession('session-1', guru, browserGeo({ latitude: 0, longitude: 0.0044, accuracyMeter: 100 }));
+
+    expect(result.geofence).toEqual(expect.objectContaining({ radiusMeter: 400, accuracyMeter: 100, allowedDistanceMeter: 500, insideGeofence: true }));
+    expect(result.geofence?.distanceMeter).toBeGreaterThan(400);
+  });
+
+  it('mengembalikan indikator jarak aman saat geofence menolak', async () => {
+    const policy = { enforceSessionOpen: true, allowPicketOverride: true, requireGateTapForOpen: false, centerLat: 0, centerLng: 0, radiusMeter: 400 };
+    const { service, tx } = makeService({ status: SessionStatus.SCHEDULED }, null, policy);
+
+    await expect(service.openSession('session-1', guru, browserGeo({ latitude: 0, longitude: 0.01, accuracyMeter: 20 }))).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'SESSION_OUTSIDE_GEOFENCE',
+        radiusMeter: 400,
+        accuracyMeter: 20,
+        allowedDistanceMeter: 420
+      })
+    });
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'teacher.session.checkin.rejected_geofence' }) }));
+  });
+
   it('menolak koordinat tidak valid dari panggilan API langsung', async () => {
     const { service } = makeService({ status: SessionStatus.SCHEDULED });
 

@@ -59,6 +59,7 @@ type NormalizedSessionGeo = {
   capturedAt: Date;
   source: 'browser_geolocation';
   distanceMeter: number | null;
+  allowedDistanceMeter: number | null;
   insideGeofence: boolean | null;
 };
 
@@ -109,7 +110,8 @@ function normalizeSessionGeo(payload: SessionGeoDto | undefined, required: boole
   }
 
   const distanceMeter = policy ? haversineDistanceMeters(policy.centerLat, policy.centerLng, payload.latitude, payload.longitude) : null;
-  const insideGeofence = policy ? distanceMeter !== null && distanceMeter <= policy.radiusMeter : null;
+  const allowedDistanceMeter = policy ? policy.radiusMeter + payload.accuracyMeter : null;
+  const insideGeofence = policy ? distanceMeter !== null && allowedDistanceMeter !== null && distanceMeter <= allowedDistanceMeter : null;
 
   return {
     latitude: payload.latitude,
@@ -118,6 +120,7 @@ function normalizeSessionGeo(payload: SessionGeoDto | undefined, required: boole
     capturedAt,
     source: payload.source,
     distanceMeter,
+    allowedDistanceMeter,
     insideGeofence
   };
 }
@@ -513,7 +516,26 @@ export class AttendanceClassService {
 
     const validatedGeo = normalizeSessionGeo(geo, Boolean(policy?.enforceSessionOpen), policy);
     if (policy?.enforceSessionOpen && validatedGeo?.insideGeofence === false) {
-      throw new ForbiddenException('Di luar area sekolah.');
+      const details = {
+        distanceMeter: Math.round(validatedGeo.distanceMeter ?? 0),
+        radiusMeter: policy.radiusMeter,
+        accuracyMeter: Math.round(validatedGeo.accuracyMeter),
+        allowedDistanceMeter: Math.round(validatedGeo.allowedDistanceMeter ?? policy.radiusMeter)
+      };
+      await this.prisma.$transaction(async (tx) => writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: 'teacher.session.checkin.rejected_geofence',
+        resource: 'session',
+        resourceId: sessionId,
+        after: details
+      }));
+      throw new ForbiddenException({
+        code: 'SESSION_OUTSIDE_GEOFENCE',
+        message: `Di luar area sekolah. Jarak ${details.distanceMeter} m, batas toleransi ${details.allowedDistanceMeter} m.`,
+        ...details
+      });
     }
 
     let gateTapSatisfied: boolean | null = policy?.requireGateTapForOpen ? false : null;
@@ -616,6 +638,7 @@ export class AttendanceClassService {
           capturedAt: validatedGeo?.capturedAt.toISOString() ?? null,
           source: validatedGeo?.source ?? null,
           distanceMeter: validatedGeo?.distanceMeter ?? null,
+          allowedDistanceMeter: validatedGeo?.allowedDistanceMeter ?? null,
           insideGeofence: validatedGeo?.insideGeofence ?? null,
           geofenceEnforced: Boolean(policy?.enforceSessionOpen),
           gateTapRequired: Boolean(policy?.requireGateTapForOpen),
@@ -641,7 +664,14 @@ export class AttendanceClassService {
 
       return {
         ...updated,
-        teacherPresence
+        teacherPresence,
+        geofence: validatedGeo ? {
+          distanceMeter: Math.round(validatedGeo.distanceMeter ?? 0),
+          radiusMeter: policy?.radiusMeter ?? null,
+          accuracyMeter: Math.round(validatedGeo.accuracyMeter),
+          allowedDistanceMeter: Math.round(validatedGeo.allowedDistanceMeter ?? policy?.radiusMeter ?? 0),
+          insideGeofence: validatedGeo.insideGeofence
+        } : null
       };
     });
   }
