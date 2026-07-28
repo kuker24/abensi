@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, Building2, Calendar, Check, CheckSquare, Clock, Copy, CreditCard, DoorOpen, Download, Eye, FileText, Flag, HelpCircle, KeyRound, ListChecks, Plus, QrCode, Radar, RefreshCw, Save, ShieldCheck, Smartphone, Users, Wifi, Zap, Activity, TrendingUp, AlertOctagon, ScanLine } from 'lucide-react';
+import { AlertTriangle, BookOpen, Building2, Calendar, Check, CheckSquare, Clock, Copy, CreditCard, DoorOpen, Download, Eye, FileText, Flag, HelpCircle, KeyRound, ListChecks, Plus, QrCode, Radar, RefreshCw, Save, ShieldCheck, Siren, Smartphone, Users, Wifi, Zap, Activity, TrendingUp, AlertOctagon, ScanLine } from 'lucide-react';
 import { apiDownload, apiFetch, formatDateTime, go, itemsOf, metaOf, qs, readStoredUser, today } from '../../api';
 import { hasCapability } from '../../capabilities';
 import { BRAND } from '../../branding';
@@ -1855,6 +1855,70 @@ function ManualQrScanPanel({ notify }) {
 
 function SettingCheckRow({ checked, onChange, title, helper }) {
   return <label className="setting-check-row"><input type="checkbox" checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} /><span><b>{title}</b>{helper && <small>{helper}</small>}</span></label>;
+}
+
+function emergencyExpiryIso(time) {
+  return `${today()}T${time}:00+07:00`;
+}
+
+function emergencyScopeLabels(item) {
+  return [item?.includeTeachers && 'Guru', item?.includeLeadership && 'Pimpinan', item?.includeStaff && 'Pegawai/TU'].filter(Boolean);
+}
+
+export function EarlyCheckoutEmergencyPage({ notify }) {
+  const state = useRemote(() => apiFetch('/attendance/early-checkout-emergency'), []);
+  const [form, setForm] = useState({ includeTeachers: true, includeLeadership: true, includeStaff: true, expiresTime: '16:30', reason: '' });
+  const [deactivateReason, setDeactivateReason] = useState('Keadaan darurat telah selesai dan kegiatan kembali normal.');
+  const [saving, setSaving] = useState(false);
+  const active = state.data?.active || null;
+  const recent = state.data?.recent || [];
+  const scopeCount = emergencyScopeLabels(form).length;
+
+  useEffect(() => {
+    if (!active) return undefined;
+    const timeout = window.setTimeout(state.refresh, Math.max(0, new Date(active.expiresAt).getTime() - Date.now()) + 250);
+    return () => window.clearTimeout(timeout);
+  }, [active?.id, active?.expiresAt]);
+
+  async function activate(event) {
+    event.preventDefault();
+    if (!scopeCount) return notify('Pilih minimal satu kelompok personel.', 'bad');
+    if (!await riskConfirm(`Aktifkan Mode Pulang Cepat sampai pukul ${form.expiresTime} WIB?`)) return;
+    setSaving(true);
+    try {
+      await apiFetch('/attendance/early-checkout-emergency', { method: 'POST', body: JSON.stringify({ includeTeachers: form.includeTeachers, includeLeadership: form.includeLeadership, includeStaff: form.includeStaff, expiresAt: emergencyExpiryIso(form.expiresTime), reason: form.reason }) });
+      setForm((current) => ({ ...current, reason: '' }));
+      notify('Mode Pulang Cepat aktif.');
+      state.refresh();
+    } catch (error) {
+      notify(error.message || 'Mode Pulang Cepat gagal diaktifkan.', 'bad');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deactivate() {
+    if (!active || !await riskConfirm('Nonaktifkan Mode Pulang Cepat sekarang? Personel kembali mengikuti jam pulang normal.')) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/attendance/early-checkout-emergency/${active.id}/deactivate`, { method: 'POST', body: JSON.stringify({ reason: deactivateReason }) });
+      notify('Mode Pulang Cepat dinonaktifkan.');
+      state.refresh();
+    } catch (error) {
+      notify(error.message || 'Mode Pulang Cepat gagal dinonaktifkan.', 'bad');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="content emergency-checkout-page"><PageHead eyebrow="KONTROL DARURAT KAMAD" title="Mode Pulang Cepat" sub="Buka scan pulang sebelum jam normal untuk kelompok personel yang terdampak keadaan darurat." actions={<Btn onClick={state.refresh}><RefreshCw size={14} /> Muat ulang</Btn>} />
+    <SimpleHelpBox title="Batas aman tetap berlaku" items={['Hanya Kepala Sekolah dapat mengaktifkan atau menghentikan mode ini.', 'Personel tetap wajib memiliki scan datang pada hari yang sama.', 'Siswa dan akun Developer tidak pernah masuk cakupan.', 'Mode berakhir otomatis pada jam yang dipilih hari ini.']} />
+    {state.loading ? <LoadingState label="Memeriksa status Mode Pulang Cepat…" /> : state.error ? <ErrorState error={state.error} onRetry={state.refresh} /> : <>
+      <section className={`emergency-status ${active ? 'is-active' : ''}`} aria-live="polite"><div className="emergency-status-icon"><Siren size={24} /></div><div><Pill tone={active ? 'bad' : 'ok'}>{active ? 'AKTIF' : 'TIDAK AKTIF'}</Pill><h2>{active ? `Pulang cepat dibuka sampai ${new Date(active.expiresAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })} WIB` : 'Jam pulang normal berlaku'}</h2><p>{active ? active.reason : 'Seluruh personel mengikuti jendela scan pulang pukul 15:30–16:30 WIB.'}</p>{active && <div className="emergency-scope-list">{emergencyScopeLabels(active).map((label) => <span key={label}>{label}</span>)}</div>}</div></section>
+      {active ? <Card title="Hentikan lebih awal" sub="Gunakan hanya jika keadaan sudah kembali normal sebelum jam selesai."><div className="form-grid"><Field label="Alasan penghentian" hint={`${deactivateReason.trim().length}/15+`}><TextInput type="textarea" rows={3} value={deactivateReason} onChange={(event) => setDeactivateReason(event.target.value)} /></Field><Btn variant="danger" loading={saving} disabled={deactivateReason.trim().length < 15} onClick={deactivate}><Siren size={14} /> Nonaktifkan sekarang</Btn></div></Card> : <Card title="Aktifkan keadaan darurat" sub="Pilih kelompok yang diizinkan scan pulang sebelum pukul 15:30."><form className="settings-form" onSubmit={activate}><section className="policy-section"><h3>Kelompok terdampak</h3><div className="setting-list"><SettingCheckRow checked={form.includeTeachers} onChange={(value) => setForm({ ...form, includeTeachers: value })} title="Guru" helper="Guru Mapel dan Guru Piket" /><SettingCheckRow checked={form.includeLeadership} onChange={(value) => setForm({ ...form, includeLeadership: value })} title="Pimpinan" helper="Kepala Sekolah" /><SettingCheckRow checked={form.includeStaff} onChange={(value) => setForm({ ...form, includeStaff: value })} title="Pegawai/TU" helper="Admin TU, Pegawai, dan Operator IT" /></div></section><Field label="Berlaku sampai" hint="Hari ini, waktu WIB"><TextInput type="time" value={form.expiresTime} onChange={(event) => setForm({ ...form, expiresTime: event.target.value })} required /></Field><Field label="Alasan keadaan darurat" hint={`${form.reason.trim().length}/15+`}><TextInput type="textarea" rows={4} value={form.reason} placeholder="Contoh: keluarga besar sekolah berduka dan kegiatan hari ini dihentikan lebih awal." onChange={(event) => setForm({ ...form, reason: event.target.value })} required minLength={15} /></Field><div className="inline-note warn"><AlertTriangle size={15} /> Setelah aktif, kelompok terpilih dapat langsung scan pulang. Scan datang tetap wajib.</div><div className="policy-save-row"><Btn variant="danger" loading={saving} disabled={!scopeCount || form.reason.trim().length < 15}><Siren size={14} /> Aktifkan Mode Pulang Cepat</Btn></div></form></Card>}
+      <Card title="Riwayat terbaru" sub="Sepuluh aktivasi terakhir untuk pemeriksaan cepat."><DataTable rows={recent} empty="Belum pernah ada Mode Pulang Cepat." columns={[{ header: 'Mulai', render: (row) => formatDateTime(row.startsAt) }, { header: 'Selesai', render: (row) => formatDateTime(row.deactivatedAt || row.expiresAt) }, { header: 'Kelompok', render: (row) => emergencyScopeLabels(row).join(', ') }, { header: 'Status', render: (row) => <Pill tone={row.id === active?.id ? 'bad' : ''}>{row.id === active?.id ? 'Aktif' : row.deactivatedAt ? 'Dihentikan' : 'Berakhir otomatis'}</Pill> }, { header: 'Alasan', render: (row) => row.reason }]} /></Card>
+    </>}
+  </div>;
 }
 
 export function SettingsPage({ notify }) {

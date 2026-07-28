@@ -9,7 +9,7 @@ import { RolesGuard } from '../../common/roles.guard';
 import { Capabilities } from '../../common/capabilities.decorator';
 import { CapabilitiesGuard } from '../../common/capabilities.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
+import { ActivateEarlyCheckoutEmergencyDto, CreateAttendanceOverrideDto, DeactivateEarlyCheckoutEmergencyDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 import { AttendanceGateService } from './attendance-gate.service';
 
 @Controller('attendance')
@@ -22,6 +22,27 @@ export class AttendanceGateController {
   @Capabilities('settings.read')
   getAttendancePolicy() {
     return this.attendanceGateService.getAttendancePolicy();
+  }
+
+  @Get('early-checkout-emergency')
+  @Roles(Role.KEPALA_SEKOLAH)
+  @Capabilities('earlyCheckoutEmergency.manage')
+  getEarlyCheckoutEmergency() {
+    return this.attendanceGateService.getEarlyCheckoutEmergency();
+  }
+
+  @Post('early-checkout-emergency')
+  @Roles(Role.KEPALA_SEKOLAH)
+  @Capabilities('earlyCheckoutEmergency.manage')
+  activateEarlyCheckoutEmergency(@Body() body: ActivateEarlyCheckoutEmergencyDto, @CurrentUser() user: { sub: string; role: Role }, @Req() request: Request) {
+    return this.attendanceGateService.activateEarlyCheckoutEmergency(body, user, extractRequestMeta(request));
+  }
+
+  @Post('early-checkout-emergency/:id/deactivate')
+  @Roles(Role.KEPALA_SEKOLAH)
+  @Capabilities('earlyCheckoutEmergency.manage')
+  deactivateEarlyCheckoutEmergency(@Param('id') id: string, @Body() body: DeactivateEarlyCheckoutEmergencyDto, @CurrentUser() user: { sub: string; role: Role }, @Req() request: Request) {
+    return this.attendanceGateService.deactivateEarlyCheckoutEmergency(id, body, user, extractRequestMeta(request));
   }
 
   @Put('policy')

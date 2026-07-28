@@ -16,6 +16,7 @@ export function AndroidApkUpdatePage(props: { notify: (message: string, type?: s
 export function ReportsPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function LiveMonitorPage(): JSX.Element;
 export function SettingsPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
+export function EarlyCheckoutEmergencyPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function AuditPage(): JSX.Element;
 export function PicketBookPage(props: { notify: (message: string, type?: string) => void }): JSX.Element;
 export function PersonnelLeaveReviewPage(props: { user: { id?: string }; notify: (message: string, type?: string) => void }): JSX.Element;

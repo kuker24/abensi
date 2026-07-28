@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setRiskConfirmHandler } from '../../confirm';
-import { AndroidApkUpdatePage, AuditPage, DevicesPage, LiveMonitorPage, MasterDataPage, PersonnelLeaveReviewPage, ReportsPage, SchedulePage, SessionsPage, SettingsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, buildWindowsCsv, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
+import { AndroidApkUpdatePage, AuditPage, DevicesPage, EarlyCheckoutEmergencyPage, LiveMonitorPage, MasterDataPage, PersonnelLeaveReviewPage, ReportsPage, SchedulePage, SessionsPage, SettingsPage, StudentDailyCompletenessPage, REPORT_FORMAT_OPTIONS, buildOfficialReportExportPath, buildWindowsCsv, formatReportPeriod, sanitizeSpreadsheetCell } from './AdminPages.jsx';
 
 afterEach(() => {
   cleanup();
@@ -160,6 +160,32 @@ describe('Attendance settings', () => {
     expect(requestBody).toEqual(expect.objectContaining({ dhuhaStartTime: '07:00', asharRequiredClassEndTime: '15:00', duplicateScanWindowMinutes: 5, stepUpPassword: 'sandi-admin' }));
     expect(requestBody).not.toHaveProperty('id');
     expect(requestBody).not.toHaveProperty('updatedAt');
+  });
+});
+
+describe('Early checkout emergency', () => {
+  it('submits selected groups, expiry, and reason', async () => {
+    setRiskConfirmHandler(async () => true);
+    let requestBody = null;
+    vi.stubGlobal('fetch', vi.fn(async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/attendance/early-checkout-emergency') && init.method === 'POST') {
+        requestBody = JSON.parse(String(init.body));
+        return new Response(JSON.stringify({ item: { id: 'emergency-1' } }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/attendance/early-checkout-emergency')) return new Response(JSON.stringify({ active: null, recent: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    render(<EarlyCheckoutEmergencyPage notify={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText('Berlaku sampai'), { target: { value: '14:30' } });
+    fireEvent.change(screen.getByLabelText('Alasan keadaan darurat'), { target: { value: 'Keluarga besar sekolah berduka hari ini.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Aktifkan Mode Pulang Cepat/i }));
+
+    await waitFor(() => expect(requestBody).not.toBeNull());
+    expect(requestBody).toEqual(expect.objectContaining({ includeTeachers: true, includeLeadership: true, includeStaff: true, reason: 'Keluarga besar sekolah berduka hari ini.' }));
+    expect(requestBody.expiresAt).toMatch(/T14:30:00\+07:00$/);
   });
 });
 

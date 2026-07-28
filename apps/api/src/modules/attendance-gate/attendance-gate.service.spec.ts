@@ -6,6 +6,7 @@ import { canonicalJson } from '../security/canonical-json';
 import { DeviceSignatureService, sha256Hex } from '../security/device-signature.service';
 
 const admin = { sub: 'admin-1', role: Role.ADMIN_TU };
+const principal = { sub: 'principal-1', role: Role.KEPALA_SEKOLAH };
 
 function makePrisma(user: any) {
   const policy = {
@@ -32,8 +33,16 @@ function makePrisma(user: any) {
     studentAttendance: { create: jest.fn(), createMany: jest.fn(), update: jest.fn(), updateMany: jest.fn(), upsert: jest.fn() },
     qrCredential: { update: jest.fn().mockResolvedValue({ id: 'qr-1' }) },
     attendanceOverride: { upsert: jest.fn().mockResolvedValue({ id: 'override-1', studentId: user.id, status: 'APPROVED' }) },
+    earlyCheckoutEmergency: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ id: 'emergency-1' }),
+      update: jest.fn().mockResolvedValue({ id: 'emergency-1', deactivatedAt: new Date() })
+    },
     auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
-    auditChainState: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() }
+    auditChainState: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
+    $executeRaw: jest.fn()
   };
   return {
     attendancePolicy: { findUnique: jest.fn().mockResolvedValue(policy), create: jest.fn().mockResolvedValue(policy), upsert: jest.fn().mockResolvedValue(policy) },
@@ -46,6 +55,7 @@ function makePrisma(user: any) {
     prayerAttendanceLog: { findUnique: jest.fn().mockResolvedValue(null) },
     qrCredential: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
     attendanceOverride: { findFirst: jest.fn().mockResolvedValue(null) },
+    earlyCheckoutEmergency: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     reconciliationFlag: { upsert: jest.fn().mockResolvedValue({}) },
     rejectedDeviceScan: { create: jest.fn().mockResolvedValue({ id: 'rejected-1' }) },
     auditEntry: { create: jest.fn().mockResolvedValue({ id: 'audit-root' }) },
@@ -91,6 +101,73 @@ function makeOfficialQrReader(user: any, allowedModes: AndroidReaderMode[]) {
 }
 
 describe('AttendanceGateService adaptive QR scan', () => {
+  it.each([Role.ADMIN_TU, Role.DEVELOPER])('menolak aktivasi Mode Pulang Cepat oleh %s pada service boundary', async (role) => {
+    const prisma = makePrisma({ id: 'actor-1', active: true, role });
+    const service = new AttendanceGateService(prisma);
+
+    await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(), reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, { sub: 'actor-1', role })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.__tx.earlyCheckoutEmergency.create).not.toHaveBeenCalled();
+  });
+
+  it('mengaktifkan Mode Pulang Cepat oleh Kepala Sekolah dengan audit', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:00:00.000Z'));
+    try {
+      const prisma = makePrisma({ id: principal.sub, active: true, role: principal.role });
+      const service = new AttendanceGateService(prisma);
+
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: true, expiresAt: '2026-07-27T08:00:00.000Z', reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, principal)).resolves.toMatchObject({ message: 'Mode Pulang Cepat aktif.' });
+      expect(prisma.__tx.earlyCheckoutEmergency.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ includeTeachers: true, includeStaff: true, activatedById: principal.sub }) }));
+      expect(prisma.__tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'attendance.early_checkout_emergency.activated', actorRole: Role.KEPALA_SEKOLAH }) }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('memeriksa ulang mode aktif setelah memperoleh advisory lock', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:00:00.000Z'));
+    try {
+      const prisma = makePrisma({ id: principal.sub, active: true, role: principal.role });
+      const concurrentStart = new Date('2026-07-27T06:03:00.000Z');
+      prisma.__tx.$executeRaw.mockImplementation(() => {
+        jest.setSystemTime(new Date('2026-07-27T06:05:00.000Z'));
+      });
+      prisma.__tx.earlyCheckoutEmergency.findFirst.mockImplementation(({ where }: any) =>
+        where.startsAt.lte >= concurrentStart ? { id: 'concurrent-emergency' } : null
+      );
+      const service = new AttendanceGateService(prisma);
+
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, expiresAt: '2026-07-27T08:00:00.000Z', reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, principal)).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.__tx.earlyCheckoutEmergency.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('menolak mode tanpa kelompok atau melewati pukul 16:30 WIB', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:00:00.000Z'));
+    try {
+      const prisma = makePrisma({ id: principal.sub, active: true, role: principal.role });
+      const service = new AttendanceGateService(prisma);
+      const reason = 'Keadaan darurat sekolah yang sudah diverifikasi.';
+
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: false, includeLeadership: false, includeStaff: false, expiresAt: '2026-07-27T08:00:00.000Z', reason }, principal)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, expiresAt: '2026-07-27T09:31:00.000Z', reason }, principal)).rejects.toBeInstanceOf(BadRequestException);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('menonaktifkan Mode Pulang Cepat oleh Kepala Sekolah dengan audit', async () => {
+    const prisma = makePrisma({ id: principal.sub, active: true, role: principal.role });
+    const before = { id: 'emergency-1', expiresAt: new Date(Date.now() + 60 * 60_000), deactivatedAt: null };
+    prisma.__tx.earlyCheckoutEmergency.findUnique.mockResolvedValue(before);
+    const service = new AttendanceGateService(prisma);
+
+    await expect(service.deactivateEarlyCheckoutEmergency('emergency-1', { reason: 'Keadaan sekolah sudah kembali berjalan normal.' }, principal)).resolves.toMatchObject({ message: 'Mode Pulang Cepat dinonaktifkan.' });
+    expect(prisma.__tx.earlyCheckoutEmergency.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deactivatedById: principal.sub }) }));
+    expect(prisma.__tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'attendance.early_checkout_emergency.deactivated' }) }));
+  });
+
   it('menolak scan mushola untuk guru/karyawan', async () => {
     const prisma = makePrisma({ id: 'guru-1', active: true, role: Role.GURU_MAPEL });
     const service = new AttendanceGateService(prisma);
@@ -421,10 +498,13 @@ describe('AttendanceGateService adaptive QR scan', () => {
   });
 
   it.each([
+    Role.ADMIN_TU,
     Role.GURU_MAPEL,
     Role.GURU_PIKET,
-    Role.KEPALA_SEKOLAH
-  ])('membatasi GATE_OUT %s ke pukul 15:30–16:30 WIB', async (role) => {
+    Role.KEPALA_SEKOLAH,
+    Role.PEGAWAI,
+    Role.OPERATOR_IT
+  ])('membatasi GATE_OUT personel %s ke pukul 15:30–16:30 WIB', async (role) => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-27T08:29:00.000Z'));
     try {
       const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role, enrollments: [] };
@@ -438,6 +518,90 @@ describe('AttendanceGateService adaptive QR scan', () => {
         response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW', startTime: '15:30', endTime: '16:30' })
       });
       expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('mengizinkan GATE_OUT sebelum 15:30 untuk kelompok dengan mode darurat aktif', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:00:00.000Z'));
+    try {
+      const user = { id: 'pegawai-1', username: 'pegawai1', fullName: 'Pegawai Satu', active: true, role: Role.PEGAWAI, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const firstIn = { id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 2 * 60_000) };
+      const emergency = { id: 'emergency-1', includeStaff: true, startsAt: new Date(Date.now() - 60_000), expiresAt: new Date(Date.now() + 60 * 60_000), deactivatedAt: null };
+      prisma.gateLog.findMany.mockResolvedValue([firstIn]);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(firstIn);
+      prisma.earlyCheckoutEmergency.findFirst.mockResolvedValue(emergency);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_PEGAWAI', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-emergency-out', '/api/v1/attendance/qr-reader-scan'))).resolves.toMatchObject({ action: 'Pulang' });
+      expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ earlyCheckoutEmergencyId: 'emergency-1' }) }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('tetap menolak GATE_OUT tanpa scan datang saat mode darurat aktif', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:00:00.000Z'));
+    try {
+      const user = { id: 'pegawai-1', username: 'pegawai1', fullName: 'Pegawai Satu', active: true, role: Role.PEGAWAI, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      prisma.earlyCheckoutEmergency.findFirst.mockResolvedValue({ id: 'emergency-1', includeStaff: true });
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_PEGAWAI', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-emergency-no-in', '/api/v1/attendance/qr-reader-scan'))).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('menolak antrean GATE_OUT jika scan datang terjadi setelah waktu event', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:30:00.000Z'));
+    try {
+      const user = { id: 'pegawai-1', username: 'pegawai1', fullName: 'Pegawai Satu', active: true, role: Role.PEGAWAI, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const outTime = new Date('2026-07-27T06:00:00.000Z');
+      const laterIn = { id: 'gate-in-later', direction: GateDirection.IN, tappedAt: new Date('2026-07-27T06:15:00.000Z') };
+      prisma.gateLog.findMany.mockResolvedValue([laterIn]);
+      prisma.earlyCheckoutEmergency.findFirst.mockResolvedValue({ id: 'emergency-1', includeStaff: true });
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_PEGAWAI', scanMode: AndroidReaderMode.GATE_OUT, clientScannedAt: outTime.toISOString(), appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-emergency-later-in', '/api/v1/attendance/qr-reader-scan'))).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('menolak reader non-Android pulang kurang dari 10 menit tanpa mode darurat', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T08:30:00.000Z'));
+    try {
+      const user = { id: 'pegawai-1', username: 'pegawai1', fullName: 'Pegawai Satu', active: true, role: Role.PEGAWAI, enrollments: [] };
+      const prisma = makePrisma(user);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 2 * 60_000) });
+      const service = new AttendanceGateService(prisma);
+
+      await expect(service.qrScan({ userId: user.id, readerType: ReaderType.GATE, direction: GateDirection.OUT, manualReason: 'Pencatatan pulang manual yang telah diverifikasi.' }, admin)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('tetap menolak kelompok yang tidak dipilih saat mode darurat aktif', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:00:00.000Z'));
+    try {
+      const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role: Role.GURU_MAPEL, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const firstIn = { id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 60 * 60_000) };
+      prisma.gateLog.findMany.mockResolvedValue([firstIn]);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(firstIn);
+      prisma.earlyCheckoutEmergency.findFirst.mockResolvedValue(null);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_GURU', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-emergency-wrong-scope', '/api/v1/attendance/qr-reader-scan'))).rejects.toMatchObject({ response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW' }) });
     } finally {
       jest.useRealTimers();
     }

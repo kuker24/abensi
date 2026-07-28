@@ -53,6 +53,12 @@ describe('typed route registry', () => {
     expect(canAccessRoute('/admin/account-security', user('SISWA'))).toBe(false);
     expect(canAccessRoute('/siswa/dashboard', user('SISWA'))).toBe(true);
     expect(canAccessRoute('/guru/presensi', user('GURU_MAPEL'))).toBe(true);
+    expect(canAccessRoute('/admin/early-checkout-emergency', user('KEPALA_SEKOLAH'))).toBe(true);
+    expect(navItemsForUser(user('KEPALA_SEKOLAH')).map(([, path]) => path)).toContain('/admin/early-checkout-emergency');
+    for (const role of ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'GURU_MAPEL', 'PEGAWAI', 'SISWA', 'DEVELOPER'] as const) {
+      expect(canAccessRoute('/admin/early-checkout-emergency', user(role))).toBe(false);
+      expect(navItemsForUser(user(role)).map(([, path]) => path)).not.toContain('/admin/early-checkout-emergency');
+    }
   });
 
   it('enforces personnel leave self-service and reviewer access', () => {

@@ -42,6 +42,7 @@ describe('role capability matrix', () => {
     [Role.ADMIN_TU, 'leave.review', true],
     [Role.KEPALA_SEKOLAH, 'leave.self.manage', true],
     [Role.KEPALA_SEKOLAH, 'leave.review', true],
+    [Role.KEPALA_SEKOLAH, 'earlyCheckoutEmergency.manage', true],
     [Role.GURU_MAPEL, 'leave.self.manage', true],
     [Role.GURU_MAPEL, 'leave.review', false],
     [Role.GURU_PIKET, 'leave.self.manage', true],
@@ -51,16 +52,17 @@ describe('role capability matrix', () => {
     [Role.SISWA, 'leave.self.manage', false],
     [Role.SISWA, 'leave.review', false],
     [Role.DEVELOPER, 'leave.self.manage', false],
-    [Role.DEVELOPER, 'leave.review', false]
+    [Role.DEVELOPER, 'leave.review', false],
+    [Role.DEVELOPER, 'earlyCheckoutEmergency.manage', false]
   ];
 
   it.each(expected)('%s capability %s -> %s', (role, capability, allowed) => {
     expect(hasCapability(role, capability)).toBe(allowed);
   });
 
-  it('preserves every non-leave capability for DEVELOPER', () => {
+  it('preserves every non-leave, non-principal-only capability for DEVELOPER', () => {
     expect(ROLE_CAPABILITIES[Role.DEVELOPER]).toEqual(
-      CAPABILITIES.filter((capability) => capability !== 'leave.self.manage' && capability !== 'leave.review')
+      CAPABILITIES.filter((capability) => capability !== 'leave.self.manage' && capability !== 'leave.review' && capability !== 'earlyCheckoutEmergency.manage')
     );
   });
 });

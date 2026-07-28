@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Siren,
   Shield,
   User as UserIcon,
   Users,
@@ -89,6 +90,7 @@ const ReportsPage = lazyPage(loadAdminPages, 'ReportsPage');
 const SchedulePage = lazyPage(loadAdminPages, 'SchedulePage');
 const SessionsPage = lazyPage(loadAdminPages, 'SessionsPage');
 const SettingsPage = lazyPage(loadAdminPages, 'SettingsPage');
+const EarlyCheckoutEmergencyPage = lazyPage(loadAdminPages, 'EarlyCheckoutEmergencyPage');
 const StaffAttendancePage = lazyPage(loadAdminPages, 'StaffAttendancePage');
 const StudentDailyCompletenessPage = lazyPage(loadAdminPages, 'StudentDailyCompletenessPage');
 const PersonnelLeaveReviewPage = lazyPage(loadAdminPages, 'PersonnelLeaveReviewPage');
@@ -177,6 +179,7 @@ function RouteRedirect({ to }: { to: string }) {
 export const ROUTES = [
   { path: '/admin/dashboard', area: 'Admin/TU', title: 'Mulai Hari Ini', roles: ['ADMIN_TU', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <AdminDashboard /> },
   { path: '/admin/principal-dashboard', area: 'Kepala Sekolah', title: 'Ringkasan Kepala Sekolah', roles: ['KEPALA_SEKOLAH', 'DEVELOPER'], capabilities: ['reports.operational.read'], render: () => <PrincipalDashboard /> },
+  { path: '/admin/early-checkout-emergency', area: 'Kepala Sekolah', title: 'Mode Pulang Cepat', roles: ['KEPALA_SEKOLAH'], capabilities: ['earlyCheckoutEmergency.manage'], render: ({ notify }) => <EarlyCheckoutEmergencyPage notify={notify} /> },
   { path: '/admin/it-dashboard', area: 'Operator IT', title: 'Cek Sistem', roles: ['OPERATOR_IT', 'DEVELOPER'], capabilities: ['devices.read'], render: () => <ItDashboardPage /> },
   { path: '/admin/picket-dashboard', area: 'Guru Piket', title: 'Tugas Piket Hari Ini', roles: ['GURU_PIKET', 'DEVELOPER'], capabilities: ['reconciliation.read'], render: () => <PicketDashboardPage /> },
   { path: '/admin/sessions', area: 'Admin/TU', title: 'Sesi Hari Ini', roles: ['ADMIN_TU', 'OPERATOR_IT', 'GURU_PIKET', 'DEVELOPER'], capabilities: ['classAttendance.read'], render: ({ user, notify }) => <SessionsPage admin={user.role !== 'GURU_PIKET'} notify={notify} /> },
@@ -242,7 +245,7 @@ const NAV_ITEMS_BY_ROLE: Record<NavKey, NavItem[]> = {
     navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('LAPORAN', '/admin/operational-export', Download, 'Export Aktivitas'), navItem('BANTUAN & SISTEM', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN & SISTEM', '/admin/help', BookOpen, 'Panduan'), navItem('BANTUAN & SISTEM', '/admin/account-security', KeyRound, 'Keamanan Akun'), navItem('BANTUAN & SISTEM', '/admin/settings', Settings, 'Aturan Absensi'), navItem('BANTUAN & SISTEM', '/admin/audit', Database, 'Riwayat Perubahan')
   ],
   principal: [
-    navItem('PANTAUAN', '/admin/principal-dashboard', LayoutDashboard, 'Ringkasan Kepala Sekolah'), navItem('PANTAUAN', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('PANTAUAN', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('PANTAUAN', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('PANTAUAN', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('PANTAUAN', '/admin/izin-personel', CheckSquare, 'Izin Personel'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('LAPORAN', '/admin/operational-export', Download, 'Export Aktivitas'), navItem('PRIBADI', '/admin/izin-saya', Calendar, 'Izin Saya'), navItem('PRIBADI', '/admin/kehadiran-saya', UserIcon, 'Kehadiran Saya'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Kepala Sekolah')
+    navItem('KONTROL DARURAT', '/admin/early-checkout-emergency', Siren, 'Mode Pulang Cepat'), navItem('PANTAUAN', '/admin/principal-dashboard', LayoutDashboard, 'Ringkasan Kepala Sekolah'), navItem('PANTAUAN', '/admin/student-completeness', CheckSquare, 'Kehadiran Lengkap Siswa'), navItem('PANTAUAN', '/admin/prayer-attendance', CheckSquare, 'Sholat Siswa'), navItem('PANTAUAN', '/admin/staff-attendance', Users, 'Kepala/Staf Hadir'), navItem('PANTAUAN', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('PANTAUAN', '/admin/izin-personel', CheckSquare, 'Izin Personel'), navItem('LAPORAN', '/admin/reports', FileText, 'Laporan Sekolah'), navItem('LAPORAN', '/admin/operational-export', Download, 'Export Aktivitas'), navItem('PRIBADI', '/admin/izin-saya', Calendar, 'Izin Saya'), navItem('PRIBADI', '/admin/kehadiran-saya', UserIcon, 'Kehadiran Saya'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Kepala Sekolah')
   ],
   operator: [
     navItem('MULAI HARI INI', '/admin/it-dashboard', LayoutDashboard, 'Cek Sistem'), navItem('PERANGKAT', '/admin/devices', CreditCard, 'HP Scanner & Kartu'), navItem('PERANGKAT', '/admin/android-apk-update', Download, 'APK Update Center'), navItem('PERANGKAT', '/admin/live-monitor', Activity, 'Aktivitas Sekarang'), navItem('LAPORAN', '/admin/operational-export', Download, 'Export Aktivitas'), navItem('CEK KEAMANAN', '/admin/audit', Database, 'Riwayat Perubahan'), navItem('PRIBADI', '/admin/izin-saya', Calendar, 'Izin Saya'), navItem('PRIBADI', '/admin/kehadiran-saya', UserIcon, 'Kehadiran Saya'), navItem('BANTUAN', '/admin/notifications', Bell, 'Tugas / Notifikasi'), navItem('BANTUAN', '/admin/help', BookOpen, 'Panduan Operator')

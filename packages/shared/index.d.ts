@@ -28,6 +28,7 @@ export declare const CAPABILITIES: readonly [
   'attendanceOverrides.create',
   'attendanceOverrides.approve',
   'attendanceOverrides.revoke',
+  'earlyCheckoutEmergency.manage',
   'devices.read',
   'devices.manage',
   'reconciliation.read',

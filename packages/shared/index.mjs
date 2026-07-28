@@ -26,6 +26,7 @@ export const CAPABILITIES = [
   'attendanceOverrides.create',
   'attendanceOverrides.approve',
   'attendanceOverrides.revoke',
+  'earlyCheckoutEmergency.manage',
   'devices.read',
   'devices.manage',
   'reconciliation.read',
@@ -62,6 +63,7 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'profile.self.read', 'profile.self.update'
   ]),
   KEPALA_SEKOLAH: Object.freeze([
+    'earlyCheckoutEmergency.manage',
     'reports.self.read', 'reports.operational.read', 'reports.school.read',
     'leave.self.manage', 'leave.review',
     'profile.self.read', 'profile.self.update'
@@ -103,7 +105,7 @@ export const ROLE_CAPABILITIES = Object.freeze({
     'profile.self.update'
   ]),
   DEVELOPER: Object.freeze(CAPABILITIES.filter(
-    (capability) => capability !== 'leave.self.manage' && capability !== 'leave.review'
+    (capability) => capability !== 'leave.self.manage' && capability !== 'leave.review' && capability !== 'earlyCheckoutEmergency.manage'
   ))
 });
 

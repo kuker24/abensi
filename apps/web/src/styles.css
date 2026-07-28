@@ -812,6 +812,17 @@ label, .field-label { display: block; font-size: var(--text-xs); font-weight: va
 .setting-check-row b { font-size: var(--text-sm); line-height: 1.35; }
 .setting-check-row small { color: var(--fg-muted); line-height: 1.45; }
 .policy-save-row { display: flex; justify-content: flex-end; }
+.emergency-checkout-page { display: grid; gap: 18px; }
+.emergency-checkout-page .simple-help { margin-bottom: 0; }
+.emergency-status { display: flex; gap: 16px; align-items: flex-start; padding: 20px; border: 1px solid var(--border-2); border-radius: var(--radius-lg); background: var(--surface); }
+.emergency-status.is-active { border-color: rgba(248,113,113,.45); background: var(--bad-soft); box-shadow: 0 0 0 1px rgba(248,113,113,.08) inset; }
+.emergency-status-icon { display: grid; place-items: center; width: 48px; height: 48px; flex: 0 0 48px; border-radius: var(--radius); color: var(--fg); background: var(--surface-2); border: 1px solid var(--border-2); }
+.emergency-status.is-active .emergency-status-icon { color: var(--bad); background: var(--bad-dim); border-color: rgba(248,113,113,.35); }
+.emergency-status h2 { margin: 10px 0 5px; font-size: var(--text-xl); text-wrap: balance; }
+.emergency-status p { max-width: 72ch; margin: 0; color: var(--fg-secondary); text-wrap: pretty; }
+.emergency-scope-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.emergency-scope-list span { padding: 6px 10px; border-radius: var(--radius-full); border: 1px solid rgba(248,113,113,.3); background: rgba(22,24,28,.28); color: var(--fg); font-size: var(--text-xs); font-weight: var(--font-semibold); }
+@media (max-width: 640px) { .emergency-status { padding: 16px; } .emergency-status-icon { width: 42px; height: 42px; flex-basis: 42px; } }
 
 @media (max-width: 860px) {
   .import-upload-grid,

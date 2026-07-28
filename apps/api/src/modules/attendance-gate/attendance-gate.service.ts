@@ -28,7 +28,7 @@ import { QrCredentialsService } from '../qr-credentials/qr-credentials.service';
 import { redactQr } from '../qr-credentials/qr-code.util';
 import { MobileAndroidService } from '../mobile/mobile-android.service';
 import { businessDateKey, businessWeekday, jakartaBusinessDayBounds, localDateTimeToUtc, localMinutesOfDay } from '../../common/business-time';
-import { CreateAttendanceOverrideDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
+import { ActivateEarlyCheckoutEmergencyDto, CreateAttendanceOverrideDto, DeactivateEarlyCheckoutEmergencyDto, DeviceGateEventDto, QrReaderScanDto, QrScanDto, ReaderScanDto, ReviewAttendanceOverrideDto, TapGateDto, UpdateAttendancePolicyDto } from './attendance-gate.dto';
 
 const VALID_OVERRIDE_SCOPES = new Set(Object.values(AttendanceOverrideScope));
 const MIN_GATE_STAY_MINUTES = Number(process.env.MIN_GATE_STAY_MINUTES ?? '10');
@@ -41,9 +41,10 @@ const OFFLINE_SCAN_MAX_AGE_MS = {
   default: 24 * 60 * 60 * 1000,
   mushola: 2 * 60 * 60 * 1000
 } as const;
-const TEACHER_GATE_OUT_START_MINUTE = 15 * 60 + 30;
-const TEACHER_GATE_OUT_END_MINUTE = 16 * 60 + 30;
-const TEACHER_GATE_OUT_ROLES = new Set<Role>([Role.GURU_MAPEL, Role.GURU_PIKET, Role.KEPALA_SEKOLAH]);
+const PERSONNEL_GATE_OUT_START_MINUTE = 15 * 60 + 30;
+const PERSONNEL_GATE_OUT_END_MINUTE = 16 * 60 + 30;
+const PERSONNEL_GATE_OUT_ROLES = new Set<Role>([Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.GURU_PIKET, Role.PEGAWAI, Role.OPERATOR_IT]);
+const EARLY_CHECKOUT_EMERGENCY_LOCK = 389551912;
 function dayBounds(value: Date | string = new Date()) {
   return jakartaBusinessDayBounds(value);
 }
@@ -96,6 +97,13 @@ function isStaffRole(role: Role) {
   return role === Role.ADMIN_TU || role === Role.OPERATOR_IT || role === Role.GURU_PIKET || role === Role.PEGAWAI || role === Role.DEVELOPER;
 }
 
+function emergencyScopeForRole(role: Role) {
+  if (role === Role.GURU_MAPEL || role === Role.GURU_PIKET) return 'includeTeachers' as const;
+  if (role === Role.KEPALA_SEKOLAH) return 'includeLeadership' as const;
+  if (role === Role.ADMIN_TU || role === Role.PEGAWAI || role === Role.OPERATOR_IT) return 'includeStaff' as const;
+  return null;
+}
+
 function gateDirectionLabel(direction: GateDirection) {
   return direction === GateDirection.IN ? 'Datang' : 'Pulang';
 }
@@ -143,6 +151,12 @@ interface RecordOptions {
   deviceEventId?: string | null;
   deviceTimestamp?: Date | null;
   receivedAt?: Date | null;
+  earlyCheckoutEmergencyId?: string | null;
+}
+
+interface GateScanPermission {
+  usedOverrideId: string | null;
+  earlyCheckoutEmergencyId: string | null;
 }
 
 @Injectable()
@@ -160,6 +174,118 @@ export class AttendanceGateService {
     const existing = await this.prisma.attendancePolicy.findUnique({ where: { id: 1 } });
     if (existing) return existing;
     return this.prisma.attendancePolicy.create({ data: { id: 1 } });
+  }
+
+  async getEarlyCheckoutEmergency() {
+    const now = new Date();
+    const [active, recent] = await Promise.all([
+      this.prisma.earlyCheckoutEmergency.findFirst({
+        where: { startsAt: { lte: now }, expiresAt: { gt: now }, deactivatedAt: null },
+        orderBy: { startsAt: 'desc' }
+      }),
+      this.prisma.earlyCheckoutEmergency.findMany({ orderBy: { startsAt: 'desc' }, take: 10 })
+    ]);
+    return { active, recent, serverTime: now.toISOString() };
+  }
+
+  async activateEarlyCheckoutEmergency(payload: ActivateEarlyCheckoutEmergencyDto, actor: ScanActor, meta: RequestMeta = {}) {
+    this.assertPrincipalEmergencyActor(actor);
+    if (!payload.includeTeachers && !payload.includeLeadership && !payload.includeStaff) {
+      throw new BadRequestException('Pilih minimal satu kelompok personel.');
+    }
+    const reason = assertReasonQuality(payload.reason, 'Alasan mode darurat');
+    const expiresAt = new Date(payload.expiresAt);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(${EARLY_CHECKOUT_EMERGENCY_LOCK})`);
+      const startsAt = new Date();
+      if (Number.isNaN(expiresAt.getTime()) || expiresAt <= startsAt) {
+        throw new BadRequestException('Jam selesai mode darurat harus setelah waktu sekarang.');
+      }
+      if (businessDateKey(expiresAt) !== businessDateKey(startsAt) || expiresAt > endOfDay(startsAt)) {
+        throw new BadRequestException('Mode darurat harus berakhir pada hari yang sama.');
+      }
+      const normalWindowEnd = localDateTimeToUtc(businessDateKey(startsAt), '16:30');
+      if (expiresAt > normalWindowEnd) {
+        throw new BadRequestException('Mode darurat hanya dapat berlaku sampai pukul 16:30 WIB.');
+      }
+      const existing = await tx.earlyCheckoutEmergency.findFirst({
+        where: { startsAt: { lte: startsAt }, expiresAt: { gt: startsAt }, deactivatedAt: null },
+        orderBy: { startsAt: 'desc' }
+      });
+      if (existing) throw new ConflictException('Mode Pulang Cepat masih aktif. Nonaktifkan terlebih dahulu.');
+      const emergency = await tx.earlyCheckoutEmergency.create({
+        data: {
+          reason,
+          includeTeachers: payload.includeTeachers,
+          includeLeadership: payload.includeLeadership,
+          includeStaff: payload.includeStaff,
+          startsAt,
+          expiresAt,
+          activatedById: actor.sub
+        }
+      });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'attendance',
+        action: 'attendance.early_checkout_emergency.activated',
+        resource: 'earlyCheckoutEmergency',
+        resourceId: emergency.id,
+        reason,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        after: emergency
+      });
+      return { message: 'Mode Pulang Cepat aktif.', item: emergency };
+    });
+  }
+
+  async deactivateEarlyCheckoutEmergency(id: string, payload: DeactivateEarlyCheckoutEmergencyDto, actor: ScanActor, meta: RequestMeta = {}) {
+    this.assertPrincipalEmergencyActor(actor);
+    const reason = assertReasonQuality(payload.reason, 'Alasan menonaktifkan mode darurat');
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(${EARLY_CHECKOUT_EMERGENCY_LOCK})`);
+      const before = await tx.earlyCheckoutEmergency.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Mode Pulang Cepat tidak ditemukan.');
+      if (before.deactivatedAt) throw new ConflictException('Mode Pulang Cepat sudah dinonaktifkan.');
+      if (before.expiresAt <= now) throw new ConflictException('Mode Pulang Cepat sudah berakhir otomatis.');
+      const updated = await tx.earlyCheckoutEmergency.update({
+        where: { id },
+        data: { deactivatedAt: now, deactivatedById: actor.sub, deactivatedReason: reason }
+      });
+      await writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role,
+        module: 'attendance',
+        action: 'attendance.early_checkout_emergency.deactivated',
+        resource: 'earlyCheckoutEmergency',
+        resourceId: id,
+        reason,
+        requestIp: meta.requestIp ?? null,
+        requestDevice: meta.requestDevice ?? null,
+        before,
+        after: updated
+      });
+      return { message: 'Mode Pulang Cepat dinonaktifkan.', item: updated };
+    });
+  }
+
+  private assertPrincipalEmergencyActor(actor: ScanActor) {
+    if (actor.role !== Role.KEPALA_SEKOLAH) {
+      throw new ForbiddenException('Mode Pulang Cepat hanya dapat dikelola Kepala Sekolah.');
+    }
+  }
+
+  private async findActiveEarlyCheckoutEmergency(role: Role | undefined, at: Date) {
+    if (!role || role === Role.SISWA || role === Role.DEVELOPER) return null;
+    const scope = emergencyScopeForRole(role);
+    if (!scope) return null;
+    return this.prisma.earlyCheckoutEmergency.findFirst({
+      where: { startsAt: { lte: at }, expiresAt: { gt: at }, OR: [{ deactivatedAt: null }, { deactivatedAt: { gt: at } }], [scope]: true },
+      orderBy: { startsAt: 'desc' }
+    });
   }
 
   async updateAttendancePolicy(payload: UpdateAttendancePolicyDto, actor: ScanActor) {
@@ -608,8 +734,9 @@ export class AttendanceGateService {
       where: { userId, businessDate },
       orderBy: { tappedAt: 'asc' }
     });
-    const firstIn = logs.find((item) => item.direction === GateDirection.IN) ?? null;
-    const firstOut = logs.find((item) => item.direction === GateDirection.OUT) ?? null;
+    const logsAtScanTime = logs.filter((item) => item.tappedAt <= scannedAt);
+    const firstIn = logsAtScanTime.find((item) => item.direction === GateDirection.IN) ?? null;
+    const firstOut = logsAtScanTime.find((item) => item.direction === GateDirection.OUT) ?? null;
 
     // Explicit menu selection (new APK): trust the operator's chosen direction instead
     // of guessing from scan order. Older APKs still send GERBANG and fall through to
@@ -636,7 +763,8 @@ export class AttendanceGateService {
         return { kind: 'GATE', message: 'Sudah tercatat.', item: firstOut, idempotent: true, action: 'Pulang' };
       }
       const minutesSinceIn = Math.floor((scannedAt.getTime() - firstIn.tappedAt.getTime()) / 60000);
-      if (minutesSinceIn < MIN_GATE_STAY_MINUTES) {
+      const emergency = await this.findActiveEarlyCheckoutEmergency(role, scannedAt);
+      if (minutesSinceIn < MIN_GATE_STAY_MINUTES && !emergency) {
         await this.securityAudit('attendance.qr.reader.scan.rejected_gate_out_too_soon', userId, { minutesSinceIn, minimumMinutes: MIN_GATE_STAY_MINUTES });
         throw new ForbiddenException(`Scan pulang terlalu cepat setelah scan datang. Tunggu minimal ${MIN_GATE_STAY_MINUTES} menit.`);
       }
@@ -658,7 +786,8 @@ export class AttendanceGateService {
     }
 
     const minutesSinceIn = Math.floor((scannedAt.getTime() - firstIn.tappedAt.getTime()) / 60000);
-    if (minutesSinceIn < MIN_GATE_STAY_MINUTES) {
+    const emergency = await this.findActiveEarlyCheckoutEmergency(role, scannedAt);
+    if (minutesSinceIn < MIN_GATE_STAY_MINUTES && !emergency) {
       await this.touchSuccessfulReaderScan(scannedAt, options);
       await this.securityAudit('attendance.qr.reader.scan.idempotent_gate_in', firstIn.id, { userId, minutesSinceIn, minimumMinutes: MIN_GATE_STAY_MINUTES });
       return { kind: 'GATE', message: 'Sudah tercatat.', item: firstIn, idempotent: true, action: 'Datang' };
@@ -760,12 +889,13 @@ export class AttendanceGateService {
     throw new ForbiddenException('Siswa ini masih punya jadwal sampai sore. Scan Ashar dulu sebelum pulang.');
   }
 
-  private async ensureGateScanAllowed(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, role?: Role) {
+  private async ensureGateScanAllowed(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, role?: Role): Promise<GateScanPermission> {
     const policy = await this.getAttendancePolicy();
-    if (direction === GateDirection.OUT && role && TEACHER_GATE_OUT_ROLES.has(role)) {
+    const emergency = direction === GateDirection.OUT ? await this.findActiveEarlyCheckoutEmergency(role, scannedAt) : null;
+    if (direction === GateDirection.OUT && role && PERSONNEL_GATE_OUT_ROLES.has(role) && !emergency) {
       const minute = localMinutesOfDay(scannedAt);
-      if (minute < TEACHER_GATE_OUT_START_MINUTE || minute > TEACHER_GATE_OUT_END_MINUTE) {
-        await this.securityAudit('attendance.gate.scan.rejected_teacher_checkout_window', userId, {
+      if (minute < PERSONNEL_GATE_OUT_START_MINUTE || minute > PERSONNEL_GATE_OUT_END_MINUTE) {
+        await this.securityAudit('attendance.gate.scan.rejected_personnel_checkout_window', userId, {
           actorId: actor.sub,
           actorRole: actor.role,
           role,
@@ -775,7 +905,7 @@ export class AttendanceGateService {
         });
         throw new ForbiddenException({
           code: API_ERROR_CODES.TEACHER_GATE_OUT_OUTSIDE_WINDOW,
-          message: 'Jam pulang guru dan kepala sekolah adalah pukul 15:30–16:30 WIB.',
+          message: 'Jam pulang personel adalah pukul 15:30–16:30 WIB. Kepala Sekolah dapat mengaktifkan Mode Pulang Cepat untuk keadaan darurat.',
           startTime: '15:30',
           endTime: '16:30'
         });
@@ -810,7 +940,7 @@ export class AttendanceGateService {
         await this.securityAudit('attendance.gate.scan.rejected_repeated_in', userId, { lastLogId: lastLog.id });
         throw new ConflictException('Scan masuk sudah tercatat dan belum ada scan keluar.');
       }
-      return override.id;
+      return { usedOverrideId: override.id, earlyCheckoutEmergencyId: emergency?.id ?? null };
     }
 
     if (direction === GateDirection.OUT) {
@@ -821,20 +951,23 @@ export class AttendanceGateService {
           await this.securityAudit('attendance.gate.scan.rejected_out_without_in', userId, { lastLogId: lastLog?.id ?? null });
           throw new ForbiddenException('Scan keluar ditolak karena belum ada scan masuk valid hari ini.');
         }
-        return override.id;
+        return { usedOverrideId: override.id, earlyCheckoutEmergencyId: emergency?.id ?? null };
       }
 
       const minutesSinceIn = Math.round((scannedAt.getTime() - lastLog.tappedAt.getTime()) / 60000);
-      if (minutesSinceIn < MIN_GATE_STAY_MINUTES) {
+      if (minutesSinceIn < MIN_GATE_STAY_MINUTES && !emergency) {
         await this.createSecurityFlag(ReconciliationFlagType.OUT_TERLALU_CEPAT, userId, null, { inLogId: lastLog.id, minutesSinceIn, minimumMinutes: MIN_GATE_STAY_MINUTES }, 'Periksa apakah kartu dititipkan atau siswa/guru langsung keluar setelah masuk.');
+        await this.securityAudit('attendance.gate.scan.rejected_gate_out_too_soon', userId, { actorId: actor.sub, actorRole: actor.role, minutesSinceIn, minimumMinutes: MIN_GATE_STAY_MINUTES });
+        throw new ForbiddenException(`Scan pulang terlalu cepat setelah scan datang. Tunggu minimal ${MIN_GATE_STAY_MINUTES} menit.`);
       }
     }
 
-    return null;
+    return { usedOverrideId: null, earlyCheckoutEmergencyId: emergency?.id ?? null };
   }
 
   private async recordGateScan(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, options: RecordOptions, role?: Role) {
-    let usedOverrideId = await this.ensureGateScanAllowed(userId, direction, scannedAt, actor, role);
+    const permission = await this.ensureGateScanAllowed(userId, direction, scannedAt, actor, role);
+    let usedOverrideId = permission.usedOverrideId;
     if (direction === GateDirection.OUT && role === Role.SISWA) {
       usedOverrideId = usedOverrideId ?? await this.ensureStudentAsharBeforeCheckout(userId, scannedAt, actor);
     }
@@ -846,7 +979,11 @@ export class AttendanceGateService {
       const policy = await this.getAttendancePolicy();
       if (!policy.requireStaffGateOut) usedOverrideId = usedOverrideId ?? null;
     }
-    return this.recordGateScanWithoutPolicy(userId, direction, scannedAt, actor, { ...options, usedOverrideId: usedOverrideId ?? options.usedOverrideId ?? null });
+    return this.recordGateScanWithoutPolicy(userId, direction, scannedAt, actor, {
+      ...options,
+      usedOverrideId: usedOverrideId ?? options.usedOverrideId ?? null,
+      earlyCheckoutEmergencyId: permission.earlyCheckoutEmergencyId ?? options.earlyCheckoutEmergencyId ?? null
+    });
   }
 
   private async recordGateScanWithoutPolicy(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, options: RecordOptions) {
@@ -873,7 +1010,8 @@ export class AttendanceGateService {
             bodyHash: options.bodyHash ?? null,
             manualReason: options.manualReason ?? null,
             createdById: actor.sub,
-            usedOverrideId: options.usedOverrideId ?? null
+            usedOverrideId: options.usedOverrideId ?? null,
+            earlyCheckoutEmergencyId: options.earlyCheckoutEmergencyId ?? null
           }
         });
         if (options.cardId) await tx.smartCard.update({ where: { id: options.cardId }, data: { lastTappedAt: scannedAt } });
@@ -892,7 +1030,7 @@ export class AttendanceGateService {
           resource: 'gateLog',
           resourceId: log.id,
           reason: options.manualReason,
-          after: { ...log, kind: 'GATE', usedOverrideId: options.usedOverrideId ?? null }
+          after: { ...log, kind: 'GATE', usedOverrideId: options.usedOverrideId ?? null, earlyCheckoutEmergencyId: options.earlyCheckoutEmergencyId ?? null }
         });
         await writeLiveMonitorOutboxEvent(tx, {
           eventType: 'gate.scan_recorded',

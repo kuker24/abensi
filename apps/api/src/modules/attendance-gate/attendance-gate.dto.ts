@@ -169,6 +169,30 @@ export class ReviewAttendanceOverrideDto {
   stepUpPassword?: string;
 }
 
+export class ActivateEarlyCheckoutEmergencyDto {
+  @IsBoolean()
+  includeTeachers!: boolean;
+
+  @IsBoolean()
+  includeLeadership!: boolean;
+
+  @IsBoolean()
+  includeStaff!: boolean;
+
+  @IsDateString()
+  expiresAt!: string;
+
+  @IsString()
+  @MinLength(15)
+  reason!: string;
+}
+
+export class DeactivateEarlyCheckoutEmergencyDto {
+  @IsString()
+  @MinLength(15)
+  reason!: string;
+}
+
 export class UpdateAttendancePolicyDto {
   @IsBoolean()
   requireStudentGateInBeforeClass!: boolean;
