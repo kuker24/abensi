@@ -319,8 +319,8 @@ model User {
   archivedBy                            User?                          @relation("UserArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   archivedUsers                         User[]                         @relation("UserArchivedBy")
   updatedAccountDeleteSecuritySettings  AccountDeleteSecuritySetting[] @relation("AccountDeletePinUpdatedBy")
-  activatedEarlyCheckoutEmergencies    EarlyCheckoutEmergency[]       @relation("EarlyCheckoutEmergencyActivatedBy")
-  deactivatedEarlyCheckoutEmergencies  EarlyCheckoutEmergency[]       @relation("EarlyCheckoutEmergencyDeactivatedBy")
+  activatedEarlyCheckoutEmergencies     EarlyCheckoutEmergency[]       @relation("EarlyCheckoutEmergencyActivatedBy")
+  deactivatedEarlyCheckoutEmergencies   EarlyCheckoutEmergency[]       @relation("EarlyCheckoutEmergencyDeactivatedBy")
 
   @@index([role, active])
   @@index([active, createdAt])
@@ -598,26 +598,26 @@ model TeacherSessionPresence {
 }
 
 model GateLog {
-  id                String             @id @default(cuid())
-  userId            String
-  direction         GateDirection
-  businessDate      DateTime           @db.Date
-  tappedAt          DateTime           @default(now())
-  deviceId          String?
-  readerId          String?
-  cardId            String?
-  qrCredentialId    String?
-  scanMode          AndroidReaderMode?
-  appVersion        String?
-  signatureVerified Boolean            @default(false)
-  serverReceivedAt  DateTime           @default(now())
-  deviceEventId     String?            @unique
-  deviceTimestamp   DateTime?
-  nonceHash         String?
-  bodyHash          String?
-  manualReason      String?
-  createdById       String?
-  usedOverrideId    String?
+  id                       String             @id @default(cuid())
+  userId                   String
+  direction                GateDirection
+  businessDate             DateTime           @db.Date
+  tappedAt                 DateTime           @default(now())
+  deviceId                 String?
+  readerId                 String?
+  cardId                   String?
+  qrCredentialId           String?
+  scanMode                 AndroidReaderMode?
+  appVersion               String?
+  signatureVerified        Boolean            @default(false)
+  serverReceivedAt         DateTime           @default(now())
+  deviceEventId            String?            @unique
+  deviceTimestamp          DateTime?
+  nonceHash                String?
+  bodyHash                 String?
+  manualReason             String?
+  createdById              String?
+  usedOverrideId           String?
   earlyCheckoutEmergencyId String?
 
   user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -639,23 +639,23 @@ model GateLog {
 }
 
 model EarlyCheckoutEmergency {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   reason            String
-  includeTeachers   Boolean  @default(false)
-  includeLeadership Boolean  @default(false)
-  includeStaff      Boolean  @default(false)
-  startsAt          DateTime @default(now())
+  includeTeachers   Boolean   @default(false)
+  includeLeadership Boolean   @default(false)
+  includeStaff      Boolean   @default(false)
+  startsAt          DateTime  @default(now())
   expiresAt         DateTime
   activatedById     String
   deactivatedAt     DateTime?
   deactivatedById   String?
   deactivatedReason String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  activatedBy   User  @relation("EarlyCheckoutEmergencyActivatedBy", fields: [activatedById], references: [id], onDelete: Restrict)
-  deactivatedBy User? @relation("EarlyCheckoutEmergencyDeactivatedBy", fields: [deactivatedById], references: [id], onDelete: SetNull)
-  gateLogs       GateLog[]
+  activatedBy   User      @relation("EarlyCheckoutEmergencyActivatedBy", fields: [activatedById], references: [id], onDelete: Restrict)
+  deactivatedBy User?     @relation("EarlyCheckoutEmergencyDeactivatedBy", fields: [deactivatedById], references: [id], onDelete: SetNull)
+  gateLogs      GateLog[]
 
   @@index([startsAt, expiresAt, deactivatedAt])
   @@index([activatedById, createdAt])
