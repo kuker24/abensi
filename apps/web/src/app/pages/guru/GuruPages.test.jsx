@@ -256,7 +256,9 @@ describe('guru session journal workspace', () => {
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined });
 
     render(<ClassInputPage notify={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: /Masuk Kelas/ }));
+    const openButton = await screen.findByRole('button', { name: /Masuk Kelas/ });
+    await waitFor(() => expect(openButton).not.toBeDisabled());
+    fireEvent.click(openButton);
 
     expect(await screen.findByText('Verifikasi lokasi dinonaktifkan sementara.')).toBeInTheDocument();
     expect(requests.find((request) => request.method === 'POST' && request.url.endsWith('/open'))?.body).toEqual({});
@@ -268,7 +270,9 @@ describe('guru session journal workspace', () => {
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (success) => success({ coords: { latitude: 0.5, longitude: 101.2, accuracy: 24 }, timestamp: Date.now() }) } });
 
     render(<ClassInputPage notify={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: /Masuk Kelas/ }));
+    const openButton = await screen.findByRole('button', { name: /Masuk Kelas/ });
+    await waitFor(() => expect(openButton).not.toBeDisabled());
+    fireEvent.click(openButton);
 
     expect(await screen.findByText(/Di dalam area sekolah · jarak 318 m · radius 400 m · akurasi ±24 m/)).toBeInTheDocument();
   });
@@ -287,7 +291,9 @@ describe('guru session journal workspace', () => {
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (success) => success({ coords: { latitude: 0.5, longitude: 101.2, accuracy: 30 }, timestamp: Date.now() }) } });
 
     render(<ClassInputPage notify={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: /Masuk Kelas/ }));
+    const openButton = await screen.findByRole('button', { name: /Masuk Kelas/ });
+    await waitFor(() => expect(openButton).not.toBeDisabled());
+    fireEvent.click(openButton);
 
     expect(await screen.findByText(/Di luar area sekolah · jarak 520 m · radius 400 m · akurasi ±30 m · batas toleransi 430 m/)).toBeInTheDocument();
   });
