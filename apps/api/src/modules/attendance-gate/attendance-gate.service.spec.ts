@@ -504,7 +504,7 @@ describe('AttendanceGateService adaptive QR scan', () => {
     Role.KEPALA_SEKOLAH,
     Role.PEGAWAI,
     Role.OPERATOR_IT
-  ])('membatasi GATE_OUT personel %s ke pukul 15:30–16:30 WIB', async (role) => {
+  ])('membatasi GATE_OUT personel %s ke pukul 15:30–17:30 WIB', async (role) => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-27T08:29:00.000Z'));
     try {
       const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role, enrollments: [] };
@@ -515,7 +515,7 @@ describe('AttendanceGateService adaptive QR scan', () => {
       const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_GURU', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
 
       await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, `nonce-gate-out-${role}`, '/api/v1/attendance/qr-reader-scan'))).rejects.toMatchObject({
-        response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW', startTime: '15:30', endTime: '16:30' })
+        response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW', startTime: '15:30', endTime: '17:30' })
       });
       expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
     } finally {
@@ -624,9 +624,10 @@ describe('AttendanceGateService adaptive QR scan', () => {
   });
 
   it.each([
-    ['16:30', '2026-07-27T09:30:00.000Z', true],
-    ['16:31', '2026-07-27T09:31:00.000Z', false]
-  ])('memperlakukan batas akhir GATE_OUT guru pukul %s secara inklusif', async (label, instant, accepted) => {
+    ['16:30', '2026-07-27T09:30:00.000Z'],
+    ['16:31', '2026-07-27T09:31:00.000Z'],
+    ['17:30', '2026-07-27T10:30:00.000Z']
+  ])('menerima GATE_OUT guru dalam jendela pada pukul %s', async (label, instant) => {
     jest.useFakeTimers().setSystemTime(new Date(instant));
     try {
       const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role: Role.GURU_MAPEL, enrollments: [] };
@@ -637,8 +638,25 @@ describe('AttendanceGateService adaptive QR scan', () => {
       const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_GURU', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
       const request = service.qrReaderScan(payload, signedHeaders(secret, payload, `nonce-gate-out-${label}`, '/api/v1/attendance/qr-reader-scan'));
 
-      if (accepted) await expect(request).resolves.toMatchObject({ action: 'Pulang' });
-      else await expect(request).rejects.toMatchObject({ response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW' }) });
+      await expect(request).resolves.toMatchObject({ action: 'Pulang' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('menolak GATE_OUT guru setelah pukul 17:30 WIB', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T10:31:00.000Z'));
+    try {
+      const user = { id: 'guru-1', username: 'guru1', fullName: 'Guru Satu', active: true, role: Role.GURU_MAPEL, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const firstIn = { id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 60 * 60_000) };
+      prisma.gateLog.findMany.mockResolvedValue([firstIn]);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(firstIn);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_GURU', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-gate-out-window-end', '/api/v1/attendance/qr-reader-scan'))).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'TEACHER_GATE_OUT_OUTSIDE_WINDOW', endTime: '17:30' })
+      });
     } finally {
       jest.useRealTimers();
     }

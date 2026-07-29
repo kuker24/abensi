@@ -153,6 +153,7 @@ describe('Attendance settings', () => {
     }));
 
     render(<SettingsPage notify={vi.fn()} />);
+    expect(await screen.findAllByText(/15:30–17:30 WIB/)).toHaveLength(2);
     fireEvent.change(await screen.findByLabelText('Konfirmasi kata sandi'), { target: { value: 'sandi-admin' } });
     fireEvent.click(await screen.findByRole('button', { name: /Simpan aturan absensi/i }));
 

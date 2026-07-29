@@ -42,7 +42,7 @@ const OFFLINE_SCAN_MAX_AGE_MS = {
   mushola: 2 * 60 * 60 * 1000
 } as const;
 const PERSONNEL_GATE_OUT_START_MINUTE = 15 * 60 + 30;
-const PERSONNEL_GATE_OUT_END_MINUTE = 16 * 60 + 30;
+const PERSONNEL_GATE_OUT_END_MINUTE = 17 * 60 + 30;
 const PERSONNEL_GATE_OUT_ROLES = new Set<Role>([Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.GURU_PIKET, Role.PEGAWAI, Role.OPERATOR_IT]);
 const EARLY_CHECKOUT_EMERGENCY_LOCK = 389551912;
 function dayBounds(value: Date | string = new Date()) {
@@ -901,13 +901,13 @@ export class AttendanceGateService {
           role,
           scannedAt: scannedAt.toISOString(),
           startTime: '15:30',
-          endTime: '16:30'
+          endTime: '17:30'
         });
         throw new ForbiddenException({
           code: API_ERROR_CODES.TEACHER_GATE_OUT_OUTSIDE_WINDOW,
-          message: 'Jam pulang personel adalah pukul 15:30–16:30 WIB. Kepala Sekolah dapat mengaktifkan Mode Pulang Cepat untuk keadaan darurat.',
+          message: 'Jam pulang personel adalah pukul 15:30–17:30 WIB. Kepala Sekolah dapat mengaktifkan Mode Pulang Cepat untuk keadaan darurat.',
           startTime: '15:30',
-          endTime: '16:30'
+          endTime: '17:30'
         });
       }
     }
