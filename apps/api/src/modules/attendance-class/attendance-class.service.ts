@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { API_ERROR_CODES } from '@schoolhub/shared';
 import {
   AttendanceConfirmationSource,
   AttendanceReviewState,
@@ -75,7 +76,12 @@ function hasAnyGeo(payload?: SessionGeoDto) {
 
 function normalizeSessionGeo(payload: SessionGeoDto | undefined, required: boolean, policy?: GeofencePolicyForValidation | null): NormalizedSessionGeo | null {
   if (!hasAnyGeo(payload)) {
-    if (required) throw new BadRequestException('Koordinat wajib saat geofence aktif.');
+    if (required) {
+      throw new BadRequestException({
+        code: API_ERROR_CODES.SESSION_GEO_REQUIRED,
+        message: 'Koordinat wajib saat geofence aktif.'
+      });
+    }
     return null;
   }
 

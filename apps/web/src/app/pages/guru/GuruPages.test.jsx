@@ -194,7 +194,7 @@ describe('guru session journal workspace', () => {
     return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
   }
 
-  function mockWorkspace(session = openSession, savedJournal = journal, openResult = null) {
+  function mockWorkspace(session = openSession, savedJournal = journal, openResult = null, openNeedsGeo = false) {
     const requests = [];
     const fetchMock = vi.fn(async (input, init = {}) => {
       const url = String(input);
@@ -204,10 +204,13 @@ describe('guru session journal workspace', () => {
       if (method === 'GET' && url.endsWith('/roster')) return response({ session, roster });
       if (method === 'GET' && url.endsWith('/journal')) return response({ sessionId: session.id, subject: session.subject, scheduledDurationMinutes: 90, journal: savedJournal });
       if (method === 'GET' && url.includes('/attendance/class-sessions')) return response({ items: [session] });
+      if (method === 'POST' && url.endsWith('/open') && openNeedsGeo && !JSON.parse(String(init.body)).latitude) {
+        return new Response(JSON.stringify({ code: 'SESSION_GEO_REQUIRED', message: 'Koordinat wajib saat geofence aktif.' }), { status: 400, headers: { 'content-type': 'application/json' } });
+      }
       if (method === 'POST' && url.endsWith('/open') && openResult) return openResult;
       if (method === 'POST' && url.endsWith('/open')) return response({
         status: 'OPEN',
-        geofence: { distanceMeter: 318, radiusMeter: 400, accuracyMeter: 24, allowedDistanceMeter: 424, insideGeofence: true }
+        geofence: openNeedsGeo ? { distanceMeter: 318, radiusMeter: 400, accuracyMeter: 24, allowedDistanceMeter: 424, insideGeofence: true } : null
       });
       if (method === 'PUT' && url.endsWith('/journal')) return response({ ...(savedJournal || {}), id: savedJournal?.id || 'journal-new', ...JSON.parse(String(init.body)), updatedAt: '2026-06-19T01:00:00.000Z' });
       if (method === 'POST' && url.endsWith('/close')) return response({ status: 'CLOSED' });
@@ -220,7 +223,7 @@ describe('guru session journal workspace', () => {
   it('loads the authoritative journal, saves its version, then saves dirty changes before close', async () => {
     window.history.replaceState({}, '', '/guru/presensi?sessionId=session-open');
     const { requests } = mockWorkspace();
-    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (success) => success({ coords: { latitude: 0.5, longitude: 101.2, accuracy: 4 }, timestamp: Date.now() }) } });
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const notify = vi.fn();
 
@@ -244,11 +247,24 @@ describe('guru session journal workspace', () => {
     expect(journalWrites).toHaveLength(2);
     expect(journalWrites[1].body.updatedAt).toBe('2026-06-19T01:00:00.000Z');
     expect(journalWrites[1].index).toBeLessThan(closeRequest.index);
+    expect(closeRequest.body).toEqual({ finalizeDefaultAlpa: false });
   });
 
-  it('menampilkan indikator jarak, radius, dan akurasi setelah lokasi diterima', async () => {
+  it('membuka sesi tanpa meminta GPS saat geofence dinonaktifkan', async () => {
     window.history.replaceState({}, '', '/guru/presensi?sessionId=session-scheduled');
-    mockWorkspace({ ...openSession, id: 'session-scheduled', status: 'SCHEDULED' }, null);
+    const { requests } = mockWorkspace({ ...openSession, id: 'session-scheduled', status: 'SCHEDULED' }, null);
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined });
+
+    render(<ClassInputPage notify={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Masuk Kelas/ }));
+
+    expect(await screen.findByText('Verifikasi lokasi dinonaktifkan sementara.')).toBeInTheDocument();
+    expect(requests.find((request) => request.method === 'POST' && request.url.endsWith('/open'))?.body).toEqual({});
+  });
+
+  it('meminta GPS dan menampilkan indikator saat geofence aktif', async () => {
+    window.history.replaceState({}, '', '/guru/presensi?sessionId=session-scheduled');
+    mockWorkspace({ ...openSession, id: 'session-scheduled', status: 'SCHEDULED' }, null, null, true);
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (success) => success({ coords: { latitude: 0.5, longitude: 101.2, accuracy: 24 }, timestamp: Date.now() }) } });
 
     render(<ClassInputPage notify={vi.fn()} />);
@@ -267,7 +283,7 @@ describe('guru session journal workspace', () => {
       accuracyMeter: 30,
       allowedDistanceMeter: 430
     }), { status: 403, headers: { 'content-type': 'application/json' } });
-    mockWorkspace({ ...openSession, id: 'session-scheduled', status: 'SCHEDULED' }, null, rejected);
+    mockWorkspace({ ...openSession, id: 'session-scheduled', status: 'SCHEDULED' }, null, rejected, true);
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (success) => success({ coords: { latitude: 0.5, longitude: 101.2, accuracy: 30 }, timestamp: Date.now() }) } });
 
     render(<ClassInputPage notify={vi.fn()} />);

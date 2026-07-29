@@ -1059,6 +1059,33 @@ describe('AttendanceClassService teacher check-in/out', () => {
     await expect(service.openSession('session-1', guru, browserGeo({ latitude: -6.3, longitude: 106.9 }))).rejects.toThrow('Di luar area sekolah.');
   });
 
+  it('membuka sesi tanpa koordinat saat geofence dinonaktifkan', async () => {
+    const { service, tx } = makeService(
+      { status: SessionStatus.SCHEDULED },
+      null,
+      { enforceSessionOpen: false, allowPicketOverride: true, requireGateTapForOpen: false, centerLat: 0, centerLng: 0, radiusMeter: 400 }
+    );
+
+    const result = await service.openSession('session-1', guru);
+
+    expect(result.geofence).toBeNull();
+    expect(tx.teacherSessionPresence.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ checkInLat: null, checkInLng: null })
+    }));
+  });
+
+  it('mengembalikan kode lokasi wajib saat geofence aktif', async () => {
+    const { service } = makeService(
+      { status: SessionStatus.SCHEDULED },
+      null,
+      { enforceSessionOpen: true, allowPicketOverride: true, requireGateTapForOpen: false, centerLat: 0, centerLng: 0, radiusMeter: 400 }
+    );
+
+    await expect(service.openSession('session-1', guru)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_GEO_REQUIRED' })
+    });
+  });
+
   it('menerima deviasi GPS yang masih berada dalam radius plus akurasi', async () => {
     const policy = { enforceSessionOpen: true, allowPicketOverride: true, requireGateTapForOpen: false, centerLat: 0, centerLng: 0, radiusMeter: 400 };
     const { service } = makeService({ status: SessionStatus.SCHEDULED }, null, policy);

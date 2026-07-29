@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { API_ERROR_CODES } from '@schoolhub/shared';
 import { AlertTriangle, ArrowRight, BarChart3, Check, CheckSquare, Clock, Download, MapPin, Save, Users, X, Activity, DoorOpen, CheckCircle2 } from 'lucide-react';
 import { apiDownload, apiFetch, formatDateTime, go, itemsOf, monthNow, qs, setNavigationGuard, today } from '../../api';
 import { riskConfirm } from '../../confirm';
@@ -173,7 +174,7 @@ export function ClassInputPage({ notify }) {
   const [earlyReason, setEarlyReason] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
   const [actionLoading, setActionLoading] = useState('');
-  const [geoStatus, setGeoStatus] = useState({ tone: 'info', message: 'Lokasi browser akan diminta saat absen masuk dan keluar.' });
+  const [geoStatus, setGeoStatus] = useState({ tone: 'info', message: 'Verifikasi lokasi dinonaktifkan sementara.' });
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
     return () => clearInterval(timer);
@@ -243,16 +244,23 @@ export function ClassInputPage({ notify }) {
   async function openSession() {
     if (!sessionId) { notify('Pilih sesi terlebih dahulu.', 'warn'); return; }
     setActionLoading('open');
-    setGeoStatus({ tone: 'info', message: 'Meminta izin lokasi akurat dari browser...' });
+    setGeoStatus({ tone: 'info', message: 'Membuka sesi tanpa verifikasi lokasi...' });
     try {
-      const location = await captureBrowserGeolocation();
-      const result = await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify(location) });
+      let result;
+      try {
+        result = await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify({}) });
+      } catch (error) {
+        if (error?.code !== API_ERROR_CODES.SESSION_GEO_REQUIRED) throw error;
+        setGeoStatus({ tone: 'info', message: 'Verifikasi lokasi aktif. Meminta izin lokasi dari browser...' });
+        const location = await captureBrowserGeolocation();
+        result = await apiFetch(`/attendance/class-sessions/${sessionId}/open`, { method: 'POST', body: JSON.stringify(location) });
+      }
       const geofence = result?.geofence;
       setGeoStatus({
         tone: 'ok',
         message: geofence
           ? `Di dalam area sekolah · jarak ${geofence.distanceMeter} m · radius ${geofence.radiusMeter} m · akurasi ±${geofence.accuracyMeter} m.`
-          : `Lokasi diterima (akurasi ±${Math.round(location.accuracyMeter)} m).`
+          : 'Verifikasi lokasi dinonaktifkan sementara.'
       });
       sessions.refresh(); rosterState.refresh(); notify('Absen masuk guru tercatat. Silakan isi presensi siswa awal pembelajaran.');
     } catch (error) {
@@ -336,13 +344,12 @@ export function ClassInputPage({ notify }) {
       finalizeDefaultAlpa = true;
     } else if (!await riskConfirm('Absen keluar dan akhiri kelas? Pastikan presensi siswa awal pembelajaran sudah disimpan.')) return;
     setActionLoading('close');
-    setGeoStatus({ tone: 'info', message: 'Mengambil lokasi keluar kelas dari browser...' });
+    setGeoStatus({ tone: 'info', message: 'Menutup sesi tanpa verifikasi lokasi...' });
     try {
       if (hasDirtyAttendance) await persistAttendance(false);
       if (journalDirty || !journalForm.id) await persistJournal(false);
-      const location = await captureBrowserGeolocation();
-      setGeoStatus({ tone: 'ok', message: `Lokasi keluar diterima (akurasi ±${Math.round(location.accuracyMeter)} m).` });
-      await apiFetch(`/attendance/class-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ ...location, finalizeDefaultAlpa, ...(isEarlyCheckout ? { earlyCheckoutReason: earlyReason } : {}) }) });
+      await apiFetch(`/attendance/class-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ finalizeDefaultAlpa, ...(isEarlyCheckout ? { earlyCheckoutReason: earlyReason } : {}) }) });
+      setGeoStatus({ tone: 'ok', message: 'Sesi ditutup tanpa verifikasi lokasi.' });
       sessions.refresh(); rosterState.refresh(); notify('Absen keluar guru tercatat. Rekonsiliasi akan berjalan otomatis.');
     } catch (error) {
       const message = error instanceof BrowserGeoError ? error.message : (error.message || 'Gagal menutup sesi.');
