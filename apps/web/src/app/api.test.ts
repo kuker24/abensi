@@ -32,6 +32,7 @@ describe('Jakarta date helpers', () => {
 
 describe('apiDownload official report downloads', () => {
   it('downloads server Blob responses using Content-Disposition filename and server Content-Type', async () => {
+    vi.useFakeTimers();
     const createObjectURL = vi.fn(() => 'blob:report-download');
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
@@ -54,7 +55,35 @@ describe('apiDownload official report downloads', () => {
     expect(result.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    vi.runAllTimers();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:report-download');
+  });
+
+  it('uses PDF extension when cross-origin response hides Content-Disposition', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:pdf-download'), revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('%PDF-test', {
+      status: 200,
+      headers: { 'content-type': 'application/pdf' }
+    })));
+
+    const result = await apiDownload('/reports/export?reportType=recap_classes&format=pdf');
+
+    expect(result).toMatchObject({ filename: 'export.pdf', contentType: 'application/pdf' });
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves server error details for failed report exports', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      message: 'Dokumen PDF maksimal 1000 baris.'
+    }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' }
+    })));
+
+    await expect(apiDownload('/reports/export?reportType=recap_classes&format=pdf')).rejects.toThrow('Dokumen PDF maksimal 1000 baris.');
   });
 });
 

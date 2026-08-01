@@ -5,7 +5,8 @@ import { AttendanceClassService } from './attendance-class.service';
 function makeService(
   sessionOverrides: Record<string, unknown> = {},
   existingPresence: Record<string, unknown> | null = null,
-  geofencePolicy: Record<string, unknown> | null = null
+  geofencePolicy: Record<string, unknown> | null = null,
+  attendancePolicy: Record<string, unknown> | null = { requireTeacherGateIn: false }
 ) {
   const now = new Date();
   const session = {
@@ -59,6 +60,12 @@ function makeService(
     },
     geofencePolicy: {
       findUnique: jest.fn().mockResolvedValue(geofencePolicy)
+    },
+    attendancePolicy: {
+      findUnique: jest.fn().mockResolvedValue(attendancePolicy)
+    },
+    gateLog: {
+      findFirst: jest.fn().mockResolvedValue(null)
     },
     $transaction: jest.fn((callback) => callback(tx))
   } as any;
@@ -1022,6 +1029,41 @@ describe('AttendanceClassService teacher check-in/out', () => {
         administrativeStatus: 'ACTIVE',
         effectiveFrom: expect.objectContaining({ lte: expect.any(Date) }),
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }]
+      })
+    }));
+  });
+
+  it('menolak guru tanpa scan gerbang ketika policy resmi mewajibkannya', async () => {
+    const { service, prisma, tx } = makeService(
+      { status: SessionStatus.SCHEDULED },
+      null,
+      { enforceSessionOpen: false, allowPicketOverride: true, requireGateTapForOpen: false },
+      { requireTeacherGateIn: true }
+    );
+
+    await expect(service.openSession('session-1', guru)).rejects.toThrow('Guru belum tap gerbang hari ini.');
+    expect(prisma.gateLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ userId: 'guru-1', direction: 'IN' })
+    }));
+    expect(tx.session.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('membuka sesi setelah guru scan gerbang ketika policy resmi mewajibkannya', async () => {
+    const { service, prisma, tx } = makeService(
+      { status: SessionStatus.SCHEDULED },
+      null,
+      { enforceSessionOpen: false, allowPicketOverride: true, requireGateTapForOpen: false },
+      { requireTeacherGateIn: true }
+    );
+    prisma.gateLog.findFirst.mockResolvedValue({ id: 'gate-in-1' });
+
+    await service.openSession('session-1', guru);
+
+    expect(tx.session.updateMany).toHaveBeenCalled();
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'teacher.session.checkin',
+        after: expect.objectContaining({ gateTapRequired: true, gateTapSatisfied: true })
       })
     }));
   });

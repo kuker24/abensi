@@ -253,6 +253,7 @@ body {
     #16181c;
 }
 .schoolhub-generator .bg-white { background-color: rgba(30, 32, 37, 0.82) !important; }
+.schoolhub-generator .id-card .bg-white { background-color: #fff !important; }
 .schoolhub-generator .bg-gray-50,
 .schoolhub-generator .bg-gray-100,
 .schoolhub-generator .bg-gray-200,

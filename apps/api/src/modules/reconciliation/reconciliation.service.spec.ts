@@ -98,6 +98,22 @@ describe('ReconciliationService roster history integrity', () => {
     }));
   });
 
+  it('menandai guru TELAT yang membuka sesi tanpa scan gerbang', async () => {
+    const { prisma, tx } = makePrisma(makeSession({
+      teacherPresence: [{ teacherId: 'guru-1', status: TeacherSessionStatus.TELAT }]
+    }));
+    const service = new ReconciliationService(prisma as any);
+
+    await service.reconcileSession('session-1');
+
+    expect(tx.reconciliationFlag.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        type: ReconciliationFlagType.ANOMALI_BUKA_TANPA_GERBANG,
+        userId: 'guru-1'
+      })
+    }));
+  });
+
   it('uses only snapshot roster IDs and never includes live class enrollments', async () => {
     const session = makeSession({
       schoolClass: { enrollments: [{ studentId: 'siswa-baru' }] },

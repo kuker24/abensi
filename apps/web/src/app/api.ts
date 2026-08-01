@@ -177,7 +177,7 @@ function filenameFromContentDisposition(disposition: string | null): string | nu
   return regular ? regular.trim() : null;
 }
 
-export async function apiDownload(path: string, filename = 'export.xlsx'): Promise<ApiDownloadResult> {
+export async function apiDownload(path: string, filename = 'export'): Promise<ApiDownloadResult> {
   const request = () => fetch(`${API_BASE}${path}`, {
     headers: { accept: '*/*' },
     credentials: 'include'
@@ -194,12 +194,22 @@ export async function apiDownload(path: string, filename = 'export.xlsx'): Promi
     }
   }
   if (response.status === 401 && canRefresh && !authExpiredNotified) notifyAuthExpired();
-  if (!response.ok) throw new Error(`Unduhan gagal HTTP ${response.status}`);
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+    const message = Array.isArray(payload?.message) ? payload.message.join(', ') : payload?.message;
+    throw new Error(message || `Unduhan gagal HTTP ${response.status}`);
+  }
 
   const contentType = response.headers.get('content-type') || 'application/octet-stream';
   const responseBlob = await response.blob();
   const blob = responseBlob.type === contentType ? responseBlob : new Blob([responseBlob], { type: contentType });
-  const finalName = filenameFromContentDisposition(response.headers.get('content-disposition')) || filename;
+  const extension = contentType.includes('application/pdf') ? '.pdf'
+    : contentType.includes('spreadsheetml') ? '.xlsx'
+      : contentType.includes('wordprocessingml') ? '.docx'
+        : contentType.includes('text/csv') ? '.csv' : '';
+  const fallbackName = extension && !filename.toLowerCase().endsWith(extension) ? `${filename}${extension}` : filename;
+  const finalName = filenameFromContentDisposition(response.headers.get('content-disposition')) || fallbackName;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -208,7 +218,7 @@ export async function apiDownload(path: string, filename = 'export.xlsx'): Promi
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
   return { filename: finalName, contentType: blob.type, size: blob.size };
 }
 

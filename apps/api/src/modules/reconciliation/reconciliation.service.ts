@@ -642,7 +642,7 @@ export class ReconciliationService {
         createdFlags += 1;
       }
 
-      if (teacherPresence && teacherPresence.status === TeacherSessionStatus.HADIR && !hasGateIn.has(session.teacherId)) {
+      if (teacherPresence && (teacherPresence.status === TeacherSessionStatus.HADIR || teacherPresence.status === TeacherSessionStatus.TELAT) && !hasGateIn.has(session.teacherId)) {
         await this.createFlag(tx, ReconciliationFlagType.ANOMALI_BUKA_TANPA_GERBANG, session.id, session.teacherId, {
           teacherPresence: teacherPresence.status,
           gateIn: false

@@ -515,7 +515,10 @@ export class AttendanceClassService {
       throw new ForbiddenException('Bukan sesi Anda.');
     }
 
-    const policy = await this.prisma.geofencePolicy.findUnique({ where: { id: 1 } });
+    const [policy, attendancePolicy] = await Promise.all([
+      this.prisma.geofencePolicy.findUnique({ where: { id: 1 } }),
+      this.prisma.attendancePolicy.findUnique({ where: { id: 1 } })
+    ]);
     if (policy && !policy.allowPicketOverride && actor.role === Role.GURU_PIKET) {
       throw new ForbiddenException('Override guru piket sedang dinonaktifkan.');
     }
@@ -544,8 +547,9 @@ export class AttendanceClassService {
       });
     }
 
-    let gateTapSatisfied: boolean | null = policy?.requireGateTapForOpen ? false : null;
-    if (policy?.requireGateTapForOpen) {
+    const requireGateTap = Boolean(attendancePolicy?.requireTeacherGateIn || policy?.requireGateTapForOpen);
+    let gateTapSatisfied: boolean | null = requireGateTap ? false : null;
+    if (requireGateTap) {
       const { start: dayStart, end: dayEnd } = dayBounds(new Date());
 
       const gateTap = await this.prisma.gateLog.findFirst({
@@ -647,7 +651,7 @@ export class AttendanceClassService {
           allowedDistanceMeter: validatedGeo?.allowedDistanceMeter ?? null,
           insideGeofence: validatedGeo?.insideGeofence ?? null,
           geofenceEnforced: Boolean(policy?.enforceSessionOpen),
-          gateTapRequired: Boolean(policy?.requireGateTapForOpen),
+          gateTapRequired: requireGateTap,
           gateTapSatisfied
         }
       });
