@@ -16,6 +16,20 @@ import {
 import { DemoCoach } from './coach';
 import { ImpactPanel } from './impact-panel';
 import { LabScreen } from './pages';
+import { LEARNING_PATH } from './copy';
+import { MISSION_STORAGE_KEY, missionStatus, writeMissionProgress } from './speech';
+
+function statusLabel(status: 'belum' | 'berjalan' | 'selesai') {
+  if (status === 'selesai') return 'Selesai';
+  if (status === 'berjalan') return 'Berjalan';
+  return 'Belum';
+}
+
+function statusTone(status: 'belum' | 'berjalan' | 'selesai') {
+  if (status === 'selesai') return 'ok';
+  if (status === 'berjalan') return 'warn';
+  return '';
+}
 
 export function RoleShell({
   role,
@@ -173,7 +187,12 @@ export function RoleShell({
           )}
         </div>
       </main>
-      <DemoCoach role={role} presentMode={presentMode} forceOpenKey={coachKey} />
+      <DemoCoach
+        role={role}
+        presentMode={presentMode}
+        forceOpenKey={coachKey}
+        onRequestSidebar={setSidebarOpen}
+      />
       {lastEvent && <ImpactPanel event={lastEvent} onClose={clearLastEvent} />}
     </div>
   );
@@ -202,35 +221,94 @@ export function BelajarClosedPage() {
 
 export function BelajarHub({ presentMode }: { presentMode: boolean }) {
   const { resetWorld, world } = useDemoWorld();
+  const [, bump] = useState(0);
+
+  function resetProgress() {
+    if (!window.confirm('Reset progress misi tutorial (bukan data dunia)?')) return;
+    writeMissionProgress({});
+    try {
+      DEMO_ROLES.forEach((r) => localStorage.removeItem(`lab-belajar-coach-seen-${r.id}`));
+    } catch {
+      // ignore
+    }
+    bump((n) => n + 1);
+  }
+
   return (
     <div className={`belajar-lab belajar-hub siab2-shell${presentMode ? ' present' : ''}`} data-theme="dark">
       <div className="belajar-hub-inner">
         <span className="pill warn siab2-status-pill">LATIHAN · tidak mengubah absensi sekolah</span>
         <h1>Lab Belajar {BRAND.compactName}</h1>
         <p className="belajar-hub-lead">
-          Pilih peran. Tampilan menu & dasbor mengikuti portal SIAB2 asli. Data mainan di browser ini saja.
-          Satu keputusan bisa memunculkan <b>menu ajaib dampak</b> ke peran lain.
+          Latihan interaktif dengan <b>panduan bersuara Bahasa Indonesia</b>. Pilih jalur di bawah — tampilan meniru portal SIAB2,
+          data mainan hanya di browser ini. Satu keputusan bisa memunculkan <b>menu ajaib dampak</b> ke peran lain.
         </p>
-        <div className="belajar-hub-grid">
-          {DEMO_ROLES.map((r) => (
-            <button key={r.id} type="button" className="belajar-hub-card" onClick={() => labGo(roleHomePath(r.id))}>
-              <b>{r.label}</b>
-              <span>{r.analogy}</span>
-              <small>/belajar/{r.id}</small>
-            </button>
-          ))}
-        </div>
-        <div className="belajar-hub-help card pad siab2-content-card">
-          <div className="card-title">Cara presentasi 3 menit</div>
-          <ol>
-            <li>Buka <b>Admin / TU</b> → ikuti tutorial → Setujui izin.</li>
-            <li>Di menu ajaib, klik <b>Lihat sebagai Guru</b>.</li>
-            <li>Buka <b>Guru</b> → Presensi → Buka sesi → Tandai hadir → cek <b>Siswa</b>.</li>
+
+        <section className="belajar-path" aria-label="Jalur belajar">
+          <div className="belajar-path-head">
+            <h2>Jalur belajar berurutan</h2>
+            <p className="muted">Ikuti dari atas ke bawah untuk presentasi utuh. Progress disimpan di browser.</p>
+          </div>
+          <ol className="belajar-path-list">
+            {LEARNING_PATH.map((item) => {
+              const roleMeta = DEMO_ROLES.find((r) => r.id === item.role)!;
+              const status = missionStatus(item.role);
+              const cta = status === 'selesai' ? 'Ulangi misi' : status === 'berjalan' ? 'Lanjutkan' : 'Mulai';
+              return (
+                <li key={item.role} className={`belajar-path-item status-${status}`}>
+                  <div className="belajar-path-order" aria-hidden="true">{item.order}</div>
+                  <div className="belajar-path-body">
+                    <div className="belajar-path-title-row">
+                      <b>{roleMeta.label}</b>
+                      <Pill tone={statusTone(status)} dot={false}>{statusLabel(status)}</Pill>
+                    </div>
+                    <strong>{item.missionTitle}</strong>
+                    <span>{item.missionGoal}</span>
+                  </div>
+                  <button type="button" className="btn sm primary" onClick={() => labGo(roleHomePath(item.role))}>
+                    {cta}
+                  </button>
+                </li>
+              );
+            })}
           </ol>
-          <p className="muted">Event di dunia ini: {world.events.length}. Tab browser sama = dunia sama.</p>
+        </section>
+
+        <div className="belajar-hub-grid" aria-label="Semua peran">
+          {DEMO_ROLES.map((r) => {
+            const status = missionStatus(r.id);
+            return (
+              <button key={r.id} type="button" className="belajar-hub-card" onClick={() => labGo(roleHomePath(r.id))}>
+                <b>{r.label}</b>
+                <span>{r.analogy}</span>
+                <small>/belajar/{r.id}</small>
+                <em className={`belajar-hub-status ${status}`}>{statusLabel(status)}</em>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="belajar-hub-help card pad siab2-content-card">
+          <div className="card-title">Cara pakai (dengan suara)</div>
+          <ol>
+            <li>Nyalakan speaker/headset. Di dalam peran, tombol volume mengontrol panduan suara.</li>
+            <li>Ikuti langkah misi: sorotan area → tekan aksi wajib → baca <b>Dampak keputusan</b>.</li>
+            <li>Ganti peran lewat chip sidebar (dunia localStorage sama) atau kartu dampak.</li>
+          </ol>
+          <p className="muted">
+            Event di dunia ini: {world.events.length}. Tab browser sama = dunia sama.
+            Progress key: <code>{MISSION_STORAGE_KEY}</code>
+          </p>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn ghost siab2-action-button" onClick={() => resetWorld()}><RefreshCw size={14} /> Reset dunia latihan</button>
-            <button type="button" className="btn ghost siab2-action-button" onClick={() => labGo('/belajar?present=1')}>Mode presentasi</button>
+            <button type="button" className="btn ghost siab2-action-button" onClick={() => resetWorld()}>
+              <RefreshCw size={14} /> Reset dunia latihan
+            </button>
+            <button type="button" className="btn ghost siab2-action-button" onClick={resetProgress}>
+              Reset progress misi
+            </button>
+            <button type="button" className="btn ghost siab2-action-button" onClick={() => labGo('/belajar?present=1')}>
+              Mode presentasi
+            </button>
           </div>
         </div>
       </div>

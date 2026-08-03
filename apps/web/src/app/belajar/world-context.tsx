@@ -4,6 +4,7 @@ import {
   createSeedWorld,
   WORLD_STORAGE_KEY,
   type DemoAction,
+  type DemoActionType,
   type DemoEvent,
   type DemoWorld
 } from './world';
@@ -11,6 +12,9 @@ import {
 type WorldContextValue = {
   world: DemoWorld;
   lastEvent: DemoEvent | null;
+  lastActionType: DemoActionType | null;
+  /** Monotonic counter; increments on every dispatch (including no-op world results). */
+  actionSeq: number;
   clearLastEvent: () => void;
   dispatch: (action: DemoAction) => DemoEvent | null;
   resetWorld: () => void;
@@ -61,6 +65,8 @@ function writeStoredWorld(world: DemoWorld) {
 export function DemoWorldProvider({ children }: { children: ReactNode }) {
   const [world, setWorld] = useState<DemoWorld>(() => readStoredWorld());
   const [lastEvent, setLastEvent] = useState<DemoEvent | null>(null);
+  const [lastActionType, setLastActionType] = useState<DemoActionType | null>(null);
+  const [actionSeq, setActionSeq] = useState(0);
   const worldRef = useRef(world);
   worldRef.current = world;
 
@@ -85,6 +91,8 @@ export function DemoWorldProvider({ children }: { children: ReactNode }) {
     const result = applyDemoAction(worldRef.current, action);
     worldRef.current = result.world;
     setWorld(result.world);
+    setLastActionType(action.type);
+    setActionSeq((n) => n + 1);
     if (result.event) setLastEvent(result.event);
     return result.event;
   }, []);
@@ -94,14 +102,16 @@ export function DemoWorldProvider({ children }: { children: ReactNode }) {
     worldRef.current = fresh;
     setWorld(fresh);
     setLastEvent(null);
+    setLastActionType(null);
+    setActionSeq(0);
     writeStoredWorld(fresh);
   }, []);
 
   const clearLastEvent = useCallback(() => setLastEvent(null), []);
 
   const value = useMemo(
-    () => ({ world, lastEvent, clearLastEvent, dispatch, resetWorld }),
-    [world, lastEvent, clearLastEvent, dispatch, resetWorld]
+    () => ({ world, lastEvent, lastActionType, actionSeq, clearLastEvent, dispatch, resetWorld }),
+    [world, lastEvent, lastActionType, actionSeq, clearLastEvent, dispatch, resetWorld]
   );
 
   return <WorldContext.Provider value={value}>{children}</WorldContext.Provider>;

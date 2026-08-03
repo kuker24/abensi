@@ -1,9 +1,23 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
-import { coachStepsForRole, type CoachStep } from './copy';
+import { coachStepsForRole, missionTitleForRole, type CoachStep } from './copy';
+import {
+  isSpeechSupported,
+  readVoicePreference,
+  speakIndonesian,
+  upsertMissionProgress,
+  writeVoicePreference,
+  type SpeakHandle
+} from './speech';
 import type { DemoRole } from './world';
+import { useDemoWorld } from './world-context';
+import { labGo, roleHomePath, roleScreenPath } from './lab-nav';
 
 type Rect = { top: number; left: number; width: number; height: number };
+
+const SEEN_PREF_PREFIX = 'lab-belajar-coach-seen-';
+const MIN_AUTO_MS = 5000;
+const MAX_AUTO_MS = 20000;
 
 function spotlightStyle(rect: Rect): CSSProperties {
   return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
@@ -18,34 +32,47 @@ function measure(selector?: string): Rect | null {
   return { top: r.top - 6, left: r.left - 6, width: r.width + 12, height: r.height + 12 };
 }
 
-const VOICE_PREF = 'lab-belajar-voice-pref';
-const SEEN_PREF_PREFIX = 'lab-belajar-coach-seen-';
+function isNavSelector(selector?: string) {
+  return Boolean(selector && (selector.includes('nav-') || selector.includes('sidebar') || selector.includes('role-switch')));
+}
 
-function readVoice() {
-  try {
-    return localStorage.getItem(VOICE_PREF) !== 'off';
-  } catch {
-    return true;
-  }
+function clampAutoMs(ms?: number) {
+  const value = ms ?? 7000;
+  return Math.min(MAX_AUTO_MS, Math.max(MIN_AUTO_MS, value));
+}
+
+function speechText(step: CoachStep) {
+  return step.voice || `${step.title}. ${step.body}`;
 }
 
 export function DemoCoach({
   role,
   presentMode,
-  forceOpenKey = 0
+  forceOpenKey = 0,
+  onRequestSidebar
 }: {
   role: DemoRole;
   presentMode: boolean;
   forceOpenKey?: number;
+  onRequestSidebar?: (open: boolean) => void;
 }) {
+  const { lastActionType, actionSeq } = useDemoWorld();
   const steps = useMemo(() => coachStepsForRole(role), [role]);
+  const missionTitle = useMemo(() => missionTitleForRole(role), [role]);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [auto, setAuto] = useState(true);
-  const [voice, setVoice] = useState(readVoice);
+  const [voice, setVoice] = useState(() => readVoicePreference(true));
   const [rect, setRect] = useState<Rect | null>(null);
-  const current: CoachStep = steps[Math.min(step, steps.length - 1)];
-  const voiceOk = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const [waitingAction, setWaitingAction] = useState(false);
+  const speakRef = useRef<SpeakHandle | null>(null);
+  const navigatedStepRef = useRef<string | null>(null);
+  const stepGenRef = useRef(0);
+  const waitBaselineSeqRef = useRef(0);
+
+  const current: CoachStep = steps[Math.min(step, steps.length - 1)] || steps[0];
+  const voiceOk = isSpeechSupported();
+  const progressPct = steps.length ? Math.round(((step + 1) / steps.length) * 100) : 0;
 
   useEffect(() => {
     let should = presentMode;
@@ -57,11 +84,40 @@ export function DemoCoach({
     setStep(0);
     setOpen(should);
     setAuto(true);
+    navigatedStepRef.current = null;
   }, [role, presentMode, forceOpenKey]);
 
   useEffect(() => {
+    if (!open || !current) return;
+    upsertMissionProgress(role, {
+      stepIndex: step,
+      stepId: current.id,
+      ...(current.completeMission ? { completedAt: new Date().toISOString() } : {})
+    });
+  }, [open, role, step, current]);
+
+  useEffect(() => {
+    if (!open || !current?.goToScreen) return;
+    const key = `${role}:${current.id}:${current.goToScreen}`;
+    if (navigatedStepRef.current === key) return;
+    navigatedStepRef.current = key;
+    labGo(roleScreenPath(role, current.goToScreen));
+  }, [open, role, current?.id, current?.goToScreen]);
+
+  useEffect(() => {
     if (!open) return undefined;
-    const update = () => setRect(measure(current.target));
+    const mobile = window.innerWidth <= 768;
+    if (mobile && isNavSelector(current?.target)) {
+      onRequestSidebar?.(true);
+    }
+    const update = () => {
+      const next = measure(current?.target);
+      setRect(next);
+      if (next && current?.target) {
+        const el = document.querySelector(current.target) as HTMLElement | null;
+        el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      }
+    };
     update();
     const t = window.setInterval(update, 400);
     window.addEventListener('resize', update);
@@ -71,11 +127,74 @@ export function DemoCoach({
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [open, current.target, step]);
+  }, [open, current?.target, step, onRequestSidebar]);
 
   useEffect(() => {
-    if (!open || !auto) return undefined;
-    const ms = current.autoMs ?? 6000;
+    if (!open || !current?.waitForAction) {
+      setWaitingAction(false);
+      return;
+    }
+    // Capture action sequence when this wait-step becomes active so older actions don't auto-pass.
+    waitBaselineSeqRef.current = actionSeq;
+    setWaitingAction(true);
+  }, [open, step, current?.id, current?.waitForAction]);
+
+  useEffect(() => {
+    if (!open || !current?.waitForAction) {
+      setWaitingAction(false);
+      return;
+    }
+    const needed = Array.isArray(current.waitForAction) ? current.waitForAction : [current.waitForAction];
+    const fresh = actionSeq > waitBaselineSeqRef.current;
+    const matched = Boolean(fresh && lastActionType && needed.includes(lastActionType));
+    setWaitingAction(!matched);
+    if (matched && auto) {
+      const timer = window.setTimeout(() => {
+        setStep((s) => Math.min(s + 1, steps.length - 1));
+      }, 600);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [open, current?.waitForAction, lastActionType, actionSeq, auto, steps.length]);
+
+  useEffect(() => {
+    if (!open || !current) return undefined;
+    speakRef.current?.cancel();
+    speakRef.current = null;
+    if (!voice || !voiceOk) return undefined;
+
+    const gen = ++stepGenRef.current;
+    const handle = speakIndonesian({
+      text: speechText(current),
+      rate: 0.96,
+      onEnd: () => {
+        if (gen !== stepGenRef.current) return;
+        if (!auto || current.waitForAction || current.autoAdvance === false) return;
+        if (current.autoAdvance === 'ms') return;
+        setStep((s) => {
+          if (s >= steps.length - 1) {
+            setAuto(false);
+            return s;
+          }
+          return s + 1;
+        });
+      }
+    });
+    speakRef.current = handle;
+    return () => {
+      handle.cancel();
+      if (speakRef.current === handle) speakRef.current = null;
+    };
+  }, [open, voice, voiceOk, current, step, auto, steps.length]);
+
+  useEffect(() => {
+    if (!open || !auto || !current) return undefined;
+    if (current.waitForAction) return undefined;
+    if (current.autoAdvance === false) return undefined;
+    const voiceDriven = voice && voiceOk && current.autoAdvance !== 'ms';
+    if (voiceDriven) return undefined;
+
+    const ms = clampAutoMs(current.autoMs);
     const timer = window.setTimeout(() => {
       setStep((s) => {
         if (s >= steps.length - 1) {
@@ -86,22 +205,10 @@ export function DemoCoach({
       });
     }, ms);
     return () => window.clearTimeout(timer);
-  }, [open, auto, step, current.autoMs, steps.length]);
-
-  useEffect(() => {
-    if (!open || !voice || !voiceOk) return undefined;
-    const synth = window.speechSynthesis;
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(`${current.title}. ${current.voice || current.body}. ${current.analogy}`);
-    u.lang = 'id-ID';
-    u.rate = 0.96;
-    const idVoice = synth.getVoices().find((v) => v.lang.toLowerCase().startsWith('id'));
-    if (idVoice) u.voice = idVoice;
-    synth.speak(u);
-    return () => synth.cancel();
-  }, [open, voice, voiceOk, current, step]);
+  }, [open, auto, step, current, voice, voiceOk, steps.length]);
 
   function close() {
+    speakRef.current?.cancel();
     setOpen(false);
     setAuto(false);
     try {
@@ -109,21 +216,42 @@ export function DemoCoach({
     } catch {
       // ignore
     }
+    if (current?.completeMission) {
+      upsertMissionProgress(role, {
+        stepIndex: steps.length - 1,
+        stepId: current.id,
+        completedAt: new Date().toISOString()
+      });
+    }
   }
 
   function toggleVoice() {
     const next = !voice;
     setVoice(next);
-    try {
-      localStorage.setItem(VOICE_PREF, next ? 'on' : 'off');
-    } catch {
-      // ignore
+    writeVoicePreference(next);
+    if (!next) speakRef.current?.cancel();
+  }
+
+  function goNext() {
+    if (step >= steps.length - 1) {
+      close();
+      return;
     }
+    setStep((s) => s + 1);
   }
 
   if (!open) {
     return (
-      <button type="button" className="btn sm belajar-coach-reopen" data-demo="coach-reopen" onClick={() => { setStep(0); setOpen(true); setAuto(true); }}>
+      <button
+        type="button"
+        className="btn sm belajar-coach-reopen"
+        data-demo="coach-reopen"
+        onClick={() => {
+          setStep(0);
+          setOpen(true);
+          setAuto(true);
+        }}
+      >
         <Play size={14} /> Mulai tutorial
       </button>
     );
@@ -132,35 +260,90 @@ export function DemoCoach({
   return (
     <div className={`belajar-coach-layer${rect ? ' has-target' : ''}`} data-tutorial-dialog="true" data-demo="coach">
       {rect && <div className="belajar-spotlight tour-spotlight" style={spotlightStyle(rect)} aria-hidden="true" />}
-      <div className="belajar-coach-card" role="dialog" aria-label="Tutorial lab">
+      <div className="belajar-coach-card" role="dialog" aria-label="Tutorial lab" aria-live="polite">
         <div className="belajar-coach-tools">
-          <span className="pill">{step + 1}/{steps.length}</span>
+          <span className="pill">
+            {step + 1}/{steps.length}
+          </span>
           {voiceOk && (
-            <button type="button" className="btn icon ghost" aria-label={voice ? 'Matikan suara' : 'Nyalakan suara'} onClick={toggleVoice}>
+            <button
+              type="button"
+              className="btn icon ghost"
+              aria-label={voice ? 'Matikan suara' : 'Nyalakan suara'}
+              aria-pressed={voice}
+              onClick={toggleVoice}
+            >
               {voice ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </button>
           )}
-          <button type="button" className="btn icon ghost" aria-label="Tutup tutorial" onClick={close}><X size={16} /></button>
+          <button type="button" className="btn icon ghost" aria-label="Tutup tutorial" onClick={close}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="belajar-mission-meta">
+          <small>Misi · {missionTitle}</small>
+          <div className="belajar-mission-bar" aria-hidden="true">
+            <span style={{ width: `${progressPct}%` }} />
+          </div>
         </div>
         <h3>{current.title}</h3>
         <p>{current.body}</p>
         <p className="belajar-analogy">{current.analogy}</p>
+        {waitingAction && (
+          <p className="belajar-wait-hint" data-demo="wait-action">
+            Menunggu aksi wajib di halaman… tekan tombol yang disorot. Jika sudah dilakukan sebelumnya, tekan Lewati.
+          </p>
+        )}
+        {current.hintRoleJump && (
+          <button
+            type="button"
+            className="btn sm ghost belajar-role-jump"
+            onClick={() => labGo(roleHomePath(current.hintRoleJump!))}
+          >
+            Lihat sebagai {current.hintRoleJump}
+          </button>
+        )}
+        {!voiceOk && (
+          <p className="muted belajar-voice-fallback">Peramban ini tidak mendukung suara sistem. Ikuti teks panduan.</p>
+        )}
         <div className="belajar-coach-actions">
           <button type="button" className="btn sm ghost" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
             <ChevronLeft size={14} /> Mundur
           </button>
           <button type="button" className="btn sm ghost" onClick={() => setAuto((v) => !v)}>
-            {auto ? <><Pause size={14} /> Jeda</> : <><Play size={14} /> Auto</>}
+            {auto ? (
+              <>
+                <Pause size={14} /> Jeda
+              </>
+            ) : (
+              <>
+                <Play size={14} /> Auto
+              </>
+            )}
           </button>
-          <button type="button" className="btn sm ghost" onClick={() => { setStep(0); setAuto(true); }}>
+          <button
+            type="button"
+            className="btn sm ghost"
+            onClick={() => {
+              setStep(0);
+              setAuto(true);
+              navigatedStepRef.current = null;
+            }}
+          >
             <RotateCcw size={14} /> Ulangi
           </button>
           {step < steps.length - 1 ? (
-            <button type="button" className="btn sm primary" onClick={() => setStep((s) => s + 1)}>
-              Lanjut <ChevronRight size={14} />
+            <button type="button" className="btn sm primary" onClick={goNext}>
+              {waitingAction ? (
+                <>Lewati <ChevronRight size={14} /></>
+              ) : (
+                <>Lanjut <ChevronRight size={14} /></>
+              )}
             </button>
           ) : (
-            <button type="button" className="btn sm primary" onClick={close}>Selesai</button>
+            <button type="button" className="btn sm primary" onClick={close}>
+              Selesai
+            </button>
           )}
         </div>
       </div>

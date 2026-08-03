@@ -6627,6 +6627,91 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 .belajar-hub-help ol { margin: 8px 0 12px 18px; color: rgba(232, 242, 252, 0.78); }
 
+.belajar-path {
+  margin: 0 0 22px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(137, 170, 204, 0.22);
+  background: rgba(8, 14, 22, 0.55);
+}
+
+.belajar-path-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.belajar-path-head p { margin: 0 0 12px; }
+
+.belajar-path-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.belajar-path-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(137, 170, 204, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.belajar-path-order {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: rgba(137, 170, 204, 0.2);
+  color: #e8f2fc;
+}
+
+.belajar-path-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.belajar-path-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.belajar-path-body strong { font-size: 14px; }
+.belajar-path-body span { color: rgba(232, 242, 252, 0.68); font-size: 13px; }
+
+.belajar-path-item.status-selesai {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.belajar-path-item.status-berjalan {
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.belajar-hub-card {
+  position: relative;
+}
+
+.belajar-hub-status {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(137, 170, 204, 0.95);
+}
+
+.belajar-hub-status.selesai { color: #6ee7b7; }
+.belajar-hub-status.berjalan { color: #fcd34d; }
+
 .belajar-role-switch {
   padding: 10px 12px 4px;
   border-top: 1px solid rgba(137, 170, 204, 0.12);
@@ -6739,16 +6824,72 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.4);
 }
 
-.belajar-coach-card h3 { margin: 4px 0 8px; font-size: 17px; }
-.belajar-coach-card p { margin: 0; color: rgba(232, 242, 252, 0.78); font-size: 13px; line-height: 1.45; }
+.belajar-coach-card h3 { margin: 4px 0 8px; font-size: 17px; color: #f8fafc; }
+.belajar-coach-card p { margin: 0; color: rgba(232, 242, 252, 0.86); font-size: 13px; line-height: 1.5; }
 .belajar-coach-tools { display: flex; align-items: center; gap: 6px; }
 .belajar-coach-tools .pill { margin-right: auto; }
 .belajar-coach-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.belajar-mission-meta {
+  margin: 4px 0 8px;
+}
+.belajar-mission-meta small {
+  display: block;
+  color: rgba(191, 219, 254, 0.9);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+.belajar-mission-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.belajar-mission-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #60a5fa, #34d399);
+  transition: width .25s ease;
+}
+.belajar-wait-hint {
+  margin-top: 10px !important;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde68a !important;
+  font-weight: 600;
+}
+.belajar-role-jump {
+  margin-top: 10px;
+}
+.belajar-voice-fallback {
+  margin-top: 8px !important;
+  font-size: 12px !important;
+}
 .belajar-coach-reopen {
   position: fixed;
   right: 16px;
   bottom: 16px;
   z-index: 40;
+}
+
+@media (max-width: 640px) {
+  .belajar-path-item {
+    grid-template-columns: auto 1fr;
+  }
+  .belajar-path-item .btn {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+  .belajar-coach-card {
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+  }
 }
 
 .belajar-impact-backdrop {

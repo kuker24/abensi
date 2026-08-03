@@ -43,8 +43,8 @@ function StubPage({ title, hint }: { title: string; hint: string }) {
       <PageHead eyebrow="LAB · RINGKAS" title={title} sub="Menu ini tampil seperti di portal asli agar tidak bingung navigasi." />
       <EmptyState
         title="Halaman ini di lab disederhanakan"
-        sub={hint}
-        action={<Btn onClick={() => window.history.back()}>Kembali</Btn>}
+        sub={`${hint} Ikuti misi tutorial (tombol buku) untuk alur interaktif: izin, presensi, masalah, scanner, dan notifikasi.`}
+        action={<Btn onClick={() => window.history.back()}>Kembali ke alur misi</Btn>}
       />
     </div>
   );
@@ -550,7 +550,7 @@ export function LabScreen({ role, screen }: { role: DemoRole; screen: string }) 
         <Card title="Status pengajuan" sub={world.leave.applicant}>
           <p>Status saat ini: <StatusPill status={world.leave.status} /></p>
           <p className="muted">{world.leave.reason}</p>
-          <Btn variant="primary" style={{ marginTop: 12 }} onClick={() => dispatch({ type: 'SUBMIT_LEAVE', actorRole: 'guru' })}>
+          <Btn variant="primary" data-demo="submit-leave" style={{ marginTop: 12 }} onClick={() => dispatch({ type: 'SUBMIT_LEAVE', actorRole: 'guru' })}>
             <Save size={14} /> Kirim pengajuan baru
           </Btn>
         </Card>
@@ -570,9 +570,9 @@ export function LabScreen({ role, screen }: { role: DemoRole; screen: string }) 
           <p>Status sesi: <StatusPill status={world.session.status} /></p>
           <p>Hadir: <b>{world.session.presentCount}</b> / {world.session.totalStudents}</p>
           <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <Btn variant="primary" disabled={world.session.status !== 'SCHEDULED'} onClick={() => dispatch({ type: 'OPEN_SESSION', actorRole: 'guru' })}>Buka sesi</Btn>
-            <Btn disabled={world.session.status !== 'OPEN'} onClick={() => dispatch({ type: 'MARK_PRESENT', actorRole: 'guru' })}>Tandai 8 siswa hadir</Btn>
-            <Btn variant="ghost" disabled={world.session.status !== 'OPEN'} onClick={() => dispatch({ type: 'CLOSE_SESSION', actorRole: 'guru' })}>Tutup sesi</Btn>
+            <Btn variant="primary" data-demo="open-session" disabled={world.session.status !== 'SCHEDULED'} onClick={() => dispatch({ type: 'OPEN_SESSION', actorRole: 'guru' })}>Buka sesi</Btn>
+            <Btn data-demo="mark-present" disabled={world.session.status !== 'OPEN'} onClick={() => dispatch({ type: 'MARK_PRESENT', actorRole: 'guru' })}>Tandai 8 siswa hadir</Btn>
+            <Btn variant="ghost" data-demo="close-session" disabled={world.session.status !== 'OPEN'} onClick={() => dispatch({ type: 'CLOSE_SESSION', actorRole: 'guru' })}>Tutup sesi</Btn>
           </div>
         </Card>
         <Card title="Progres roster">
@@ -594,8 +594,8 @@ export function LabScreen({ role, screen }: { role: DemoRole; screen: string }) 
         <PageHead eyebrow="KERJA PIKET" title="Catatan Piket" sub="Buku jaga harian (latihan)." />
         <Card title="Catat kejadian">
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <Btn variant="primary" onClick={() => dispatch({ type: 'LOG_PICKET', actorRole: 'guru-piket' })}>Catat kejadian</Btn>
-            <Btn onClick={() => dispatch({ type: 'OPEN_FLAG', actorRole: 'guru-piket' })}><Flag size={14} /> Buka tanda masalah</Btn>
+            <Btn variant="primary" data-demo="log-picket" onClick={() => dispatch({ type: 'LOG_PICKET', actorRole: 'guru-piket' })}>Catat kejadian</Btn>
+            <Btn data-demo="open-flag" onClick={() => dispatch({ type: 'OPEN_FLAG', actorRole: 'guru-piket' })}><Flag size={14} /> Buka tanda masalah</Btn>
           </div>
         </Card>
         <Card title="Catatan hari ini">
@@ -650,8 +650,8 @@ export function LabScreen({ role, screen }: { role: DemoRole; screen: string }) 
             <p className="muted">{world.devices.lastNote}</p>
             {role === 'operator-it' && (
               <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                <Btn variant="primary" onClick={() => dispatch({ type: 'SET_READER_ONLINE', actorRole: 'operator-it' })}>Scanner +1 online</Btn>
-                <Btn variant="ghost" onClick={() => dispatch({ type: 'SET_READER_OFFLINE', actorRole: 'operator-it' })}>Scanner −1 offline</Btn>
+                <Btn variant="primary" data-demo="reader-online" onClick={() => dispatch({ type: 'SET_READER_ONLINE', actorRole: 'operator-it' })}>Scanner +1 online</Btn>
+                <Btn variant="ghost" data-demo="reader-offline" onClick={() => dispatch({ type: 'SET_READER_OFFLINE', actorRole: 'operator-it' })}>Scanner −1 offline</Btn>
               </div>
             )}
             {role === 'admin-tu' && <p className="muted" style={{ marginTop: 12 }}>Admin memantau. Operator IT yang mengubah status di lab.</p>}
