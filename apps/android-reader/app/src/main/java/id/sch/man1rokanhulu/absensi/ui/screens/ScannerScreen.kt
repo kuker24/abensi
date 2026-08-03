@@ -2,12 +2,16 @@ package id.sch.man1rokanhulu.absensi.ui.screens
 
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import android.util.Size
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import java.util.concurrent.Executors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -92,17 +96,20 @@ fun ScannerScreen(
     allowedModes: List<String>,
     config: LocalConfig,
     api: SchoolHubApiClient,
+    queue: OfflineQueueRepository,
     queueCount: Int,
     connection: ConnectionStatus,
     historyStore: ScanHistoryStore,
     cameraPermissionGranted: Boolean,
     requestCameraPermission: () -> Unit,
     openAppSettings: () -> Unit,
+    dutyModeActive: Boolean = true,
     callbacks: ScannerCallbacks
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val queue = remember { OfflineQueueRepository(context) }
+    val mainExecutor = remember { ContextCompat.getMainExecutor(context) }
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     val scanGate = remember { ContinuousScanGate(3000) }
     val latestMode by rememberUpdatedState(mode)
     val deviceTitle = readerDeviceTitle(allowedModes)
@@ -115,6 +122,9 @@ fun ScannerScreen(
     var scannerArmed by remember { mutableStateOf(false) }
     var confirmModeChange by remember { mutableStateOf(false) }
     var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
+    val latestPausedState by rememberUpdatedState(paused)
+    val latestArmedState by rememberUpdatedState(scannerArmed)
+    val latestBusyState by rememberUpdatedState(busy)
 
     LaunchedEffect(mode) {
         paused = true
@@ -126,6 +136,10 @@ fun ScannerScreen(
         val activity = context as? ComponentActivity
         if (config.keepScreenOn) activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { analysisExecutor.shutdown() }
     }
 
     if (!canScan) {
@@ -150,12 +164,31 @@ fun ScannerScreen(
                 try {
                     val provider = cameraProviderFuture.get()
                     val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-                    val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build().also {
-                        it.setAnalyzer(ContextCompat.getMainExecutor(ctx), BarcodeAnalyzer { raw ->
-                            if (!shouldProcessScan(paused = paused, armed = scannerArmed, busy = busy)) return@BarcodeAnalyzer
+                    val resolutionSelector = ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                Size(1280, 720),
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                            )
+                        )
+                        .build()
+                    val analysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .setResolutionSelector(resolutionSelector)
+                        .build()
+                        .also {
+                        it.setAnalyzer(analysisExecutor, BarcodeAnalyzer { raw ->
+                            if (!shouldProcessScan(
+                                    paused = latestPausedState,
+                                    armed = latestArmedState,
+                                    busy = latestBusyState
+                                )
+                            ) return@BarcodeAnalyzer
                             if (!scanGate.tryStart(raw)) return@BarcodeAnalyzer
-                            busy = true
-                            feedback = FeedbackData("Memproses…", "Tunggu sebentar. QR sedang dicek ke server.", FeedbackTone.PROCESSING)
+                            mainExecutor.execute {
+                                busy = true
+                                feedback = FeedbackData("Memproses…", "Tunggu sebentar. QR sedang dicek ke server.", FeedbackTone.PROCESSING)
+                            }
                             scope.launch {
                                 val scannedAt = Instant.now()
                                 val nextFeedback = try {
@@ -265,7 +298,8 @@ fun ScannerScreen(
                     connection = connection,
                     queueCount = queueCount,
                     locationLabel = config.locationLabel.ifBlank { "$deviceTitle · $deviceSummary" },
-                    compact = true
+                    compact = true,
+                    dutyModeActive = dutyModeActive
                 )
                 Box(
                     Modifier

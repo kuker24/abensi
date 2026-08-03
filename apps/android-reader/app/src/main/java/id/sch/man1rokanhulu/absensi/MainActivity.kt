@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.compose.runtime.DisposableEffect
 import id.sch.man1rokanhulu.absensi.data.LocalConfig
 import id.sch.man1rokanhulu.absensi.data.OfflineQueueRepository
 import id.sch.man1rokanhulu.absensi.data.PendingScanRetryCoordinator
@@ -31,7 +32,11 @@ import id.sch.man1rokanhulu.absensi.data.PendingScanRetryHistoryStatus
 import id.sch.man1rokanhulu.absensi.data.PendingScanRetryOrchestrator
 import id.sch.man1rokanhulu.absensi.data.PendingScanRetryResponse
 import id.sch.man1rokanhulu.absensi.data.ScanHistoryStore
+import id.sch.man1rokanhulu.absensi.duty.DutyModeSupport
+import id.sch.man1rokanhulu.absensi.duty.ScanDutyService
+import id.sch.man1rokanhulu.absensi.network.NetworkStabilityMonitor
 import id.sch.man1rokanhulu.absensi.network.SchoolHubApiClient
+import id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackData
 import id.sch.man1rokanhulu.absensi.ui.components.FeedbackTone
 import id.sch.man1rokanhulu.absensi.ui.screens.ScannerCallbacks
@@ -59,11 +64,13 @@ class MainActivity : ComponentActivity() {
     private val requestCamera = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         cameraGranted.value = granted
     }
+    private val requestNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* optional for duty notification */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         cameraGranted.value = hasCameraPermission()
         if (!cameraGranted.value) requestCamera.launch(Manifest.permission.CAMERA)
+        maybeRequestNotificationPermission()
         setContent {
             ReaderApp(
                 cameraPermissionGranted = cameraGranted.value,
@@ -78,6 +85,12 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+    }
+
+    private fun maybeRequestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     override fun onResume() {
@@ -125,13 +138,16 @@ fun ReaderApp(
     val historyStore = remember { ScanHistoryStore(context) }
     val queueRepo = remember { OfflineQueueRepository(context) }
     val retryCoordinator = remember { PendingScanRetryCoordinator() }
+    val networkMonitor = remember { NetworkStabilityMonitor(context) }
     val scope = rememberCoroutineScope()
 
     var route by remember { mutableStateOf(Route.SPLASH) }
     var queueCount by remember { mutableIntStateOf(0) }
     var retryQueueBusy by remember { mutableStateOf(false) }
     var lastFeedback by remember { mutableStateOf<FeedbackData?>(null) }
-    var connection by remember { mutableStateOf(id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.CHECKING) }
+    var connection by remember { mutableStateOf(ConnectionStatus.CHECKING) }
+    var dutyModeActive by remember { mutableStateOf(false) }
+    var batteryUnrestricted by remember { mutableStateOf(DutyModeSupport.isIgnoringBatteryOptimizations(context)) }
     var updateInfo by remember { mutableStateOf<SchoolHubApiClient.VersionInfo?>(null) }
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -153,17 +169,17 @@ fun ReaderApp(
         queueCount = runCatching { queueRepo.count() }.getOrDefault(0)
     }
 
-    suspend fun checkConnection(): id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus {
+    suspend fun checkConnection(): ConnectionStatus {
         val started = System.currentTimeMillis()
         return runCatching {
             val ok = api.health()
             val elapsed = System.currentTimeMillis() - started
-            when {
-                !ok -> id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.OFFLINE
-                elapsed > 1800 -> id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.SLOW
-                else -> id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.ONLINE
-            }
-        }.getOrDefault(id.sch.man1rokanhulu.absensi.ui.components.ConnectionStatus.OFFLINE)
+            networkMonitor.markHealth(ok, elapsed)
+            networkMonitor.snapshot().status
+        }.getOrElse {
+            networkMonitor.markHealth(false, 0)
+            ConnectionStatus.OFFLINE
+        }
     }
 
     fun effectiveUpdateInfo(): SchoolHubApiClient.VersionInfo? {
@@ -302,25 +318,55 @@ fun ReaderApp(
 
     LaunchedEffect(Unit) {
         refreshQueueCount()
+        batteryUnrestricted = DutyModeSupport.isIgnoringBatteryOptimizations(context)
         // The server is authoritative: refresh modes before reporting a legacy mode.
         sendReaderStatus("Aplikasi dibuka", includeCurrentMode = false)
         checkForUpdate(manual = false)
+    }
+
+    DisposableEffect(Unit) {
+        networkMonitor.start { snapshot, recovered ->
+            connection = snapshot.status
+            if (recovered) {
+                scope.launch {
+                    val pending = runCatching { queueRepo.count() }.getOrDefault(0)
+                    queueCount = pending
+                    if (pending > 0) {
+                        retryQueue()?.let { lastFeedback = queueRetryFeedback(it) }
+                    }
+                }
+            }
+        }
+        onDispose {
+            networkMonitor.stop()
+            ScanDutyService.stop(context)
+            dutyModeActive = false
+        }
     }
 
     LaunchedEffect(route) {
         if (route == Route.SPLASH) return@LaunchedEffect
         while (true) {
             connection = checkConnection()
-            delay(15_000)
+            delay(if (route == Route.SCANNER) 10_000 else 15_000)
         }
     }
 
     LaunchedEffect(route, mode) {
-        if (route != Route.SCANNER) return@LaunchedEffect
-        sendReaderStatus("Scanner aktif")
+        if (route != Route.SCANNER) {
+            if (dutyModeActive) {
+                ScanDutyService.stop(context)
+                dutyModeActive = false
+            }
+            return@LaunchedEffect
+        }
+        ScanDutyService.start(context)
+        dutyModeActive = true
+        batteryUnrestricted = DutyModeSupport.isIgnoringBatteryOptimizations(context)
+        sendReaderStatus("Scanner aktif · Mode Kerja")
         while (true) {
-            delay(60_000)
-            sendReaderStatus("Scanner aktif")
+            delay(30_000)
+            sendReaderStatus("Scanner aktif · Mode Kerja")
         }
     }
 
@@ -375,12 +421,14 @@ fun ReaderApp(
                 allowedModes = config.allowedModes(),
                 config = config,
                 api = api,
+                queue = queueRepo,
                 queueCount = queueCount,
                 connection = connection,
                 historyStore = historyStore,
                 cameraPermissionGranted = cameraPermissionGranted,
                 requestCameraPermission = requestCameraPermission,
                 openAppSettings = openAppSettings,
+                dutyModeActive = dutyModeActive,
                 callbacks = ScannerCallbacks(
                     onResult = { feedback ->
                         lastFeedback = feedback
@@ -415,6 +463,15 @@ fun ReaderApp(
                 config = config,
                 api = api,
                 queueCount = queueCount,
+                batteryUnrestricted = batteryUnrestricted,
+                onRefreshBatteryStatus = {
+                    batteryUnrestricted = DutyModeSupport.isIgnoringBatteryOptimizations(context)
+                },
+                onRequestBatteryUnrestricted = {
+                    DutyModeSupport.requestIgnoreBatteryOptimizations(context)
+                    batteryUnrestricted = DutyModeSupport.isIgnoringBatteryOptimizations(context)
+                },
+                onOpenBatterySettings = { DutyModeSupport.openBatterySettings(context) },
                 onClearQueue = { scope.launch { runCatching { queueRepo.clear() }; refreshQueueCount() } },
                 onRetryQueue = {
                     retryQueue()?.let(::queueRetryMessage)

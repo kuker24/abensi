@@ -37,6 +37,10 @@ fun SettingsScreen(
     config: LocalConfig,
     api: SchoolHubApiClient,
     queueCount: Int,
+    batteryUnrestricted: Boolean = true,
+    onRefreshBatteryStatus: () -> Unit = {},
+    onRequestBatteryUnrestricted: () -> Unit = {},
+    onOpenBatterySettings: () -> Unit = {},
     onClearQueue: () -> Unit,
     onRetryQueue: suspend () -> String,
     retryQueueBusy: Boolean = false,
@@ -91,6 +95,47 @@ fun SettingsScreen(
                 ToggleRow("Getaran feedback", "Getar pada hasil scan.", vibrationOn) {
                     vibrationOn = it; config.vibrationEnabled = it
                 }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Mode Kerja Stabil", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Saat scanner dibuka, SIAB2 mengaktifkan Mode Kerja: notifikasi fokus, jaga layar/jaringan, dan kirim antrean lebih cepat saat internet pulih. Aplikasi lain tidak dimatikan otomatis.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    if (batteryUnrestricted) "Optimasi baterai: tidak dibatasi (disarankan)."
+                    else "Optimasi baterai masih aktif. Mode Kerja bisa terhambat saat HP hemat daya.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (!batteryUnrestricted) {
+                    SecondaryActionButton(
+                        text = "Izinkan tanpa batasan baterai",
+                        onClick = {
+                            onRequestBatteryUnrestricted()
+                            onRefreshBatteryStatus()
+                            status = "Periksa dialog sistem. Setelah disetujui, Mode Kerja lebih stabil."
+                        }
+                    )
+                }
+                SecondaryActionButton(
+                    text = "Buka pengaturan baterai",
+                    onClick = {
+                        onOpenBatterySettings()
+                        onRefreshBatteryStatus()
+                    }
+                )
+                SecondaryActionButton(
+                    text = "Perbarui status izin",
+                    onClick = {
+                        onRefreshBatteryStatus()
+                        status = "Status izin baterai diperbarui."
+                    }
+                )
             }
         }
 

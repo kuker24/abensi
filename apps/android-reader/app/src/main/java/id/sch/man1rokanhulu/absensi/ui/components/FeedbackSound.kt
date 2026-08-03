@@ -14,8 +14,9 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
-private val mainHandler = Handler(Looper.getMainLooper())
 @Volatile private var activePlayer: MediaPlayer? = null
+
+private fun mainHandler(): Handler = Handler(Looper.getMainLooper())
 
 /** Clamp playback stream to at least 80% of device max (cap 100%). */
 internal fun targetFeedbackVolume(maxVolume: Int, currentVolume: Int): Int {
@@ -39,7 +40,7 @@ private fun withForcedMusicVolume(context: Context, restoreAfterMs: Long, play: 
     try {
         play()
     } finally {
-        mainHandler.postDelayed({
+        mainHandler().postDelayed({
             runCatching { am.setStreamVolume(stream, previous, 0) }
         }, restoreAfterMs)
     }
@@ -91,7 +92,7 @@ private fun playTone(tone: FeedbackTone) {
     runCatching {
         val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
         tg.startTone(toneType, toneDuration)
-        mainHandler.postDelayed({ runCatching { tg.release() } }, (toneDuration + 50).toLong())
+        mainHandler().postDelayed({ runCatching { tg.release() } }, (toneDuration + 50).toLong())
     }
 }
 

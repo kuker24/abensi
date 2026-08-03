@@ -62,6 +62,17 @@ fun HelpScreen(onBack: () -> Unit) {
         )
 
         HelpSection(
+            "Mode Kerja Stabil",
+            listOf(
+                "Mode Kerja aktif otomatis saat layar scanner dibuka (notifikasi 'SIAB2 Mode Kerja').",
+                "Mode ini menjaga fokus jaringan SIAB2. Aplikasi lain tidak dimatikan otomatis oleh Android.",
+                "Di Pengaturan, izinkan SIAB2 tanpa batasan baterai (No restrictions / Unrestricted).",
+                "Di MIUI/HyperOS: kunci SIAB2 di Recent Apps dan nonaktifkan penghemat baterai untuk app ini.",
+                "Pakai Wi-Fi sekolah yang stabil; jika Wi-Fi putus, data seluler boleh jadi cadangan."
+            )
+        )
+
+        HelpSection(
             "Jika scan gagal atau ditolak",
             listOf(
                 "Pastikan QR siswa terbaca jelas. Bersihkan kotor/goresan pada kartu.",

@@ -10,18 +10,31 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class LocalAes(private val alias: String = "schoolhub_pending_queue") {
+    @Volatile
+    private var cachedKey: SecretKey? = null
+
     private fun key(): SecretKey {
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        store.getKey(alias, null)?.let { return it as SecretKey }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        generator.init(
-            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        )
-        return generator.generateKey()
+        cachedKey?.let { return it }
+        synchronized(this) {
+            cachedKey?.let { return it }
+            val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            val existing = store.getKey(alias, null) as? SecretKey
+            if (existing != null) {
+                cachedKey = existing
+                return existing
+            }
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            generator.init(
+                KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setRandomizedEncryptionRequired(true)
+                    .build()
+            )
+            val created = generator.generateKey()
+            cachedKey = created
+            return created
+        }
     }
 
     fun encrypt(text: String): String {

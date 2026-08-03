@@ -48,7 +48,8 @@ fun StatusBar(
     queueCount: Int,
     locationLabel: String?,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    dutyModeActive: Boolean = false
 ) {
     val connectionLabel = when (connection) {
         ConnectionStatus.ONLINE -> "Online"
@@ -74,6 +75,14 @@ fun StatusBar(
             style = MaterialTheme.typography.labelLarge,
             color = fg
         )
+        if (dutyModeActive) {
+            Dot(fg)
+            Text(
+                "Mode Kerja",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (compact) SemanticColors.success else SemanticColors.success
+            )
+        }
         if (!locationLabel.isNullOrBlank()) {
             Dot(fg)
             Text(
