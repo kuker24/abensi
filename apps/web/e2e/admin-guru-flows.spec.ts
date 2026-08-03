@@ -370,7 +370,19 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
     await page.getByRole('button', { name: /Lanjut/ }).click();
     await page.getByRole('button', { name: /Lanjut/ }).click();
     await expect(page.getByRole('heading', { name: 'Baca Kehadiran Saya' })).toBeVisible();
-    await expect(page.locator('.tour-spotlight')).toBeVisible();
+    await expect(page.locator('.siab2-sidebar.side-open, .side.side-open')).toBeVisible();
+    // Wait until the step-bound spotlight covers the drawer nav item (not a stale prior hole).
+    await expect.poll(async () => page.evaluate(() => {
+      const spotlightEl = document.querySelector<HTMLElement>('.tour-spotlight');
+      const menuEl = document.querySelector<HTMLElement>('[data-tour="nav:/siswa/dashboard"]');
+      if (!spotlightEl || !menuEl) return false;
+      const spotlight = spotlightEl.getBoundingClientRect();
+      const menu = menuEl.getBoundingClientRect();
+      return spotlight.left < menu.left
+        && spotlight.right > menu.right
+        && spotlight.top < menu.top
+        && spotlight.bottom > menu.bottom;
+    }), { timeout: 5000 }).toBe(true);
 
     const mobileLayout = await page.evaluate(() => {
       const card = document.querySelector<HTMLElement>('.tour-card')!.getBoundingClientRect();

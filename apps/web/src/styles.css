@@ -537,12 +537,14 @@ label, .field-label { display: block; font-size: var(--text-xs); font-weight: va
 }
 
 /* ========= toasts ========= */
-.toast { position: fixed; right: 18px; top: 18px; z-index: 600; padding: 12px 18px; border-radius: var(--radius-lg); background: var(--surface-elevated); color: #fff; border: 1px solid var(--border); box-shadow: var(--shadow-lg); font-size: var(--text-sm); animation: toastSlideIn .4s cubic-bezier(.22, 1, .36, 1); max-width: 380px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: opacity .3s var(--ease-out), transform .3s var(--ease-out); }
+/* Solid opaque surfaces so WCAG contrast stays stable over light/dark pages
+   (translucent + backdrop-filter previously sampled ~3.89:1 on login). */
+.toast { position: fixed; right: 18px; top: 18px; z-index: 600; padding: 12px 18px; border-radius: var(--radius-lg); background: #1e2025; color: #f0ede8; border: 1px solid var(--border-2); box-shadow: var(--shadow-lg); font-size: var(--text-sm); animation: toastSlideIn .4s cubic-bezier(.22, 1, .36, 1); max-width: 380px; transition: opacity .3s var(--ease-out), transform .3s var(--ease-out); }
 .toast.toast-exit { opacity: 0; transform: translateX(40px) scale(0.95); }
 @keyframes toastSlideIn { from { opacity: 0; transform: translateX(40px) scale(0.95); } to { opacity: 1; transform: translateX(0) scale(1); } }
-.toast.ok { border-left: 3px solid var(--ok); box-shadow: var(--shadow-lg), -4px 0 12px var(--ok-glow); }
-.toast.bad { border-left: 3px solid var(--bad); box-shadow: var(--shadow-lg), -4px 0 12px var(--bad-glow); }
-.toast.warn { border-left: 3px solid var(--warn); box-shadow: var(--shadow-lg), -4px 0 12px var(--warn-glow); }
+.toast.ok { border-left: 3px solid var(--ok); background: #14241c; color: #ecfdf5; box-shadow: var(--shadow-lg), -4px 0 12px var(--ok-glow); }
+.toast.bad { border-left: 3px solid var(--bad); background: #2a1518; color: #fee2e2; box-shadow: var(--shadow-lg), -4px 0 12px var(--bad-glow); }
+.toast.warn { border-left: 3px solid var(--warn); background: #2a1c12; color: #ffedd5; box-shadow: var(--shadow-lg), -4px 0 12px var(--warn-glow); }
 
 /* ========= dropdowns ========= */
 .dropdown-menu { position: absolute; z-index: 400; min-width: 180px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 6px; box-shadow: var(--shadow-lg); animation: menuIn .22s var(--ease-out); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }

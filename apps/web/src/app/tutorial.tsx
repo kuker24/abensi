@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowRight, BookOpen, Check, ChevronRight, PlayCircle, Volume2, VolumeX, X } from 'lucide-react';
 import { apiFetch, go } from './api';
 import { Btn, IconBtn } from './ui';
@@ -425,6 +425,14 @@ function isVisible(rect: DOMRect) {
   return rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight;
 }
 
+function isCompactViewport() {
+  return typeof window !== 'undefined' && window.innerWidth <= 768;
+}
+
+function isMobileNavSelector(selector?: string) {
+  return Boolean(selector?.startsWith('[data-tour="nav:'));
+}
+
 function spotlightStyle(rect: SpotlightRect): CSSProperties {
   return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
 }
@@ -456,6 +464,7 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
   const [step, setStep] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(readVoicePreference);
   const [targetRect, setTargetRect] = useState<SpotlightRect | null>(null);
+  const [targetRectKey, setTargetRectKey] = useState('');
   const [compactViewport, setCompactViewport] = useState(() => window.innerWidth <= 768);
   const sidebarOpenedByTour = useRef(false);
   const [loading, setLoading] = useState(false);
@@ -464,6 +473,9 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
   const current = steps[Math.min(step, steps.length - 1)];
   const tutorialVersion = INTERACTIVE_TUTORIAL_VERSION;
   const voiceSupported = typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  // Bind spotlight to the active step so a previous hole never paints with a new title.
+  const spotlightKey = `${open ? 1 : 0}:${step}:${current.target || ''}:${compactViewport ? 'c' : 'd'}`;
+  const activeTargetRect = targetRectKey === spotlightKey ? targetRect : null;
 
   useEffect(() => {
     const update = () => setCompactViewport(window.innerWidth <= 768);
@@ -527,13 +539,14 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
     };
   }, [current.body, current.title, current.voice, open, voiceEnabled, voiceSupported]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || !current.target) {
       if (sidebarOpenedByTour.current) {
         sidebarOpenedByTour.current = false;
         onRequestSidebar?.(false);
       }
       setTargetRect(null);
+      setTargetRectKey('');
       return undefined;
     }
 
@@ -542,7 +555,11 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
     const refreshTimers: number[] = [];
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
-    const mobileNavTarget = compactViewport && current.target.startsWith('[data-tour="nav:');
+    const rectKey = spotlightKey;
+    // Prefer a live width check so a stale compactViewport state cannot fall back
+    // to the hamburger compactTarget while the real nav item is the intended hole.
+    const compact = compactViewport || isCompactViewport();
+    const mobileNavTarget = compact && isMobileNavSelector(current.target);
     if (mobileNavTarget) {
       sidebarOpenedByTour.current = true;
       onRequestSidebar?.(true);
@@ -550,25 +567,34 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
       sidebarOpenedByTour.current = false;
       onRequestSidebar?.(false);
     }
+    // Mobile nav steps must never fall back to the hamburger toggle — that leaves
+    // the spotlight on the topbar while the drawer menu stays unhighlighted.
     const selectors = mobileNavTarget
       ? [current.target]
-      : compactViewport && current.compactTarget
+      : compact && current.compactTarget
         ? [current.compactTarget, current.target]
         : [current.target, current.compactTarget].filter(Boolean) as string[];
 
-    const findTarget = () => selectors
-      .map((selector) => document.querySelector<HTMLElement>(selector))
-      .find((element) => element && isVisible(element.getBoundingClientRect())) || null;
-    const firstTarget = findTarget() || document.querySelector<HTMLElement>(selectors[0]);
+    const findTarget = () => {
+      if (mobileNavTarget) {
+        const nav = document.querySelector<HTMLElement>(current.target!);
+        if (!nav) return null;
+        // Wait until the drawer has finished sliding in; intermediate transform
+        // frames can report off-screen rects and must not pin the spotlight.
+        if (!document.querySelector('.siab2-sidebar.side-open, .side.side-open')) return null;
+        return isVisible(nav.getBoundingClientRect()) ? nav : null;
+      }
+      return selectors
+        .map((selector) => document.querySelector<HTMLElement>(selector))
+        .find((element) => element && isVisible(element.getBoundingClientRect())) || null;
+    };
+    const firstTarget = findTarget() || (!mobileNavTarget ? document.querySelector<HTMLElement>(selectors[0]) : null);
     firstTarget?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 
     const update = () => {
       if (!active) return;
       const target = findTarget();
-      if (!target) {
-        setTargetRect(null);
-        return;
-      }
+      if (!target) return;
       if (target !== activeTarget) {
         activeTarget = target;
         target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
@@ -578,24 +604,39 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
           resizeObserver = new ResizeObserver(update);
           resizeObserver.observe(target);
           if (target.parentElement) resizeObserver.observe(target.parentElement);
+          const sidebar = document.querySelector('.siab2-sidebar, .side');
+          if (sidebar) resizeObserver.observe(sidebar);
         }
         mutationObserver = new MutationObserver(update);
         mutationObserver.observe(target.parentElement || target, { attributes: true, childList: true, characterData: true, subtree: true });
+        const sidebar = document.querySelector('.siab2-sidebar, .side');
+        if (sidebar) mutationObserver.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
       }
       const rect = target.getBoundingClientRect();
-      const padding = 7;
-      const left = Math.max(0, rect.left - padding);
-      const top = Math.max(0, rect.top - padding);
-      const right = Math.min(window.innerWidth, rect.right + padding);
-      const bottom = Math.min(window.innerHeight, rect.bottom + padding);
+      // Keep padding outside the target. Do not clamp to the viewport — clamping
+      // shrinks the hole when the menu sits on a screen edge (common on mobile
+      // drawer nav) and makes spotlightCoversMenu fail strict containment checks.
+      const padding = 8;
+      const left = rect.left - padding;
+      const top = rect.top - padding;
+      const right = rect.right + padding;
+      const bottom = rect.bottom + padding;
       setTargetRect({ top, right, bottom, left, width: right - left, height: bottom - top });
+      setTargetRectKey(rectKey);
     };
 
     update();
-    refreshTimers.push(window.setTimeout(update, 50), window.setTimeout(update, 180), window.setTimeout(update, 360));
+    // Poll through the drawer open transition (~280ms) and a little after paint.
+    const pollMs = mobileNavTarget
+      ? [16, 50, 100, 180, 280, 360, 480, 640, 800]
+      : [50, 180, 360];
+    pollMs.forEach((ms) => refreshTimers.push(window.setTimeout(update, ms)));
     void document.fonts?.ready.then(update);
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
+    const sidebarEl = document.querySelector('.siab2-sidebar, .side');
+    const onTransitionEnd = () => update();
+    sidebarEl?.addEventListener('transitionend', onTransitionEnd);
     return () => {
       active = false;
       refreshTimers.forEach((timer) => window.clearTimeout(timer));
@@ -603,8 +644,9 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
       mutationObserver?.disconnect();
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
+      sidebarEl?.removeEventListener('transitionend', onTransitionEnd);
     };
-  }, [compactViewport, current.compactTarget, current.target, onRequestSidebar, open]);
+  }, [compactViewport, current.compactTarget, current.target, onRequestSidebar, open, spotlightKey, step]);
 
   useEffect(() => () => {
     if (sidebarOpenedByTour.current) onRequestSidebar?.(false);
@@ -677,10 +719,10 @@ export function OnboardingTour({ user, manualOpenKey = 0, onRequestSidebar }: { 
 
   if (!open) return null;
 
-  return <div className={`tour-backdrop${targetRect ? ' has-target' : ''}`} role="dialog" aria-modal="true" aria-label="Tutorial awal" data-tutorial-dialog="true">
+  return <div className={`tour-backdrop${activeTargetRect ? ' has-target' : ''}`} role="dialog" aria-modal="true" aria-label="Tutorial awal" data-tutorial-dialog="true">
     <span className="tour-announcement" role="status" aria-live="polite" aria-atomic="true">{current.title}. {current.body}</span>
-    {targetRect && <div className="tour-spotlight" style={spotlightStyle(targetRect)} aria-hidden="true" />}
-    <div ref={cardRef} className={`tour-card${targetRect ? ' tour-card-anchored' : ''}`} style={targetRect ? cardStyle(targetRect) : undefined}>
+    {activeTargetRect && <div className="tour-spotlight" style={spotlightStyle(activeTargetRect)} aria-hidden="true" />}
+    <div ref={cardRef} className={`tour-card${activeTargetRect ? ' tour-card-anchored' : ''}`} style={activeTargetRect ? cardStyle(activeTargetRect) : undefined}>
       <div className="tour-top">
         <div className="tour-heading"><div className="tour-icon"><BookOpen size={20} /></div><div><div className="eyebrow"><span className="dot" /> TUTORIAL AWAL</div><h2>{current.title}</h2></div></div>
         <div className="tour-tools">{voiceSupported && <IconBtn label={voiceEnabled ? 'Matikan panduan suara' : 'Nyalakan panduan suara'} aria-pressed={voiceEnabled} onClick={toggleVoice}>{voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}</IconBtn>}<IconBtn label="Tutup tutorial" onClick={dismiss}><X size={16} /></IconBtn></div>

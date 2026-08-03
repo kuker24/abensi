@@ -14,6 +14,7 @@
  */
 
 import { execFile as execFileCallback } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 const DEFAULT_BASE_URL = 'https://absensi.man1rokanhulu.cloud';
@@ -297,7 +298,8 @@ export async function runSmoke({ env = process.env, fetchImpl = globalThis.fetch
   return { ok: !results.hasFailures(), results: results.results, summary };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
   runSmoke().then((result) => {
     process.exitCode = result.ok ? 0 : 1;
   }).catch((error) => {

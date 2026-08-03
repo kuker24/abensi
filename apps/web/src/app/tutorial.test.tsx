@@ -61,7 +61,7 @@ describe('OnboardingTour', () => {
     fireEvent.click(screen.getByRole('button', { name: /Lanjut/ }));
 
     expect(await screen.findByText('Pastikan akun dan sistem aktif')).toBeInTheDocument();
-    await waitFor(() => expect(document.querySelector('.tour-spotlight')).toHaveStyle({ top: '17px', left: '273px' }));
+    await waitFor(() => expect(document.querySelector('.tour-spotlight')).toHaveStyle({ top: '16px', left: '272px' }));
     await waitFor(() => expect(speak).toHaveBeenCalled());
     const utterance = speak.mock.calls[speak.mock.calls.length - 1]?.[0] as MockSpeechSynthesisUtterance;
     expect(utterance.lang).toBe('id-ID');
@@ -82,7 +82,7 @@ describe('OnboardingTour', () => {
     fireEvent.click(screen.getByRole('button', { name: /Lanjut/ }));
 
     expect(await screen.findByText('Baca ringkasan operasional')).toBeInTheDocument();
-    await waitFor(() => expect(document.querySelector('.tour-spotlight')).toHaveStyle({ top: '113px', left: '313px' }));
+    await waitFor(() => expect(document.querySelector('.tour-spotlight')).toHaveStyle({ top: '112px', left: '312px' }));
     expect(apiFetch).toHaveBeenCalledWith('/tutorials/me?clientVersion=2026.07.25');
     await waitFor(() => expect(speak).toHaveBeenCalled());
     expect((speak.mock.calls[speak.mock.calls.length - 1]?.[0] as MockSpeechSynthesisUtterance).text).toContain('Panel ringkasan menunjukkan');
