@@ -7,6 +7,7 @@ const {
   repairStaleRepeatables,
   withBoundedRetry
 } = require('./repeatable-scheduler');
+const { safeCustomJobId } = require('./job-id');
 
 const baseUrl = process.env.API_BASE_URL || 'http://api:3000/api/v1';
 const reconcileUrl = process.env.API_RECONCILE_URL || `${baseUrl}/internal/reconciliation/run`;
@@ -31,6 +32,8 @@ const autoMissedIntervalMs = parsePositiveInt('WORKER_AUTO_MISSED_INTERVAL_MS', 
 const reconcileIntervalMs = parsePositiveInt('WORKER_RECONCILE_INTERVAL_MS', Math.max(defaultIntervalMs, 30000));
 const attempts = parsePositiveInt('WORKER_JOB_ATTEMPTS', 5, 1);
 const staleHealthMs = parsePositiveInt('WORKER_STALE_HEALTH_MS', Math.max(reconcileIntervalMs * 3, 60000), 10000);
+const httpTimeoutMs = parsePositiveInt('WORKER_HTTP_TIMEOUT_MS', 90000, 10000);
+const lockDurationMs = parsePositiveInt('WORKER_LOCK_DURATION_MS', Math.max(httpTimeoutMs + 15000, 120000), 5000);
 
 if (!token) {
   console.error('[worker] WORKER_TOKEN wajib diatur di production.');
@@ -110,7 +113,7 @@ async function postJob(job) {
   const definition = jobDefinitions.find((item) => item.name === job.name);
   if (!definition) throw new Error(`Unknown job: ${job.name}`);
   const startedAt = Date.now();
-  const response = await axios.post(definition.url, {}, { headers: signHeaders(definition.url, definition.name), timeout: 10000 });
+  const response = await axios.post(definition.url, {}, { headers: signHeaders(definition.url, definition.name), timeout: httpTimeoutMs });
   const state = health.jobs[definition.name];
   state.lastSuccessAt = new Date().toISOString();
   state.lastError = null;
@@ -124,24 +127,32 @@ async function postJob(job) {
 const worker = new Worker(queueName, postJob, {
   connection,
   concurrency: Number(process.env.WORKER_CONCURRENCY || '1'),
-  lockDuration: parsePositiveInt('WORKER_LOCK_DURATION_MS', 30000, 5000)
+  lockDuration: lockDurationMs
 });
 
-worker.on('failed', async (job, error) => {
-  const name = job?.name || 'unknown';
-  const state = health.jobs[name] || (health.jobs[name] = { intervalMs: null, lastSuccessAt: null, lastError: null, lastDurationMs: null, processed: 0, failed: 0 });
-  state.failed += 1;
-  state.lastError = error.message;
-  writeHealth();
-  console.error(`[worker] ${name} failed attempt ${job?.attemptsMade}: ${error.message}`);
-  if (job && job.attemptsMade >= attempts) {
-    await dlq.add(name, {
-      originalJobId: job.id,
-      failedReason: error.message,
-      data: job.data,
-      failedAt: new Date().toISOString()
-    }, { jobId: `dlq:${job.id}:${job.attemptsMade}`, removeOnComplete: 1000 });
-  }
+worker.on('failed', (job, error) => {
+  void (async () => {
+    const name = job?.name || 'unknown';
+    const state = health.jobs[name] || (health.jobs[name] = { intervalMs: null, lastSuccessAt: null, lastError: null, lastDurationMs: null, processed: 0, failed: 0 });
+    state.failed += 1;
+    state.lastError = error.message;
+    writeHealth();
+    console.error(`[worker] ${name} failed attempt ${job?.attemptsMade}: ${error.message}`);
+    if (!(job && job.attemptsMade >= attempts)) return;
+    try {
+      await dlq.add(name, {
+        originalJobId: job.id,
+        failedReason: error.message,
+        data: job.data,
+        failedAt: new Date().toISOString()
+      }, {
+        jobId: safeCustomJobId(['dlq', name, job.id, job.attemptsMade]),
+        removeOnComplete: 1000
+      });
+    } catch (dlqError) {
+      console.error(`[worker] dlq enqueue failed for ${name}: ${dlqError.message}`);
+    }
+  })();
 });
 
 queueEvents.on('stalled', ({ jobId }) => {

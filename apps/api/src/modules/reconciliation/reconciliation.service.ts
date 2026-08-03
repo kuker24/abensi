@@ -33,6 +33,9 @@ function sessionEndsAtOrAfter(sessionEndsAt: Date, time: string | null | undefin
   return localMinutesOfDay(sessionEndsAt) >= minutesOf(time, fallback);
 }
 
+const RECONCILE_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
+const PENDING_RECONCILE_BATCH_SIZE = 25;
+
 @Injectable()
 export class ReconciliationService {
   constructor(private readonly prisma: PrismaService) {}
@@ -406,7 +409,7 @@ export class ReconciliationService {
         status: { in: ['CLOSED', 'MISSED'] },
         reconciledAt: null
       },
-      take: 200,
+      take: PENDING_RECONCILE_BATCH_SIZE,
       orderBy: { closedAt: 'asc' }
     });
 
@@ -418,6 +421,7 @@ export class ReconciliationService {
 
     return {
       pending: pendingSessions.length,
+      batchSize: PENDING_RECONCILE_BATCH_SIZE,
       processed
     };
   }
@@ -668,7 +672,7 @@ export class ReconciliationService {
         createdFlags,
         ...rosterProvenance
       };
-    });
+    }, RECONCILE_TRANSACTION_OPTIONS);
   }
 
   private async createFlag(

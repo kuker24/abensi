@@ -63,7 +63,7 @@ function makePrisma(session: Record<string, unknown>, options: { gateLogs?: unkn
     }
   };
   const prisma = {
-    $transaction: jest.fn(async (callback) => callback(tx))
+    $transaction: jest.fn(async (callback: any, _options?: unknown) => callback(tx))
   };
   return { prisma, tx };
 }
@@ -262,6 +262,55 @@ describe('ReconciliationService roster history integrity', () => {
 
     expect(tx.session.update).not.toHaveBeenCalled();
     expect(tx.auditEntry.create).not.toHaveBeenCalled();
+  });
+
+  it('uses a longer interactive transaction timeout for reconcileSession', async () => {
+    const { prisma } = makePrisma(makeSession());
+    const service = new ReconciliationService(prisma as any);
+
+    await service.reconcileSession('session-1');
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ maxWait: 5_000, timeout: 30_000 })
+    );
+  });
+
+  it('processes pending reconciliation in a bounded batch', async () => {
+    const rows = Array.from({ length: 3 }, (_, index) => ({
+      id: `session-${index + 1}`,
+      status: SessionStatus.CLOSED,
+      reconciledAt: null,
+      closedAt: new Date(`2026-04-26T0${index + 1}:00:00.000Z`)
+    }));
+    const prisma = {
+      session: { findMany: jest.fn().mockResolvedValue(rows) },
+      $transaction: jest.fn()
+    };
+    const service = new ReconciliationService(prisma as any);
+    jest.spyOn(service, 'reconcileSession').mockImplementation(async (sessionId: string) => ({
+      sessionId,
+      createdFlags: 0,
+      rosterState: SessionRosterState.VERIFIED,
+      studentReconciliationSkipped: false,
+      rosterClassificationCode: null
+    }));
+
+    const result = await service.runPendingReconciliation('worker:test');
+
+    expect(prisma.session.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 25,
+      orderBy: { closedAt: 'asc' }
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      pending: 3,
+      batchSize: 25,
+      processed: [
+        expect.objectContaining({ sessionId: 'session-1', createdFlags: 0 }),
+        expect.objectContaining({ sessionId: 'session-2', createdFlags: 0 }),
+        expect.objectContaining({ sessionId: 'session-3', createdFlags: 0 })
+      ]
+    }));
   });
 
   it('keeps auto-missed PENDING and exposes skipped roster reconciliation result', async () => {
