@@ -158,6 +158,12 @@ describe('AuthService role-aware login', () => {
     });
   });
 
+  it('does not fail login path when login audit transaction times out', async () => {
+    const { prisma, service } = makeService();
+    prisma.$transaction.mockRejectedValueOnce(new Error('Transaction already closed: timeout was 5000 ms'));
+    await expect((service as any).writeLoginAudit('auth.login.success', 'u1', 'admin.tu', {}, { role: Role.ADMIN_TU })).resolves.toBeUndefined();
+  });
+
   it('keeps IP-only lockouts from blocking another valid account and clears lockouts with audit', async () => {
     const { prisma, redis, service } = makeService();
     prisma.user.findUnique.mockResolvedValue({

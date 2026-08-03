@@ -287,12 +287,22 @@ async function resolvePreviousState(client: AuditClient) {
   return { activeEpoch: null, lastSequence, nextSequence: lastSequence + 1n, prevHash: latest[0]?.entryHash ?? null, lastEntryId: latest[0]?.id ?? null };
 }
 
-export async function auditedTransaction<T>(prisma: { $transaction: (callback: (tx: AuditClient) => Promise<T>) => Promise<T> }, callback: (ctx: { tx: AuditClient; audit: { write: (payload: AuditLogInput) => Promise<unknown> } }) => Promise<T>) {
+const AUDITED_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 } as const;
+
+export async function auditedTransaction<T>(
+  prisma: {
+    $transaction: (
+      callback: (tx: AuditClient) => Promise<T>,
+      options?: { maxWait?: number; timeout?: number }
+    ) => Promise<T>;
+  },
+  callback: (ctx: { tx: AuditClient; audit: { write: (payload: AuditLogInput) => Promise<unknown> } }) => Promise<T>
+) {
   return prisma.$transaction(async (tx) => {
     await lockAuditChain(tx);
     const audit = { write: (payload: AuditLogInput) => writeAudit(tx, payload, { lockAlreadyHeld: true }) };
     return callback({ tx, audit });
-  });
+  }, AUDITED_TRANSACTION_OPTIONS);
 }
 
 export async function writeAudit(client: AuditClient, payload: AuditLogInput, options: { lockAlreadyHeld?: boolean } = {}) {

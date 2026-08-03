@@ -432,18 +432,23 @@ export class AuthService {
   }
 
   private async writeLoginAudit(action: string, actorId: string | null, username: string, meta: RequestMeta, details: Record<string, unknown>) {
-    await this.prisma.$transaction(async (tx) => {
-      await writeAudit(tx, {
-        actorId,
-        actorRole: details.role && typeof details.role === 'string' ? details.role as Role : null,
-        module: 'auth',
-        action,
-        resource: 'authSession',
-        resourceId: username,
-        requestIp: meta.requestIp ?? null,
-        requestDevice: meta.requestDevice ?? null,
-        after: details as Prisma.InputJsonValue
+    // Best-effort: session tokens may already be issued; audit-chain lock wait must not surface as login 500.
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, {
+          actorId,
+          actorRole: details.role && typeof details.role === 'string' ? details.role as Role : null,
+          module: 'auth',
+          action,
+          resource: 'authSession',
+          resourceId: username,
+          requestIp: meta.requestIp ?? null,
+          requestDevice: meta.requestDevice ?? null,
+          after: details as Prisma.InputJsonValue
+        });
       });
-    });
+    } catch {
+      // Intentionally swallowed after primary auth decision.
+    }
   }
 }
