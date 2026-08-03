@@ -45,6 +45,11 @@ function speechText(step: CoachStep) {
   return step.voice || `${step.title}. ${step.body}`;
 }
 
+function clampStepIndex(index: number, total: number) {
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(index, total - 1));
+}
+
 export function DemoCoach({
   role,
   presentMode,
@@ -56,7 +61,7 @@ export function DemoCoach({
   forceOpenKey?: number;
   onRequestSidebar?: (open: boolean) => void;
 }) {
-  const { lastActionType, actionSeq } = useDemoWorld();
+  const { lastActionType, actionSeq, clearLastEvent } = useDemoWorld();
   const steps = useMemo(() => coachStepsForRole(role), [role]);
   const missionTitle = useMemo(() => missionTitleForRole(role), [role]);
   const [open, setOpen] = useState(false);
@@ -70,9 +75,15 @@ export function DemoCoach({
   const stepGenRef = useRef(0);
   const waitBaselineSeqRef = useRef(0);
 
-  const current: CoachStep = steps[Math.min(step, steps.length - 1)] || steps[0];
+  const safeStep = clampStepIndex(step, steps.length);
+  const current: CoachStep = steps[safeStep] || steps[0];
   const voiceOk = isSpeechSupported();
-  const progressPct = steps.length ? Math.round(((step + 1) / steps.length) * 100) : 0;
+  const progressPct = steps.length ? Math.round(((safeStep + 1) / steps.length) * 100) : 0;
+  const atLastStep = safeStep >= Math.max(0, steps.length - 1);
+
+  function dismissImpact() {
+    clearLastEvent();
+  }
 
   useEffect(() => {
     let should = presentMode;
@@ -90,11 +101,11 @@ export function DemoCoach({
   useEffect(() => {
     if (!open || !current) return;
     upsertMissionProgress(role, {
-      stepIndex: step,
+      stepIndex: safeStep,
       stepId: current.id,
       ...(current.completeMission ? { completedAt: new Date().toISOString() } : {})
     });
-  }, [open, role, step, current]);
+  }, [open, role, safeStep, current]);
 
   useEffect(() => {
     if (!open || !current?.goToScreen) return;
@@ -127,7 +138,7 @@ export function DemoCoach({
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [open, current?.target, step, onRequestSidebar]);
+  }, [open, current?.target, safeStep, onRequestSidebar]);
 
   useEffect(() => {
     if (!open || !current?.waitForAction) {
@@ -137,7 +148,7 @@ export function DemoCoach({
     // Capture action sequence when this wait-step becomes active so older actions don't auto-pass.
     waitBaselineSeqRef.current = actionSeq;
     setWaitingAction(true);
-  }, [open, step, current?.id, current?.waitForAction]);
+  }, [open, safeStep, current?.id, current?.waitForAction]);
 
   useEffect(() => {
     if (!open || !current?.waitForAction) {
@@ -147,15 +158,9 @@ export function DemoCoach({
     const needed = Array.isArray(current.waitForAction) ? current.waitForAction : [current.waitForAction];
     const fresh = actionSeq > waitBaselineSeqRef.current;
     const matched = Boolean(fresh && lastActionType && needed.includes(lastActionType));
+    // Stay on the wait step after match so the user can read impact, then press Lanjut.
     setWaitingAction(!matched);
-    if (matched && auto) {
-      const timer = window.setTimeout(() => {
-        setStep((s) => Math.min(s + 1, steps.length - 1));
-      }, 600);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [open, current?.waitForAction, lastActionType, actionSeq, auto, steps.length]);
+  }, [open, current?.waitForAction, lastActionType, actionSeq]);
 
   useEffect(() => {
     if (!open || !current) return undefined;
@@ -172,11 +177,12 @@ export function DemoCoach({
         if (!auto || current.waitForAction || current.autoAdvance === false) return;
         if (current.autoAdvance === 'ms') return;
         setStep((s) => {
-          if (s >= steps.length - 1) {
+          const clamped = clampStepIndex(s, steps.length);
+          if (clamped >= steps.length - 1) {
             setAuto(false);
-            return s;
+            return clamped;
           }
-          return s + 1;
+          return clamped + 1;
         });
       }
     });
@@ -185,7 +191,7 @@ export function DemoCoach({
       handle.cancel();
       if (speakRef.current === handle) speakRef.current = null;
     };
-  }, [open, voice, voiceOk, current, step, auto, steps.length]);
+  }, [open, voice, voiceOk, current, safeStep, auto, steps.length]);
 
   useEffect(() => {
     if (!open || !auto || !current) return undefined;
@@ -197,18 +203,20 @@ export function DemoCoach({
     const ms = clampAutoMs(current.autoMs);
     const timer = window.setTimeout(() => {
       setStep((s) => {
-        if (s >= steps.length - 1) {
+        const clamped = clampStepIndex(s, steps.length);
+        if (clamped >= steps.length - 1) {
           setAuto(false);
-          return s;
+          return clamped;
         }
-        return s + 1;
+        return clamped + 1;
       });
     }, ms);
     return () => window.clearTimeout(timer);
-  }, [open, auto, step, current, voice, voiceOk, steps.length]);
+  }, [open, auto, safeStep, current, voice, voiceOk, steps.length]);
 
   function close() {
     speakRef.current?.cancel();
+    dismissImpact();
     setOpen(false);
     setAuto(false);
     try {
@@ -218,7 +226,7 @@ export function DemoCoach({
     }
     if (current?.completeMission) {
       upsertMissionProgress(role, {
-        stepIndex: steps.length - 1,
+        stepIndex: Math.max(0, steps.length - 1),
         stepId: current.id,
         completedAt: new Date().toISOString()
       });
@@ -233,11 +241,24 @@ export function DemoCoach({
   }
 
   function goNext() {
-    if (step >= steps.length - 1) {
+    dismissImpact();
+    if (atLastStep) {
       close();
       return;
     }
-    setStep((s) => s + 1);
+    setStep((s) => clampStepIndex(s + 1, steps.length));
+  }
+
+  function goPrev() {
+    dismissImpact();
+    setStep((s) => clampStepIndex(s - 1, steps.length));
+  }
+
+  function restart() {
+    dismissImpact();
+    setStep(0);
+    setAuto(true);
+    navigatedStepRef.current = null;
   }
 
   if (!open) {
@@ -262,8 +283,8 @@ export function DemoCoach({
       {rect && <div className="belajar-spotlight tour-spotlight" style={spotlightStyle(rect)} aria-hidden="true" />}
       <div className="belajar-coach-card" role="dialog" aria-label="Tutorial lab" aria-live="polite">
         <div className="belajar-coach-tools">
-          <span className="pill">
-            {step + 1}/{steps.length}
+          <span className="pill" data-demo="coach-step-pill">
+            {safeStep + 1}/{steps.length}
           </span>
           {voiceOk && (
             <button
@@ -307,7 +328,7 @@ export function DemoCoach({
           <p className="muted belajar-voice-fallback">Peramban ini tidak mendukung suara sistem. Ikuti teks panduan.</p>
         )}
         <div className="belajar-coach-actions">
-          <button type="button" className="btn sm ghost" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+          <button type="button" className="btn sm ghost" onClick={goPrev} disabled={safeStep === 0}>
             <ChevronLeft size={14} /> Mundur
           </button>
           <button type="button" className="btn sm ghost" onClick={() => setAuto((v) => !v)}>
@@ -321,23 +342,19 @@ export function DemoCoach({
               </>
             )}
           </button>
-          <button
-            type="button"
-            className="btn sm ghost"
-            onClick={() => {
-              setStep(0);
-              setAuto(true);
-              navigatedStepRef.current = null;
-            }}
-          >
+          <button type="button" className="btn sm ghost" onClick={restart}>
             <RotateCcw size={14} /> Ulangi
           </button>
-          {step < steps.length - 1 ? (
+          {!atLastStep ? (
             <button type="button" className="btn sm primary" onClick={goNext}>
               {waitingAction ? (
-                <>Lewati <ChevronRight size={14} /></>
+                <>
+                  Lewati <ChevronRight size={14} />
+                </>
               ) : (
-                <>Lanjut <ChevronRight size={14} /></>
+                <>
+                  Lanjut <ChevronRight size={14} />
+                </>
               )}
             </button>
           ) : (
