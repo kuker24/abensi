@@ -49,6 +49,7 @@ describe('guru teacher today workspace', () => {
 
     expect(await screen.findByText('Jumlah roster belum terverifikasi')).toBeInTheDocument();
     expect(screen.getAllByText('Roster hasil pemulihan/perbaikan; data historis tidak sepenuhnya terverifikasi.')).not.toHaveLength(0);
+    expect(screen.getByText('Sesi terlewat. Hubungi Admin/TU atau Guru Piket untuk pemulihan.')).toBeInTheDocument();
     expect(screen.queryByText('0/0 siswa')).not.toBeInTheDocument();
     expect(screen.getByText('20/32 siswa')).toBeInTheDocument();
     expect(screen.getByText('Jumlah roster belum terverifikasi pada 1 sesi.')).toBeInTheDocument();

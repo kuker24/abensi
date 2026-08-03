@@ -297,25 +297,38 @@ export function PrincipalDashboard() {
   </div>;
 }
 
-function rosterProvenanceLabel(value) {
-  return ({
-    VERIFIED: 'Roster terverifikasi',
-    BACKFILLED_UNVERIFIED: 'Roster pemulihan · perlu verifikasi',
-    LEGACY_ROSTER_MISSING: 'Roster legacy tidak tersedia',
-    PENDING: 'Roster belum dibentuk'
-  })[value] || 'Roster belum dibentuk';
+function rosterProvenanceLabel(value, status) {
+  if (value === 'VERIFIED') return 'Roster terverifikasi';
+  if (value === 'BACKFILLED_UNVERIFIED') return 'Roster pemulihan · perlu verifikasi';
+  if (value === 'LEGACY_ROSTER_MISSING') return 'Roster legacy tidak tersedia';
+  if (value === 'PENDING' || !value) {
+    if (status === 'SCHEDULED') return 'Menunggu dibuka';
+    if (status === 'MISSED') return 'Belum dibentuk · pulihkan dulu';
+    return 'Roster belum dibentuk';
+  }
+  return 'Roster belum dibentuk';
 }
 
 function sessionRosterProvenance(session) {
   return session?.rosterState || session?.rosterProvenance || session?.roster?.state || 'PENDING';
 }
 
+function rosterNoteTone(provenance, status, recoveryAvailable) {
+  if (recoveryAvailable || status === 'MISSED') return 'warn';
+  if (provenance === 'BACKFILLED_UNVERIFIED' || provenance === 'LEGACY_ROSTER_MISSING') return 'warn';
+  if (provenance === 'PENDING') return status === 'SCHEDULED' ? 'info' : 'warn';
+  if (provenance === 'VERIFIED') return 'ok';
+  return 'info';
+}
+
 function SessionRecoveryPanel({ available, reason, onReasonChange, pending, onRecover }) {
   if (!available) return null;
+  const reasonLen = reason.trim().length;
   return <div className="form-grid" style={{ marginTop: 16 }}>
     <div className="inline-note warn"><AlertTriangle size={14} /> Sesi terlewat (MISSED). Isi alasan, lalu pulihkan agar guru bisa mengisi presensi. Roster dibentuk dari enrollment efektif dan ditandai perlu verifikasi.</div>
-    <Field label="Alasan pemulihan"><TextInput type="textarea" value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Jelaskan alasan pemulihan sesi." /></Field>
-    <Btn variant="primary" loading={pending} disabled={reason.trim().length < 10} onClick={onRecover}><RefreshCw size={14} /> Pulihkan sesi</Btn>
+    <Field label="Alasan pemulihan" hint={`${reasonLen}/10+`}><TextInput type="textarea" value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Jelaskan alasan pemulihan sesi." /></Field>
+    {reasonLen < 10 && <p className="muted" role="status">Minimal 10 karakter sebelum tombol pemulihan aktif.</p>}
+    <Btn variant="primary" loading={pending} disabled={reasonLen < 10} onClick={onRecover}><RefreshCw size={14} /> Pulihkan sesi</Btn>
   </div>;
 }
 
@@ -336,8 +349,11 @@ export function SessionsPage({ admin = true, notify }) {
   const recoveryAvailable = (selectedStatus === 'MISSED' || selected?.status === 'MISSED') && canRecoverMissed;
   const enrolledDisplay = detail.data?.enrolledCount == null ? '—' : detail.data.enrolledCount;
   const recordedDisplay = detail.data?.recordedCount == null ? '—' : detail.data.recordedCount;
+  const detailRosterLabel = rosterProvenanceLabel(selectedRosterProvenance, selectedStatus);
+  const detailNoteTone = rosterNoteTone(selectedRosterProvenance, selectedStatus, recoveryAvailable);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => { setPage(1); setSelected(null); }, [date]);
   useEffect(() => { setRecoveryReason(''); }, [selected?.id]);
 
   async function recoverSelectedSession() {
@@ -366,7 +382,7 @@ export function SessionsPage({ admin = true, notify }) {
     }
   }
 
-  return <div className="content"><PageHead eyebrow="CEK SESI KELAS" title={admin ? 'Cek Sesi Kelas' : 'Sesi saya'} sub="Lihat kelas yang terjadwal, sedang berjalan, selesai, atau terlewat." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal sesi" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>{admin && <Btn variant="primary" onClick={() => go('/admin/schedule')}><Plus size={14} /> Tambah jadwal</Btn>}</>} /><Card><AsyncTable state={state} columns={[{ header: 'Waktu', render: (r) => `${formatDateTime(r.startsAt)} — ${new Date(r.endsAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}` }, { header: 'Kelas', render: (r) => r.schoolClass?.code || r.classCode || r.classId }, { header: 'Mapel', render: (r) => r.subject?.name || r.subjectName || r.subjectId }, { header: 'Guru', render: (r) => r.teacher?.fullName || r.teacherName || r.teacherId }, { header: 'Roster', render: (r) => rosterProvenanceLabel(sessionRosterProvenance(r)) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} /> <Pagination meta={metaOf(state.data)} onPage={setPage} /></Card>{itemsOf(state.data).length > 0 && <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>{itemsOf(state.data).slice(0, 8).map((s) => <Btn size="sm" key={s.id} onClick={() => setSelected(s)}><Eye size={13} /> Detail {s.schoolClass?.code}</Btn>)}</div>}{selected && <Card title={`Detail ${selected.schoolClass?.code || ''}`} sub="Ringkasan kelengkapan presensi sesi" actions={<Btn size="sm" variant="ghost" onClick={() => setSelected(null)}>Tutup</Btn>}>{detail.loading ? <LoadingState /> : detail.error ? <><div className="inline-note warn"><AlertTriangle size={14} /> {rosterProvenanceLabel(selectedRosterProvenance)}</div><ErrorState error={detail.error} title={recoveryAvailable ? 'Sesi terlewat — pulihkan dulu' : undefined} hint={recoveryAvailable ? 'Ringkasan presensi belum tersedia sampai sesi dipulihkan. Isi alasan di bawah lalu klik Pulihkan sesi.' : undefined} /><SessionRecoveryPanel available={recoveryAvailable} reason={recoveryReason} onReasonChange={setRecoveryReason} pending={recoveryPending} onRecover={recoverSelectedSession} /></> : <><div className="grid g-4"><StatCardPremium icon={<Users size={18} />} label="Terdaftar" value={enrolledDisplay} sub={selectedRosterProvenance === 'LEGACY_ROSTER_MISSING' || detail.data?.rosterUnavailable ? 'Roster tidak tersedia' : 'Siswa'} /><StatCardPremium icon={<Check size={18} />} label="Tercatat" value={recordedDisplay} sub="Presensi masuk" /><StatCardPremium icon={<Clock size={18} />} label="Status" value={statusLabel(selectedStatus)} sub="Tahap sesi" /><StatCardPremium icon={<Activity size={18} />} label="Hadir" value={detail.data?.counters?.HADIR ?? 0} sub="Jumlah" tone="ok" /></div><div className="inline-note warn"><AlertTriangle size={14} /> {rosterProvenanceLabel(selectedRosterProvenance)}</div><SessionRecoveryPanel available={recoveryAvailable} reason={recoveryReason} onReasonChange={setRecoveryReason} pending={recoveryPending} onRecover={recoverSelectedSession} /></>}</Card>}</div>;
+  return <div className="content"><PageHead eyebrow="CEK SESI KELAS" title={admin ? 'Cek Sesi Kelas' : 'Sesi saya'} sub="Lihat kelas yang terjadwal, sedang berjalan, selesai, atau terlewat." actions={<><label className="input compact"><Calendar size={14} /><input aria-label="Tanggal sesi" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>{admin && <Btn variant="primary" onClick={() => go('/admin/schedule')}><Plus size={14} /> Tambah jadwal</Btn>}</>} /><Card><AsyncTable state={state} columns={[{ header: 'Waktu', render: (r) => `${formatDateTime(r.startsAt)} — ${new Date(r.endsAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}` }, { header: 'Kelas', render: (r) => r.schoolClass?.code || r.classCode || r.classId }, { header: 'Mapel', render: (r) => r.subject?.name || r.subjectName || r.subjectId }, { header: 'Guru', render: (r) => r.teacher?.fullName || r.teacherName || r.teacherId }, { header: 'Roster', render: (r) => rosterProvenanceLabel(sessionRosterProvenance(r), r.status) }, { header: 'Status', render: (r) => <StatusPill status={r.status} /> }]} onRow={(s) => <Btn size="sm" onClick={() => setSelected(s)}><Eye size={13} /> Detail {s.schoolClass?.code || s.classCode || ''}</Btn>} /> <Pagination meta={metaOf(state.data)} onPage={setPage} /></Card>{selected && <Card title={`Detail ${selected.schoolClass?.code || selected.classCode || ''}`} sub="Ringkasan kelengkapan presensi sesi" actions={<Btn size="sm" variant="ghost" onClick={() => setSelected(null)}>Tutup</Btn>}>{detail.loading ? <LoadingState /> : detail.error ? <><div className={`inline-note ${detailNoteTone}`}><AlertTriangle size={14} /> {detailRosterLabel}</div><ErrorState error={detail.error} title={recoveryAvailable ? 'Sesi terlewat — pulihkan dulu' : undefined} hint={recoveryAvailable ? 'Ringkasan presensi belum tersedia sampai sesi dipulihkan. Isi alasan di bawah lalu klik Pulihkan sesi.' : undefined} /><SessionRecoveryPanel available={recoveryAvailable} reason={recoveryReason} onReasonChange={setRecoveryReason} pending={recoveryPending} onRecover={recoverSelectedSession} /></> : <><div className="grid g-4"><StatCardPremium icon={<Users size={18} />} label="Terdaftar" value={enrolledDisplay} sub={selectedRosterProvenance === 'LEGACY_ROSTER_MISSING' || detail.data?.rosterUnavailable ? 'Roster tidak tersedia' : 'Siswa'} /><StatCardPremium icon={<Check size={18} />} label="Tercatat" value={recordedDisplay} sub="Presensi masuk" /><StatCardPremium icon={<Clock size={18} />} label="Status" value={statusLabel(selectedStatus)} sub="Tahap sesi" /><StatCardPremium icon={<Activity size={18} />} label="Hadir" value={detail.data?.counters?.HADIR ?? 0} sub="Jumlah" tone="ok" /></div><div className={`inline-note ${detailNoteTone}`}><AlertTriangle size={14} /> {detailRosterLabel}</div><SessionRecoveryPanel available={recoveryAvailable} reason={recoveryReason} onReasonChange={setRecoveryReason} pending={recoveryPending} onRecover={recoverSelectedSession} /></>}</Card>}</div>;
 }
 
 export function HistoryPage() {

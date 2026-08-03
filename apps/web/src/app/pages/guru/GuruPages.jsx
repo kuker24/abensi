@@ -125,7 +125,7 @@ function TeacherTodaySessionCard({ item }) {
   const warnings = [];
   if (item.status === 'OPEN') warnings.push('Sesi ini belum ditutup.');
   if (item.status === 'SCHEDULED') warnings.push('Presensi belum dimulai.');
-  if (item.status === 'MISSED') warnings.push('Sesi ini belum ditutup.');
+  if (item.status === 'MISSED') warnings.push('Sesi terlewat. Hubungi Admin/TU atau Guru Piket untuk pemulihan.');
   if (pending !== null && pending > 0) warnings.push('Masih ada siswa yang belum diabsen.');
   if (rosterState === 'BACKFILLED_UNVERIFIED') warnings.push('Roster hasil pemulihan/perbaikan; data historis tidak sepenuhnya terverifikasi.');
 

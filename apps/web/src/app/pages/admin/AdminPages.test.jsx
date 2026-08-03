@@ -1317,8 +1317,10 @@ describe('session roster provenance and MISSED recovery', () => {
     render(<SessionsPage notify={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: /Detail X IPA 1/i }));
 
-    expect(await screen.findByText('Roster belum dibentuk')).toBeInTheDocument();
+    expect(await screen.findByText('Belum dibentuk · pulihkan dulu')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pulihkan sesi' })).toBeDisabled();
+    expect(screen.getByText('0/10+')).toBeInTheDocument();
+    expect(screen.getByText('Minimal 10 karakter sebelum tombol pemulihan aktif.')).toBeInTheDocument();
     expect(screen.getAllByText('Terlewat').length).toBeGreaterThan(0);
     expect(screen.queryByText('Data belum bisa dimuat')).not.toBeInTheDocument();
   });
@@ -1364,6 +1366,7 @@ describe('session roster provenance and MISSED recovery', () => {
     expect(await screen.findByText('Roster terverifikasi')).toBeInTheDocument();
     expect(screen.getByText('Roster pemulihan · perlu verifikasi')).toBeInTheDocument();
     expect(screen.getByText('Roster legacy tidak tersedia')).toBeInTheDocument();
-    expect(screen.getByText('Roster belum dibentuk')).toBeInTheDocument();
+    expect(screen.getByText('Menunggu dibuka')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Detail X IPA 1/i })).toHaveLength(4);
   });
 });
