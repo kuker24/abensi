@@ -45,6 +45,8 @@ const PERSONNEL_GATE_OUT_START_MINUTE = 15 * 60 + 30;
 const PERSONNEL_GATE_OUT_END_MINUTE = 17 * 60 + 30;
 const PERSONNEL_GATE_OUT_ROLES = new Set<Role>([Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.GURU_MAPEL, Role.GURU_PIKET, Role.PEGAWAI, Role.OPERATOR_IT]);
 const EARLY_CHECKOUT_EMERGENCY_LOCK = 389551912;
+/** Live QR/gate/prayer scans share the audit-chain lock; default Prisma 5s is too short under rush-hour load. */
+const SCAN_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 } as const;
 function dayBounds(value: Date | string = new Date()) {
   return jakartaBusinessDayBounds(value);
 }
@@ -624,7 +626,7 @@ export class AttendanceGateService {
           after: { mode: requestedMode, qrMasked: redactQr(payload.qrCode), userId: user.id, readerId: verification.reader.id, checkOnly: true } as Prisma.InputJsonValue
         });
         return true;
-      });
+      }, SCAN_TRANSACTION_OPTIONS);
       return {
         kind: 'CHECK_ONLY',
         ok: result,
@@ -725,7 +727,7 @@ export class AttendanceGateService {
           data: { lastSeenAt: receivedAt, appVersion: options.appVersion ?? undefined, appVersionCode: options.appVersionCode ?? undefined, currentMode: options.scanMode ?? undefined, ...(options.signatureVerified ? { lastSignedScanAt: receivedAt } : {}) }
         });
       }
-    });
+    }, SCAN_TRANSACTION_OPTIONS);
   }
 
   private async recordQrAndroidGateScan(userId: string, role: Role, scannedAt: Date, actor: ScanActor, options: RecordOptions, requestedMode: AndroidReaderMode) {
@@ -885,7 +887,7 @@ export class AttendanceGateService {
         resourceId: studentId,
         after: { studentId, attendanceDate, requiredEndTime, message: 'Siswa masih punya jadwal sampai sore dan belum scan Ashar.' }
       });
-    });
+    }, SCAN_TRANSACTION_OPTIONS);
     throw new ForbiddenException('Siswa ini masih punya jadwal sampai sore. Scan Ashar dulu sebelum pulang.');
   }
 
@@ -1040,7 +1042,7 @@ export class AttendanceGateService {
           payload: { gateLogId: log.id, userId, direction, businessDate: businessDate.toISOString(), tappedAt: scannedAt.toISOString(), source: options.qrCredentialId ? 'qr_reader' : options.manualReason ? 'manual' : 'reader' }
         });
         return { kind: 'GATE', message: direction === GateDirection.IN ? 'Scan gerbang masuk tercatat.' : 'Scan gerbang keluar tercatat.', item: log };
-      });
+      }, SCAN_TRANSACTION_OPTIONS);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const target = Array.isArray(error.meta?.target) ? error.meta.target.map(String) : [];
@@ -1155,7 +1157,7 @@ export class AttendanceGateService {
       });
       const label = prayerLabel(prayerType);
       return { kind: 'PRAYER', message: `Sholat ${label} tercatat.`, item: log };
-    });
+    }, SCAN_TRANSACTION_OPTIONS);
   }
 
   async createOverride(payload: CreateAttendanceOverrideDto, actor: ScanActor, meta: RequestMeta = {}) {
@@ -1279,8 +1281,13 @@ export class AttendanceGateService {
   }
 
   private async securityAudit(action: string, resourceId: string, after: Prisma.InputJsonValue) {
-    await this.prisma.$transaction(async (tx) => {
-      await writeAudit(tx, { module: 'attendance_security', action, resource: 'attendanceSecurityEvent', resourceId, after });
-    });
+    // Best-effort: audit-chain lock contention must not turn an already-decided scan into HTTP 500.
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await writeAudit(tx, { module: 'attendance_security', action, resource: 'attendanceSecurityEvent', resourceId, after });
+      }, SCAN_TRANSACTION_OPTIONS);
+    } catch {
+      // Intentionally swallowed; primary scan/reject path already completed or will throw its own error.
+    }
   }
 }

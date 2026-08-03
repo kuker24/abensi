@@ -189,6 +189,26 @@ describe('AttendanceGateService adaptive QR scan', () => {
     expect(prisma.__tx.studentAttendance.updateMany).not.toHaveBeenCalled();
   });
 
+  it('memakai timeout transaksi scan yang lebih longgar saat menulis gate log', async () => {
+    const prisma = makePrisma({ id: 'siswa-1', role: Role.SISWA, active: true });
+    const service = new AttendanceGateService(prisma);
+
+    await (service as any).recordGateScanWithoutPolicy('siswa-1', GateDirection.IN, new Date(), admin, {});
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ maxWait: 10_000, timeout: 30_000 })
+    );
+  });
+
+  it('tidak menggagalkan jalur utama jika securityAudit timeout', async () => {
+    const prisma = makePrisma({ id: 'siswa-1', role: Role.SISWA, active: true });
+    const service = new AttendanceGateService(prisma);
+    prisma.$transaction.mockRejectedValueOnce(new Error('Transaction already closed: timeout was 5000 ms'));
+
+    await expect((service as any).securityAudit('attendance.qr.reader.scan.accepted', 'gate-1', { ok: true })).resolves.toBeUndefined();
+  });
+
   it('memetakan unique businessDate/direction menjadi kode konflik stabil', async () => {
     const prisma = makePrisma({ id: 'siswa-1', role: Role.SISWA, active: true });
     const service = new AttendanceGateService(prisma);
