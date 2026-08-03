@@ -1299,6 +1299,7 @@ describe('session roster provenance and MISSED recovery', () => {
 
     expect(await screen.findByText('Roster legacy tidak tersedia')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText('Sesi terlewat — pulihkan dulu')).toBeInTheDocument();
     expect(screen.queryByText('Terdaftar')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Alasan pemulihan'), { target: { value: reason } });
     fireEvent.click(screen.getByRole('button', { name: 'Pulihkan sesi' }));
@@ -1307,6 +1308,19 @@ describe('session roster provenance and MISSED recovery', () => {
     const recoveryCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/recover'));
     expect(String(recoveryCall?.[0])).toContain('/attendance/class-sessions/missed-legacy/recover');
     expect(JSON.parse(String(recoveryCall?.[1]?.body))).toEqual({ reason });
+  });
+
+  it('loads MISSED summary without hard error and keeps recovery controls', async () => {
+    setStoredRole('ADMIN_TU');
+    mockSessions([session('missed-pending', 'MISSED', 'PENDING')]);
+
+    render(<SessionsPage notify={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Detail X IPA 1/i }));
+
+    expect(await screen.findByText('Roster belum dibentuk')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pulihkan sesi' })).toBeDisabled();
+    expect(screen.getAllByText('Terlewat').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Data belum bisa dimuat')).not.toBeInTheDocument();
   });
 
   it('allows GURU_PIKET recovery on non-admin session endpoint', async () => {

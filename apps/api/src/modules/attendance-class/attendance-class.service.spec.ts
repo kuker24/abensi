@@ -440,6 +440,36 @@ describe('AttendanceClassService session roster integrity', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('summary returns recoverable MISSED state without hard-failing when roster is missing', async () => {
+    const session = {
+      id: 'session-1',
+      teacherId: 'guru-1',
+      status: SessionStatus.MISSED,
+      rosterState: SessionRosterState.PENDING,
+      openedAt: null,
+      closedAt: new Date(),
+      attendances: [],
+      rosters: [],
+      teacherPresence: []
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn()
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.summary('session-1', { sub: 'admin-1', role: Role.ADMIN_TU })).resolves.toEqual(expect.objectContaining({
+      sessionId: 'session-1',
+      status: SessionStatus.MISSED,
+      rosterState: SessionRosterState.PENDING,
+      enrolledCount: null,
+      rosterCount: null,
+      recoveryRequired: true,
+      rosterUnavailable: true
+    }));
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('roster rejects non-SCHEDULED PENDING state without writing repeated read audits', async () => {
     const session = {
       id: 'session-1',
@@ -466,6 +496,33 @@ describe('AttendanceClassService session roster integrity', () => {
     await expect(service.roster('session-1', guru)).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'SESSION_ROSTER_MISSING' })
     });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('roster returns empty snapshot for MISSED sessions pending recovery', async () => {
+    const session = {
+      id: 'session-1',
+      teacherId: 'guru-1',
+      status: SessionStatus.MISSED,
+      rosterState: SessionRosterState.PENDING,
+      startsAt: new Date(),
+      endsAt: new Date(),
+      openedAt: null,
+      closedAt: new Date(),
+      rosters: [],
+      attendances: [],
+      teacherPresence: []
+    };
+    const prisma = {
+      session: { findUnique: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn()
+    } as any;
+    const service = new AttendanceClassService(prisma);
+
+    await expect(service.roster('session-1', { sub: 'admin-1', role: Role.ADMIN_TU })).resolves.toEqual(expect.objectContaining({
+      session: expect.objectContaining({ id: 'session-1', status: SessionStatus.MISSED, rosterState: SessionRosterState.PENDING }),
+      roster: []
+    }));
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -796,7 +853,12 @@ describe('AttendanceClassService correction, repair, and MISSED recovery', () =>
     }));
     expect(tx.session.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'session-1', status: SessionStatus.MISSED },
-      data: expect.objectContaining({ status: SessionStatus.OPEN, rosterState: SessionRosterState.BACKFILLED_UNVERIFIED, reconciledAt: null })
+      data: expect.objectContaining({
+        status: SessionStatus.OPEN,
+        rosterState: SessionRosterState.BACKFILLED_UNVERIFIED,
+        closedAt: null,
+        reconciledAt: null
+      })
     }));
     expect(tx.teacherSessionPresence.upsert).not.toHaveBeenCalled();
     expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({

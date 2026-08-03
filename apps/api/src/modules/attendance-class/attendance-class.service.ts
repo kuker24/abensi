@@ -1190,7 +1190,9 @@ export class AttendanceClassService {
       counters[item.status] += 1;
     }
 
-    if (session.status !== SessionStatus.SCHEDULED) {
+    // MISSED sessions intentionally have no usable roster until audited recovery.
+    // Summary must still load so admin/picket can recover without a hard failure.
+    if (session.status !== SessionStatus.SCHEDULED && session.status !== SessionStatus.MISSED) {
       assertUsableRosterState(session);
     }
 
@@ -1198,6 +1200,9 @@ export class AttendanceClassService {
     const confirmedCount = session.attendances.filter((item) => item.reviewState !== AttendanceReviewState.DEFAULTED).length;
     const defaultedCount = session.attendances.filter((item) => item.reviewState === AttendanceReviewState.DEFAULTED).length;
     const rosterTotal = session.rosters.length;
+    const rosterUnavailable = session.status === SessionStatus.MISSED
+      && session.rosterState !== SessionRosterState.VERIFIED
+      && session.rosterState !== SessionRosterState.BACKFILLED_UNVERIFIED;
 
     return {
       sessionId,
@@ -1207,13 +1212,15 @@ export class AttendanceClassService {
       closedAt: session.closedAt,
       teacherPresence,
       teacherDurationMinutes: durationMinutes(teacherPresence?.checkInAt, teacherPresence?.checkOutAt),
-      enrolledCount: rosterTotal,
-      rosterCount: rosterTotal,
+      enrolledCount: rosterUnavailable ? null : rosterTotal,
+      rosterCount: rosterUnavailable ? null : rosterTotal,
       recordedCount: session.attendances.length,
       confirmedCount,
       defaultedCount,
-      progress: rosterTotal > 0 ? confirmedCount / rosterTotal : 0,
-      counters
+      progress: rosterUnavailable || rosterTotal === 0 ? 0 : confirmedCount / rosterTotal,
+      counters,
+      recoveryRequired: session.status === SessionStatus.MISSED,
+      rosterUnavailable
     };
   }
 
@@ -1238,11 +1245,12 @@ export class AttendanceClassService {
       throw new ForbiddenException('Bukan sesi Anda.');
     }
 
-    if (session.status !== SessionStatus.SCHEDULED) {
+    // MISSED sessions have no snapshot until recovery; allow empty roster read for operators.
+    if (session.status !== SessionStatus.SCHEDULED && session.status !== SessionStatus.MISSED) {
       assertUsableRosterState(session);
     }
 
-    if (!session.rosters.length && session.status === SessionStatus.SCHEDULED) {
+    if (!session.rosters.length && (session.status === SessionStatus.SCHEDULED || session.status === SessionStatus.MISSED)) {
       return {
         session: {
           id: session.id,
@@ -1448,6 +1456,7 @@ export class AttendanceClassService {
           status: SessionStatus.OPEN,
           rosterState: SessionRosterState.BACKFILLED_UNVERIFIED,
           openedAt: now,
+          closedAt: null,
           reconciledAt: null
         }
       });
