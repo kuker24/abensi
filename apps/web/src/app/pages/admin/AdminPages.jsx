@@ -2313,52 +2313,28 @@ export function PicketBookPage({ notify }) {
                   />
                   {(studentSearchLoading || studentSearchError || studentHits.length > 0 || studentQuery.trim().length >= 2) && (
                     <div
+                      className="search-results picket-student-search-results"
                       role="listbox"
                       aria-label="Hasil pencarian siswa"
-                      style={{
-                        position: 'absolute',
-                        zIndex: 20,
-                        left: 0,
-                        right: 0,
-                        top: 'calc(100% + 4px)',
-                        maxHeight: 240,
-                        overflowY: 'auto',
-                        borderRadius: 12,
-                        border: '1px solid var(--border, #d7dde8)',
-                        background: 'var(--card, #fff)',
-                        boxShadow: '0 10px 28px rgba(15, 23, 42, 0.12)'
-                      }}
                     >
-                      {studentSearchLoading && <div className="muted" style={{ padding: '10px 12px' }}>Mencari siswa…</div>}
-                      {!studentSearchLoading && studentSearchError && <div className="muted" style={{ padding: '10px 12px', color: 'var(--danger, #b91c1c)' }}>{studentSearchError}</div>}
+                      {studentSearchLoading && <div className="muted picket-student-search-status">Mencari siswa…</div>}
+                      {!studentSearchLoading && studentSearchError && <div className="muted picket-student-search-status is-error">{studentSearchError}</div>}
                       {!studentSearchLoading && !studentSearchError && studentHits.length === 0 && studentQuery.trim().length >= 2 && (
-                        <div className="muted" style={{ padding: '10px 12px' }}>Tidak ada siswa cocok.</div>
+                        <div className="muted picket-student-search-status">Tidak ada siswa cocok.</div>
                       )}
                       {!studentSearchLoading && studentHits.map((student) => (
                         <button
                           key={student.id}
                           type="button"
                           role="option"
-                          className="row"
-                          style={{
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '10px 12px',
-                            border: 0,
-                            borderBottom: '1px solid var(--border, #eef2f7)',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            alignItems: 'center',
-                            gap: 10
-                          }}
                           onClick={() => selectStudent(student)}
                         >
                           <Avatar name={student.fullName} size="sm" />
-                          <span>
+                          <span className="picket-student-search-copy">
                             <b>{student.fullName}</b>
-                            <div className="muted" style={{ fontSize: 12 }}>
+                            <small>
                               {[student.classCode, student.nkd ? `NKD ${student.nkd}` : null, student.nis ? `NIS ${student.nis}` : null].filter(Boolean).join(' · ') || student.username}
-                            </div>
+                            </small>
                           </span>
                         </button>
                       ))}
