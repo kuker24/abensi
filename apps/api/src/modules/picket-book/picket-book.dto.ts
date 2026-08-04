@@ -1,4 +1,10 @@
-import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
+
+function emptyToUndefined({ value }: { value: unknown }) {
+  if (value === '' || value === undefined || value === null) return undefined;
+  return value;
+}
 
 export class CreatePicketNoteDto {
   @IsDateString()
@@ -19,6 +25,11 @@ export class CreatePicketNoteDto {
   @IsOptional()
   @IsIn(['INFO', 'WARN', 'URGENT'])
   severity?: string;
+
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  studentId?: string;
 }
 
 export class UpdatePicketNoteDto {
@@ -52,4 +63,10 @@ export class UpdatePicketNoteDto {
   @IsString()
   @MinLength(10)
   reason?: string;
+
+  /** null clears student link; omit leaves unchanged */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  studentId?: string | null;
 }

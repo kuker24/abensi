@@ -285,6 +285,7 @@ model User {
   closedEscalations                     ReconciliationEscalation[]     @relation("EscalationClosedByUser")
   createdPicketNotes                    PicketNote[]                   @relation("PicketNoteCreatedBy")
   updatedPicketNotes                    PicketNote[]                   @relation("PicketNoteUpdatedBy")
+  picketNotesAsStudent                  PicketNote[]                   @relation("PicketNoteStudent")
   audits                                AuditEntry[]                   @relation("AuditActor")
   smartCard                             SmartCard?
   nkdRegistry                           StudentNkdRegistry?
@@ -1303,19 +1304,22 @@ model PicketNote {
   category    String   @default("UMUM")
   severity    String   @default("INFO")
   active      Boolean  @default(true)
+  studentId   String?
   createdById String
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  createdBy User  @relation("PicketNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy User? @relation("PicketNoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  student   User?  @relation("PicketNoteStudent", fields: [studentId], references: [id], onDelete: SetNull)
+  createdBy User   @relation("PicketNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User?  @relation("PicketNoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([date])
   @@index([category])
   @@index([severity])
   @@index([active])
   @@index([createdById, createdAt])
+  @@index([studentId, date])
 }
 
 model StudentNkdRegistry {

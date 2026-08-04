@@ -2130,28 +2130,305 @@ export function AuditPage() {
   return <div className="content"><PageHead eyebrow="RIWAYAT PERUBAHAN" title="Riwayat Perubahan" sub="Catatan resmi sistem: siapa mengubah apa, kapan, dan alasannya." actions={<><SelectInput value={module} onChange={(e) => setModule(e.target.value)}><option value="">Semua modul</option><option value="attendance">Presensi</option><option value="identity">Pengguna</option><option value="academic">Akademik</option><option value="scheduling">Jadwal</option><option value="device">Perangkat</option><option value="access">Akses lokasi</option><option value="picket">Catatan piket</option></SelectInput><Btn onClick={audit.refresh}><RefreshCw size={14} /> Muat ulang</Btn></>} /><Card><AsyncTable state={audit} empty={{ title: 'Belum ada riwayat perubahan', sub: 'Setelah admin mengubah data, catatan akan muncul di sini.' }} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.createdAt) }, { header: 'Aksi', key: 'action' }, { header: 'Modul', key: 'module' }, { header: 'Pelaku', render: (r) => r.actor?.fullName || r.actorId || 'sistem' }, { header: 'Data', render: (r) => `${r.resource}:${r.resourceId}` }, { header: 'Alasan', render: (r) => r.reason || r.after?.reason || '—' }]} /><Pagination meta={metaOf(audit.data)} onPage={setPage} /></Card></div>;
 }
 
+const PICKET_EMPTY_FORM = { id: '', title: '', body: '', category: 'UMUM', severity: 'INFO' };
+
+const PICKET_VIOLATION_TEMPLATES = [
+  { id: 'lompat-pagar', title: 'Melompat pagar', body: 'Siswa melompat pagar. Lokasi: … Waktu perkiraan: … Tindakan: …', category: 'DISIPLIN', severity: 'WARN' },
+  { id: 'terlambat-gerbang', title: 'Terlambat di gerbang', body: 'Siswa terlambat masuk gerbang. Keterangan: …', category: 'GERBANG', severity: 'INFO' },
+  { id: 'keluar-tanpa-izin', title: 'Keluar tanpa izin', body: 'Siswa keluar area sekolah tanpa izin. Detail: …', category: 'DISIPLIN', severity: 'WARN' },
+  { id: 'seragam', title: 'Seragam tidak rapi', body: 'Siswa memakai seragam tidak sesuai aturan. Detail: …', category: 'DISIPLIN', severity: 'INFO' },
+  { id: 'membawa-hp', title: 'Membawa HP', body: 'Siswa membawa/menggunakan HP di area terlarang. Detail: …', category: 'DISIPLIN', severity: 'WARN' }
+];
+
+function picketStudentLabel(student) {
+  if (!student) return '—';
+  const meta = [student.classCode, student.nkd ? `NKD ${student.nkd}` : null].filter(Boolean).join(' · ');
+  return meta ? `${student.fullName} (${meta})` : (student.fullName || '—');
+}
+
 export function PicketBookPage({ notify }) {
   const [date, setDate] = useState(today());
   const [category, setCategory] = useState('');
   const [severity, setSeverity] = useState('');
   const notes = useRemote(() => apiFetch(`/picket-notes${qs({ date, category, severity, active: true, page: 1, limit: 100 })}`), [date, category, severity]);
-  const [form, set, reset, setForm] = useForm({ id: '', title: '', body: '', category: 'UMUM', severity: 'INFO' });
+  const [form, set, reset, setForm] = useForm({ ...PICKET_EMPTY_FORM });
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentQuery, setStudentQuery] = useState('');
+  const [studentHits, setStudentHits] = useState([]);
+  const [studentSearchLoading, setStudentSearchLoading] = useState(false);
+  const [studentSearchError, setStudentSearchError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const searchSeq = useRef(0);
+
+  useEffect(() => {
+    const q = studentQuery.trim();
+    if (selectedStudent || q.length < 2) {
+      setStudentHits([]);
+      setStudentSearchLoading(false);
+      setStudentSearchError('');
+      return undefined;
+    }
+    const seq = ++searchSeq.current;
+    setStudentSearchLoading(true);
+    setStudentSearchError('');
+    const timer = setTimeout(() => {
+      apiFetch(`/picket-notes/students/search${qs({ q })}`)
+        .then((data) => {
+          if (seq !== searchSeq.current) return;
+          setStudentHits(itemsOf(data));
+          setStudentSearchLoading(false);
+        })
+        .catch((error) => {
+          if (seq !== searchSeq.current) return;
+          setStudentHits([]);
+          setStudentSearchLoading(false);
+          setStudentSearchError(error.message || String(error));
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [studentQuery, selectedStudent]);
+
+  function clearForm() {
+    reset({ ...PICKET_EMPTY_FORM });
+    setSelectedStudent(null);
+    setStudentQuery('');
+    setStudentHits([]);
+    setStudentSearchError('');
+  }
+
+  function selectStudent(student) {
+    setSelectedStudent(student);
+    setStudentQuery('');
+    setStudentHits([]);
+    if (form.category === 'UMUM') set('category', 'DISIPLIN');
+  }
+
+  function applyTemplate(template) {
+    set('title', template.title);
+    set('body', template.body);
+    set('category', template.category);
+    set('severity', template.severity);
+  }
+
+  function startEdit(row) {
+    setForm({
+      id: row.id,
+      title: row.title,
+      body: row.body,
+      category: row.category || 'UMUM',
+      severity: row.severity || 'INFO'
+    });
+    if (row.student || row.studentId) {
+      setSelectedStudent(row.student || { id: row.studentId, fullName: row.student?.fullName || 'Siswa' });
+    } else {
+      setSelectedStudent(null);
+    }
+    setStudentQuery('');
+    setStudentHits([]);
+  }
+
   async function add(e) {
     e.preventDefault();
-    const payload = { date: new Date(date).toISOString(), title: form.title, body: form.body, category: form.category, severity: form.severity };
-    if (form.id) await apiFetch(`/picket-notes/${form.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-    else await apiFetch('/picket-notes', { method: 'POST', body: JSON.stringify(payload) });
-    reset({ id: '', title: '', body: '', category: 'UMUM', severity: 'INFO' });
-    notes.refresh();
-    notify('Catatan piket tersimpan.');
+    setSaving(true);
+    try {
+      const payload = {
+        date: new Date(date).toISOString(),
+        title: form.title,
+        body: form.body,
+        category: form.category,
+        severity: form.severity,
+        studentId: selectedStudent?.id || null
+      };
+      if (form.id) await apiFetch(`/picket-notes/${form.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      else await apiFetch('/picket-notes', { method: 'POST', body: JSON.stringify(payload) });
+      clearForm();
+      notes.refresh();
+      notify('Catatan piket tersimpan.');
+    } catch (error) {
+      notify(error.message || String(error), 'bad');
+    } finally {
+      setSaving(false);
+    }
   }
+
   async function remove(row) {
     if (!await riskConfirm('Nonaktifkan catatan piket ini?')) return;
     await apiFetch(`/picket-notes/${row.id}`, { method: 'DELETE', body: JSON.stringify({ reason: 'Catatan piket dinonaktifkan dari UI.' }) });
     notes.refresh();
     notify('Catatan piket dinonaktifkan.');
   }
-  return <div className="content"><PageHead eyebrow="CATATAN PIKET" title="Catatan Piket" sub="Tulis kejadian penting dengan bahasa singkat agar petugas berikutnya mudah memahami." actions={<><label className="input compact"><input aria-label="Tanggal catatan piket" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><SelectInput aria-label="Filter kategori catatan" value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Semua kategori</option><option value="UMUM">Umum</option><option value="GERBANG">Gerbang</option><option value="KELAS">Kelas</option><option value="DISIPLIN">Disiplin</option></SelectInput><SelectInput aria-label="Filter tingkat catatan" value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="">Semua tingkat</option><option value="INFO">Informasi</option><option value="WARN">Perhatian</option><option value="URGENT">Penting</option></SelectInput></>} /><div className="grid g-3"><Card title={form.id ? 'Edit Catatan' : 'Catat Kejadian'} sub="Isi seperti buku catatan biasa: judul, jenis kejadian, tingkat penting, lalu detailnya."><form onSubmit={add} className="form-grid"><Field label="Judul kejadian"><TextInput value={form.title} placeholder="Contoh: Siswa terlambat di gerbang" onChange={(e) => set('title', e.target.value)} required /></Field><Field label="Jenis kejadian"><SelectInput value={form.category} onChange={(e) => set('category', e.target.value)}><option value="UMUM">Umum</option><option value="GERBANG">Gerbang</option><option value="KELAS">Kelas</option><option value="DISIPLIN">Disiplin</option></SelectInput></Field><Field label="Tingkat penting"><SelectInput value={form.severity} onChange={(e) => set('severity', e.target.value)}><option value="INFO">Informasi</option><option value="WARN">Perhatian</option><option value="URGENT">Penting</option></SelectInput></Field><Field label="Catatan"><TextInput type="textarea" rows={5} value={form.body} placeholder="Tuliskan kronologi atau catatan penting" onChange={(e) => set('body', e.target.value)} required /></Field><Btn variant="primary"><Save size={14} /> Simpan</Btn>{form.id && <Btn type="button" variant="ghost" onClick={() => reset({ id: '', title: '', body: '', category: 'UMUM', severity: 'INFO' })}>Batal edit</Btn>}</form></Card><Card title="Catatan Hari Ini"><AsyncTable state={notes} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.date) }, { header: 'Judul', key: 'title' }, { header: 'Kategori', key: 'category' }, { header: 'Tingkat', render: (r) => <StatusPill status={r.severity} /> }, { header: 'Petugas', render: (r) => r.createdBy?.fullName || '—' }]} onRow={(r) => <div className="row"><Btn size="sm" onClick={() => setForm({ id: r.id, title: r.title, body: r.body, category: r.category, severity: r.severity })}>Edit</Btn><Btn size="sm" variant="danger" onClick={() => remove(r)}>Hapus</Btn></div>} /></Card></div></div>;
+
+  return (
+    <div className="content">
+      <PageHead
+        eyebrow="CATATAN PIKET"
+        title="Catatan Piket"
+        sub="Catat kejadian penting. Bisa dikaitkan ke siswa lewat pencarian nama/NKD agar riwayat rapi."
+        actions={(
+          <>
+            <label className="input compact">
+              <input aria-label="Tanggal catatan piket" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+            <SelectInput aria-label="Filter kategori catatan" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">Semua kategori</option>
+              <option value="UMUM">Umum</option>
+              <option value="GERBANG">Gerbang</option>
+              <option value="KELAS">Kelas</option>
+              <option value="DISIPLIN">Disiplin</option>
+            </SelectInput>
+            <SelectInput aria-label="Filter tingkat catatan" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              <option value="">Semua tingkat</option>
+              <option value="INFO">Informasi</option>
+              <option value="WARN">Perhatian</option>
+              <option value="URGENT">Penting</option>
+            </SelectInput>
+          </>
+        )}
+      />
+      <div className="grid g-3">
+        <Card title={form.id ? 'Edit Catatan' : 'Catat Kejadian'} sub="Pilih siswa bila ada pelanggaran, atau biarkan kosong untuk catatan umum.">
+          <form onSubmit={add} className="form-grid">
+            <Field label="Siswa (opsional)">
+              {selectedStudent ? (
+                <div className="row" style={{ alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span className="row" style={{ alignItems: 'center', gap: 8 }}>
+                    <Avatar name={selectedStudent.fullName || 'Siswa'} size="sm" />
+                    <span>
+                      <b>{selectedStudent.fullName}</b>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {[selectedStudent.classCode, selectedStudent.nkd ? `NKD ${selectedStudent.nkd}` : null].filter(Boolean).join(' · ') || 'Siswa terpilih'}
+                      </div>
+                    </span>
+                  </span>
+                  <Btn type="button" size="sm" variant="ghost" onClick={() => setSelectedStudent(null)}>Lepas</Btn>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <TextInput
+                    value={studentQuery}
+                    placeholder="Cari nama, NKD, atau NIS siswa…"
+                    aria-label="Cari siswa untuk catatan piket"
+                    onChange={(e) => setStudentQuery(e.target.value)}
+                    autoComplete="off"
+                  />
+                  {(studentSearchLoading || studentSearchError || studentHits.length > 0 || studentQuery.trim().length >= 2) && (
+                    <div
+                      role="listbox"
+                      aria-label="Hasil pencarian siswa"
+                      style={{
+                        position: 'absolute',
+                        zIndex: 20,
+                        left: 0,
+                        right: 0,
+                        top: 'calc(100% + 4px)',
+                        maxHeight: 240,
+                        overflowY: 'auto',
+                        borderRadius: 12,
+                        border: '1px solid var(--border, #d7dde8)',
+                        background: 'var(--card, #fff)',
+                        boxShadow: '0 10px 28px rgba(15, 23, 42, 0.12)'
+                      }}
+                    >
+                      {studentSearchLoading && <div className="muted" style={{ padding: '10px 12px' }}>Mencari siswa…</div>}
+                      {!studentSearchLoading && studentSearchError && <div className="muted" style={{ padding: '10px 12px', color: 'var(--danger, #b91c1c)' }}>{studentSearchError}</div>}
+                      {!studentSearchLoading && !studentSearchError && studentHits.length === 0 && studentQuery.trim().length >= 2 && (
+                        <div className="muted" style={{ padding: '10px 12px' }}>Tidak ada siswa cocok.</div>
+                      )}
+                      {!studentSearchLoading && studentHits.map((student) => (
+                        <button
+                          key={student.id}
+                          type="button"
+                          role="option"
+                          className="row"
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '10px 12px',
+                            border: 0,
+                            borderBottom: '1px solid var(--border, #eef2f7)',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            alignItems: 'center',
+                            gap: 10
+                          }}
+                          onClick={() => selectStudent(student)}
+                        >
+                          <Avatar name={student.fullName} size="sm" />
+                          <span>
+                            <b>{student.fullName}</b>
+                            <div className="muted" style={{ fontSize: 12 }}>
+                              {[student.classCode, student.nkd ? `NKD ${student.nkd}` : null, student.nis ? `NIS ${student.nis}` : null].filter(Boolean).join(' · ') || student.username}
+                            </div>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Ketik minimal 2 huruf. Kosongkan bila catatan tidak terkait siswa.</div>
+                </div>
+              )}
+            </Field>
+
+            <div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Template cepat</div>
+              <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                {PICKET_VIOLATION_TEMPLATES.map((template) => (
+                  <Btn key={template.id} type="button" size="sm" variant="ghost" onClick={() => applyTemplate(template)}>
+                    {template.title}
+                  </Btn>
+                ))}
+              </div>
+            </div>
+
+            <Field label="Judul kejadian">
+              <TextInput value={form.title} placeholder="Contoh: Melompat pagar" onChange={(e) => set('title', e.target.value)} required />
+            </Field>
+            <Field label="Jenis kejadian">
+              <SelectInput value={form.category} onChange={(e) => set('category', e.target.value)}>
+                <option value="UMUM">Umum</option>
+                <option value="GERBANG">Gerbang</option>
+                <option value="KELAS">Kelas</option>
+                <option value="DISIPLIN">Disiplin</option>
+              </SelectInput>
+            </Field>
+            <Field label="Tingkat penting">
+              <SelectInput value={form.severity} onChange={(e) => set('severity', e.target.value)}>
+                <option value="INFO">Informasi</option>
+                <option value="WARN">Perhatian</option>
+                <option value="URGENT">Penting</option>
+              </SelectInput>
+            </Field>
+            <Field label="Catatan">
+              <TextInput type="textarea" rows={5} value={form.body} placeholder="Tuliskan kronologi singkat…" onChange={(e) => set('body', e.target.value)} required />
+            </Field>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <Btn variant="primary" loading={saving} disabled={saving}><Save size={14} /> Simpan</Btn>
+              {form.id && <Btn type="button" variant="ghost" onClick={clearForm}>Batal edit</Btn>}
+            </div>
+          </form>
+        </Card>
+        <Card title="Catatan Hari Ini" sub="Catatan aktif pada tanggal filter.">
+          <AsyncTable
+            state={notes}
+            columns={[
+              { header: 'Waktu', render: (r) => formatDateTime(r.date) },
+              { header: 'Siswa', render: (r) => r.student ? picketStudentLabel(r.student) : <span className="muted">—</span> },
+              { header: 'Judul', key: 'title' },
+              { header: 'Kategori', key: 'category' },
+              { header: 'Tingkat', render: (r) => <StatusPill status={r.severity} /> },
+              { header: 'Petugas', render: (r) => r.createdBy?.fullName || '—' }
+            ]}
+            onRow={(r) => (
+              <div className="row">
+                <Btn size="sm" onClick={() => startEdit(r)}>Edit</Btn>
+                <Btn size="sm" variant="danger" onClick={() => remove(r)}>Hapus</Btn>
+              </div>
+            )}
+          />
+        </Card>
+      </div>
+    </div>
+  );
 }
 
 export function LiveMonitorPage() {

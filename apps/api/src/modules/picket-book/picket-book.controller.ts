@@ -30,6 +30,13 @@ export class PicketBookController {
     return this.service.list(pagination, { date, category, severity, active });
   }
 
+  /** Must stay before :id routes so "students" is not treated as an id. */
+  @Get('students/search')
+  @Capabilities('reconciliation.read')
+  searchStudents(@Query('q') q?: string) {
+    return this.service.searchStudents(q);
+  }
+
   @Post()
   @Capabilities('reconciliation.escalate')
   create(@Body() body: CreatePicketNoteDto, @CurrentUser() user: { sub: string; role: string }) {

@@ -61,6 +61,15 @@ export interface ClassSession {
   teacher?: { id?: string; fullName?: string };
 }
 
+export interface PicketNoteStudent {
+  id: string;
+  fullName?: string;
+  nkd?: string | null;
+  nis?: string | null;
+  username?: string;
+  classCode?: string | null;
+}
+
 export interface PicketNote {
   id: string;
   date: string;
@@ -69,6 +78,8 @@ export interface PicketNote {
   category: string;
   severity: string;
   active?: boolean;
+  studentId?: string | null;
+  student?: PicketNoteStudent | null;
   createdBy?: User;
 }
 
