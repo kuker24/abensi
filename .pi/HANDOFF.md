@@ -13,65 +13,58 @@ File ini adalah **satu-satunya status operasional aktif** untuk melanjutkan peke
 
 - Repository: `Absensi` / SIAB2 SchoolHub e-Hadir.
 - Branch: `main`.
-- Work (2026-08-04):
-  - Freeze XI+XII (kartu belum siap) — production applied earlier (no hard-delete).
-  - Soft-gate open session (terlambat ditandai, tidak dikunci).
-  - KKA stale cleanup (Salmi keep).
-  - Ops amnesty MISSED → CLOSED + EXCUSED_ABSENCE (`scripts/amnesty_missed_sessions.ts`).
-- Production data already: XI/XII enrollment active 293→0; X remains ~194; TA/WS XI/XII active→0; KKA active = Salmi only.
-- Soft-gate + amnesty deploy/apply **in progress** this session (see post-deploy section after completion).
-- Working tree may still have unrelated untracked artifacts. Do not wipe.
+- Production commit (2026-08-04): `e27957e` — soft-gate + ops scripts deployed.
+- Soft-gate **LIVE** di API (`teacher.session.checkin.missing_gate` in dist).
+- Public HTTPS smoke: PASS (29/29).
+- Containers healthy: api/web/worker/postgres/redis/nginx.
+
+## Production data state (2026-08-04)
+
+| Check | Value |
+|-------|-------|
+| Enrollment aktif X | 194 |
+| Enrollment aktif XI/XII | 0 |
+| TA/WS aktif XI/XII | 0 |
+| Weekly overlap effective-now | 0 |
+| MISSED since 2026-07-01 | **0** (amnesty applied: 90 → CLOSED + EXCUSED_ABSENCE; 90 flags RESOLVED) |
+| OPEN past days | 0 |
+| OPEN today | 3 (X C Fisika, X B Akidah, X D Fisika; roster 32/31/33) |
+| SCHEDULED X tomorrow | 39 |
+| autoMissedGraceMinutes | **45** (was 30) |
+| requireGateTapForOpen / requireTeacherGateIn | true (soft-gate code: warn, not lock) |
+
+Backup predeploy: `/opt/schoolhub/backups/predeploy-20260804-204048/schoolhub-20260804T134048Z.dump.enc` (~70MB).
+
+Amnesty policy: `AMNESTY_MISSED_2026-08` — no fake student HADIR; GateLog staff unchanged.
 
 ## Current Source Contracts
 
-- API NestJS berada di `apps/api`; prefix global `/api/v1`.
-- Web React/Vite berada di `apps/web`.
-- Worker BullMQ berada di `apps/worker`.
-- Android QR reader berada di `apps/android-reader` dan memakai endpoint signed `POST /api/v1/attendance/qr-reader-scan`.
-- Prisma schema dan migration history berada di `prisma`.
-- Shared roles/capabilities/error codes berasal dari `packages/shared`.
-- Source generator kartu production adalah `DataSekolah/generator-tanda-pengenal/`; build disinkronkan ke `apps/web/public/id-card-generator/`.
-- Target Android production yang saat ini dipetakan source adalah `READER_IDENTITY_01`, `READER_GATE_PRAYER_01`, dan `READER_GATE_PRAYER_02`, masing-masing dengan `GATE_IN`, `GATE_OUT`, `MUSHOLA`, dan `CHECK_ONLY`.
-- `READER_IDENTITY_01` **bukan test-only pada source saat ini**: targeted API test membuktikan `GATE_IN` menghasilkan `GateLog` live. Klaim test-only pada handoff lama sudah dibatalkan.
-- NKD adalah identifier siswa empat digit yang unique, immutable, dan non-reusable melalui `StudentNkdRegistry`.
-- Soft-gate: `openSession` tidak Forbidden saat missing gate IN; audit `teacher.session.checkin.missing_gate`; status HADIR/TELAT tetap.
+- API NestJS di `apps/api`; prefix `/api/v1`.
+- Soft-gate: `openSession` tidak Forbidden saat missing gate IN; audit `missing_gate`; HADIR/TELAT tetap.
+- Amnesty ops: `scripts/amnesty_missed_sessions.ts` (`npm run ops:amnesty-missed-sessions`).
+- Freeze ops: `scripts/freeze_xi_xii_card_not_ready.ts`.
+- KKA dedupe: `scripts/dedupe_kka_weekly.ts`.
+- Readiness: `scripts/teacher_schedule_readiness.ts`.
+- XI/XII tetap beku sampai kartu siap (jangan re-enable tanpa perintah).
+- Hanya kelas **X** wajib absensi mapel.
 
 ## VPS Access
 
-- SSH alias lokal: `siab2` dari `~/.ssh/config`.
-- Host: `103.93.133.212`, user `schoolhub`, port `22`.
-- App directory: `/opt/schoolhub/current`.
-- Production env: `/opt/schoolhub/.env`; jangan baca atau cetak isinya.
+- SSH: `siab2` → `103.93.133.212`, user `schoolhub`.
+- App: `/opt/schoolhub/current`; env `/opt/schoolhub/.env` (jangan print).
 - Domain: `https://absensi.man1rokanhulu.cloud`.
-- Runbook aktif: `docs/deployment/vps-production-runbook.md`.
-- Endpoint lama `157.15.40.21:9103` bersifat arsip/stale dan tidak boleh dipakai.
-- Compose project production: `current`.
-
-## Historical Work
-
-Riwayat Wave A–C, migration 0041–0045, APK attestation, NKD/student import, kartu, audit chain, deployment Juli 2026, dan perbaikan production tetap tersedia di `.pi/EVIDENCE.md`. Detail tersebut tidak diduplikasi di sini untuk mencegah status bercabang.
-
-## Items Requiring Fresh Verification
-
-1. SHA/image yang benar-benar aktif di production setelah deploy soft-gate.
-2. Amnesti MISSED Jul–Aug counts (remaining MISSED in range = 0).
-3. Status OPEN stale ditutup; sesi X besok SCHEDULED.
-4. Soft-gate smoke: open tanpa gate IN.
-5. Freeze XI/XII postcondition still holds.
-6. Versi APK reader + canary fisik (out of this change).
+- Compose project: **`current`**.
+- Runbook: `docs/deployment/vps-production-runbook.md`.
 
 ## Resume Rules
 
-1. Mulai dengan `git status --short --branch` dan `git rev-parse HEAD`.
-2. Baca root `AGENTS.md`, file ini, lalu child `AGENTS.md` yang relevan.
-3. Gunakan `.pi/EVIDENCE.md` hanya untuk konteks historis dan audit trail.
-4. Jangan membuka `.env`, private key, credential, QR plaintext, kartu privat, archive privat, keystore, atau data personal.
-5. Jangan mengubah production, menjalankan migration/deploy, menghapus APK/artifact, commit, atau push tanpa persetujuan eksplisit (user 2026-08-04 meminta commit+deploy+amnesty).
-6. Pertahankan Compose project production bernama `current`.
-7. Jika handoff bertentangan dengan source atau Git terbaru, source/Git menang dan handoff harus diperbarui.
+1. `git status` + `git rev-parse HEAD`.
+2. Baca root `AGENTS.md`, file ini, child `AGENTS.md` relevan.
+3. Jangan hard-delete siswa XI/XII; re-enable hanya setelah kartu siap + perintah user.
+4. Jangan deploy/mutate production tanpa perintah; backup wajib sebelum mutasi data.
+5. Working tree boleh berisi artifact privat untracked — jangan wipe.
 
 ## User Preferences
 
-- Respons ringkas dalam bahasa Indonesia dengan bukti yang spesifik.
-- SIAB1 dan proyek lain di luar scope.
-- Jangan commit atau push kecuali diminta secara eksplisit (diminta 2026-08-04).
+- Respons ringkas Bahasa Indonesia + bukti.
+- Scope SIAB2 only.
