@@ -232,6 +232,33 @@ export class AuthService {
   }
 
 
+  async searchLoginLockoutUsers(q: string, actor: LoginSecurityActor) {
+    this.assertCanManageLoginLockouts(actor);
+    const query = (q ?? '').trim();
+    if (query.length < 2) {
+      throw new HttpException('Kata kunci pencarian minimal 2 karakter.', HttpStatus.BAD_REQUEST);
+    }
+    const items = await this.prisma.user.findMany({
+      where: {
+        archivedAt: null,
+        OR: [
+          { fullName: { contains: query, mode: 'insensitive' } },
+          { username: { contains: query, mode: 'insensitive' } }
+        ]
+      },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        role: true,
+        active: true
+      },
+      orderBy: [{ active: 'desc' }, { fullName: 'asc' }],
+      take: 20
+    });
+    return { items };
+  }
+
   async getLoginLockoutStatus(username: string, actor: LoginSecurityActor, meta: RequestMeta = {}) {
     this.assertCanManageLoginLockouts(actor);
     const normalizedUsername = this.normalizeLockoutUsername(username);

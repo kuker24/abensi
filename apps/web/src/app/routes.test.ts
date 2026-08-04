@@ -40,10 +40,14 @@ describe('typed route registry', () => {
     expect(canAccessRoute('/admin/reports', user('SISWA'))).toBe(false);
     expect(canAccessRoute('/admin/reports', user('KEPALA_SEKOLAH'))).toBe(true);
     expect(canAccessRoute('/admin/master-data', user('KEPALA_SEKOLAH'))).toBe(false);
+    expect(canAccessRoute('/admin/master-data', user('OPERATOR_IT'))).toBe(false);
+    expect(canAccessRoute('/admin/master-data', user('ADMIN_TU'))).toBe(true);
     expect(canAccessRoute('/admin/master-data/id-card-generator', user('ADMIN_TU'))).toBe(true);
     expect(canAccessRoute('/admin/master-data/id-card-generator', user('OPERATOR_IT'))).toBe(true);
     expect(canAccessRoute('/admin/master-data/id-card-generator', user('DEVELOPER'))).toBe(true);
     expect(canAccessRoute('/admin/master-data/id-card-generator', user('SISWA'))).toBe(false);
+    expect(navItemsForUser(user('OPERATOR_IT')).map(([, path]) => path)).toContain('/admin/master-data/id-card-generator');
+    expect(navItemsForUser(user('OPERATOR_IT')).map(([, path]) => path)).not.toContain('/admin/master-data');
     expect(canAccessRoute('/admin/android-apk-update', user('ADMIN_TU'))).toBe(true);
     expect(canAccessRoute('/admin/android-apk-update', user('OPERATOR_IT'))).toBe(true);
     expect(canAccessRoute('/admin/android-apk-update', user('SISWA'))).toBe(false);

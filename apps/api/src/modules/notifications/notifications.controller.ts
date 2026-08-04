@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { parsePagination } from '../../common/pagination';
 import { CurrentUser } from '../../common/current-user.decorator';
@@ -25,6 +25,12 @@ export class NotificationsController {
   ) {
     const pagination = parsePagination({ page, limit, defaultLimit: 20, maxLimit: 100 });
     return this.notificationsService.listForUser(user, pagination, unreadOnly === 'true');
+  }
+
+  @Post('read-all')
+  @Capabilities('profile.self.update')
+  markAllRead(@CurrentUser() user: { sub: string; role: Role }) {
+    return this.notificationsService.markAllRead(user);
   }
 
   @Patch(':id/read')

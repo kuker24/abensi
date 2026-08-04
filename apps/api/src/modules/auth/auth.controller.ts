@@ -4,7 +4,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/current-user.decorator';
 import { extractRequestMeta } from '../../common/request-meta';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, ClearLoginLockoutDto, LoginDto, LoginLockoutStatusQueryDto } from './dto.login';
+import { ChangePasswordDto, ClearLoginLockoutDto, LoginDto, LoginLockoutStatusQueryDto, LoginLockoutUserSearchQueryDto } from './dto.login';
 import { csrfCookieOptions, CSRF_COOKIE, generateCsrfToken } from '../../common/csrf';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -73,6 +73,15 @@ export class AuthController {
     const csrfToken = generateCsrfToken();
     response.cookie(CSRF_COOKIE, csrfToken, csrfCookieOptions());
     return { csrfToken };
+  }
+
+  @Get('admin/login-lockout/users')
+  @UseGuards(JwtAuthGuard)
+  searchLoginLockoutUsers(
+    @CurrentUser() user: { sub: string; role: Role },
+    @Query() query: LoginLockoutUserSearchQueryDto
+  ) {
+    return this.authService.searchLoginLockoutUsers(query.q, user);
   }
 
   @Get('admin/login-lockout')

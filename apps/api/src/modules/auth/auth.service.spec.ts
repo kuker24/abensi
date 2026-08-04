@@ -217,6 +217,29 @@ describe('AuthService role-aware login', () => {
 
     await expect(service.getLoginLockoutStatus('admin.tu', { sub: 'guru-1', role: Role.GURU_MAPEL }, {})).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.clearLoginLockout('admin.tu', 'Tidak boleh.', { sub: 'guru-1', role: Role.GURU_MAPEL }, {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.searchLoginLockoutUsers('Demo', { sub: 'guru-1', role: Role.GURU_MAPEL })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('searches lockout targets by full name or username for admin', async () => {
+    const { prisma, service } = makeService();
+    prisma.user.findMany = jest.fn().mockResolvedValue([
+      { id: 'admin-1', username: 'demo.admin_tu', fullName: 'Demo Admin TU', role: Role.ADMIN_TU, active: true }
+    ]);
+
+    const result = await service.searchLoginLockoutUsers('Demo Admin', { sub: 'actor-1', role: Role.ADMIN_TU });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toEqual(expect.objectContaining({ username: 'demo.admin_tu', fullName: 'Demo Admin TU' }));
+    expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        archivedAt: null,
+        OR: expect.arrayContaining([
+          { fullName: { contains: 'Demo Admin', mode: 'insensitive' } },
+          { username: { contains: 'Demo Admin', mode: 'insensitive' } }
+        ])
+      }),
+      take: 20
+    }));
   });
 
 });

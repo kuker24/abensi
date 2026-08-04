@@ -159,12 +159,53 @@ function studentDailySummary(data) {
 
 export function AccountSecurityPage({ notify }) {
   const [username, setUsername] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchHits, setSearchHits] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
   const [reason, setReason] = useState('Admin membuka kunci login setelah verifikasi pengguna.');
   const [state, setState] = useState({ loading: false, error: '', data: null });
+  const searchSeq = useRef(0);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchHits([]);
+      setSearchLoading(false);
+      setSearchError('');
+      return undefined;
+    }
+    const seq = ++searchSeq.current;
+    setSearchLoading(true);
+    setSearchError('');
+    const timer = setTimeout(() => {
+      apiFetch(`/auth/admin/login-lockout/users${qs({ q })}`)
+        .then((data) => {
+          if (seq !== searchSeq.current) return;
+          setSearchHits(itemsOf(data));
+          setSearchLoading(false);
+        })
+        .catch((error) => {
+          if (seq !== searchSeq.current) return;
+          setSearchHits([]);
+          setSearchLoading(false);
+          setSearchError(error.message || String(error));
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const selectSearchHit = (user) => {
+    setUsername(user.username || '');
+    setSearchQuery('');
+    setSearchHits([]);
+    setSearchError('');
+  };
+
   const lookup = async () => {
     const value = username.trim();
     if (!value) {
-      notify?.('Isi username akun yang akan dicek.', 'bad');
+      notify?.('Pilih akun dari hasil pencarian atau isi username yang akan dicek.', 'bad');
       return;
     }
     setState({ loading: true, error: '', data: null });
@@ -178,7 +219,7 @@ export function AccountSecurityPage({ notify }) {
   const clearLockout = async () => {
     const value = username.trim();
     if (!value) {
-      notify?.('Isi username akun yang akan dibuka.', 'bad');
+      notify?.('Pilih akun dari hasil pencarian atau isi username yang akan dibuka.', 'bad');
       return;
     }
     if (!reason.trim() || reason.trim().length < 8) {
@@ -203,8 +244,8 @@ export function AccountSecurityPage({ notify }) {
   const lockedUntilText = lockout?.lockedUntil ? formatDateTime(lockout.lockedUntil) : '—';
   const bucketRows = lockout?.buckets || [];
   return <div className="content account-security-page"><PageHead eyebrow="KEAMANAN AKUN" title="Buka Kunci Login" sub="Pulihkan akun yang terkena batas percobaan masuk tanpa melihat atau mengubah password." actions={<Btn onClick={lookup} loading={state.loading}><RefreshCw size={14} /> Cek Akun</Btn>} />
-    <div className="grid g-2"><Card title="Cari akun" sub="Masukkan username akun sekolah. Fitur ini hanya menghapus lockout login, bukan mengganti password."><div className="form-grid"><Field label="Username"><TextInput value={username} placeholder="contoh: admin.tu" onChange={(event) => setUsername(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') lookup(); }} /></Field><Field label="Alasan tindakan"><TextInput value={reason} onChange={(event) => setReason(event.target.value)} /></Field><Btn variant="primary" loading={state.loading} onClick={lookup}><ShieldCheck size={14} /> Cek Status</Btn><Btn variant="danger" disabled={state.loading || !state.data} onClick={clearLockout}><KeyRound size={14} /> Buka Kunci Login</Btn></div><SimpleHelpBox title="Aturan aman" items={['Tidak ada bypass password: pengguna tetap harus memasukkan password yang benar.', 'Tindakan ini dicatat di audit log beserta alasan operator.', 'Lockout jaringan lama ikut dibersihkan untuk jaringan admin saat ini agar recovery operasional lebih cepat.']} /></Card>
-    <Card title="Status login" sub="Ringkasan batas percobaan masuk untuk akun yang dicek.">{state.loading ? <LoadingState label="Mengecek keamanan akun…" /> : state.error ? <ErrorState error={state.error} onRetry={lookup} /> : !state.data ? <FriendlyEmptyState icon={<ShieldCheck size={22} />} title="Belum ada akun dicek" desc="Isi username lalu klik Cek Status." /> : <div className="account-security-status"><div className="grid g-3 cards-grid"><StatCardPremium icon={<Users size={18} />} label="Akun" value={targetUser?.fullName || state.data.username} sub={targetUser ? `${targetUser.username} · ${statusLabel(targetUser.role)}` : 'Username tidak ditemukan'} /><StatCardPremium icon={<AlertTriangle size={18} />} label="Status" value={lockout?.locked ? 'Terkunci' : 'Normal'} sub={lockout?.locked ? `Sampai ${lockedUntilText}` : 'Tidak ada lockout aktif'} tone={lockout?.locked ? 'bad' : 'ok'} /><StatCardPremium icon={<Clock size={18} />} label="Percobaan" value={lockout?.failedCount ?? 0} sub={`Batas ${lockout?.maxFailedAttempts ?? '—'} kali`} /><StatCardPremium icon={<ShieldCheck size={18} />} label="Aksi" value={state.data.ok ? 'Dibuka' : 'Siap'} sub={state.data.ok ? 'Counter sudah direset' : 'Gunakan bila akun terkunci'} tone={state.data.ok ? 'ok' : ''} /></div><DataTable rows={bucketRows} columns={[{ header: 'Bucket', render: (row) => row.bucket === 'account' ? 'Akun' : row.bucket === 'accountCurrentNetwork' ? 'Akun + jaringan saat ini' : 'Jaringan lama (cleanup)' }, { header: 'Percobaan', render: (row) => row.failedCount ?? 0 }, { header: 'Status', render: (row) => <StatusPill status={row.locked ? 'TERKUNCI' : 'NORMAL'} /> }, { header: 'Terkunci sampai', render: (row) => row.lockedUntil ? formatDateTime(row.lockedUntil) : '—' }]} /></div>}</Card></div></div>;
+    <div className="grid g-2"><Card title="Cari akun" sub="Cari nama atau username, pilih akun, lalu cek/buka kunci. Fitur ini hanya menghapus lockout login, bukan mengganti password."><div className="form-grid"><Field label="Cari nama atau username"><div style={{ position: 'relative' }}><TextInput value={searchQuery} placeholder="contoh: Demo Admin atau admin.tu" onChange={(event) => { setSearchQuery(event.target.value); if (username) setUsername(''); }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); if (username.trim()) lookup(); } }} autoComplete="off" aria-label="Cari nama atau username akun" />{(searchLoading || searchError || searchHits.length > 0 || searchQuery.trim().length >= 2) && <div className="search-results picket-student-search-results" role="listbox" aria-label="Hasil pencarian akun">{searchLoading && <div className="muted picket-student-search-status">Mencari akun…</div>}{!searchLoading && searchError && <div className="muted picket-student-search-status is-error">{searchError}</div>}{!searchLoading && !searchError && searchQuery.trim().length >= 2 && searchHits.length === 0 && <div className="muted picket-student-search-status">Tidak ada akun cocok.</div>}{!searchLoading && searchHits.map((user) => <button key={user.id || user.username} type="button" role="option" onClick={() => selectSearchHit(user)}><span className="picket-student-search-copy"><b>{user.fullName || user.username}</b><small>{user.username} · {statusLabel(user.role)}{user.active === false ? ' · nonaktif' : ''}</small></span></button>)}</div>}</div></Field><Field label="Username terpilih"><TextInput value={username} placeholder="terisi otomatis setelah pilih hasil, atau ketik manual" onChange={(event) => setUsername(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') lookup(); }} /></Field><Field label="Alasan tindakan"><TextInput value={reason} onChange={(event) => setReason(event.target.value)} /></Field><Btn variant="primary" loading={state.loading} onClick={lookup}><ShieldCheck size={14} /> Cek Status</Btn><Btn variant="danger" disabled={state.loading || !state.data} onClick={clearLockout}><KeyRound size={14} /> Buka Kunci Login</Btn></div><SimpleHelpBox title="Aturan aman" items={['Cari nama agar daftar akun terfilter, lalu pilih baris sebelum buka kunci.', 'Tidak ada bypass password: pengguna tetap harus memasukkan password yang benar.', 'Tindakan ini dicatat di audit log beserta alasan operator.', 'Lockout jaringan lama ikut dibersihkan untuk jaringan admin saat ini agar recovery operasional lebih cepat.']} /></Card>
+    <Card title="Status login" sub="Ringkasan batas percobaan masuk untuk akun yang dicek.">{state.loading ? <LoadingState label="Mengecek keamanan akun…" /> : state.error ? <ErrorState error={state.error} onRetry={lookup} /> : !state.data ? <FriendlyEmptyState icon={<ShieldCheck size={22} />} title="Belum ada akun dicek" desc="Cari nama/username, pilih akun, lalu klik Cek Status." /> : <div className="account-security-status"><div className="grid g-3 cards-grid"><StatCardPremium icon={<Users size={18} />} label="Akun" value={targetUser?.fullName || state.data.username} sub={targetUser ? `${targetUser.username} · ${statusLabel(targetUser.role)}` : 'Username tidak ditemukan'} /><StatCardPremium icon={<AlertTriangle size={18} />} label="Status" value={lockout?.locked ? 'Terkunci' : 'Normal'} sub={lockout?.locked ? `Sampai ${lockedUntilText}` : 'Tidak ada lockout aktif'} tone={lockout?.locked ? 'bad' : 'ok'} /><StatCardPremium icon={<Clock size={18} />} label="Percobaan" value={lockout?.failedCount ?? 0} sub={`Batas ${lockout?.maxFailedAttempts ?? '—'} kali`} /><StatCardPremium icon={<ShieldCheck size={18} />} label="Aksi" value={state.data.ok ? 'Dibuka' : 'Siap'} sub={state.data.ok ? 'Counter sudah direset' : 'Gunakan bila akun terkunci'} tone={state.data.ok ? 'ok' : ''} /></div><DataTable rows={bucketRows} columns={[{ header: 'Bucket', render: (row) => row.bucket === 'account' ? 'Akun' : row.bucket === 'accountCurrentNetwork' ? 'Akun + jaringan saat ini' : 'Jaringan lama (cleanup)' }, { header: 'Percobaan', render: (row) => row.failedCount ?? 0 }, { header: 'Status', render: (row) => <StatusPill status={row.locked ? 'TERKUNCI' : 'NORMAL'} /> }, { header: 'Terkunci sampai', render: (row) => row.lockedUntil ? formatDateTime(row.lockedUntil) : '—' }]} /></div>}</Card></div></div>;
 }
 
 export function AdminDashboard() {
@@ -525,7 +566,7 @@ const MASTER_DATA_TAB_VALUES = new Set(MASTER_DATA_TABS.map(([value]) => value))
 const MASTER_DATA_HELP = {
   'student-import': { title: 'Urutan aman import sekolah', items: ['Upload CSV/XLSX siswa/guru/tendik, lalu Preview dulu.', 'Commit import hanya setelah valid; password dibuat otomatis dan tampil sekali.', 'QR dibuat manual setelah review data, lalu generator kartu mengambil dari database.'] },
   students: { title: 'Cek daftar siswa', items: ['Gunakan filter kelas untuk verifikasi anggota kelas.', 'Jika siswa belum muncul, cek akun siswa dan pendaftaran kelas.'] },
-  users: { title: 'Kelola akun aman', items: ['Buat akun dengan password sementara, lalu minta pengguna mengganti password.', 'Nonaktifkan akun yang tidak dipakai; jangan hapus jika sudah punya riwayat.'] },
+  users: { title: 'Kelola akun aman', items: ['Buat akun dengan password sementara, lalu minta pengguna mengganti password.', 'Nonaktifkan akun yang tidak dipakai; jangan hapus jika sudah punya riwayat.', 'Akun DEVELOPER hanya dikelola sesama Developer; minimal satu akun developer aktif harus tetap tersedia.'] },
   'account-slips': { title: 'Lembar akun login', items: ['Generate password awal dari endpoint khusus, bukan dari flow buat/edit akun.', 'Password hanya tampil sekali di layar cetak dan tidak disimpan di browser.'] },
   classes: { title: 'Data kelas', items: ['Buat kelas setelah label tahun ajaran disepakati.', 'Gunakan kode singkat yang sama dengan jadwal dan kartu.'] },
   subjects: { title: 'Data mapel', items: ['Isi kode mapel yang mudah dikenali.', 'Nama mapel dipakai di jadwal dan laporan.'] },
@@ -2387,7 +2428,7 @@ export function PicketBookPage({ notify }) {
           <AsyncTable
             state={notes}
             columns={[
-              { header: 'Waktu', render: (r) => formatDateTime(r.date) },
+              { header: 'Waktu', render: (r) => formatDateTime(r.createdAt || r.updatedAt || r.date) },
               { header: 'Siswa', render: (r) => r.student ? picketStudentLabel(r.student) : <span className="muted">—</span> },
               { header: 'Judul', key: 'title' },
               { header: 'Kategori', key: 'category' },
@@ -2509,8 +2550,21 @@ export function PersonnelLeaveReviewPage({ user, notify }) {
 
 export function NotificationsPage() {
   const notifications = useRemote(() => apiFetch('/notifications?page=1&limit=50'), []);
+  const [markingAll, setMarkingAll] = useState(false);
   async function read(row) { await apiFetch(`/notifications/${row.id}/read`, { method: 'PATCH', body: JSON.stringify({}) }); notifications.refresh(); window.dispatchEvent(new Event('schoolhub_notifications_refresh')); }
-  return <div className="content"><PageHead eyebrow="TUGAS SAYA" title="Tugas / Notifikasi" sub="Lihat pemberitahuan penting. Tandai dibaca jika sudah selesai diperiksa." actions={<Btn onClick={notifications.refresh}><RefreshCw size={14} /> Muat ulang</Btn>} /><SimpleHelpBox title="Cara pakai" items={['Baca notifikasi dari atas.', 'Jika perlu tindakan, buka menu terkait.', 'Klik Tandai dibaca setelah selesai.']} /><Card title={`Belum dibaca: ${notifications.data?.unreadCount ?? 0}`}><AsyncTable state={notifications} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.createdAt) }, { header: 'Judul', key: 'title' }, { header: 'Isi', key: 'body' }, { header: 'Status', render: (r) => r.readAt ? 'Sudah dibaca' : 'Belum dibaca' }]} onRow={(r) => !r.readAt && <Btn size="sm" onClick={() => read(r)}>Tandai dibaca</Btn>} /></Card></div>;
+  async function readAll() {
+    if (markingAll) return;
+    setMarkingAll(true);
+    try {
+      await apiFetch('/notifications/read-all', { method: 'POST', body: JSON.stringify({}) });
+      notifications.refresh();
+      window.dispatchEvent(new Event('schoolhub_notifications_refresh'));
+    } finally {
+      setMarkingAll(false);
+    }
+  }
+  const unread = Number(notifications.data?.unreadCount ?? 0) || 0;
+  return <div className="content"><PageHead eyebrow="TUGAS SAYA" title="Tugas / Notifikasi" sub="Lihat pemberitahuan penting. Tandai dibaca jika sudah selesai diperiksa." actions={<><Btn onClick={notifications.refresh}><RefreshCw size={14} /> Muat ulang</Btn><Btn variant="primary" loading={markingAll} disabled={markingAll || unread < 1} onClick={readAll}>Tandai semua dibaca</Btn></>} /><SimpleHelpBox title="Cara pakai" items={['Baca notifikasi dari atas.', 'Jika perlu tindakan, buka menu terkait.', 'Klik Tandai dibaca per baris, atau Tandai semua dibaca untuk membersihkan badge.']} /><Card title={`Belum dibaca: ${unread}`}><AsyncTable state={notifications} columns={[{ header: 'Waktu', render: (r) => formatDateTime(r.createdAt) }, { header: 'Judul', key: 'title' }, { header: 'Isi', key: 'body' }, { header: 'Status', render: (r) => r.readAt ? 'Sudah dibaca' : 'Belum dibaca' }]} onRow={(r) => !r.readAt && <Btn size="sm" onClick={() => read(r)}>Tandai dibaca</Btn>} /></Card></div>;
 }
 
 function CleanupPanel({ notify }) {

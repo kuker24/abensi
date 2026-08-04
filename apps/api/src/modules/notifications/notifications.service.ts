@@ -58,6 +58,18 @@ export class NotificationsService {
     return this.prisma.notification.findFirstOrThrow({ where: visibleToUser });
   }
 
+  async markAllRead(user: { sub: string; role: Role | string }) {
+    const where: Prisma.NotificationWhereInput = {
+      readAt: null,
+      OR: [{ userId: user.sub }, { role: user.role as Role }, { userId: null, role: null }]
+    };
+    const result = await this.prisma.notification.updateMany({
+      where,
+      data: { readAt: new Date() }
+    });
+    return { ok: true, updated: result.count };
+  }
+
   async create(payload: NotifyPayload) {
     return this.prisma.notification.create({
       data: {

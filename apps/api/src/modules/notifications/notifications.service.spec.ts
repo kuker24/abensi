@@ -31,4 +31,20 @@ describe('NotificationsService', () => {
     await expect(service.markRead('private-other-user', { sub: 'student-1', role: Role.SISWA })).rejects.toBeInstanceOf(NotFoundException);
     expect(notification.findFirstOrThrow).not.toHaveBeenCalled();
   });
+
+  it('menandai semua notifikasi yang terlihat pengguna sebagai dibaca', async () => {
+    const notification = {
+      updateMany: jest.fn().mockResolvedValue({ count: 12 })
+    };
+    const service = new NotificationsService({ notification } as never);
+
+    await expect(service.markAllRead({ sub: 'admin-1', role: Role.ADMIN_TU })).resolves.toEqual({ ok: true, updated: 12 });
+    expect(notification.updateMany).toHaveBeenCalledWith({
+      where: {
+        readAt: null,
+        OR: [{ userId: 'admin-1' }, { role: Role.ADMIN_TU }, { userId: null, role: null }]
+      },
+      data: { readAt: expect.any(Date) }
+    });
+  });
 });

@@ -30,6 +30,12 @@ export class LoginLockoutStatusQueryDto {
   username!: string;
 }
 
+export class LoginLockoutUserSearchQueryDto {
+  @IsString()
+  @MinLength(2)
+  q!: string;
+}
+
 export class ClearLoginLockoutDto {
   @IsString()
   @MinLength(1)
