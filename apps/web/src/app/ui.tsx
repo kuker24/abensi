@@ -293,8 +293,42 @@ export function SimpleHelpBox({ title = 'Bantuan singkat', items, children }: { 
   return <div className="simple-help siab2-help-box"><b>{title}</b>{items?.length ? <ul>{items.map((item, index) => <li key={index}>{item}</li>)}</ul> : children}</div>;
 }
 
-export function StepGuide({ title = 'Ikuti langkah ini', steps }: { title?: ReactNode; steps: ReactNode[] }) {
-  return <div className="step-guide siab2-step-guide" aria-label={String(title)}><div className="step-guide-title">{title}</div><div className="step-guide-list">{steps.map((step, index) => <div className="step-guide-item" key={index}><b>{index + 1}</b><span>{step}</span></div>)}</div></div>;
+export function StepGuide({
+  title = 'Ikuti langkah ini',
+  steps,
+  collapsible = false,
+  defaultOpen = true
+}: {
+  title?: ReactNode;
+  steps: ReactNode[];
+  /** When true, guide starts collapsed behind a summary (less AI-slot chrome). */
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+}) {
+  const body = (
+    <div className="step-guide-list">
+      {steps.map((step, index) => (
+        <div className="step-guide-item" key={index}>
+          <b>{index + 1}</b>
+          <span>{step}</span>
+        </div>
+      ))}
+    </div>
+  );
+  if (collapsible) {
+    return (
+      <details className="step-guide siab2-step-guide step-guide-collapsible" aria-label={String(title)} open={defaultOpen || undefined}>
+        <summary className="step-guide-title">{title}</summary>
+        {body}
+      </details>
+    );
+  }
+  return (
+    <div className="step-guide siab2-step-guide" aria-label={String(title)}>
+      <div className="step-guide-title">{title}</div>
+      {body}
+    </div>
+  );
 }
 
 export function QuickActionCard({ title, desc, icon, actionLabel, onClick, tone = '' }: { title: ReactNode; desc?: ReactNode; icon?: ReactNode; actionLabel?: ReactNode; onClick?: () => void; tone?: string }) {
