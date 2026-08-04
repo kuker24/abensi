@@ -16,6 +16,7 @@ import {
 import { writeAudit } from '../../common/audit-log';
 import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { businessDateKey, businessDayBounds, localMinutesOfDay } from '../../common/business-time';
+import { isXiOrXiiClassCode } from '../../common/class-grade';
 import { buildPaginationMeta, type PaginationQuery } from '../../common/pagination';
 import type { RequestMeta } from '../../common/request-meta';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -435,7 +436,8 @@ export class ReconciliationService {
         include: {
           rosters: { select: { studentId: true } },
           attendances: true,
-          teacherPresence: true
+          teacherPresence: true,
+          schoolClass: { select: { id: true, code: true, name: true } }
         }
       });
 
@@ -443,18 +445,26 @@ export class ReconciliationService {
         return { sessionId, createdFlags: 0, message: 'session-not-found' };
       }
 
+      const gradeFrozen = isXiOrXiiClassCode(session.schoolClass?.code);
+      // XI/XII frozen (CARD_NOT_READY): skip student mapel flags (ALPA/prayer/gate class noise).
+      // Teacher-side flags still allowed only when grade is not frozen; freeze = skip all mapel recon noise.
       const studentReconciliationSkipped =
-        session.rosterState !== SessionRosterState.VERIFIED &&
-        session.rosterState !== SessionRosterState.BACKFILLED_UNVERIFIED;
-      const rosterClassificationCode = studentReconciliationSkipped
-        ? session.rosterState === SessionRosterState.LEGACY_ROSTER_MISSING
-          ? 'LEGACY_ROSTER_MISSING'
-          : 'SESSION_ROSTER_MISSING'
-        : null;
+        gradeFrozen ||
+        (session.rosterState !== SessionRosterState.VERIFIED &&
+          session.rosterState !== SessionRosterState.BACKFILLED_UNVERIFIED);
+      const rosterClassificationCode = gradeFrozen
+        ? 'GRADE_FROZEN_CARD_NOT_READY'
+        : studentReconciliationSkipped
+          ? session.rosterState === SessionRosterState.LEGACY_ROSTER_MISSING
+            ? 'LEGACY_ROSTER_MISSING'
+            : 'SESSION_ROSTER_MISSING'
+          : null;
       const rosterProvenance = {
         rosterState: session.rosterState,
         studentReconciliationSkipped,
-        rosterClassificationCode
+        rosterClassificationCode,
+        gradeFrozen,
+        classCode: session.schoolClass?.code ?? null
       };
 
       if (session.reconciledAt) {
@@ -463,6 +473,29 @@ export class ReconciliationService {
           createdFlags: 0,
           skipped: true,
           message: 'already-reconciled',
+          ...rosterProvenance
+        };
+      }
+
+      // Frozen XI/XII: mark reconciled without creating mapel/student/teacher class flags.
+      if (gradeFrozen) {
+        await tx.session.update({
+          where: { id: session.id },
+          data: { reconciledAt: new Date() }
+        });
+        await writeAudit(tx, {
+          actorId,
+          action: 'reconciliation.session.processed',
+          module: 'reconciliation',
+          resource: 'session',
+          resourceId: session.id,
+          after: { createdFlags: 0, skipped: true, message: 'grade-frozen-card-not-ready', ...rosterProvenance }
+        });
+        return {
+          sessionId: session.id,
+          createdFlags: 0,
+          skipped: true,
+          message: 'grade-frozen-card-not-ready',
           ...rosterProvenance
         };
       }
@@ -637,21 +670,24 @@ export class ReconciliationService {
         }
       }
 
-      const teacherPresence = session.teacherPresence.find((presence) => presence.teacherId === session.teacherId);
-      if (!teacherPresence || teacherPresence.status === TeacherSessionStatus.ALPA_MENGAJAR) {
-        await this.createFlag(tx, ReconciliationFlagType.TIDAK_MENGAJAR, session.id, session.teacherId, {
-          teacherPresence: teacherPresence?.status ?? null,
-          sessionStatus: session.status
-        });
-        createdFlags += 1;
-      }
+      // Teacher mapel anomalies also skipped for frozen XI/XII (not operational yet).
+      if (!gradeFrozen) {
+        const teacherPresence = session.teacherPresence.find((presence) => presence.teacherId === session.teacherId);
+        if (!teacherPresence || teacherPresence.status === TeacherSessionStatus.ALPA_MENGAJAR) {
+          await this.createFlag(tx, ReconciliationFlagType.TIDAK_MENGAJAR, session.id, session.teacherId, {
+            teacherPresence: teacherPresence?.status ?? null,
+            sessionStatus: session.status
+          });
+          createdFlags += 1;
+        }
 
-      if (teacherPresence && (teacherPresence.status === TeacherSessionStatus.HADIR || teacherPresence.status === TeacherSessionStatus.TELAT) && !hasGateIn.has(session.teacherId)) {
-        await this.createFlag(tx, ReconciliationFlagType.ANOMALI_BUKA_TANPA_GERBANG, session.id, session.teacherId, {
-          teacherPresence: teacherPresence.status,
-          gateIn: false
-        });
-        createdFlags += 1;
+        if (teacherPresence && (teacherPresence.status === TeacherSessionStatus.HADIR || teacherPresence.status === TeacherSessionStatus.TELAT) && !hasGateIn.has(session.teacherId)) {
+          await this.createFlag(tx, ReconciliationFlagType.ANOMALI_BUKA_TANPA_GERBANG, session.id, session.teacherId, {
+            teacherPresence: teacherPresence.status,
+            gateIn: false
+          });
+          createdFlags += 1;
+        }
       }
 
       await tx.session.update({

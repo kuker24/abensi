@@ -24,6 +24,7 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     status: SessionStatus.CLOSED,
     rosterState: SessionRosterState.VERIFIED,
     reconciledAt: null,
+    schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' },
     rosters: [{ studentId: 'siswa-roster' }],
     attendances: [{ studentId: 'siswa-roster', status: StudentAttendanceStatus.HADIR }],
     teacherPresence: [{ teacherId: 'guru-1', status: TeacherSessionStatus.HADIR }],
@@ -130,9 +131,11 @@ describe('ReconciliationService roster history integrity', () => {
     await service.reconcileSession('session-1');
 
     expect(tx.session.findUnique).toHaveBeenCalledWith(expect.objectContaining({
-      include: expect.objectContaining({ rosters: expect.any(Object) })
+      include: expect.objectContaining({
+        rosters: expect.any(Object),
+        schoolClass: expect.any(Object)
+      })
     }));
-    expect(tx.session.findUnique.mock.calls[0][0].include).not.toHaveProperty('schoolClass');
     expect(tx.prayerAttendanceLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ studentId: { in: ['siswa-roster'] } })
     }));
@@ -141,6 +144,31 @@ describe('ReconciliationService roster history integrity', () => {
     }));
     expect(tx.reconciliationFlag.upsert).not.toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ userId: 'siswa-baru' })
+    }));
+  });
+
+  it('skips all mapel flags for frozen XI/XII sessions (CARD_NOT_READY)', async () => {
+    const { prisma, tx } = makePrisma(makeSession({
+      schoolClass: { id: 'class-xii-b', code: 'XII B', name: 'XII B' },
+      attendances: [{ studentId: 'siswa-roster', status: StudentAttendanceStatus.ALPA }],
+      teacherPresence: [{ teacherId: 'guru-1', status: TeacherSessionStatus.ALPA_MENGAJAR }]
+    }));
+    const service = new ReconciliationService(prisma as any);
+
+    const result = await service.reconcileSession('session-1', 'system');
+
+    expect(result).toMatchObject({
+      createdFlags: 0,
+      skipped: true,
+      message: 'grade-frozen-card-not-ready',
+      gradeFrozen: true,
+      studentReconciliationSkipped: true,
+      rosterClassificationCode: 'GRADE_FROZEN_CARD_NOT_READY',
+      classCode: 'XII B'
+    });
+    expect(tx.reconciliationFlag.upsert).not.toHaveBeenCalled();
+    expect(tx.session.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ reconciledAt: expect.any(Date) })
     }));
   });
 
@@ -293,7 +321,9 @@ describe('ReconciliationService roster history integrity', () => {
       createdFlags: 0,
       rosterState: SessionRosterState.VERIFIED,
       studentReconciliationSkipped: false,
-      rosterClassificationCode: null
+      rosterClassificationCode: null,
+      gradeFrozen: false,
+      classCode: 'X-1'
     }));
 
     const result = await service.runPendingReconciliation('worker:test');
@@ -342,7 +372,9 @@ describe('ReconciliationService roster history integrity', () => {
       createdFlags: 0,
       rosterState: SessionRosterState.PENDING,
       studentReconciliationSkipped: true,
-      rosterClassificationCode: 'SESSION_ROSTER_MISSING'
+      rosterClassificationCode: 'SESSION_ROSTER_MISSING',
+      gradeFrozen: false,
+      classCode: 'X-1'
     });
 
     const result = await service.runAutoMissedSessions('worker:test');

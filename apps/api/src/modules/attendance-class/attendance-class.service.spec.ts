@@ -18,6 +18,7 @@ function makeService(
     businessDate: new Date(Date.UTC(2026, 5, 14)),
     status: SessionStatus.OPEN,
     rosterState: SessionRosterState.VERIFIED,
+    schoolClass: { id: 'class-1', code: 'X-1', name: 'X 1' },
     ...sessionOverrides
   };
   const openedSession = { ...session, status: SessionStatus.OPEN, openedAt: now, rosterState: SessionRosterState.VERIFIED };
@@ -1092,6 +1093,23 @@ describe('AttendanceClassService teacher check-in/out', () => {
         effectiveFrom: expect.objectContaining({ lte: expect.any(Date) }),
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }]
       })
+    }));
+  });
+
+  it('menolak buka sesi kelas XI/XII yang dibekukan (CARD_NOT_READY)', async () => {
+    const { service, prisma, tx } = makeService({
+      status: SessionStatus.SCHEDULED,
+      classId: 'class-xii-b',
+      schoolClass: { id: 'class-xii-b', code: 'XII B', name: 'XII B' }
+    });
+
+    await expect(service.openSession('session-1', guru)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_GRADE_FROZEN' })
+    });
+    expect(tx.session.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'teacher.session.checkin.rejected_grade_frozen' })
     }));
   });
 

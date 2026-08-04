@@ -23,6 +23,7 @@ import { writeAudit } from '../../common/audit-log';
 import { writeLiveMonitorOutboxEvent } from '../../common/outbox-event';
 import { assertReasonQuality } from '../security/reason-policy';
 import { addCalendarDays, businessDateKey, jakartaBusinessDayBounds, localMinutesOfDay } from '../../common/business-time';
+import { isXiOrXiiClassCode } from '../../common/class-grade';
 
 function teacherStatusForCheckIn(startsAt: Date, policyGraceMinutes?: number) {
   const graceMinutes = policyGraceMinutes ?? 15;
@@ -503,7 +504,10 @@ export class AttendanceClassService {
   }
 
   async openSession(sessionId: string, actor: AuthenticatedUser, geo?: SessionGeoDto) {
-    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { schoolClass: { select: { id: true, code: true, name: true } } }
+    });
     if (!session) {
       throw new NotFoundException('Sesi tidak ditemukan.');
     }
@@ -513,6 +517,33 @@ export class AttendanceClassService {
     }
     if (!this.accessPolicy && actor.role === Role.GURU_MAPEL && session.teacherId !== actor.sub) {
       throw new ForbiddenException('Bukan sesi Anda.');
+    }
+
+    // Policy: only grade X is mandatory while XI/XII cards are not ready.
+    // Block open so frozen classes cannot produce ALPA/anomaly noise.
+    const classCode = session.schoolClass?.code ?? null;
+    if (isXiOrXiiClassCode(classCode)) {
+      await this.prisma.$transaction(async (tx) => writeAudit(tx, {
+        actorId: actor.sub,
+        actorRole: actor.role as Role,
+        module: 'attendance',
+        action: 'teacher.session.checkin.rejected_grade_frozen',
+        resource: 'session',
+        resourceId: sessionId,
+        after: {
+          sessionId,
+          classId: session.classId,
+          classCode,
+          reason: 'CARD_NOT_READY_2026-08',
+          message: 'Kelas XI/XII dibekukan sampai kartu identitas siap. Absensi mapel hanya wajib untuk kelas X.'
+        }
+      }));
+      throw new ForbiddenException({
+        code: 'SESSION_GRADE_FROZEN',
+        message: `Kelas ${classCode || 'XI/XII'} dibekukan (kartu belum siap). Absensi mapel hanya untuk kelas X.`,
+        classCode,
+        reason: 'CARD_NOT_READY_2026-08'
+      });
     }
 
     const [policy, attendancePolicy] = await Promise.all([

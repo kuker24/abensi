@@ -4,6 +4,7 @@ import {
   GateDirection,
   PrayerType,
   ReaderType,
+  ReconciliationStatus,
   Role,
   SessionRosterState,
   SessionStatus,
@@ -633,7 +634,9 @@ export class ReportingService {
           orderBy: { updatedAt: 'desc' },
           take: feedTake
         }),
+        // Only OPEN flags — RESOLVED historical noise (e.g. amnesty XI/XII ALPA) must not flood "Aktivitas Sekarang".
         this.prisma.reconciliationFlag.findMany({
+          where: { status: ReconciliationStatus.OPEN },
           include: {
             user: {
               select: {
@@ -656,7 +659,7 @@ export class ReportingService {
         this.prisma.gateLog.count(),
         this.prisma.session.count({ where: { openedAt: { not: null } } }),
         this.prisma.session.count({ where: { closedAt: { not: null } } }),
-        this.prisma.reconciliationFlag.count()
+        this.prisma.reconciliationFlag.count({ where: { status: ReconciliationStatus.OPEN } })
       ]);
 
     const feed: Array<{
