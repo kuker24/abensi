@@ -133,6 +133,20 @@ describe('MobileAndroidService APK update center', () => {
     });
   });
 
+  it('caches android reader version between scan-path lookups until invalidated', async () => {
+    const prisma = prismaMock();
+    prisma.androidApkRelease.findFirst.mockResolvedValue(release({ isPublished: true, publishedAt: new Date(), versionCode: 5, apkSizeBytes: 123 }));
+    const service = new MobileAndroidService(prisma, validatorMock());
+
+    await service.getAndroidReaderVersion();
+    await service.getAndroidReaderVersion();
+    expect(prisma.androidApkRelease.findFirst).toHaveBeenCalledTimes(1);
+
+    service.invalidateAndroidReaderVersionCache();
+    await service.getAndroidReaderVersion();
+    expect(prisma.androidApkRelease.findFirst).toHaveBeenCalledTimes(2);
+  });
+
   it('writes, attests, hashes file bytes, stores attestation, and returns no private path', async () => {
     const prisma = prismaMock();
     const validator = validatorMock();

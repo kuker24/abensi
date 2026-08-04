@@ -1028,6 +1028,7 @@ describe('DeviceSignatureService signed reader request', () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
     const service = new DeviceSignatureService({
       deviceReader: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([
           { id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null },
           { id: 'reader-2', deviceId: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }
@@ -1047,7 +1048,10 @@ describe('DeviceSignatureService signed reader request', () => {
   it('menolak QR_ANDROID inactive legacy-platform pada signed request', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
     const service = new DeviceSignatureService({
-      deviceReader: { findMany: jest.fn().mockResolvedValue([{ id: 'reader-android-inactive', deviceId: 'android-legacy', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE, allowedModes: [AndroidReaderMode.MUSHOLA], readerSecretCiphertext: 'unused' }]) }
+      deviceReader: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([{ id: 'reader-android-inactive', deviceId: 'android-legacy', status: DeviceReaderStatus.INACTIVE, type: ReaderType.QR_ANDROID, platform: DevicePlatform.HARDWARE, allowedModes: [AndroidReaderMode.MUSHOLA], readerSecretCiphertext: 'unused' }])
+      }
     } as any, redis);
     const rawBody = JSON.stringify({ credentialType: 'QR', qrCode: 'schoolhub:qr:v1:QR_7F3K9X2P8LQ0', mode: AndroidReaderMode.MUSHOLA });
 
@@ -1064,7 +1068,10 @@ describe('DeviceSignatureService signed reader request', () => {
   it('menolak reader inactive pada signed request', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
     const service = new DeviceSignatureService({
-      deviceReader: { findMany: jest.fn().mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.INACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }]) }
+      deviceReader: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.INACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }])
+      }
     } as any, redis);
     const rawBody = JSON.stringify({ cardUid: 'CARD1' });
 
@@ -1078,11 +1085,18 @@ describe('DeviceSignatureService signed reader request', () => {
 
   it('menolak signature salah', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
-    const prisma = { deviceReader: { findMany: jest.fn().mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }]) } } as any;
+    const prisma = {
+      deviceReader: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: null }])
+      }
+    } as any;
     const service = new DeviceSignatureService(prisma, redis);
     const secret = service.generateReaderSecret();
     const encrypted = service.encryptSecret(secret);
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: encrypted }]);
+    const reader = { id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: encrypted, revokedAt: null };
+    prisma.deviceReader.findFirst.mockResolvedValue(reader);
+    prisma.deviceReader.findMany.mockResolvedValue([reader]);
     const rawBody = JSON.stringify({ cardUid: 'CARD1' });
 
     await expect(service.assertValidSignedReaderRequest({
@@ -1095,11 +1109,13 @@ describe('DeviceSignatureService signed reader request', () => {
 
   it('menolak nonce replay melalui klaim Redis atomik', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(false) } as any;
-    const prisma = { deviceReader: { findMany: jest.fn() } } as any;
+    const prisma = { deviceReader: { findFirst: jest.fn(), findMany: jest.fn() } } as any;
     const service = new DeviceSignatureService(prisma, redis);
     const secret = service.generateReaderSecret();
     const encrypted = service.encryptSecret(secret);
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: encrypted }]);
+    const reader = { id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: encrypted, revokedAt: null };
+    prisma.deviceReader.findFirst.mockResolvedValue(reader);
+    prisma.deviceReader.findMany.mockResolvedValue([reader]);
     const rawBody = JSON.stringify({ cardUid: 'CARD1' });
     const timestamp = new Date().toISOString();
     const nonce = 'nonce-1';
@@ -1112,11 +1128,13 @@ describe('DeviceSignatureService signed reader request', () => {
 
   it('menolak timestamp reader yang terlalu jauh dari waktu server', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
-    const prisma = { deviceReader: { findMany: jest.fn() } } as any;
+    const prisma = { deviceReader: { findFirst: jest.fn(), findMany: jest.fn() } } as any;
     const service = new DeviceSignatureService(prisma, redis);
     const secret = service.generateReaderSecret();
     const encrypted = service.encryptSecret(secret);
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: encrypted }]);
+    const reader = { id: 'reader-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.GATE, readerSecretCiphertext: encrypted, revokedAt: null };
+    prisma.deviceReader.findFirst.mockResolvedValue(reader);
+    prisma.deviceReader.findMany.mockResolvedValue([reader]);
     const rawBody = JSON.stringify({ cardUid: 'CARD1' });
     const timestamp = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const nonce = 'nonce-old';

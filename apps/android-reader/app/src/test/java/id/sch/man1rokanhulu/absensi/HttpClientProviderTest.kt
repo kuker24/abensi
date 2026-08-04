@@ -15,4 +15,10 @@ class HttpClientProviderTest {
         assertEquals(20_000, HttpClientProvider.shared.readTimeoutMillis.toLong())
         assertEquals(TimeUnit.SECONDS.toMillis(60), HttpClientProvider.download.readTimeoutMillis.toLong())
     }
+
+    @Test fun sharedClientUsesWarmKeepAliveAndCallTimeout() {
+        assertEquals(TimeUnit.SECONDS.toMillis(30), HttpClientProvider.shared.pingIntervalMillis.toLong())
+        assertEquals(TimeUnit.SECONDS.toMillis(30), HttpClientProvider.shared.callTimeoutMillis.toLong())
+        assertEquals(TimeUnit.SECONDS.toMillis(20), HttpClientProvider.shared.writeTimeoutMillis.toLong())
+    }
 }

@@ -225,11 +225,34 @@ describe('writeAudit synthetic actors', () => {
       fixture.entries.push({ ...entry(4n, fixture.entries[2].entryHash, 'test.epoch-two'), entryHash: null });
       fixture.state = { ...fixture.state, lastSequence: 4n, lastHash: 'stored-tip', lastEntryId: fixture.entries[3].id };
     }]
-  ])('rejects %s during full active-epoch lineage recomputation', async (_name, mutate) => {
+  ])('rejects %s during full active-epoch lineage recomputation when enabled', async (_name, mutate) => {
+    const previous = process.env.AUDIT_HOT_PATH_FULL_LINEAGE_VERIFY;
+    process.env.AUDIT_HOT_PATH_FULL_LINEAGE_VERIFY = 'true';
     const client: any = approvedEpochTwoClient(mutate);
 
-    await expect(writeAudit(client, { action: 'test.epoch-two-lineage', resource: 'test', resourceId: 'r1' })).rejects.toThrow(/active epoch cryptographic lineage is invalid|state tip is incomplete|boundary metadata is invalid/);
-    expect(client.auditEntry.create).not.toHaveBeenCalled();
+    try {
+      await expect(writeAudit(client, { action: 'test.epoch-two-lineage', resource: 'test', resourceId: 'r1' })).rejects.toThrow(/active epoch cryptographic lineage is invalid|state tip is incomplete|boundary metadata is invalid/);
+      expect(client.auditEntry.create).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.AUDIT_HOT_PATH_FULL_LINEAGE_VERIFY;
+      else process.env.AUDIT_HOT_PATH_FULL_LINEAGE_VERIFY = previous;
+    }
+  });
+
+  it('keeps hot-path append O(1) by verifying tip only by default', async () => {
+    const fixtureClient = approvedEpochTwoClient((fixture: any) => {
+      // Tamper a historical in-epoch entry that tip-only verification does not re-walk.
+      // Boundary + tip remain valid so the default hot path may append.
+      if (fixture.entries[0]) fixture.entries[0].canonicalPayload = { historical: 'tampered' };
+    });
+    const findMany = fixtureClient.auditEntry.findMany as jest.Mock;
+    await writeAudit(fixtureClient, { action: 'test.epoch-two-hot-path', resource: 'test', resourceId: 'r1' });
+    expect(fixtureClient.auditEntry.create).toHaveBeenCalled();
+    // Tip/boundary loads use take:1; never request the full epoch range on the default path.
+    for (const call of findMany.mock.calls) {
+      const args = call[0] || {};
+      expect(args.take === 1 || args.where?.sequence?.gte === args.where?.sequence?.lte).toBeTruthy();
+    }
   });
 
   it('rejects empty active epoch two without approved boundary marker', async () => {

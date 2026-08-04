@@ -146,25 +146,44 @@ describe('DeviceSignatureService signature and nonce enforcement', () => {
     return { deviceId: 'android-1', timestamp, nonce, bodyHash, signature };
   }
 
+  function readerPrisma(service: DeviceSignatureService, secret: string, overrides: Record<string, unknown> = {}) {
+    const reader = {
+      id: 'reader-1',
+      deviceId: 'android-1',
+      status: DeviceReaderStatus.ACTIVE,
+      type: ReaderType.QR_ANDROID,
+      allowedModes: [AndroidReaderMode.GERBANG],
+      revokedAt: null,
+      readerSecretCiphertext: service.encryptSecret(secret),
+      ...overrides
+    };
+    return {
+      deviceReader: {
+        findFirst: jest.fn().mockResolvedValue(reader),
+        findMany: jest.fn().mockResolvedValue([reader])
+      }
+    } as any;
+  }
+
   it('claims a valid nonce atomically only after signature validation', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
-    const prisma = { deviceReader: { findMany: jest.fn() } } as any;
-    const service = new DeviceSignatureService(prisma, redis);
+    const service = new DeviceSignatureService({ deviceReader: { findFirst: jest.fn(), findMany: jest.fn() } } as any, redis);
     const secret = service.generateReaderSecret();
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', deviceId: 'android-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG], readerSecretCiphertext: service.encryptSecret(secret) }]);
+    const prisma = readerPrisma(service, secret);
+    (service as any).prisma = prisma;
     const rawBody = JSON.stringify({ qrCode: 'schoolhub:qr:v1:QR_1', scanMode: AndroidReaderMode.GERBANG });
     const headers = signedRequest(secret, rawBody);
 
     await expect(service.assertValidSignedReaderRequest({ method: 'POST', path: '/api/v1/attendance/qr-reader-scan', rawBody, expectedType: ReaderType.QR_ANDROID, headers })).resolves.toMatchObject({ reader: { id: 'reader-1' } });
+    expect(prisma.deviceReader.findFirst).toHaveBeenCalled();
     expect(redis.setNxPx).toHaveBeenCalledWith(`schoolhub:reader-nonce:reader-1:${createHash('sha256').update(headers.nonce).digest('hex')}`, '1', 300_000);
   });
 
   it('does not consume nonce for a bad signature', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
-    const prisma = { deviceReader: { findMany: jest.fn() } } as any;
-    const service = new DeviceSignatureService(prisma, redis);
+    const service = new DeviceSignatureService({ deviceReader: { findFirst: jest.fn(), findMany: jest.fn() } } as any, redis);
     const secret = service.generateReaderSecret();
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', deviceId: 'android-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG], readerSecretCiphertext: service.encryptSecret(secret) }]);
+    (service as any).prisma = readerPrisma(service, secret);
     const rawBody = JSON.stringify({ qrCode: 'schoolhub:qr:v1:QR_1', scanMode: AndroidReaderMode.GERBANG });
     const headers = { ...signedRequest(secret, rawBody), signature: '0'.repeat(64) };
 
@@ -174,10 +193,9 @@ describe('DeviceSignatureService signature and nonce enforcement', () => {
 
   it('does not inspect reader mode allowlist before validating a bad signature or claiming its nonce', async () => {
     const redis = { setNxPx: jest.fn().mockResolvedValue(true) } as any;
-    const prisma = { deviceReader: { findMany: jest.fn() } } as any;
-    const service = new DeviceSignatureService(prisma, redis);
+    const service = new DeviceSignatureService({ deviceReader: { findFirst: jest.fn(), findMany: jest.fn() } } as any, redis);
     const secret = service.generateReaderSecret();
-    prisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', deviceId: 'android-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [], readerSecretCiphertext: service.encryptSecret(secret) }]);
+    (service as any).prisma = readerPrisma(service, secret, { allowedModes: [] });
     const rawBody = JSON.stringify({ qrCode: 'schoolhub:qr:v1:QR_1', scanMode: AndroidReaderMode.GERBANG });
     const headers = { ...signedRequest(secret, rawBody), signature: '0'.repeat(64) };
 
@@ -190,17 +208,15 @@ describe('DeviceSignatureService signature and nonce enforcement', () => {
   it('rejects replay and unavailable atomic nonce claims', async () => {
     const rawBody = JSON.stringify({ qrCode: 'schoolhub:qr:v1:QR_1', scanMode: AndroidReaderMode.GERBANG });
     const replayRedis = { setNxPx: jest.fn().mockResolvedValue(false) } as any;
-    const replayPrisma = { deviceReader: { findMany: jest.fn() } } as any;
-    const replayService = new DeviceSignatureService(replayPrisma, replayRedis);
+    const replayService = new DeviceSignatureService({ deviceReader: { findFirst: jest.fn(), findMany: jest.fn() } } as any, replayRedis);
     const replaySecret = replayService.generateReaderSecret();
-    replayPrisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', deviceId: 'android-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG], readerSecretCiphertext: replayService.encryptSecret(replaySecret) }]);
+    (replayService as any).prisma = readerPrisma(replayService, replaySecret);
     await expect(replayService.assertValidSignedReaderRequest({ method: 'POST', path: '/api/v1/attendance/qr-reader-scan', rawBody, expectedType: ReaderType.QR_ANDROID, headers: signedRequest(replaySecret, rawBody, 'nonce-replay') })).rejects.toBeInstanceOf(UnauthorizedException);
 
     const unavailableRedis = { setNxPx: jest.fn().mockResolvedValue(null) } as any;
-    const unavailablePrisma = { deviceReader: { findMany: jest.fn() } } as any;
-    const unavailableService = new DeviceSignatureService(unavailablePrisma, unavailableRedis);
+    const unavailableService = new DeviceSignatureService({ deviceReader: { findFirst: jest.fn(), findMany: jest.fn() } } as any, unavailableRedis);
     const unavailableSecret = unavailableService.generateReaderSecret();
-    unavailablePrisma.deviceReader.findMany.mockResolvedValue([{ id: 'reader-1', deviceId: 'android-1', status: DeviceReaderStatus.ACTIVE, type: ReaderType.QR_ANDROID, allowedModes: [AndroidReaderMode.GERBANG], readerSecretCiphertext: unavailableService.encryptSecret(unavailableSecret) }]);
+    (unavailableService as any).prisma = readerPrisma(unavailableService, unavailableSecret);
     await expect(unavailableService.assertValidSignedReaderRequest({ method: 'POST', path: '/api/v1/attendance/qr-reader-scan', rawBody, expectedType: ReaderType.QR_ANDROID, headers: signedRequest(unavailableSecret, rawBody, 'nonce-unavailable') })).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });

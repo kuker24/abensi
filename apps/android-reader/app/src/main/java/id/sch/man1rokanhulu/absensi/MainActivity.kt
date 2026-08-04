@@ -348,7 +348,9 @@ fun ReaderApp(
         if (route == Route.SPLASH) return@LaunchedEffect
         while (true) {
             connection = checkConnection()
-            delay(if (route == Route.SCANNER) 10_000 else 15_000)
+            // During continuous scanning, poll health less often so keep-alive slots
+            // stay available for qr-reader-scan (health is diagnostic, not the hot path).
+            delay(if (route == Route.SCANNER) 20_000 else 15_000)
         }
     }
 
@@ -365,7 +367,7 @@ fun ReaderApp(
         batteryUnrestricted = DutyModeSupport.isIgnoringBatteryOptimizations(context)
         sendReaderStatus("Scanner aktif · Mode Kerja")
         while (true) {
-            delay(30_000)
+            delay(45_000)
             sendReaderStatus("Scanner aktif · Mode Kerja")
         }
     }

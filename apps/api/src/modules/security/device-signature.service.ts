@@ -197,12 +197,24 @@ export class DeviceSignatureService {
       throw new BadRequestException('Body hash tidak cocok.');
     }
 
-    const readers = await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(deviceId), take: readerLookupLimit() });
-    const match = uniqueReaderMatch(readers, deviceId);
-    if (match.status !== 'matched') {
-      throw new ForbiddenException('Reader tidak aktif, dicabut, atau tidak ditemukan.');
+    // Prefer exact deviceId/id match first (production Android readers use stable deviceId like READER_GATE_PRAYER_01).
+    // Fall back to the broader candidate matcher only when exact lookup misses (legacy keyPrefix/apiKeyHash paths).
+    let reader =
+      (await this.prisma.deviceReader.findFirst({
+        where: {
+          OR: [{ deviceId }, { id: deviceId }],
+          status: DeviceReaderStatus.ACTIVE,
+          revokedAt: null
+        }
+      })) ?? null;
+    if (!reader) {
+      const readers = await this.prisma.deviceReader.findMany({ where: readerCandidateWhere(deviceId), take: readerLookupLimit() });
+      const match = uniqueReaderMatch(readers, deviceId);
+      if (match.status !== 'matched') {
+        throw new ForbiddenException('Reader tidak aktif, dicabut, atau tidak ditemukan.');
+      }
+      reader = match.reader;
     }
-    const reader = match.reader;
     if (reader.status !== DeviceReaderStatus.ACTIVE) {
       throw new ForbiddenException('Reader tidak aktif, dicabut, atau tidak ditemukan.');
     }

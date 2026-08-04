@@ -21,6 +21,8 @@ const APK_CONTENT_TYPE = 'application/vnd.android.package-archive';
 const DEFAULT_APK_MAX_BYTES = 150 * 1024 * 1024;
 const APK_LIFECYCLE_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 };
 const APK_PUBLISH_VALIDATION_TIMEOUT_MS = 10_000;
+/** Reader scan path calls version metadata on every request; keep a short in-process cache. */
+const ANDROID_READER_VERSION_CACHE_TTL_MS = Number(process.env.ANDROID_READER_VERSION_CACHE_TTL_MS || String(30_000));
 
 function apkStorageDir() {
   return process.env.ANDROID_APK_STORAGE_DIR || path.resolve(process.cwd(), 'uploads/android-apk-releases');
@@ -93,12 +95,30 @@ function storagePathForKey(storageKey: string) {
   return filePath;
 }
 
+type AndroidReaderVersionSnapshot = {
+  latestVersionName: string;
+  latestVersionCode: number;
+  minSupportedVersionCode: number;
+  downloadUrl?: string | null;
+  apkSha256?: string | null;
+  apkSizeBytes?: number | null;
+  releaseNotes?: string | null;
+  forceUpdate: boolean;
+};
+
 @Injectable()
 export class MobileAndroidService {
+  private versionCache: { expiresAt: number; value: AndroidReaderVersionSnapshot } | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly apkValidator: AndroidApkValidatorService
   ) {}
+
+  /** Drop cached reader version metadata after publish/unpublish/manual version edits. */
+  invalidateAndroidReaderVersionCache() {
+    this.versionCache = null;
+  }
 
   private toPublicRelease(release: AndroidApkRelease) {
     return {
@@ -123,7 +143,20 @@ export class MobileAndroidService {
     };
   }
 
-  async getAndroidReaderVersion() {
+  async getAndroidReaderVersion(): Promise<AndroidReaderVersionSnapshot> {
+    const now = Date.now();
+    if (this.versionCache && this.versionCache.expiresAt > now) {
+      return this.versionCache.value;
+    }
+
+    const value = await this.loadAndroidReaderVersion();
+    if (ANDROID_READER_VERSION_CACHE_TTL_MS > 0) {
+      this.versionCache = { expiresAt: now + ANDROID_READER_VERSION_CACHE_TTL_MS, value };
+    }
+    return value;
+  }
+
+  private async loadAndroidReaderVersion(): Promise<AndroidReaderVersionSnapshot> {
     const latestRelease = await this.prisma.androidApkRelease.findFirst({
       where: { isPublished: true },
       orderBy: { versionCode: 'desc' }
@@ -158,9 +191,9 @@ export class MobileAndroidService {
 
   async updateAndroidReaderVersion(payload: UpdateAndroidReaderVersionDto, actor: { sub: string; role: Role }) {
     if (payload.minSupportedVersionCode > payload.latestVersionCode) throw new BadRequestException('Minimum supported version tidak boleh lebih tinggi dari latest version.');
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const before = await tx.mobileAndroidReaderVersion.findUnique({ where: { id: 1 } });
-      const updated = await tx.mobileAndroidReaderVersion.upsert({
+      const next = await tx.mobileAndroidReaderVersion.upsert({
         where: { id: 1 },
         update: { ...payload, updatedById: actor.sub },
         create: { id: 1, ...payload, updatedById: actor.sub }
@@ -173,10 +206,12 @@ export class MobileAndroidService {
         resource: 'mobileAndroidReaderVersion',
         resourceId: '1',
         before: before as Prisma.InputJsonValue,
-        after: updated as unknown as Prisma.InputJsonValue
+        after: next as unknown as Prisma.InputJsonValue
       });
-      return updated;
+      return next;
     });
+    this.invalidateAndroidReaderVersionCache();
+    return updated;
   }
 
   async listApkReleases(pagination: PaginationQuery) {
@@ -339,6 +374,7 @@ export class MobileAndroidService {
       });
       return item;
     }, APK_LIFECYCLE_TRANSACTION_OPTIONS);
+    this.invalidateAndroidReaderVersionCache();
     return this.toPublicRelease(updated);
   }
 
@@ -358,6 +394,7 @@ export class MobileAndroidService {
       });
       return item;
     }, APK_LIFECYCLE_TRANSACTION_OPTIONS);
+    this.invalidateAndroidReaderVersionCache();
     return this.toPublicRelease(updated);
   }
 

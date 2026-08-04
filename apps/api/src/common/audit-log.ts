@@ -147,6 +147,15 @@ function assertActiveEpochCanAcceptNextEntry(state: AuditChainState | null, acti
   }
 }
 
+/**
+ * Hot-path audit append must stay fail-closed but O(1) relative to chain length.
+ * Full active-epoch recomputation is available via AUDIT_HOT_PATH_FULL_LINEAGE_VERIFY=true
+ * (or offline audit verification jobs). Default verifies tip + boundary markers only.
+ */
+function auditHotPathFullLineageVerifyEnabled() {
+  return process.env.AUDIT_HOT_PATH_FULL_LINEAGE_VERIFY === 'true';
+}
+
 async function assertPersistedActiveEpochLineage(client: AuditClient, state: AuditChainState | null, activeEpoch: AuditChainEpoch, epochs: AuditChainEpoch[]) {
   if (!client.auditEntry.findMany) {
     throw new Error('Audit active epoch cannot be verified. Audit writes are fail-closed until approved workflow is available.');
@@ -154,14 +163,18 @@ async function assertPersistedActiveEpochLineage(client: AuditClient, state: Aud
 
   const startSequence = epochStartSequence(activeEpoch);
   const stateSequence = stateLastSequence(state);
-  const activeEpochEntries = stateSequence >= startSequence
+  const isFreshEpochOne = activeEpoch.epochNumber === 1 && startSequence === 1n && stateSequence === 0n && !state?.lastHash && !state?.lastEntryId;
+  const fullLineage = auditHotPathFullLineageVerifyEnabled();
+
+  // Tip-only load for the common path: previous tip (+ optional boundary) instead of entire epoch.
+  const tipEntries = stateSequence >= startSequence
     ? await client.auditEntry.findMany({
-      where: { sequence: { gte: startSequence, lte: stateSequence } },
-      orderBy: { sequence: 'asc' }
+      where: { sequence: { gte: stateSequence, lte: stateSequence } },
+      orderBy: { sequence: 'asc' },
+      take: 1
     })
     : [];
-  const stateTip = activeEpochEntries.find((entry) => entry.sequence !== null && entry.sequence !== undefined && BigInt(entry.sequence) === stateSequence) ?? null;
-  const isFreshEpochOne = activeEpoch.epochNumber === 1 && startSequence === 1n && stateSequence === 0n && !state?.lastHash && !state?.lastEntryId;
+  const stateTip = tipEntries.find((entry) => entry.sequence !== null && entry.sequence !== undefined && BigInt(entry.sequence) === stateSequence) ?? null;
 
   let incident: AuditIntegrityIncidentForVerification | null = null;
   let historicalTip: Awaited<ReturnType<NonNullable<AuditClient['auditEntry']['findMany']>>>[number] | null = null;
@@ -199,6 +212,35 @@ async function assertPersistedActiveEpochLineage(client: AuditClient, state: Aud
     throw new Error(`Audit chain boundary metadata is invalid (${boundaryValidation.issueCodes.join(',')}). Audit writes are fail-closed until approved remediation.`);
   }
 
+  if (isFreshEpochOne) {
+    return;
+  }
+
+  // Always verify the tip entry cryptographically against state metadata (O(1)).
+  if (stateSequence >= startSequence) {
+    if (!stateTip || !stateTip.entryHash || stateTip.entryHash !== state?.lastHash || String(stateTip.id) !== String(state?.lastEntryId ?? '')) {
+      throw new Error('Audit chain active epoch cryptographic lineage is invalid (STATE_TIP_MISMATCH). Audit writes are fail-closed until approved remediation.');
+    }
+    if (stateTip.hashVersion !== 1 && stateTip.hashVersion !== null && stateTip.hashVersion !== undefined) {
+      throw new Error('Audit chain active epoch cryptographic lineage is invalid (UNSUPPORTED_HASH_VERSION). Audit writes are fail-closed until approved remediation.');
+    }
+    const recomputed = hashAuditEntry(stateTip.prevHash ?? null, stateTip.canonicalPayload ?? null);
+    if (recomputed !== stateTip.entryHash) {
+      throw new Error('Audit chain active epoch cryptographic lineage is invalid (TIP_HASH_MISMATCH). Audit writes are fail-closed until approved remediation.');
+    }
+  }
+
+  if (!fullLineage) {
+    return;
+  }
+
+  const activeEpochEntries = stateSequence >= startSequence
+    ? await client.auditEntry.findMany({
+      where: { sequence: { gte: startSequence, lte: stateSequence } },
+      orderBy: { sequence: 'asc' }
+    })
+    : [];
+
   const lineage = verifyActiveAuditEpochCryptographicLineage({
     entries: activeEpochEntries,
     state,
@@ -206,9 +248,6 @@ async function assertPersistedActiveEpochLineage(client: AuditClient, state: Aud
   });
   if (!lineage.ok) {
     throw new Error(`Audit chain active epoch cryptographic lineage is invalid (${lineage.issueCodes.join(',')}). Audit writes are fail-closed until approved remediation.`);
-  }
-  if (isFreshEpochOne && lineage.checked !== 0) {
-    throw new Error('Audit chain fresh epoch verification is inconsistent. Audit writes are fail-closed until approved remediation.');
   }
 }
 
