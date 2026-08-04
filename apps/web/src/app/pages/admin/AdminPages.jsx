@@ -1957,19 +1957,19 @@ export function SettingsPage({ notify }) {
   const setAttendanceFlag = (key, value) => setAttendanceForm({ ...attendanceForm, [key]: value });
   const locationFlags = [
     ['enforceSessionOpen', 'Wajib berada di area sekolah saat buka sesi', 'Guru membuka sesi dari area sekolah yang sudah ditentukan.'],
-    ['requireGateTapForOpen', 'Guru wajib scan gerbang sebelum buka sesi', 'Mencegah sesi dibuka sebelum guru hadir di sekolah.'],
+    ['requireGateTapForOpen', 'Catat scan gerbang saat buka sesi', 'Tidak mengunci buka sesi; jika belum scan, sesi tetap dibuka dan dicatat sebagai peringatan.'],
     ['allowPicketOverride', 'Guru piket boleh memberi pengecualian', 'Dipakai untuk kasus jaringan, izin, atau kondisi khusus.']
   ];
   const groupedRules = [
     ['Aturan Siswa', [
-      ['requireStudentGateInBeforeClass', 'Siswa wajib scan gerbang sebelum presensi kelas', 'Presensi kelas dikunci sampai siswa tercatat datang.'],
+      ['requireStudentGateInBeforeClass', 'Siswa wajib scan gerbang sebelum presensi kelas', 'Jika belum scan gerbang, presensi tetap bisa disimpan dan ditandai peringatan untuk dipantau.'],
       ['requireStudentDhuha', 'Siswa wajib scan Dhuha', 'Aktifkan jika sekolah mewajibkan scan ibadah Dhuha.'],
       ['requireStudentDzuhur', 'Siswa wajib scan Dzuhur', 'Aktifkan jika sekolah mewajibkan scan Dzuhur.'],
       ['requireStudentAsharForAfternoon', 'Siswa wajib scan Ashar sebelum pulang jika jadwal sampai sore', 'Berlaku untuk siswa dengan jadwal melewati batas sore.'],
-      ['requireStudentClassEligibility', 'Kunci presensi kelas jika syarat belum lengkap', 'Guru tidak bisa menandai hadir kelas sebelum syarat terpenuhi.']
+      ['requireStudentClassEligibility', 'Pantau syarat presensi kelas (peringatan, tidak mengunci)', 'Guru tetap bisa menandai hadir/telat; siswa yang belum lengkap syarat hanya ditandai peringatan.']
     ]],
     ['Aturan Guru', [
-      ['requireTeacherGateIn', 'Guru wajib scan gerbang masuk', 'Mencatat kedatangan guru sebelum aktivitas mengajar.'],
+      ['requireTeacherGateIn', 'Catat scan gerbang masuk guru', 'Jika belum scan, sesi tetap bisa dibuka; status HADIR/TELAT tetap dicatat dan audit menandai missing gate.'],
       ['requireTeacherGateOut', 'Guru wajib scan gerbang keluar', 'Mencatat kepulangan guru pukul 15:30–17:30 WIB.']
     ]],
     ['Aturan Staff/TU', [

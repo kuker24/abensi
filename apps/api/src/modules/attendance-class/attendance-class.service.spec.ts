@@ -1095,19 +1095,49 @@ describe('AttendanceClassService teacher check-in/out', () => {
     }));
   });
 
-  it('menolak guru tanpa scan gerbang ketika policy resmi mewajibkannya', async () => {
+  it('membuka sesi meski guru belum scan gerbang dan menandai missing_gate (soft-gate)', async () => {
     const { service, prisma, tx } = makeService(
       { status: SessionStatus.SCHEDULED },
       null,
-      { enforceSessionOpen: false, allowPicketOverride: true, requireGateTapForOpen: false },
+      { enforceSessionOpen: false, allowPicketOverride: true, requireGateTapForOpen: false, arrivalGraceMinutes: 15 },
       { requireTeacherGateIn: true }
     );
 
-    await expect(service.openSession('session-1', guru)).rejects.toThrow('Guru belum tap gerbang hari ini.');
+    await service.openSession('session-1', guru);
+
     expect(prisma.gateLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ userId: 'guru-1', direction: 'IN' })
     }));
-    expect(tx.session.updateMany).not.toHaveBeenCalled();
+    expect(tx.session.updateMany).toHaveBeenCalled();
+    expect(tx.teacherSessionPresence.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ status: TeacherSessionStatus.HADIR })
+    }));
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'teacher.session.checkin',
+        after: expect.objectContaining({ gateTapRequired: true, gateTapSatisfied: false })
+      })
+    }));
+    expect(tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'teacher.session.checkin.missing_gate' })
+    }));
+  });
+
+  it('menandai guru TELAT saat buka sesi lewat toleransi tanpa mengunci ajar', async () => {
+    const startsAt = new Date(Date.now() - 90 * 60 * 1000);
+    const { service, tx } = makeService(
+      { status: SessionStatus.SCHEDULED, startsAt },
+      null,
+      { enforceSessionOpen: false, allowPicketOverride: true, requireGateTapForOpen: false, arrivalGraceMinutes: 15 },
+      { requireTeacherGateIn: false }
+    );
+
+    await service.openSession('session-1', guru);
+
+    expect(tx.session.updateMany).toHaveBeenCalled();
+    expect(tx.teacherSessionPresence.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ status: TeacherSessionStatus.TELAT })
+    }));
   });
 
   it('membuka sesi setelah guru scan gerbang ketika policy resmi mewajibkannya', async () => {
@@ -1127,6 +1157,9 @@ describe('AttendanceClassService teacher check-in/out', () => {
         action: 'teacher.session.checkin',
         after: expect.objectContaining({ gateTapRequired: true, gateTapSatisfied: true })
       })
+    }));
+    expect(tx.auditEntry.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'teacher.session.checkin.missing_gate' })
     }));
   });
 

@@ -547,6 +547,8 @@ export class AttendanceClassService {
       });
     }
 
+    // Soft-gate: missing gate-in is marked/audited but never blocks teaching.
+    // Late check-in still becomes TELAT via teacherStatusForCheckIn + arrivalGraceMinutes.
     const requireGateTap = Boolean(attendancePolicy?.requireTeacherGateIn || policy?.requireGateTapForOpen);
     let gateTapSatisfied: boolean | null = requireGateTap ? false : null;
     if (requireGateTap) {
@@ -563,10 +565,7 @@ export class AttendanceClassService {
         }
       });
 
-      if (!gateTap) {
-        throw new ForbiddenException('Guru belum tap gerbang hari ini.');
-      }
-      gateTapSatisfied = true;
+      gateTapSatisfied = Boolean(gateTap);
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -655,6 +654,25 @@ export class AttendanceClassService {
           gateTapSatisfied
         }
       });
+      if (requireGateTap && gateTapSatisfied === false) {
+        await writeAudit(tx, {
+          actorId: actor.sub,
+          actorRole: actor.role as Role,
+          module: 'attendance',
+          action: 'teacher.session.checkin.missing_gate',
+          resource: 'session',
+          resourceId: sessionId,
+          after: {
+            sessionId,
+            teacherId: session.teacherId,
+            checkInAt,
+            status: teacherStatus,
+            gateTapRequired: true,
+            gateTapSatisfied: false,
+            message: 'Sesi dibuka tanpa scan gerbang masuk. Status kehadiran guru tetap dicatat (termasuk TELAT bila lewat toleransi).'
+          }
+        });
+      }
       await writeAudit(tx, {
         actorId: actor.sub,
         actorRole: actor.role as Role,
