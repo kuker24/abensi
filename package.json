@@ -65,7 +65,7 @@
     "ops:amnesty-open-flags": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/amnesty_open_flags.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^7.9.1",
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
