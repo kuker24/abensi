@@ -48,6 +48,14 @@ describe('typed route registry', () => {
     expect(canAccessRoute('/admin/master-data/id-card-generator', user('SISWA'))).toBe(false);
     expect(navItemsForUser(user('OPERATOR_IT')).map(([, path]) => path)).toContain('/admin/master-data/id-card-generator');
     expect(navItemsForUser(user('OPERATOR_IT')).map(([, path]) => path)).not.toContain('/admin/master-data');
+    // IT surface is devices/id-card/live — not schedule/picket/anomaly/sessions (caps + roles aligned)
+    const itNav = navItemsForUser(user('OPERATOR_IT')).map(([, path]) => path);
+    for (const path of ['/admin/schedule', '/admin/picket', '/admin/anomaly', '/admin/sessions']) {
+      expect(canAccessRoute(path, user('OPERATOR_IT'))).toBe(false);
+      expect(itNav).not.toContain(path);
+    }
+    expect(canAccessRoute('/admin/schedule', user('ADMIN_TU'))).toBe(true);
+    expect(canAccessRoute('/admin/picket', user('GURU_PIKET'))).toBe(true);
     expect(canAccessRoute('/admin/android-apk-update', user('ADMIN_TU'))).toBe(true);
     expect(canAccessRoute('/admin/android-apk-update', user('OPERATOR_IT'))).toBe(true);
     expect(canAccessRoute('/admin/android-apk-update', user('SISWA'))).toBe(false);

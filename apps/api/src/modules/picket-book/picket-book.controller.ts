@@ -50,7 +50,7 @@ export class PicketBookController {
   }
 
   @Delete(':id')
-  @Capabilities('reconciliation.resolve')
+  @Capabilities('reconciliation.escalate')
   deactivate(@Param('id') id: string, @Body() body: { reason?: string }, @CurrentUser() user: { sub: string; role: string }) {
     return this.service.deactivate(id, user, body?.reason);
   }
