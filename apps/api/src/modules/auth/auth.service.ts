@@ -8,9 +8,11 @@ import { writeAudit } from '../../common/audit-log';
 import bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-const MAX_FAILED_ATTEMPTS = Number(process.env.LOGIN_MAX_FAILED_ATTEMPTS ?? '5');
-const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS ?? String(10 * 60 * 1000));
-const LOGIN_LOCK_MS = Number(process.env.LOGIN_LOCK_MS ?? String(10 * 60 * 1000));
+// Elder-friendly defaults: allow more typos before lock; short window/lock (1 min).
+// Override via LOGIN_MAX_FAILED_ATTEMPTS / LOGIN_WINDOW_MS / LOGIN_LOCK_MS when needed.
+const MAX_FAILED_ATTEMPTS = Number(process.env.LOGIN_MAX_FAILED_ATTEMPTS ?? '20');
+const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS ?? String(60 * 1000));
+const LOGIN_LOCK_MS = Number(process.env.LOGIN_LOCK_MS ?? String(60 * 1000));
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS ?? String(8 * 60 * 60 * 1000));
 const REFRESH_TTL_MS = Number(process.env.REFRESH_TTL_MS ?? String(7 * 24 * 60 * 60 * 1000));
 
