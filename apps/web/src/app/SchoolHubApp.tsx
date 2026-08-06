@@ -570,20 +570,21 @@ function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: 
                   <button type="button" className="login-pw-toggle siab2-login-pw-toggle" onClick={() => setShowPw(!showPw)} aria-label={showPw ? 'Sembunyikan kata sandi' : 'Lihat kata sandi'}>{showPw ? <EyeOff size={14} /> : <Eye size={14} />}</button>
                 </div>
               </Field>
-              <label className="siab2-login-remember" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 4, fontSize: 13, lineHeight: 1.35 }}>
+              <label className="siab2-login-remember">
                 <input
                   type="checkbox"
+                  className="siab2-login-remember-input"
                   checked={rememberCredentials}
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setRememberCredentials(checked);
                     if (!checked) clearSavedLoginCredentials();
                   }}
-                  style={{ marginTop: 2 }}
+                  aria-describedby="siab2-login-remember-hint"
                 />
-                <span>
-                  Simpan nama akun &amp; kata sandi di perangkat ini
-                  <span style={{ display: 'block', opacity: 0.75, marginTop: 2 }}>
+                <span className="siab2-login-remember-copy">
+                  <span className="siab2-login-remember-title">Simpan nama akun &amp; kata sandi di perangkat ini</span>
+                  <span className="siab2-login-remember-hint" id="siab2-login-remember-hint">
                     Tersimpan hanya di browser ini. Jangan centang di perangkat bersama.
                   </span>
                 </span>

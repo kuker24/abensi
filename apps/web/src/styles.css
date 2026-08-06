@@ -3087,6 +3087,93 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline-offset: -2px;
 }
 
+/* Remember credentials: light-card checkbox must not inherit page color-scheme:dark
+   (native control otherwise paints as a solid black square on #f6f8f5). */
+.siab2-login-remember {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin-top: 2px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--siab2-login-muted);
+}
+
+.siab2-login-remember-input {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  background: transparent;
+  accent-color: var(--siab2-login-accent-2, #4E85BF);
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.siab2-login-remember-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.siab2-login-remember-title {
+  color: var(--siab2-login-text);
+  font-weight: 650;
+}
+
+.siab2-login-remember-hint {
+  color: var(--siab2-login-dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.siab2-login-remember:focus-within .siab2-login-remember-input {
+  outline: 2px solid rgba(137, 170, 204, 0.55);
+  outline-offset: 2px;
+}
+
+.siab2-login-page-scoped .siab2-login-remember {
+  color: #46564f;
+}
+
+.siab2-login-page-scoped .siab2-login-remember-input {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  border: 1.5px solid #9caaa3;
+  border-radius: 4px;
+  background: #fff;
+  accent-color: #176149;
+  /* Force light native chrome so box is visible on the cream card. */
+  color-scheme: light;
+}
+
+.siab2-login-page-scoped .siab2-login-remember-title {
+  color: #2d4038;
+  font-weight: 650;
+}
+
+.siab2-login-page-scoped .siab2-login-remember-hint {
+  color: #68766f;
+}
+
+.siab2-login-page-scoped .siab2-login-remember:focus-within .siab2-login-remember-input {
+  outline: 2px solid #4d826f;
+  outline-offset: 2px;
+}
+
 .siab2-login-page-scoped .siab2-login-form-fields + .btn.primary {
   min-height: 52px;
   margin-top: 22px;
