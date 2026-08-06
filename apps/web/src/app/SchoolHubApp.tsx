@@ -364,18 +364,66 @@ class AppErrorBoundary extends Component<{ children: ReactNode; resetKey: string
 
 type LoginScreenMode = 'default' | 'scoped';
 
+const SAVED_LOGIN_CREDENTIALS_KEY = 'siab2.login.savedCredentials';
+
+type SavedLoginCredentials = {
+  username: string;
+  password: string;
+  role: LoginRole;
+  savedAt: string;
+};
+
+function isLoginRole(value: unknown): value is LoginRole {
+  return value === 'guru' || value === 'admin' || value === 'pegawai' || value === 'siswa';
+}
+
+function readSavedLoginCredentials(): SavedLoginCredentials | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SAVED_LOGIN_CREDENTIALS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedLoginCredentials>;
+    if (!parsed || typeof parsed.username !== 'string' || typeof parsed.password !== 'string') return null;
+    const username = parsed.username.trim();
+    const password = parsed.password;
+    if (!username || !password) return null;
+    const role = isLoginRole(parsed.role) ? parsed.role : 'guru';
+    return {
+      username,
+      password,
+      role,
+      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date(0).toISOString()
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedLoginCredentials(payload: SavedLoginCredentials) {
+  window.localStorage.setItem(SAVED_LOGIN_CREDENTIALS_KEY, JSON.stringify(payload));
+}
+
+function clearSavedLoginCredentials() {
+  window.localStorage.removeItem(SAVED_LOGIN_CREDENTIALS_KEY);
+}
+
 function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: (selectedRole: LoginRole, username: string, password: string) => Promise<void>; showSso?: boolean; mode?: LoginScreenMode }) {
-  const [role, setRoleState] = useState<LoginRole>('guru');
-  const [id, setId] = useState(ROLE_PRESETS.guru.id);
-  const [pw, setPw] = useState('');
+  const savedCredentials = useMemo(() => readSavedLoginCredentials(), []);
+  const [role, setRoleState] = useState<LoginRole>(savedCredentials?.role ?? 'guru');
+  const [id, setId] = useState(savedCredentials?.username ?? ROLE_PRESETS.guru.id);
+  const [pw, setPw] = useState(savedCredentials?.password ?? '');
+  const [rememberCredentials, setRememberCredentials] = useState(Boolean(savedCredentials));
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const isScoped = mode === 'scoped';
   const setRole = (nextRole: LoginRole) => {
     setRoleState(nextRole);
-    setId(ROLE_PRESETS[nextRole].id);
-    setPw('');
+    // Keep saved username/password when user only switches area tab after restore.
+    if (!rememberCredentials) {
+      setId(ROLE_PRESETS[nextRole].id);
+      setPw('');
+    }
     setErr('');
   };
   const submit = async (event?: React.FormEvent<HTMLFormElement>) => {
@@ -383,8 +431,19 @@ function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: 
     if (!id || !pw) return setErr('Nama akun dan kata sandi wajib diisi.');
     setLoading(true);
     setErr('');
+    const username = id.trim();
     try {
-      await onLogin(role, id.trim(), pw);
+      await onLogin(role, username, pw);
+      if (rememberCredentials) {
+        writeSavedLoginCredentials({
+          username,
+          password: pw,
+          role,
+          savedAt: new Date().toISOString()
+        });
+      } else {
+        clearSavedLoginCredentials();
+      }
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Login gagal.');
     } finally {
@@ -503,14 +562,32 @@ function LoginScreen({ onLogin, showSso = false, mode = 'default' }: { onLogin: 
 
             <div className="siab2-login-form-fields">
               <Field label={ROLE_PRESETS[role].idLabel}>
-                <TextInput icon={<UserIcon size={14} />} value={id} placeholder="Masukkan nama akun" autoComplete="username" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setId(e.target.value)} aria-describedby={err ? 'login-error' : undefined} />
+                <TextInput icon={<UserIcon size={14} />} name="username" value={id} placeholder="Masukkan nama akun" autoComplete="username" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setId(e.target.value)} aria-describedby={err ? 'login-error' : undefined} />
               </Field>
               <Field label="Kata Sandi">
                 <div className="login-password-wrap siab2-login-password-wrap">
-                  <TextInput icon={<Lock size={14} />} type={showPw ? 'text' : 'password'} value={pw} placeholder="Masukkan kata sandi" autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPw(e.target.value)} aria-describedby={err ? 'login-error' : undefined} />
+                  <TextInput icon={<Lock size={14} />} name="password" type={showPw ? 'text' : 'password'} value={pw} placeholder="Masukkan kata sandi" autoComplete="current-password" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPw(e.target.value)} aria-describedby={err ? 'login-error' : undefined} />
                   <button type="button" className="login-pw-toggle siab2-login-pw-toggle" onClick={() => setShowPw(!showPw)} aria-label={showPw ? 'Sembunyikan kata sandi' : 'Lihat kata sandi'}>{showPw ? <EyeOff size={14} /> : <Eye size={14} />}</button>
                 </div>
               </Field>
+              <label className="siab2-login-remember" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 4, fontSize: 13, lineHeight: 1.35 }}>
+                <input
+                  type="checkbox"
+                  checked={rememberCredentials}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRememberCredentials(checked);
+                    if (!checked) clearSavedLoginCredentials();
+                  }}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  Simpan nama akun &amp; kata sandi di perangkat ini
+                  <span style={{ display: 'block', opacity: 0.75, marginTop: 2 }}>
+                    Tersimpan hanya di browser ini. Jangan centang di perangkat bersama.
+                  </span>
+                </span>
+              </label>
             </div>
 
             {err && <div className="inline-error siab2-login-error" id="login-error" role="alert"><AlertTriangle size={14} /> {err}</div>}
