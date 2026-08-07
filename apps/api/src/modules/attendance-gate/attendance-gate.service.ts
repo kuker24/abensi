@@ -105,6 +105,7 @@ function emergencyScopeForRole(role: Role) {
   if (role === Role.GURU_MAPEL || role === Role.GURU_PIKET) return 'includeTeachers' as const;
   if (role === Role.KEPALA_SEKOLAH) return 'includeLeadership' as const;
   if (role === Role.ADMIN_TU || role === Role.PEGAWAI || role === Role.OPERATOR_IT) return 'includeStaff' as const;
+  if (role === Role.SISWA) return 'includeStudents' as const;
   return null;
 }
 
@@ -212,8 +213,8 @@ export class AttendanceGateService {
 
   async activateEarlyCheckoutEmergency(payload: ActivateEarlyCheckoutEmergencyDto, actor: ScanActor, meta: RequestMeta = {}) {
     this.assertPrincipalEmergencyActor(actor);
-    if (!payload.includeTeachers && !payload.includeLeadership && !payload.includeStaff) {
-      throw new BadRequestException('Pilih minimal satu kelompok personel.');
+    if (!payload.includeTeachers && !payload.includeLeadership && !payload.includeStaff && !payload.includeStudents) {
+      throw new BadRequestException('Pilih minimal satu kelompok personel atau siswa.');
     }
     const reason = assertReasonQuality(payload.reason, 'Alasan mode darurat');
     const expiresAt = new Date(payload.expiresAt);
@@ -242,6 +243,7 @@ export class AttendanceGateService {
           includeTeachers: payload.includeTeachers,
           includeLeadership: payload.includeLeadership,
           includeStaff: payload.includeStaff,
+          includeStudents: payload.includeStudents,
           startsAt,
           expiresAt,
           activatedById: actor.sub
@@ -301,7 +303,7 @@ export class AttendanceGateService {
   }
 
   private async findActiveEarlyCheckoutEmergency(role: Role | undefined, at: Date) {
-    if (!role || role === Role.SISWA || role === Role.DEVELOPER) return null;
+    if (!role || role === Role.DEVELOPER) return null;
     const scope = emergencyScopeForRole(role);
     if (!scope) return null;
     return this.prisma.earlyCheckoutEmergency.findFirst({
@@ -1027,7 +1029,8 @@ export class AttendanceGateService {
   private async recordGateScan(userId: string, direction: GateDirection, scannedAt: Date, actor: ScanActor, options: RecordOptions, role?: Role) {
     const permission = await this.ensureGateScanAllowed(userId, direction, scannedAt, actor, role);
     let usedOverrideId = permission.usedOverrideId;
-    if (direction === GateDirection.OUT && role === Role.SISWA) {
+    // Mode Pulang Cepat + includeStudents: allow GATE_OUT without Ashar. Dhuha/Dzuhur never gate checkout.
+    if (direction === GateDirection.OUT && role === Role.SISWA && !permission.earlyCheckoutEmergencyId) {
       usedOverrideId = usedOverrideId ?? await this.ensureStudentAsharBeforeCheckout(userId, scannedAt, actor);
     }
     if (direction === GateDirection.OUT && role === Role.GURU_MAPEL) {

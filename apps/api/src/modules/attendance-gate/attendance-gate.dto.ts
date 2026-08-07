@@ -179,6 +179,9 @@ export class ActivateEarlyCheckoutEmergencyDto {
   @IsBoolean()
   includeStaff!: boolean;
 
+  @IsBoolean()
+  includeStudents!: boolean;
+
   @IsDateString()
   expiresAt!: string;
 

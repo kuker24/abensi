@@ -645,6 +645,7 @@ model EarlyCheckoutEmergency {
   includeTeachers   Boolean   @default(false)
   includeLeadership Boolean   @default(false)
   includeStaff      Boolean   @default(false)
+  includeStudents   Boolean   @default(false)
   startsAt          DateTime  @default(now())
   expiresAt         DateTime
   activatedById     String

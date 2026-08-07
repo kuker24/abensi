@@ -185,7 +185,7 @@ describe('Early checkout emergency', () => {
     fireEvent.click(screen.getByRole('button', { name: /Aktifkan Mode Pulang Cepat/i }));
 
     await waitFor(() => expect(requestBody).not.toBeNull());
-    expect(requestBody).toEqual(expect.objectContaining({ includeTeachers: true, includeLeadership: true, includeStaff: true, reason: 'Keluarga besar sekolah berduka hari ini.' }));
+    expect(requestBody).toEqual(expect.objectContaining({ includeTeachers: true, includeLeadership: true, includeStaff: true, includeStudents: true, reason: 'Keluarga besar sekolah berduka hari ini.' }));
     expect(requestBody.expiresAt).toMatch(/T14:30:00\+07:00$/);
   });
 });

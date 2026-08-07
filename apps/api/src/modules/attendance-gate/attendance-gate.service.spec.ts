@@ -105,7 +105,7 @@ describe('AttendanceGateService adaptive QR scan', () => {
     const prisma = makePrisma({ id: 'actor-1', active: true, role });
     const service = new AttendanceGateService(prisma);
 
-    await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(), reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, { sub: 'actor-1', role })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, includeStudents: false, expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(), reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, { sub: 'actor-1', role })).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.__tx.earlyCheckoutEmergency.create).not.toHaveBeenCalled();
   });
 
@@ -115,8 +115,8 @@ describe('AttendanceGateService adaptive QR scan', () => {
       const prisma = makePrisma({ id: principal.sub, active: true, role: principal.role });
       const service = new AttendanceGateService(prisma);
 
-      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: true, expiresAt: '2026-07-27T08:00:00.000Z', reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, principal)).resolves.toMatchObject({ message: 'Mode Pulang Cepat aktif.' });
-      expect(prisma.__tx.earlyCheckoutEmergency.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ includeTeachers: true, includeStaff: true, activatedById: principal.sub }) }));
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: true, includeStudents: true, expiresAt: '2026-07-27T08:00:00.000Z', reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, principal)).resolves.toMatchObject({ message: 'Mode Pulang Cepat aktif.' });
+      expect(prisma.__tx.earlyCheckoutEmergency.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ includeTeachers: true, includeStaff: true, includeStudents: true, activatedById: principal.sub }) }));
       expect(prisma.__tx.auditEntry.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'attendance.early_checkout_emergency.activated', actorRole: Role.KEPALA_SEKOLAH }) }));
     } finally {
       jest.useRealTimers();
@@ -136,7 +136,7 @@ describe('AttendanceGateService adaptive QR scan', () => {
       );
       const service = new AttendanceGateService(prisma);
 
-      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, expiresAt: '2026-07-27T08:00:00.000Z', reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, principal)).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, includeStudents: false, expiresAt: '2026-07-27T08:00:00.000Z', reason: 'Keadaan darurat sekolah yang sudah diverifikasi.' }, principal)).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.__tx.earlyCheckoutEmergency.create).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
@@ -150,8 +150,8 @@ describe('AttendanceGateService adaptive QR scan', () => {
       const service = new AttendanceGateService(prisma);
       const reason = 'Keadaan darurat sekolah yang sudah diverifikasi.';
 
-      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: false, includeLeadership: false, includeStaff: false, expiresAt: '2026-07-27T08:00:00.000Z', reason }, principal)).rejects.toBeInstanceOf(BadRequestException);
-      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, expiresAt: '2026-07-27T09:31:00.000Z', reason }, principal)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: false, includeLeadership: false, includeStaff: false, includeStudents: false, expiresAt: '2026-07-27T08:00:00.000Z', reason }, principal)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.activateEarlyCheckoutEmergency({ includeTeachers: true, includeLeadership: false, includeStaff: false, includeStudents: false, expiresAt: '2026-07-27T09:31:00.000Z', reason }, principal)).rejects.toBeInstanceOf(BadRequestException);
     } finally {
       jest.useRealTimers();
     }
@@ -359,6 +359,35 @@ describe('AttendanceGateService adaptive QR scan', () => {
     expect(prisma.__tx.gateLog.create).toHaveBeenCalled();
   });
 
+  it('mengizinkan siswa jadwal sore scan pulang tanpa Ashar saat Mode Pulang Cepat siswa aktif', async () => {
+    const prisma = makePrisma({ id: 'siswa-1', active: true, role: Role.SISWA });
+    withGateIn(prisma);
+    prisma.session.count.mockResolvedValueOnce(1);
+    prisma.earlyCheckoutEmergency.findFirst.mockResolvedValue({
+      id: 'emergency-siswa-1',
+      includeStudents: true,
+      startsAt: new Date(Date.now() - 60_000),
+      expiresAt: new Date(Date.now() + 60 * 60_000),
+      deactivatedAt: null
+    });
+    const service = new AttendanceGateService(prisma);
+
+    const result = await service.qrScan({ userId: 'siswa-1', readerType: ReaderType.GATE, direction: GateDirection.OUT, manualReason: 'Pulang cepat darurat untuk siswa.' }, admin);
+
+    expect(result.kind).toBe('GATE');
+    expect(prisma.prayerAttendanceLog.findUnique).not.toHaveBeenCalled();
+    expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ earlyCheckoutEmergencyId: 'emergency-siswa-1' }) }));
+  });
+
+  it('tetap menolak siswa tanpa scan datang saat Mode Pulang Cepat siswa aktif', async () => {
+    const prisma = makePrisma({ id: 'siswa-1', active: true, role: Role.SISWA });
+    prisma.earlyCheckoutEmergency.findFirst.mockResolvedValue({ id: 'emergency-siswa-1', includeStudents: true });
+    const service = new AttendanceGateService(prisma);
+
+    await expect(service.qrScan({ userId: 'siswa-1', readerType: ReaderType.GATE, direction: GateDirection.OUT, manualReason: 'Pulang cepat tanpa datang harus ditolak.' }, admin)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.__tx.gateLog.create).not.toHaveBeenCalled();
+  });
+
   it('override expired tidak berlaku untuk pulang tanpa Ashar', async () => {
     const prisma = makePrisma({ id: 'siswa-1', active: true, role: Role.SISWA });
     withGateIn(prisma);
@@ -557,6 +586,27 @@ describe('AttendanceGateService adaptive QR scan', () => {
 
       await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-emergency-out', '/api/v1/attendance/qr-reader-scan'))).resolves.toMatchObject({ action: 'Pulang' });
       expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ earlyCheckoutEmergencyId: 'emergency-1' }) }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('mengizinkan GATE_OUT siswa Android tanpa Ashar saat includeStudents aktif', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T06:00:00.000Z'));
+    try {
+      const user = { id: 'siswa-1', username: 'siswa1', fullName: 'Siswa Satu', active: true, role: Role.SISWA, enrollments: [] };
+      const { prisma, secret, service } = makeOfficialQrReader(user, [AndroidReaderMode.GATE_OUT]);
+      const firstIn = { id: 'gate-in-1', direction: GateDirection.IN, tappedAt: new Date(Date.now() - 2 * 60_000) };
+      const emergency = { id: 'emergency-siswa-1', includeStudents: true, startsAt: new Date(Date.now() - 60_000), expiresAt: new Date(Date.now() + 60 * 60_000), deactivatedAt: null };
+      prisma.gateLog.findMany.mockResolvedValue([firstIn]);
+      prisma.gateLog.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(firstIn);
+      prisma.session.count.mockResolvedValue(1);
+      prisma.earlyCheckoutEmergency.findFirst.mockResolvedValue(emergency);
+      const payload = { credentialType: 'QR' as const, qrCode: 'schoolhub:qr:v1:QR_SISWA', scanMode: AndroidReaderMode.GATE_OUT, appVersionCode: 1 };
+
+      await expect(service.qrReaderScan(payload, signedHeaders(secret, payload, 'nonce-emergency-siswa-out', '/api/v1/attendance/qr-reader-scan'))).resolves.toMatchObject({ action: 'Pulang' });
+      expect(prisma.prayerAttendanceLog.findUnique).not.toHaveBeenCalled();
+      expect(prisma.__tx.gateLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ earlyCheckoutEmergencyId: 'emergency-siswa-1' }) }));
     } finally {
       jest.useRealTimers();
     }
