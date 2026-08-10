@@ -378,7 +378,7 @@ describe('guru self-scoped recap', () => {
       }
       return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
     }));
-    const clickSpy = vi.spyOn(document.createElement('a').constructor.prototype, 'click').mockImplementation(() => {});
+    vi.spyOn(document.createElement('a').constructor.prototype, 'click').mockImplementation(() => {});
     render(<TeacherRecapPage />);
 
     fireEvent.change(screen.getByLabelText('Format export kelas saya'), { target: { value: 'pdf' } });
@@ -391,7 +391,7 @@ describe('guru self-scoped recap', () => {
     expect(exportUrl).toContain('from=');
     expect(exportUrl).toContain('to=');
     expect(exportUrl).not.toContain('teacherId');
-    expect(clickSpy).toHaveBeenCalled();
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
   });
 });
 
