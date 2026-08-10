@@ -70,7 +70,7 @@
   },
   "devDependencies": {
     "@cyclonedx/cyclonedx-npm": "^6.0.0",
-    "prisma": "^5.22.0",
+    "prisma": "^7.9.1",
     "ts-node": "10.9.2",
     "typescript": "5.7.3"
   },
