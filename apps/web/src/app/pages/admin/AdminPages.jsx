@@ -192,7 +192,7 @@ export function AccountSecurityPage({ notify }) {
           setSearchError(error.message || String(error));
         });
     }, 250);
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
   const selectSearchHit = (user) => {
@@ -2266,7 +2266,7 @@ export function PicketBookPage({ notify }) {
           setStudentSearchError(error.message || String(error));
         });
     }, 250);
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [studentQuery, selectedStudent]);
 
   function clearForm() {

@@ -575,11 +575,12 @@ test.describe('SIAB2 PRD v2.2 flows', () => {
 
     await page.goto('/admin/picket');
     await expect(page.getByRole('heading', { name: 'Catatan Piket' })).toBeVisible();
-    await page.locator('form input').first().fill('Gerbang ramai');
-    await page.locator('form textarea').first().fill('Antrian gerbang ramai tetapi tertib.');
+    await page.getByLabel('Judul kejadian').fill('Gerbang ramai');
+    await page.getByLabel('Catatan', { exact: true }).fill('Antrian gerbang ramai tetapi tertib.');
     await page.getByRole('button', { name: /Simpan/ }).click();
-    await expect(page.getByText('Gerbang ramai')).toBeVisible();
-    await page.getByRole('button', { name: 'Hapus' }).click();
+    const createdRow = page.locator('tbody tr').filter({ hasText: 'Gerbang ramai' });
+    await expect(createdRow).toHaveCount(1);
+    await createdRow.getByRole('button', { name: 'Hapus' }).click();
     await page.getByRole('button', { name: 'Lanjutkan' }).click();
     await expect(page.getByText('Catatan piket dinonaktifkan.')).toBeVisible();
   });

@@ -1311,9 +1311,9 @@ model PicketNote {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  student   User?  @relation("PicketNoteStudent", fields: [studentId], references: [id], onDelete: SetNull)
-  createdBy User   @relation("PicketNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy User?  @relation("PicketNoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  student   User? @relation("PicketNoteStudent", fields: [studentId], references: [id], onDelete: SetNull)
+  createdBy User  @relation("PicketNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User? @relation("PicketNoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([date])
   @@index([category])
