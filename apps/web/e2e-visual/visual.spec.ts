@@ -96,14 +96,36 @@ async function waitForVisualContent(page: Page, name: string) {
   }
 }
 
+async function waitForStablePageHeight(page: Page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  });
+
+  let previousHeight = 0;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const height = await page.evaluate(() => Math.max(
+      document.documentElement.scrollHeight,
+      document.body?.scrollHeight || 0
+    ));
+    if (height > 0 && height === previousHeight) return;
+    previousHeight = height;
+    await page.waitForTimeout(100);
+  }
+}
+
 async function expectStableScreenshot(page: Page, name: string) {
   await waitForVisualContent(page, name);
+  await waitForStablePageHeight(page);
   await expect(page).toHaveScreenshot(`${name}.png`, {
     fullPage: true,
     animations: 'disabled',
     caret: 'hide',
     maxDiffPixelRatio: 0.005,
-    threshold: 0.2
+    threshold: 0.2,
+    timeout: 10_000
   });
 }
 
@@ -172,6 +194,8 @@ test('topbar-zero-notifications matches committed visual baseline', async ({ pag
   await page.route('**/api/v1/notifications**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...paginated([]), unreadCount: 0 }) }));
   await seedUser(page, { id: 'admin-1', username: 'admin.tu', fullName: 'Admin TU', role: 'ADMIN_TU' });
   await page.goto('/admin/master-data?tab=users');
+  await expect(page.locator('#main-content')).toBeVisible();
+  await expect(page.getByText('admin.tu')).toBeVisible();
   await expect(page.locator('.notif-badge')).toHaveCount(0);
   await expect(page.locator('.notif-dot')).toHaveCount(0);
   await expectStableScreenshot(page, 'topbar-zero-notifications');
