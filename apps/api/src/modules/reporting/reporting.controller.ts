@@ -289,6 +289,35 @@ export class ReportingController {
     return this.reportingService.teacherMonthly(pagination, { month, teacherId });
   }
 
+
+  @Get('student-monthly-attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  studentMonthlyAttendance(
+    @Query('month') month?: string,
+    @Query('classId') classId?: string,
+    @Query('studentId') studentId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.studentMonthlyAttendance(pagination, { month, classId, studentId });
+  }
+
+  @Get('staff-monthly-attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
+  @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)
+  @Capabilities('reports.school.read')
+  staffMonthlyAttendance(
+    @Query('month') month?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pagination = parsePagination({ page, limit, defaultLimit: 50, maxLimit: 500 });
+    return this.reportingService.staffMonthlyAttendance(pagination, { month });
+  }
+
   @Get('staff-gate-attendance')
   @UseGuards(JwtAuthGuard, RolesGuard, CapabilitiesGuard)
   @Roles(Role.ADMIN_TU, Role.KEPALA_SEKOLAH, Role.DEVELOPER)

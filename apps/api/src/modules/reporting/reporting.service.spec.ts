@@ -6,6 +6,7 @@ const businessDate = new Date('2026-06-18T17:00:00.000Z');
 const student = { id: 'siswa-1', fullName: 'Siswa Satu', username: 'siswa1' };
 const enrollment = {
   id: 'enroll-1', classId: 'class-1', studentId: student.id, active: true, administrativeStatus: 'ACTIVE',
+  effectiveFrom: new Date('2026-06-01T00:00:00.000Z'), effectiveTo: new Date('2026-06-30T00:00:00.000Z'), administrativeStatusChangedAt: null,
   schoolClass: { id: 'class-1', code: 'X-A', name: 'Kelas X A' },
   student
 };
@@ -327,5 +328,106 @@ describe('ReportingService school personnel gate attendance', () => {
         }
       })
     }));
+  });
+});
+
+
+describe('ReportingService monthly attendance summaries', () => {
+  it('summarizes complete student evidence into one row without inventing empty calendar days', async () => {
+    const { service } = makeService({
+      gateIn: true,
+      gateOut: true,
+      classStatus: StudentAttendanceStatus.HADIR,
+      prayers: [PrayerType.DHUHA, PrayerType.DZUHUR]
+    });
+
+    const result = await service.studentMonthlyAttendance(recapPagination, { month: '2026-06' });
+
+    expect(result.month).toBe('2026-06');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      studentId: student.id,
+      assessedDayCount: 1,
+      completeDayCount: 1,
+      completionPercent: 100,
+      missingArrivalDayCount: 0,
+      missingDepartureDayCount: 0,
+      missingClassAttendanceDayCount: 0,
+      missingPrayerDayCount: 0,
+      gateArrivalDayCount: 1,
+      gateDepartureDayCount: 1,
+      requiredPrayerCount: 2,
+      completedPrayerCount: 2,
+      counters: expect.objectContaining({ HADIR: 1 })
+    });
+  });
+
+  it('does not mark a gate-only day as complete without class evidence', async () => {
+    const { service } = makeService({
+      gateIn: true,
+      gateOut: true,
+      classStatus: null,
+      prayers: [PrayerType.DHUHA, PrayerType.DZUHUR]
+    });
+    (service as any).prisma.session.findMany.mockResolvedValue([]);
+
+    const result = await service.studentMonthlyAttendance(recapPagination, { month: '2026-06' });
+
+    expect(result.items[0]).toMatchObject({
+      assessedDayCount: 1,
+      completeDayCount: 0,
+      missingClassAttendanceDayCount: 1,
+      completionPercent: 0
+    });
+  });
+
+  it('keeps defaulted class rows separate in the monthly student summary', async () => {
+    const { service } = makeService({
+      gateIn: true,
+      gateOut: true,
+      classStatus: StudentAttendanceStatus.ALPA,
+      classReviewState: AttendanceReviewState.DEFAULTED,
+      prayers: [PrayerType.DHUHA, PrayerType.DZUHUR]
+    });
+
+    const result = await service.studentMonthlyAttendance(recapPagination, { month: '2026-06' });
+
+    expect(result.items[0]).toMatchObject({
+      assessedDayCount: 1,
+      completeDayCount: 0,
+      missingClassAttendanceDayCount: 1,
+      defaultedAttendanceCount: 1,
+      counters: expect.objectContaining({ ALPA: 0 })
+    });
+  });
+
+  it('summarizes active personnel and keeps zero-scan people visible', async () => {
+    const businessDay = new Date('2026-06-19T00:00:00.000Z');
+    const prisma = {
+      user: { findMany: jest.fn().mockResolvedValue([
+        { id: 'principal-1', fullName: 'Kepala Madrasah', username: 'kepala', role: Role.KEPALA_SEKOLAH },
+        { id: 'staff-1', fullName: 'Staf TU', username: 'staff', role: Role.PEGAWAI }
+      ]) },
+      gateLog: { findMany: jest.fn().mockResolvedValue([
+        { userId: 'principal-1', direction: GateDirection.IN, businessDate: businessDay, tappedAt: new Date('2026-06-19T00:00:00.000Z') },
+        { userId: 'principal-1', direction: GateDirection.OUT, businessDate: businessDay, tappedAt: new Date('2026-06-19T08:00:00.000Z') }
+      ]) }
+    } as any;
+    const service = new ReportingService(prisma, {} as any);
+
+    const result = await service.staffMonthlyAttendance(recapPagination, { month: '2026-06' });
+
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ userId: 'principal-1', scannedDayCount: 1, completeDayCount: 1, missingDepartureDayCount: 0 }),
+      expect.objectContaining({ userId: 'staff-1', scannedDayCount: 0, completeDayCount: 0, firstScanAt: null, lastScanAt: null })
+    ]));
+    expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { role: { in: expect.arrayContaining([Role.KEPALA_SEKOLAH, Role.PEGAWAI]) }, active: true }
+    }));
+  });
+
+  it('rejects malformed monthly periods', async () => {
+    const { service } = makeService();
+    await expect(service.studentMonthlyAttendance(recapPagination, { month: '2026-13' })).rejects.toThrow('Nilai month tidak valid.');
   });
 });

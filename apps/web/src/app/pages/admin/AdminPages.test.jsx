@@ -766,6 +766,64 @@ describe('official report download UI', () => {
   });
 });
 
+
+describe('monthly attendance report UI', () => {
+  function installAdminReportFetch() {
+    const storedUser = JSON.stringify({ id: 'admin-1', role: 'ADMIN_TU' });
+    const localStorageMock = { getItem: vi.fn((key) => key === 'schoolhub_user' ? storedUser : null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn() };
+    Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true });
+    Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, configurable: true });
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:monthly-report'), revokeObjectURL: vi.fn() });
+    vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/reports/export')) {
+        return new Response('PK workbook', {
+          status: 200,
+          headers: {
+            'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'content-disposition': 'attachment; filename="rekap-bulanan.xlsx"'
+          }
+        });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('uses one month selector and month-only paths for student monthly attendance', async () => {
+    const fetchMock = installAdminReportFetch();
+    render(<ReportsPage notify={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Pilih jenis laporan'), { target: { value: 'student-monthly-attendance' } });
+    const monthInput = await screen.findByLabelText('Bulan laporan');
+    fireEvent.change(monthInput, { target: { value: '2026-06' } });
+
+    expect(screen.queryByLabelText('Tanggal awal laporan')).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/reports/student-monthly-attendance?month=2026-06'), expect.any(Object)));
+
+    fireEvent.click(screen.getByRole('button', { name: /Unduh Laporan/i }));
+    await waitFor(() => {
+      const exportCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/reports/export'));
+      const url = String(exportCall?.[0]);
+      expect(url).toContain('reportType=student_monthly_attendance');
+      expect(url).toContain('month=2026-06');
+      expect(url).not.toContain('from=');
+      expect(url).not.toContain('to=');
+    });
+    expect(screen.getByText(/Periode Juni 2026/i)).toBeInTheDocument();
+  });
+
+  it('builds month-only export paths for staff monthly attendance', () => {
+    const path = buildOfficialReportExportPath('staff-monthly-attendance', 'pdf', { month: '2026-07', from: '2026-07-01', to: '2026-07-31' });
+    expect(path).toContain('reportType=staff_monthly_attendance');
+    expect(path).toContain('month=2026-07');
+    expect(path).not.toContain('from=');
+    expect(path).not.toContain('to=');
+  });
+});
+
 const waveBClass = { id: 'class-1', code: 'X-1', name: 'X IPA 1' };
 const waveBSubject = { id: 'subject-1', code: 'MTK', name: 'Matematika' };
 const waveBTeacher = { id: 'teacher-1', fullName: 'Budi Guru', role: 'GURU_MAPEL', active: true };

@@ -2044,6 +2044,8 @@ const REPORT_EXPORT_TYPES = {
   'recap/subjects': 'recap_subjects',
   'recap/teachers': 'recap_teachers',
   'teacher-monthly': 'teacher_monthly',
+  'student-monthly-attendance': 'student_monthly_attendance',
+  'staff-monthly-attendance': 'staff_monthly_attendance',
   'staff-gate-attendance': 'staff_gate_attendance',
   'teacher-session-activity': 'teacher_session_activity',
   'student-prayer-attendance': 'student_prayer_attendance',
@@ -2076,6 +2078,20 @@ export function formatReportPeriod(from, to) {
   return fromLabel === toLabel ? fromLabel : `${fromLabel} sampai ${toLabel}`;
 }
 
+const MONTHLY_REPORT_TYPES = new Set(['teacher-monthly', 'student-monthly-attendance', 'staff-monthly-attendance']);
+
+const REPORT_MONTH_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC'
+});
+
+function formatReportMonth(value) {
+  const [year, month] = String(value || '').split('-').map(Number);
+  if (!year || !month) return value || '—';
+  return REPORT_MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
 function monthFromDate(value) {
   return /^\d{4}-\d{2}/.test(String(value || '')) ? String(value).slice(0, 7) : today().slice(0, 7);
 }
@@ -2085,7 +2101,7 @@ export function buildOfficialReportExportPath(type, format, filters = {}) {
     reportType: REPORT_EXPORT_TYPES[type] || type.replace('/', '_'),
     format
   };
-  if (type === 'teacher-monthly') {
+  if (MONTHLY_REPORT_TYPES.has(type)) {
     params.month = filters.month || monthFromDate(filters.from);
   } else {
     params.from = filters.from;
@@ -2098,7 +2114,7 @@ export function buildOfficialReportExportPath(type, format, filters = {}) {
 }
 
 function buildReportPreviewPath(type, filters = {}) {
-  if (type === 'teacher-monthly') {
+  if (MONTHLY_REPORT_TYPES.has(type)) {
     return `/reports/${type}${qs({ month: filters.month || monthFromDate(filters.from), page: 1, limit: 100 })}`;
   }
   const dailyCompletenessTypes = new Set(['student-daily-completeness', 'missing-arrival-scan', 'missing-departure-scan', 'class-present-no-gate-scan', 'gate-scan-no-class-attendance']);
@@ -2115,15 +2131,22 @@ export function ReportsPage({ notify }) {
   const [format, setFormat] = useState('xlsx');
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
-  const previewPath = buildReportPreviewPath(type, { from, to });
+  const [month, setMonth] = useState(monthFromDate(today()));
+  const monthly = MONTHLY_REPORT_TYPES.has(type);
+  const filters = monthly ? { month } : { from, to };
+  const previewPath = buildReportPreviewPath(type, filters);
   const state = useRemote(() => apiFetch(previewPath), [previewPath]);
   const [exporting, setExporting] = useState(false);
   const canExport = canExportSchoolReports();
-  const periodLabel = formatReportPeriod(from, to);
+  const periodLabel = monthly ? formatReportMonth(month) : formatReportPeriod(from, to);
   async function exportNow() {
+    if (monthly && !/^\d{4}-\d{2}$/.test(month)) {
+      notify('Pilih bulan laporan terlebih dahulu.', 'bad');
+      return;
+    }
     setExporting(true);
     try {
-      await apiDownload(buildOfficialReportExportPath(type, format, { from, to }));
+      await apiDownload(buildOfficialReportExportPath(type, format, filters));
       notify('Laporan resmi berhasil diunduh.');
     } catch {
       notify('Laporan belum bisa diunduh. Coba persempit periode atau hubungi admin.', 'bad');
@@ -2131,7 +2154,8 @@ export function ReportsPage({ notify }) {
       setExporting(false);
     }
   }
-  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub={canExport ? 'Pilih jenis laporan, tentukan tanggal, lalu cetak atau unduh dokumen resmi.' : 'Pilih jenis laporan dan tanggal untuk pratinjau baca saja.'} actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="staff-gate-attendance">Kepala/Staf Datang-Pulang</option><option value="teacher-session-activity">Guru Masuk Mengajar</option><option value="student-daily-completeness">Rekap Kehadiran Lengkap Siswa</option><option value="missing-arrival-scan">Belum Scan Datang</option><option value="missing-departure-scan">Belum Scan Pulang</option><option value="class-present-no-gate-scan">Hadir Kelas Tanpa Scan Gerbang</option><option value="gate-scan-no-class-attendance">Scan Gerbang Tanpa Absensi Kelas</option><option value="student-prayer-attendance">Sholat Siswa</option><option value="student-worship-recap">Rekap Ibadah Siswa</option><option value="prayer-recap">Rekap Sholat Siswa</option><option value="audit-coverage">Cek Cakupan</option></SelectInput><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>{canExport && <SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput>}<Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn>{canExport && <Btn variant="primary" loading={exporting} disabled={exporting} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn>}</>} /><StepGuide title="Cara membuat laporan" steps={canExport ? ['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.'] : ['Pilih jenis laporan.', 'Pilih tanggal awal dan akhir.', 'Lihat pratinjau baca saja.', 'Gunakan Cetak Pratinjau bila perlu.', 'Minta Admin/TU jika membutuhkan file resmi.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
+  const guidePeriod = monthly ? 'Pilih bulan laporan.' : 'Pilih tanggal awal dan akhir.';
+  return <div className="content"><PageHead eyebrow="LAPORAN" title="Laporan Sekolah" sub={canExport ? 'Pilih jenis laporan dan periode, lalu cetak atau unduh dokumen resmi.' : 'Pilih jenis laporan dan periode untuk pratinjau baca saja.'} actions={<><SelectInput wrapperClassName="select-report-type" aria-label="Pilih jenis laporan" value={type} onChange={(e) => setType(e.target.value)}><option value="recap/classes">Laporan Kelas</option><option value="recap/students">Laporan Siswa</option><option value="recap/subjects">Laporan Mapel</option><option value="recap/teachers">Laporan Guru</option><option value="teacher-monthly">Bulanan Guru</option><option value="student-monthly-attendance">Rekap Bulanan Kehadiran Siswa</option><option value="staff-monthly-attendance">Rekap Bulanan Kepala/Staf</option><option value="staff-gate-attendance">Kepala/Staf Datang-Pulang Harian</option><option value="teacher-session-activity">Guru Masuk Mengajar</option><option value="student-daily-completeness">Rekap Kehadiran Lengkap Siswa Harian</option><option value="missing-arrival-scan">Belum Scan Datang</option><option value="missing-departure-scan">Belum Scan Pulang</option><option value="class-present-no-gate-scan">Hadir Kelas Tanpa Scan Gerbang</option><option value="gate-scan-no-class-attendance">Scan Gerbang Tanpa Absensi Kelas</option><option value="student-prayer-attendance">Sholat Siswa</option><option value="student-worship-recap">Rekap Ibadah Siswa</option><option value="prayer-recap">Rekap Sholat Siswa</option><option value="audit-coverage">Cek Cakupan</option></SelectInput>{monthly ? <label className="input compact"><input aria-label="Bulan laporan" type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></label> : <><label className="input compact"><input aria-label="Tanggal awal laporan" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="input compact"><input aria-label="Tanggal akhir laporan" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></>}{canExport && <SelectInput wrapperClassName="select-report-format" aria-label="Pilih format ekspor" value={format} onChange={(e) => setFormat(e.target.value)}>{REPORT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectInput>}<Btn onClick={() => window.print()}><FileText size={14} /> Cetak Pratinjau / Cetak</Btn>{canExport && <Btn variant="primary" loading={exporting} disabled={exporting || (monthly && !month)} onClick={exportNow}><Download size={14} /> {exporting ? 'Mengunduh...' : 'Unduh Laporan'}</Btn>}</>} /><StepGuide title="Cara membuat laporan" steps={canExport ? ['Pilih jenis laporan.', guidePeriod, 'Lihat pratinjau.', 'Pilih Excel Resmi (.xlsx), PDF Resmi (.pdf), Word Resmi (.docx), atau CSV Data (.csv).', 'Klik Unduh Laporan untuk mengambil dokumen resmi dari server.'] : ['Pilih jenis laporan.', guidePeriod, 'Lihat pratinjau baca saja.', 'Gunakan Cetak Pratinjau bila perlu.', 'Minta Admin/TU jika membutuhkan file resmi.']} /><div className="print-letterhead"><img src="/logoman1.jpeg" alt="Logo MAN 1 Rokan Hulu" /><div><b>{BRAND.institution}</b><span>{BRAND.fullName} · Periode {periodLabel}</span></div></div><div className="grid g-2"><Card title="Grafik ringkas" sub="Ditampilkan jika laporan memiliki angka yang bisa dibandingkan."><HorizontalBarList data={state.data} /></Card><Card title="Pratinjau Laporan"><GenericTableState state={state} /></Card></div><div className="print-signature"><div>Mengetahui,<br />Kepala Madrasah</div><div>Petugas,<br />Admin/TU</div></div></div>;
 }
 
 const REPORT_PREVIEW_LABELS = {
@@ -2145,13 +2169,26 @@ const REPORT_PREVIEW_LABELS = {
   prayerAttendanceLabel: 'Sholat',
   finalStatus: 'Status akhir',
   finalStatusLabel: 'Status akhir',
+  assessedDayCount: 'Hari dinilai',
+  completeDayCount: 'Hari lengkap',
+  completionPercent: 'Kelengkapan (%)',
+  missingArrivalDayCount: 'Belum scan datang',
+  missingDepartureDayCount: 'Belum scan pulang',
+  missingClassAttendanceDayCount: 'Belum absen kelas',
+  missingPrayerDayCount: 'Belum scan sholat',
+  needsVerificationDayCount: 'Perlu verifikasi',
+  scannedDayCount: 'Hari ada scan',
+  arrivalDayCount: 'Hari scan datang',
+  departureDayCount: 'Hari scan pulang',
+  firstScanAt: 'Scan pertama',
+  lastScanAt: 'Scan terakhir',
   note: 'Keterangan'
 };
 
 function reportPreviewValue(row, key) {
   const value = row[key];
   if (key === 'finalStatus') return friendlyDailyStatus(value);
-  if (key === 'gateArrivalAt' || key === 'gateDepartureAt') return value ? formatDateTime(value) : '—';
+  if (key === 'gateArrivalAt' || key === 'gateDepartureAt' || key === 'firstScanAt' || key === 'lastScanAt') return value ? formatDateTime(value) : '—';
   if (Array.isArray(value)) return value.map((item) => statusLabel(item)).join(', ');
   if (typeof value === 'object' && value !== null) return JSON.stringify(value);
   return value !== undefined && value !== null ? String(value) : '—';

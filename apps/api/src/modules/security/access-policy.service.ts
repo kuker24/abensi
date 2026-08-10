@@ -6,6 +6,7 @@ export type PolicyActor = { sub: string; role: Role | string };
 
 const SCHOOL_REPORT_TYPES = new Set([
   'recap_students', 'recap_subjects', 'recap_teachers', 'teacher_monthly',
+  'student_monthly_attendance', 'staff_monthly_attendance',
   'staff_gate_attendance', 'teacher_session_activity', 'student_prayer_attendance',
   'student_worship_recap', 'student_daily_complete_attendance', 'missing_arrival_scan',
   'missing_departure_scan', 'class_present_no_gate_scan', 'gate_scan_no_class_attendance',
