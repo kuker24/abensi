@@ -381,7 +381,7 @@ async function buildXlsx(model: ReportDocumentModel): Promise<Buffer> {
   worksheet.getCell(signatureRow, 1).value = 'Mengetahui,\nKepala Madrasah\n\n\n________________________';
   worksheet.getCell(signatureRow, 1).alignment = { wrapText: true, vertical: 'top' };
   worksheet.mergeCells(signatureRow, Math.max(3, Math.floor(columns.length / 2) + 1), signatureRow, Math.max(4, columns.length));
-  worksheet.getCell(signatureRow, Math.max(3, Math.floor(columns.length / 2) + 1)).value = 'Petugas,\nAdmin/TU\n\n\n________________________';
+  worksheet.getCell(signatureRow, Math.max(3, Math.floor(columns.length / 2) + 1)).value = 'Kepala Tata Usaha\n\n\n\n________________________';
   worksheet.getCell(signatureRow, Math.max(3, Math.floor(columns.length / 2) + 1)).alignment = { wrapText: true, vertical: 'top' };
   worksheet.getRow(signatureRow).height = 80;
 
@@ -505,7 +505,7 @@ async function buildPdf(model: ReportDocumentModel): Promise<Buffer> {
     const signWidth = (tableWidth - 80) / 2;
     const signY = doc.y + 8;
     doc.text('Mengetahui,\nKepala Madrasah\n\n\n________________________', doc.page.margins.left + 40, signY, { width: signWidth, align: 'center' });
-    doc.text('Petugas,\nAdmin/TU\n\n\n________________________', doc.page.margins.left + 40 + signWidth + 80, signY, { width: signWidth, align: 'center' });
+    doc.text('Kepala Tata Usaha\n\n\n\n________________________', doc.page.margins.left + 40 + signWidth + 80, signY, { width: signWidth, align: 'center' });
 
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i += 1) {
@@ -584,7 +584,7 @@ async function buildDocx(model: ReportDocumentModel): Promise<Buffer> {
       columnWidths: [DOCX_CONTENT_WIDTH / 2, DOCX_CONTENT_WIDTH / 2],
       rows: [new TableRow({ children: [
         cell('Mengetahui,\nKepala Madrasah\n\n\n________________________', { width: DOCX_CONTENT_WIDTH / 2 }),
-        cell('Petugas,\nAdmin/TU\n\n\n________________________', { width: DOCX_CONTENT_WIDTH / 2 })
+        cell('Kepala Tata Usaha\n\n\n\n________________________', { width: DOCX_CONTENT_WIDTH / 2 })
       ] })]
     })
   ];
