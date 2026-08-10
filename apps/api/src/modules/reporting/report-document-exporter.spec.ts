@@ -45,6 +45,10 @@ function rowNumberContaining(worksheet: ExcelJS.Worksheet, expected: string): nu
   throw new Error(`Expected worksheet row containing ${expected}`);
 }
 
+function pdfPageCount(buffer: Buffer): number {
+  return buffer.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+}
+
 function formulaInjectionModel(): ReportDocumentModel {
   const model = fixtureModel();
   model.columns = [
@@ -80,6 +84,15 @@ describe('report document exporter', () => {
     expect(rendered.extension).toBe(format);
     expect(rendered.buffer.length).toBeGreaterThan(100);
     expect(rendered.buffer.toString('utf8', 0, Math.min(rendered.buffer.length, 32))).toContain(magic);
+  });
+
+  it('does not append blank pages while adding PDF footers', async () => {
+    const model = fixtureModel();
+    model.metadata.format = 'pdf';
+
+    const rendered = await renderReportDocument(model, 'pdf');
+
+    expect(pdfPageCount(rendered.buffer)).toBe(1);
   });
 
   it('renders a professional XLSX workbook with official sheets, letterhead, and no raw metadata-only sheet', async () => {

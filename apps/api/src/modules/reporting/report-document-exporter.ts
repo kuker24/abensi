@@ -442,12 +442,12 @@ function addPdfMetadata(doc: PDFKit.PDFDocument, model: ReportDocumentModel) {
 }
 
 function addPdfFooter(doc: PDFKit.PDFDocument, model: ReportDocumentModel) {
-  const bottom = doc.page.height - 28;
+  const bottom = doc.page.height - doc.page.margins.bottom - 10;
   doc.fontSize(7).fillColor(`#${MUTED}`).text(
     `${model.applicationName} · ${model.institution} · Dibuat ${model.metadata.generatedAt}`,
     doc.page.margins.left,
     bottom,
-    { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
+    { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center', lineBreak: false }
   );
 }
 
