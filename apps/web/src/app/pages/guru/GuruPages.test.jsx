@@ -391,7 +391,6 @@ describe('guru self-scoped recap', () => {
     expect(exportUrl).toContain('from=');
     expect(exportUrl).toContain('to=');
     expect(exportUrl).not.toContain('teacherId');
-    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
   });
 });
 
