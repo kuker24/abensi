@@ -95,6 +95,27 @@ describe('report document exporter', () => {
     expect(pdfPageCount(rendered.buffer)).toBe(1);
   });
 
+
+  it('keeps the same report contract across all four formats', async () => {
+    const formats: ExportFormat[] = ['csv', 'xlsx', 'pdf', 'docx'];
+    const rendered = await Promise.all(formats.map(async (format) => {
+      const model = fixtureModel();
+      model.metadata.format = format;
+      const result = await renderReportDocument(model, format);
+      return { format, result, model };
+    }));
+
+    for (const item of rendered) {
+      expect(item.model.title).toBe('Rekap Kehadiran per Kelas');
+      expect(item.model.metadata.reportType).toBe('recap_classes');
+      expect(item.model.metadata.range).toEqual(expect.objectContaining({ from: '2026-06-01T00:00:00.000Z', to: '2026-06-19T23:59:59.999Z' }));
+      expect(item.model.columns.map((column) => column.key)).toEqual(['class_code', 'class_name', 'coverage_percent']);
+      expect(item.model.rows).toHaveLength(2);
+      expect(item.result.extension).toBe(item.format);
+      expect(item.result.buffer.length).toBeGreaterThan(100);
+    }
+  });
+
   it('renders a professional XLSX workbook with official sheets, letterhead, and no raw metadata-only sheet', async () => {
     const model = fixtureModel();
     model.metadata.format = 'xlsx';

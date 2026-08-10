@@ -269,6 +269,27 @@ describe('IdentityService', () => {
     expect(safeJson(preview)).not.toContain('legacy123');
   });
 
+
+  it('rejects an ambiguous NIP instead of choosing one existing account', async () => {
+    const prisma = makePrisma();
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'legacy-user', username: 'guru.legacy', nis: null, nkd: null, nip: '198001012005011001', role: Role.GURU_MAPEL, active: true, archivedAt: null },
+      { id: 'master-user', username: 'pegawai.2005011001', nis: null, nkd: null, nip: '198001012005011001', role: Role.PEGAWAI, active: true, archivedAt: null }
+    ]);
+    const service = new IdentityService(prisma);
+
+    const preview = await service.previewSchoolImport([
+      { 'NAMA LENGKAP': 'Personel Sintetis', NIP: '198001012005011001', Username: 'pegawai.baru', JABATAN: 'Guru' }
+    ], 'staff', { academicYear: '2026/2027', updateExisting: true });
+
+    expect(preview.summary).toEqual(expect.objectContaining({ total: 1, valid: 0, invalid: 1 }));
+    expect(preview.rows[0]).toEqual(expect.objectContaining({
+      action: 'invalid',
+      existingUserId: null,
+      errors: expect.arrayContaining(['NIP cocok dengan lebih dari satu akun existing; verifikasi identitas secara manual'])
+    }));
+  });
+
   it('commits school import with generated one-time slips and no plaintext password in audit', async () => {
     const prisma = makePrisma();
     prisma.user.findMany.mockResolvedValue([]);

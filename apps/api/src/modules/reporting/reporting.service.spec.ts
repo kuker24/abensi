@@ -332,6 +332,50 @@ describe('ReportingService school personnel gate attendance', () => {
 });
 
 
+describe('ReportingService duplicate-account audit contract', () => {
+  it('keeps separate user IDs as separate daily staff rows', async () => {
+    const day = new Date('2026-06-19T00:00:00.000Z');
+    const prisma = {
+      gateLog: { findMany: jest.fn().mockResolvedValue([
+        { userId: 'legacy-account', direction: GateDirection.IN, businessDate: day, tappedAt: new Date('2026-06-19T00:10:00.000Z'), user: { id: 'legacy-account', fullName: 'Personel Sintetis', username: 'guru.legacy', role: Role.GURU_MAPEL } },
+        { userId: 'master-account', direction: GateDirection.IN, businessDate: day, tappedAt: new Date('2026-06-19T00:15:00.000Z'), user: { id: 'master-account', fullName: 'Personel Sintetis', username: 'pegawai.master', role: Role.PEGAWAI } }
+      ]) }
+    } as any;
+    const service = new ReportingService(prisma, {} as any);
+
+    const result = await service.staffGateAttendance(recapPagination, recapFilters);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((row) => row.userId)).toEqual(expect.arrayContaining(['legacy-account', 'master-account']));
+  });
+
+  it('documents that inactive historical staff logs are excluded by the current query', async () => {
+    const prisma = { gateLog: { findMany: jest.fn().mockResolvedValue([]) } } as any;
+    const service = new ReportingService(prisma, {} as any);
+
+    await service.staffGateAttendance(recapPagination, recapFilters);
+
+    expect(prisma.gateLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ user: expect.objectContaining({ active: true }) })
+    }));
+  });
+
+  it('keeps sessions split by teacher user ID even when display names match', async () => {
+    const sessions = [
+      makeReportSession({ id: 'legacy-session', teacherId: 'legacy-account', teacher: { id: 'legacy-account', fullName: 'Guru Sintetis', username: 'guru.legacy' } }),
+      makeReportSession({ id: 'master-session', teacherId: 'master-account', teacher: { id: 'master-account', fullName: 'Guru Sintetis', username: 'pegawai.master' } })
+    ];
+    const prisma = { session: { findMany: jest.fn().mockResolvedValue(sessions) } } as any;
+    const service = new ReportingService(prisma, {} as any);
+
+    const result = await service.recapTeachers(recapPagination, recapFilters);
+
+    expect(result.summary.teacherCount).toBe(2);
+    expect(result.items.map((row) => row.teacherId)).toEqual(expect.arrayContaining(['legacy-account', 'master-account']));
+  });
+});
+
+
 describe('ReportingService monthly attendance summaries', () => {
   it('summarizes complete student evidence into one row without inventing empty calendar days', async () => {
     const { service } = makeService({

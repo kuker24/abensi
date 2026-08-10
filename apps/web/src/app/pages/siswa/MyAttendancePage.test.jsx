@@ -94,3 +94,40 @@ describe('MyAttendancePage student today status', () => {
     });
   });
 });
+
+
+describe('MyAttendancePage official self export', () => {
+  it('exports only the selected day range and format, not the local status filter', async () => {
+    const requests = [];
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:attendance'), revokeObjectURL: vi.fn() });
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/reports/export')) {
+        return new Response(new Blob(['report']), {
+          status: 200,
+          headers: {
+            'content-type': 'text/csv; charset=utf-8',
+            'content-disposition': 'attachment; filename="my_attendance.csv"'
+          }
+        });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+    vi.spyOn(document.createElement('a').constructor.prototype, 'click').mockImplementation(() => {});
+    render(<MyAttendancePage employee />);
+
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: '30' } });
+    fireEvent.change(selects[1], { target: { value: 'csv' } });
+    fireEvent.change(selects[2], { target: { value: 'HADIR' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Download data saya' }));
+
+    await waitFor(() => expect(requests.some((url) => url.includes('/reports/export'))).toBe(true));
+    const exportUrl = requests.find((url) => url.includes('/reports/export'));
+    expect(exportUrl).toContain('reportType=my_attendance');
+    expect(exportUrl).toContain('format=csv');
+    expect(exportUrl).toContain('days=30');
+    expect(exportUrl).not.toContain('status=');
+  });
+});

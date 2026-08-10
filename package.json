@@ -50,6 +50,8 @@
     "test:e2e": "npm run test:e2e --prefix apps/web",
     "audit:preflight-chain": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/preflight_audit_chain.ts",
     "audit:verify-chain": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify_audit_chain.ts",
+    "audit:reporting-identity": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/audit_reporting_identity.ts",
+    "test:audit-reporting-identity": "npm run test --prefix apps/api -- src/modules/reporting/audit-reporting-identity.spec.ts --runInBand",
     "audit:approve-trust-boundary": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/approve_audit_trust_boundary.ts",
     "test:audit-trust-boundary:local": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/audit_trust_boundary_local_integration.ts",
     "preflight:production": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/preflight_production_readiness.ts",

@@ -1022,15 +1022,30 @@ export class IdentityService {
     const byNis = new Map(existingUsers.filter((user) => user.nis).map((user) => [user.nis as string, user]));
     const byNkd = new Map(existingUsers.filter((user) => user.nkd).map((user) => [user.nkd as string, user]));
     const reservedNkdByValue = new Map(nkdReservations.map((reservation) => [reservation.nkd, reservation.userId]));
-    const byNip = new Map(existingUsers.filter((user) => user.nip).map((user) => [user.nip as string, user]));
+    const usersByNip = existingUsers
+      .filter((user) => user.nip)
+      .reduce<Map<string, typeof existingUsers>>((groups, user) => {
+        const nip = user.nip as string;
+        groups.set(nip, [...(groups.get(nip) ?? []), user]);
+        return groups;
+      }, new Map());
     const updateExisting = schoolImportFlag(options.updateExisting);
     const resetExisting = schoolImportFlag(options.resetPasswordForExisting);
 
     const previewRows: SchoolImportPreviewRow[] = normalized.map(({ fingerprint: _fingerprint, ...row }) => {
-      const existingByIdentifier = row.nkd ? byNkd.get(row.nkd) : row.nis ? byNis.get(row.nis) : row.nip ? byNip.get(row.nip) : null;
+      const nipMatches = row.nip ? (usersByNip.get(row.nip) ?? []) : [];
+      const ambiguousNip = nipMatches.length > 1;
+      const existingByIdentifier = row.nkd
+        ? byNkd.get(row.nkd)
+        : row.nis
+          ? byNis.get(row.nis)
+          : row.nip && !ambiguousNip
+            ? nipMatches[0]
+            : null;
       const existingByUsername = byUsername.get(row.username);
       const existing = existingByIdentifier || existingByUsername;
       const errors = [...row.errors];
+      if (ambiguousNip) errors.push('NIP cocok dengan lebih dari satu akun existing; verifikasi identitas secara manual');
       if (existingByIdentifier && existingByUsername && existingByIdentifier.id !== existingByUsername.id) errors.push('username sudah dipakai akun lain');
       if (!existingByIdentifier && existingByUsername && (row.nis || row.nkd || row.nip)) errors.push('username sudah ada untuk NIS/NKD/NIP berbeda');
       if (existing?.archivedAt) errors.push('akun existing sudah archived');

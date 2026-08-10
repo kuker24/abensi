@@ -359,6 +359,40 @@ describe('guru self-scoped recap', () => {
     expect(reportUrl).toContain('to=');
     expect(reportUrl).not.toContain('teacherId');
   });
+
+
+  it('downloads the selected month in the selected official format', async () => {
+    const requests = [];
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:report'), revokeObjectURL: vi.fn() });
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/reports/export')) {
+        return new Response(new Blob(['report']), {
+          status: 200,
+          headers: {
+            'content-type': 'application/pdf',
+            'content-disposition': 'attachment; filename="recap_classes.pdf"'
+          }
+        });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+    const clickSpy = vi.spyOn(document.createElement('a').constructor.prototype, 'click').mockImplementation(() => {});
+    render(<TeacherRecapPage />);
+
+    fireEvent.change(screen.getByLabelText('Format export kelas saya'), { target: { value: 'pdf' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+
+    await waitFor(() => expect(requests.some((url) => url.includes('/reports/export'))).toBe(true));
+    const exportUrl = requests.find((url) => url.includes('/reports/export'));
+    expect(exportUrl).toContain('reportType=recap_classes');
+    expect(exportUrl).toContain('format=pdf');
+    expect(exportUrl).toContain('from=');
+    expect(exportUrl).toContain('to=');
+    expect(exportUrl).not.toContain('teacherId');
+    expect(clickSpy).toHaveBeenCalled();
+  });
 });
 
 describe('personnel leave self-service', () => {
