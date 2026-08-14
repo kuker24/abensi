@@ -1,5 +1,56 @@
 # SIAB2 — Sistem Informasi Akademik Berkarakter
 
+Academic and attendance system for MAN 1 Rokan Hulu. The school-facing product name in the UI is **e-Hadir**.
+
+I built this while teaching introductory AI at the same school, then trained staff to use it.
+
+## What it is
+
+A production attendance and academic-operations system:
+
+- Teachers and staff record presence at the gate and in class
+- An official Android reader scans student/teacher QR credentials
+- Requests are signed and bound to a known device
+- A worker reconciles attendance so the dashboard stays consistent
+- Admin, teacher, and student roles see different work
+
+This is not a demo CRUD app. It is the system the school actually runs.
+
+## Stack
+
+- NestJS API + Prisma + PostgreSQL
+- React (Vite) frontend
+- Redis + reconciliation worker
+- Nginx reverse proxy
+- Docker Compose
+- Official Android QR reader
+
+## Visual proof
+
+UI stills from a **test** environment (no student records):
+
+| View | File |
+| --- | --- |
+| Login / role picker | [docs/public/screenshots/login.png](docs/public/screenshots/login.png) |
+| Admin dashboard | [docs/public/screenshots/dashboard.png](docs/public/screenshots/dashboard.png) |
+| Teacher dashboard | [docs/public/screenshots/teacher-dashboard.png](docs/public/screenshots/teacher-dashboard.png) |
+
+Public architecture (high level, no extra attack detail): [docs/public/architecture.md](docs/public/architecture.md)
+
+There is no public 30–90s production video yet. The stills are a UI walkthrough, not a live production capture.
+
+## Security (high level)
+
+- Official reader path is HMAC-signed
+- Nonce on the signed request (replay is not a casual copy-paste)
+- Readers are known devices, not anonymous scanners
+- RBAC across admin / teacher / student
+- Audit log + reconciliation worker
+
+Do not expect keys, production hosts, or extra endpoints in this README.
+
+---
+
 Implementasi baseline production untuk sistem informasi akademik dan kehadiran MAN 1 Rokan Hulu dengan stack:
 - NestJS API + Prisma + PostgreSQL
 - React (Vite) frontend
