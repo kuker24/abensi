@@ -105,3 +105,24 @@ Video/HyperFrames/evidence/
 # Generated video media
 Video/HyperFrames/assets/audio/
 Video/HyperFrames/snapshots/
+
+# Private student/account data (never commit: credentials + personal data)
+Data Akun/simpanakun.zip
+Data Akun/.simpanakun-backup-*/
+Data Akun/.simpanakun-backup-*.zip
+Data Akun/akun.txt
+Data Akun/*.xlsx
+Data Akun/*.xls
+Data Akun/*.pdf
+Data Akun/*.jpeg
+DataSekolah/*.xlsx
+DataSekolah/*.xls
+DataSekolah/*.pdf
+
+# Local tooling caches / scratch output (not source)
+.codebase-memory/
+.serena/
+.playwright-cli/
+.pi/memory/
+.tmp/
+audit-full/

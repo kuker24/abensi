@@ -344,6 +344,36 @@ main() {
   FINAL_STATUS="PASS"
   write_evidence
   cp "$EVIDENCE_FILE" .last_deploy_artifact_path 2>/dev/null || true
+
+  # Align durable release pins + env image tag with the SHA that was just deployed.
+  # Pins must live in the durable root (production: /opt/schoolhub/), never inside the
+  # release worktree, which is replaced on every deploy. Deriving the root purely from
+  # dirname "$ENV_FILE" broke that when invoked as `deploy_production.sh .env` from
+  # /opt/schoolhub/current, silently discarding the pins on the next release.
+  env_dir="$(cd "$(dirname "$ENV_FILE")" && pwd)"
+  worktree_dir="$(pwd -P)"
+  if [[ "$env_dir" == "$worktree_dir" ]]; then
+    release_root="${SCHOOLHUB_RELEASE_ROOT:-/opt/schoolhub}"
+  else
+    release_root="$env_dir"
+  fi
+  pin_sync_log="$LOG_DIR/sync-release-pins.json"
+  if bash scripts/sync_release_pins.sh --sha "$TARGET_SHA" --root "$release_root" --env-file "$ENV_FILE" \
+    | tee "$pin_sync_log" >/dev/null; then
+    echo "Release pins synced to $TARGET_SHA"
+  else
+    echo "WARNING: release pin sync failed; containers are healthy but ACTIVE_*/SCHOOLHUB_IMAGE_TAG may drift." >&2
+  fi
+
+  # Keep newest N schoolhub image tags + currently running tags to avoid disk pressure / partial-deploy traps.
+  prune_log="$LOG_DIR/prune-schoolhub-images.json"
+  if KEEP_PER_REPO="${SCHOOLHUB_IMAGE_KEEP_PER_REPO:-2}" bash scripts/prune_schoolhub_images.sh \
+    | tee "$prune_log" >/dev/null; then
+    echo "SchoolHub image prune completed (keep ${SCHOOLHUB_IMAGE_KEEP_PER_REPO:-2} per repo + running)."
+  else
+    echo "WARNING: schoolhub image prune failed; disk pressure may remain." >&2
+  fi
+
   echo "Deployment completed successfully. Evidence: $EVIDENCE_FILE"
 }
 

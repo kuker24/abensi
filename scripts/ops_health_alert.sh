@@ -6,7 +6,9 @@ ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 BASE_URL="${ALERT_BASE_URL:-${BASE_URL:-}}"
 WEBHOOK_URL="${ALERT_WEBHOOK_URL:-}"
 MIN_BACKUP_AGE_HOURS="${ALERT_MIN_BACKUP_AGE_HOURS:-26}"
-BACKUP_DIR="${BACKUP_DIR:-/home/schoolhub/backups/database}"
+# Prefer encrypted production backups; keep legacy sql.gz path as fallback.
+BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups}"
+LEGACY_BACKUP_DIR="${LEGACY_BACKUP_DIR:-/home/schoolhub/backups/database}"
 LOG_DIR="${LOG_DIR:-$ROOT_DIR/output/health-alert}"
 mkdir -p "$LOG_DIR"
 TS="$(date +%Y%m%d-%H%M%S)"
@@ -47,14 +49,51 @@ else
   record_fail "root-dir-missing"
 fi
 
-if systemctl is-active --quiet schoolhub-db-backup.timer; then record_pass "backup-timer-active"; else record_fail "backup-timer-active"; fi
+if systemctl is-active --quiet schoolhub-backup.timer 2>/dev/null \
+  || systemctl is-active --quiet schoolhub-db-backup.timer 2>/dev/null; then
+  record_pass "backup-timer-active"
+else
+  record_fail "backup-timer-active"
+fi
 
-latest_backup="$(find "$BACKUP_DIR" -type f -name 'schoolhub-*.sql.gz' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)"
+latest_backup=""
+backup_kind=""
+if [[ -d "$BACKUP_DIR" ]]; then
+  latest_backup="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'schoolhub-*.dump.enc' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)"
+  [[ -n "$latest_backup" ]] && backup_kind="dump.enc"
+fi
+if [[ -z "$latest_backup" && -d "$LEGACY_BACKUP_DIR" ]]; then
+  latest_backup="$(find "$LEGACY_BACKUP_DIR" -type f -name 'schoolhub-*.sql.gz' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)"
+  [[ -n "$latest_backup" ]] && backup_kind="sql.gz"
+fi
+
 if [[ -n "$latest_backup" ]]; then
   now=$(date +%s)
   mtime=$(stat -c %Y "$latest_backup")
   age_hours=$(( (now - mtime) / 3600 ))
-  if ! gunzip -t "$latest_backup" >/dev/null 2>&1; then
+  integrity_ok=false
+  missing_checksum=false
+  if [[ "$backup_kind" == "dump.enc" ]]; then
+    # Encrypted dumps must be validated by their companion sha256. Treating a missing
+    # checksum as "ok" made a nonempty-but-unverifiable dump look like a healthy backup,
+    # so a missing companion now fails closed.
+    if [[ -s "$latest_backup" ]]; then
+      if [[ -f "${latest_backup}.sha256" ]]; then
+        if (cd "$(dirname "$latest_backup")" && sha256sum -c "$(basename "$latest_backup").sha256" >/dev/null 2>&1); then
+          integrity_ok=true
+        fi
+      else
+        missing_checksum=true
+      fi
+    fi
+  else
+    if gunzip -t "$latest_backup" >/dev/null 2>&1; then
+      integrity_ok=true
+    fi
+  fi
+  if [[ "$missing_checksum" == "true" ]]; then
+    record_fail "backup-checksum-missing"
+  elif [[ "$integrity_ok" != "true" ]]; then
     record_fail "backup-corrupt"
   elif (( age_hours <= MIN_BACKUP_AGE_HOURS )); then
     record_pass "backup-age-${age_hours}h"

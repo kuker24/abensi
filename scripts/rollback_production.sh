@@ -123,4 +123,21 @@ if [[ "$RESTORE_DATABASE" == "YES" ]]; then
   bash scripts/restore_backup.sh "${restore_args[@]}"
 fi
 
+# Pins must land in the durable root, never in the release worktree that a later deploy
+# replaces. Same guard as deploy_production.sh: a relative "--env-file .env" run from
+# /opt/schoolhub/current would otherwise write pins into the disposable directory.
+env_dir="$(cd "$(dirname "$ENV_FILE")" && pwd)"
+worktree_dir="$(pwd -P)"
+if [[ "$env_dir" == "$worktree_dir" ]]; then
+  release_root="${SCHOOLHUB_RELEASE_ROOT:-/opt/schoolhub}"
+else
+  release_root="$env_dir"
+fi
+if bash scripts/sync_release_pins.sh --sha "$TARGET_SHA" --root "$release_root" --env-file "$ENV_FILE" \
+  | tee "$LOG_DIR/sync-release-pins.json" >/dev/null; then
+  echo "Release pins synced to rollback target $TARGET_SHA"
+else
+  echo "WARNING: release pin sync after rollback failed." >&2
+fi
+
 jq -n --arg ok true --arg targetSha "$TARGET_SHA" --arg logs "$LOG_DIR" '{ok:($ok=="true"),targetSha:$targetSha,logs:$logs}' | tee "$LOG_DIR/rollback-result.json"

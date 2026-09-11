@@ -1,0 +1,24 @@
+[Unit]
+Description=Generate operator-readable SchoolHub production stabilization status
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=schoolhub
+Group=schoolhub
+UMask=0027
+WorkingDirectory=/opt/schoolhub/current
+Environment=ROOT_DIR=/opt/schoolhub
+Environment=ENV_FILE=/opt/schoolhub/.env
+Environment=OUTPUT_JSON=/opt/schoolhub/logs/stabilization-status.json
+Environment=OUTPUT_MD=/opt/schoolhub/logs/stabilization-status.md
+Environment=LOCAL_HEALTH_BASE_URL=http://127.0.0.1:8080
+Environment=USE_VPS_TOPOLOGY=true
+# Prefer tree under /opt/schoolhub/current; fall back to copied script path if present.
+ExecStart=/bin/bash /opt/schoolhub/current/scripts/stabilization_status.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/opt/schoolhub/logs /opt/schoolhub/current/artifacts

@@ -9,6 +9,7 @@ Use this checklist after every production deployment to `https://absensi.man1rok
 - [ ] Final production commit confirmed on VPS.
 - [ ] App directory confirmed: `/opt/schoolhub/current`.
 - [ ] Active VPS IP confirmed: `103.93.133.212`.
+- [ ] Release pins aligned: `ACTIVE_RELEASE_SHA` == `ACTIVE_API_RELEASE_TAG` == `SCHOOLHUB_IMAGE_TAG` == running api/web/worker image tags.
 
 Commands:
 
@@ -18,6 +19,12 @@ cd /opt/schoolhub/current
 git status --short
 git branch --show-current || true
 git rev-parse HEAD
+
+# Operator-readable stabilization matrix (no secrets printed)
+bash scripts/stabilization_status.sh --root /opt/schoolhub --env-file /opt/schoolhub/.env
+
+# If pins drifted after a partial/hotfix deploy:
+# bash scripts/sync_release_pins.sh --from-running --root /opt/schoolhub --env-file /opt/schoolhub/.env
 ```
 
 ## Container health
