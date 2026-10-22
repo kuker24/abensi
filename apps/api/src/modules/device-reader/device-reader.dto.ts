@@ -98,6 +98,8 @@ export class UpdateReaderDto {
   appVersionCode?: number;
 }
 
+export const MAX_ANDROID_PROVISION_MINUTES = 72 * 60;
+
 export class AndroidProvisionStartDto {
   @IsString()
   name!: string;
@@ -117,7 +119,7 @@ export class AndroidProvisionStartDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(60)
+  @Max(MAX_ANDROID_PROVISION_MINUTES)
   expiresInMinutes?: number;
 }
 
@@ -125,7 +127,7 @@ export class AndroidProvisionCodeDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(60)
+  @Max(MAX_ANDROID_PROVISION_MINUTES)
   expiresInMinutes?: number;
 }
 

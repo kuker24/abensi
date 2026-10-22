@@ -538,18 +538,24 @@ describe('DeviceReaderService credential security', () => {
     expect(prisma.__tx.deviceReader.create).not.toHaveBeenCalled();
   });
 
-  it('allows Android provision start after active reader slot is available and caps expiry at 60 minutes', async () => {
+  it('allows Android provision start after active reader slot is available and caps expiry at 72 hours', async () => {
     const prisma = makePrisma();
     prisma.__tx.deviceReader.count.mockResolvedValue(MAX_ACTIVE_ANDROID_READERS - 1);
     const service = new DeviceReaderService(prisma, makeSignatures());
     const before = Date.now();
 
-    const result = await service.startAndroidProvision({ name: 'HP Pengganti', expiresInMinutes: 120 }, actor);
-    const expiresInMs = new Date(result.expiresAt).getTime() - before;
+    const withinHour = await service.startAndroidProvision({ name: 'HP Pengganti', expiresInMinutes: 120 }, actor);
+    const withinHourMs = new Date(withinHour.expiresAt).getTime() - before;
 
     expect(prisma.__tx.deviceReader.create).toHaveBeenCalled();
-    expect(expiresInMs).toBeGreaterThan(59 * 60_000);
-    expect(expiresInMs).toBeLessThanOrEqual(60 * 60_000 + 5000);
+    expect(withinHourMs).toBeGreaterThan(119 * 60_000);
+    expect(withinHourMs).toBeLessThanOrEqual(120 * 60_000 + 5000);
+
+    const beforeCap = Date.now();
+    const capped = await service.startAndroidProvision({ name: 'HP Pengganti', expiresInMinutes: 72 * 60 + 30 }, actor);
+    const cappedMs = new Date(capped.expiresAt).getTime() - beforeCap;
+    expect(cappedMs).toBeGreaterThan(71 * 60 * 60_000);
+    expect(cappedMs).toBeLessThanOrEqual(72 * 60 * 60_000 + 5000);
   });
 
   it('rejects Android provision completion when another active reader filled the last slot', async () => {

@@ -7,7 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { canonicalJson } from '../security/canonical-json';
 import { DeviceSignatureService, credentialHashMatches, normalizedReaderIdentifier, readerCandidateWhere, readerCredentialDigest, readerCredentialDigestCandidates, readerLookupLimit, uniqueReaderMatch, type ReaderSignatureHeaders } from '../security/device-signature.service';
 import { StepUpAuthService } from '../security/step-up-auth.service';
-import { AndroidProvisionCodeDto, AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
+import { AndroidProvisionCodeDto, AndroidProvisionCompleteDto, AndroidProvisionStartDto, AndroidReaderStatusDto, CreateReaderDto, MAX_ANDROID_PROVISION_MINUTES, RevokeReaderDto, RotateReaderKeyDto, UpdateReaderDto, UpdateReaderStatusDto } from './device-reader.dto';
 
 function mintReaderCredential() {
   return `shr_${randomBytes(16).toString('hex')}`;
@@ -115,7 +115,7 @@ function stableProvisionedDeviceId(reader: { deviceId?: string | null; name?: st
 }
 
 function clampProvisionMinutes(value?: number) {
-  return Math.max(1, Math.min(60, value ?? 15));
+  return Math.max(1, Math.min(MAX_ANDROID_PROVISION_MINUTES, value ?? 15));
 }
 
 function clampText(value: string | null | undefined, max: number) {

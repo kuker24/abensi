@@ -1597,9 +1597,14 @@ function activationCodeOf(result) {
 function formatRemaining(ms) {
   if (ms <= 0) return 'Kode sudah kedaluwarsa';
   const total = Math.ceil(ms / 1000);
-  const minutes = Math.floor(total / 60);
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
   const seconds = total % 60;
-  return `${minutes} menit ${String(seconds).padStart(2, '0')} detik lagi`;
+  const clock = `${minutes} menit ${String(seconds).padStart(2, '0')} detik lagi`;
+  if (days > 0) return `${days} hari ${hours} jam ${clock}`;
+  if (hours > 0) return `${hours} jam ${clock}`;
+  return clock;
 }
 
 function isPendingAndroidReader(reader) {
@@ -1796,10 +1801,10 @@ function AndroidReaderPanel({ notify }) {
         </div>
       </Card>
 
-      <Card title="2. Buat kode aktivasi" sub="Kode berlaku singkat dan hanya untuk 1 HP. Tidak ada API key/signing secret yang perlu ditempel manual.">
+      <Card title="2. Buat kode aktivasi" sub="Maksimal 4320 menit (72 jam) dan hanya untuk 1 HP. Tidak ada API key/signing secret yang perlu ditempel manual.">
         <div className="activation-form-simple">
           <Field label="Reader target"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} disabled /></Field>
-          <Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field>
+          <Field label="Kode berlaku (menit, maksimal 4320 / 72 jam)"><TextInput type="number" min="1" max="4320" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field>
           <Btn variant="primary" type="button" disabled={limitReached} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn>
           {!selectedTarget && <p className="muted">Reader resmi ini belum ada di database. Tombol di atas membuat baris tidak aktif, lalu kode aktivasi. Secret tidak ditampilkan.</p>}
         </div>
