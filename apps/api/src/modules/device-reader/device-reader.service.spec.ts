@@ -133,11 +133,13 @@ describe('DeviceReaderService credential security', () => {
     expect(data.provisioningExpiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('supports the approved 3-reader activation mapping', async () => {
+  it('supports the approved 5-reader activation mapping', async () => {
     const targets = [
       ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
       ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
-      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_03', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_04', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
     ] as const;
 
     for (const [deviceId, modes] of targets) {
@@ -314,7 +316,9 @@ describe('DeviceReaderService credential security', () => {
     const targets = [
       ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
       ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
-      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_03', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_04', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
     ] as const;
 
     for (const [target, allowedModes] of targets) {
@@ -577,7 +581,9 @@ describe('DeviceReaderService credential security', () => {
     const targets = [
       ['READER_IDENTITY_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
       ['READER_GATE_PRAYER_01', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
-      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
+      ['READER_GATE_PRAYER_02', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_03', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]],
+      ['READER_GATE_PRAYER_04', [AndroidReaderMode.GATE_IN, AndroidReaderMode.GATE_OUT, AndroidReaderMode.MUSHOLA, AndroidReaderMode.CHECK_ONLY]]
     ];
 
     for (const [deviceId, allowedModes] of targets) {

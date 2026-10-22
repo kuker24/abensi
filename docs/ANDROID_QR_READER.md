@@ -66,14 +66,15 @@ apps/android-reader/app/build/outputs/apk/debug
 
 ## Provisioning perangkat
 
-PR128 menetapkan maksimal 4 HP reader produksi aktif:
+Server mengizinkan maksimal 5 HP reader produksi aktif:
 
 | Reader | Fungsi | Mode APK |
 |---|---|---|
-| `READER_DEV_TEST_01` | Dev Test Identitas | `CHECK_ONLY` |
 | `READER_IDENTITY_01` | Dev Gate Live (developer uji coba, menulis presensi) | `GATE_IN`, `GATE_OUT`, `MUSHOLA`, `CHECK_ONLY` |
-| `READER_GATE_PRAYER_01` | Gerbang/mushola UAT | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
-| `READER_GATE_PRAYER_02` | Gerbang/mushola backup | `GATE_IN`, `GATE_OUT`, `MUSHOLA` |
+| `READER_GATE_PRAYER_01` | Gerbang/Mushola 01 | `GATE_IN`, `GATE_OUT`, `MUSHOLA`, `CHECK_ONLY` |
+| `READER_GATE_PRAYER_02` | Gerbang/Mushola 02 | `GATE_IN`, `GATE_OUT`, `MUSHOLA`, `CHECK_ONLY` |
+| `READER_GATE_PRAYER_03` | Gerbang/Mushola 03 | `GATE_IN`, `GATE_OUT`, `MUSHOLA`, `CHECK_ONLY` |
+| `READER_GATE_PRAYER_04` | Gerbang/Mushola 04 | `GATE_IN`, `GATE_OUT`, `MUSHOLA`, `CHECK_ONLY` |
 
 SOP setup operator:
 
@@ -109,11 +110,11 @@ Catatan keamanan: activation code adalah one-time use dan short-lived. API key/s
 
 Scanner berjalan terus-menerus. Setelah satu siswa hijau, siswa berikutnya bisa langsung scan tanpa keluar masuk menu.
 
-## Mode fleksibel 4 HP scanner
+## Mode fleksibel 5 HP scanner
 
 APK mendukung penggunaan seperti kiosk terkontrol:
 
-- Maksimal 4 HP scanner aktif di server.
+- Maksimal 5 HP scanner aktif di server.
 - 2 HP `CHECK_ONLY` hanya untuk uji koneksi/verifikasi identitas tanpa mutasi absensi.
 - 2 HP `GERBANG,MUSHOLA` dapat memilih **Mode Gerbang** saat pagi/pulang atau **Mode Mushola** saat jadwal sholat.
 - Layar tetap menyala saat scanner aktif.

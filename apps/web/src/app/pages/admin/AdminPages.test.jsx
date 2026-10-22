@@ -309,7 +309,7 @@ describe('Master Data account delete guard', () => {
 });
 
 describe('HP Scanner Android operator UI', () => {
-  it('clarifies the three target reader model without role-specific HP labels', async () => {
+  it('clarifies the five target reader model without role-specific HP labels', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);
       if (url.includes('/device-readers')) return new Response(JSON.stringify({ items: [], meta: { page: 1, limit: 200, total: 0, totalPages: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -324,6 +324,10 @@ describe('HP Scanner Android operator UI', () => {
     expect(screen.getAllByText('READER_IDENTITY_01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('READER_GATE_PRAYER_01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('READER_GATE_PRAYER_02').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('READER_GATE_PRAYER_03').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('READER_GATE_PRAYER_04').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Gerbang/Mushola 03').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Gerbang/Mushola 04').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Dev Gate Live').length).toBeGreaterThan(0);
     expect(screen.getByText(/API key dan signing secret tidak ditampilkan di web/i)).toBeInTheDocument();
     expect(screen.queryByText('Alat Lama')).not.toBeInTheDocument();
@@ -449,7 +453,7 @@ describe('HP Scanner Android operator UI', () => {
     render(<DevicesPage notify={notify} />);
 
     expect(await screen.findByText(/API key dan signing secret tidak ditampilkan di web/i)).toBeInTheDocument();
-    const readerListCard = screen.getByText('Daftar 3 Reader Android Resmi').closest('.card');
+    const readerListCard = screen.getByText('Daftar 5 Reader Android Resmi').closest('.card');
     const pendingRow = within(readerListCard).getByText('READER_IDENTITY_01').closest('tr');
     const activeRow = within(readerListCard).getByText('READER_GATE_PRAYER_01').closest('tr');
     const inactiveRow = within(readerListCard).getByText('READER_GATE_PRAYER_02').closest('tr');

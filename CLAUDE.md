@@ -50,7 +50,7 @@ The API is authority for official QR credentials. It creates opaque `schoolhub:q
 
 Production Android scans use `POST /api/v1/attendance/qr-reader-scan`. `POST /api/v1/attendance/qr-scan` is legacy authenticated manual flow and must not receive Android reader traffic.
 
-Provisioning uses one short-lived, one-time activation code for one of four server-pinned targets. `READER_DEV_TEST_01` is `CHECK_ONLY`; `READER_IDENTITY_01`, `READER_GATE_PRAYER_01`, and `READER_GATE_PRAYER_02` allow `GATE_IN`, `GATE_OUT`, and `MUSHOLA`. Reader identity and allowed modes remain server-controlled.
+Provisioning uses one short-lived, one-time activation code for one of five server-pinned targets: `READER_IDENTITY_01`, `READER_GATE_PRAYER_01`, `READER_GATE_PRAYER_02`, `READER_GATE_PRAYER_03`, and `READER_GATE_PRAYER_04`. Each allows live `GATE_IN`, `GATE_OUT`, and `MUSHOLA`, plus read-only `CHECK_ONLY`. Reader identity and allowed modes remain server-controlled.
 
 Each request includes device ID, timestamp, nonce, body hash, and HMAC-SHA256 signature. API verifies reader activation, replay window, body integrity, app policy, credential state, user state, and scan mode. Android keeps the reader secret in Keystore-backed encrypted preferences and encrypts its offline queue with AES/GCM. Network and retryable server failures remain queued; terminal business rejections are sanitized and removed. `CHECK_ONLY` never mutates attendance.
 

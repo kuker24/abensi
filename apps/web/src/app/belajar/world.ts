@@ -154,7 +154,7 @@ export function createSeedWorld(): DemoWorld {
     flags: [
       { id: 'flag_demo_1', type: 'LUPA_TAP_GERBANG', subject: 'Alya Putri', open: true, priority: 'NORMAL' }
     ],
-    devices: { readersOnline: 2, max: 3, lastNote: '2 dari 3 HP scanner online', cardsActive: 612, cardsLost: 3 },
+    devices: { readersOnline: 2, max: 5, lastNote: '2 dari 5 HP scanner online', cardsActive: 612, cardsLost: 3 },
     picketNotes: [
       { id: 'pn1', title: 'Siswa lupa kartu gerbang', level: 'NORMAL', officer: 'Bu Sari (Piket)' }
     ],

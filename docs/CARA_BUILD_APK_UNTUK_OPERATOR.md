@@ -155,13 +155,13 @@ Catatan:
 1. Buka web admin.
 2. Masuk ke `/admin/devices`.
 3. Buka tab **Aktivasi HP Scanner**.
-4. Pilih salah satu dari 4 reader target (`READER_DEV_TEST_01`, `READER_IDENTITY_01`, `READER_GATE_PRAYER_01`, `READER_GATE_PRAYER_02`), lalu buat kode aktivasi.
+4. Pilih salah satu dari 5 reader target (`READER_IDENTITY_01`, `READER_GATE_PRAYER_01`, `READER_GATE_PRAYER_02`, `READER_GATE_PRAYER_03`, `READER_GATE_PRAYER_04`), lalu buat kode aktivasi.
 5. Buka APK di HP sesuai mapping.
 6. Isi server URL production.
 7. Tempel kode aktivasi dari admin; jangan screenshot/share ke chat/log.
 8. Pastikan status heartbeat/seen muncul sebelum live scan.
 
-`READER_IDENTITY_01` adalah Dev Gate Live: mode `GATE_IN`/`GATE_OUT`/`MUSHOLA` menulis presensi seperti reader produksi; `CHECK_ONLY` (Uji Coba Card) tetap read-only. Dua HP `READER_GATE_PRAYER_*` sama-sama live untuk Gerbang/Mushola production.
+`READER_IDENTITY_01` adalah Dev Gate Live: mode `GATE_IN`/`GATE_OUT`/`MUSHOLA` menulis presensi seperti reader produksi; `CHECK_ONLY` (Uji Coba Card) tetap read-only. Empat HP `READER_GATE_PRAYER_01` sampai `READER_GATE_PRAYER_04` sama-sama live untuk Gerbang, Mushola, dan Uji Coba Card.
 
 ## Troubleshooting Singkat
 
