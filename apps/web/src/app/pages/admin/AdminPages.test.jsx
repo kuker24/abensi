@@ -433,6 +433,71 @@ describe('HP Scanner Android operator UI', () => {
     expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
   });
 
+  it('prepares missing Gerbang/Mushola 03 and 04 rows before issuing an activation code', async () => {
+    const notify = vi.fn();
+    const createdByName = {
+      READER_GATE_PRAYER_03: { id: 'reader-gate-3', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'READER_GATE_PRAYER_03', name: 'READER_GATE_PRAYER_03', locationName: 'Gerbang/Mushola 03', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], hasReaderSecret: false },
+      READER_GATE_PRAYER_04: { id: 'reader-gate-4', type: 'QR_ANDROID', status: 'INACTIVE', deviceId: 'READER_GATE_PRAYER_04', name: 'READER_GATE_PRAYER_04', locationName: 'Gerbang/Mushola 04', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], hasReaderSecret: false }
+    };
+    const fetchMock = vi.fn(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method || 'GET').toUpperCase();
+      if (url.includes('/auth/csrf')) return new Response(JSON.stringify({ csrfToken: 'csrf-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes('/android/provision-code')) {
+        const id = url.includes('reader-gate-4') ? 'reader-gate-4' : 'reader-gate-3';
+        const item = id === 'reader-gate-4' ? createdByName.READER_GATE_PRAYER_04 : createdByName.READER_GATE_PRAYER_03;
+        return new Response(JSON.stringify({
+          item: { ...item, hasProvisioningToken: true },
+          provisionToken: id === 'reader-gate-4' ? 'shrp_gate04ActivationOnly' : 'shrp_gate03ActivationOnly',
+          provisioningQr: `schoolhub:reader-provision:v1:${id}`,
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString()
+        }), { status: 201, headers: { 'content-type': 'application/json' } });
+      }
+      if (method === 'POST' && /\/device-readers$/.test(url)) {
+        const body = JSON.parse(String(init.body));
+        return new Response(JSON.stringify({ item: createdByName[body.name], message: 'Target reader Android produksi dibuat tidak aktif.' }), { status: 201, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/device-readers')) {
+        return new Response(JSON.stringify({
+          items: [{ id: 'reader-identity', type: 'QR_ANDROID', status: 'ACTIVE', deviceId: 'READER_IDENTITY_01', name: 'READER_IDENTITY_01', locationName: 'Dev Gate Live', allowedModes: ['GATE_IN', 'GATE_OUT', 'MUSHOLA', 'CHECK_ONLY'], hasReaderSecret: true }],
+          meta: { page: 1, limit: 200, total: 1, totalPages: 1 }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DevicesPage notify={notify} />);
+
+    expect(await screen.findByText('Aktivasi Android Reader')).toBeInTheDocument();
+    for (const label of [/Gerbang\/Mushola 03/i, /Gerbang\/Mushola 04/i]) {
+      const card = screen.getByRole('button', { name: label });
+      expect(within(card).getByText('Belum ada row')).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /Gerbang\/Mushola 03.*READER_GATE_PRAYER_03/i }));
+    expect(screen.getByText('Belum ada di database')).toBeInTheDocument();
+    const activate = screen.getByRole('button', { name: /Buat Kode Aktivasi/i });
+    expect(activate).toBeEnabled();
+    fireEvent.click(activate);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/device-readers/reader-gate-3/android/provision-code'))).toBe(true));
+    const createCall = fetchMock.mock.calls.find(([input, init]) => /\/device-readers$/.test(String(input)) && String(init?.method || 'GET').toUpperCase() === 'POST');
+    const createBody = JSON.parse(String(createCall?.[1]?.body));
+    expect(createBody).toEqual(expect.objectContaining({ name: 'READER_GATE_PRAYER_03', deviceId: 'READER_GATE_PRAYER_03', type: 'QR_ANDROID' }));
+    expect(createBody).not.toHaveProperty('readerSecret');
+    expect(createBody).not.toHaveProperty('allowedModes');
+    const provisionCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/device-readers/reader-gate-3/android/provision-code'));
+    expect(JSON.parse(String(provisionCall?.[1]?.body))).not.toHaveProperty('allowedModes');
+    expect(document.body.textContent).not.toMatch(/readerSecret|readerSecretCiphertext|shrsec_/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /Gerbang\/Mushola 04.*READER_GATE_PRAYER_04/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Buat Kode Aktivasi/i }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/device-readers/reader-gate-4/android/provision-code'))).toBe(true));
+    const secondCreate = fetchMock.mock.calls.filter(([input, init]) => /\/device-readers$/.test(String(input)) && String(init?.method || 'GET').toUpperCase() === 'POST').at(-1);
+    expect(JSON.parse(String(secondCreate?.[1]?.body)).name).toBe('READER_GATE_PRAYER_04');
+  });
+
   it('shows safe secret copy and does not offer Aktifkan lagi for pending unprovisioned readers', async () => {
     const notify = vi.fn();
     const readers = [

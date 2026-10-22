@@ -1663,12 +1663,44 @@ function AndroidReaderPanel({ notify }) {
     setResult(null);
   }
 
+  function readerForPreset(selected, rows = androidItems) {
+    return rows.find((row) => row.deviceId === selected.name || row.name === selected.name) || null;
+  }
+
+  async function ensureApprovedTarget(selected) {
+    const existing = readerForPreset(selected);
+    if (existing?.id) return existing;
+    try {
+      const created = await apiFetch('/device-readers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: selected.name,
+          deviceId: selected.name,
+          type: 'QR_ANDROID',
+          locationName: selected.locationName,
+          locationLabel: selected.locationName
+        })
+      });
+      const item = created?.item || created;
+      if (item?.id) return item;
+    } catch (error) {
+      if (error?.status !== 409) throw error;
+    }
+    const refreshed = await apiFetch('/device-readers?page=1&limit=200');
+    const item = readerForPreset(selected, itemsOf(refreshed));
+    if (!item?.id) throw new Error(`Reader target ${selected.name} belum bisa disiapkan.`);
+    return item;
+  }
+
   async function startProvision() {
     const selected = ANDROID_READER_PRESETS.find((preset) => preset.key === selectedPreset) || ANDROID_READER_PRESETS[0];
-    const target = androidItems.find((row) => row.id === selected.readerId || row.deviceId === selected.name || row.name === selected.name);
-    if (!target) return notify(`Reader target ${selected.name} belum ada di daftar perangkat.`, 'warn');
-    const data = await apiFetch(`/device-readers/${target.id}/android/provision-code`, { method: 'POST', body: JSON.stringify({ expiresInMinutes: Number(form.expiresInMinutes) || 15 }) });
-    setResult(data); readers.refresh(); notify('Kode aktivasi HP berhasil dibuat. Salin kode ke aplikasi HP.');
+    try {
+      const target = await ensureApprovedTarget(selected);
+      const data = await apiFetch(`/device-readers/${target.id}/android/provision-code`, { method: 'POST', body: JSON.stringify({ expiresInMinutes: Number(form.expiresInMinutes) || 15 }) });
+      setResult(data); readers.refresh(); notify('Kode aktivasi HP berhasil dibuat. Salin kode ke aplikasi HP.');
+    } catch (error) {
+      notify(error?.message || `Reader target ${selected.name} belum bisa disiapkan.`, 'bad');
+    }
   }
 
   async function copyActivationCode() {
@@ -1768,7 +1800,8 @@ function AndroidReaderPanel({ notify }) {
         <div className="activation-form-simple">
           <Field label="Reader target"><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} disabled /></Field>
           <Field label="Kode berlaku berapa menit"><TextInput type="number" min="1" max="60" value={form.expiresInMinutes} onChange={(e) => set('expiresInMinutes', e.target.value)} /></Field>
-          <Btn variant="primary" type="button" disabled={limitReached || !selectedTarget} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn>
+          <Btn variant="primary" type="button" disabled={limitReached} onClick={startProvision}><QrCode size={16} /> Buat Kode Aktivasi</Btn>
+          {!selectedTarget && <p className="muted">Reader resmi ini belum ada di database. Tombol di atas membuat baris tidak aktif, lalu kode aktivasi. Secret tidak ditampilkan.</p>}
         </div>
         <div className="security-note"><AlertTriangle size={16} /><span>Kode hanya untuk operator yang memegang HP. Jangan screenshot/share ke grup umum.</span></div>
       </Card>
